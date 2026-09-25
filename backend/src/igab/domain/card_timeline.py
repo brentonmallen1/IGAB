@@ -27,13 +27,16 @@ from igab.domain.cards import CardPosition, CardReserve, card_position
 
 ZERO = Decimal("0")
 
-#: The six legs in reserve order, with the sign each contributes to the
+#: The seven legs in reserve order, with the sign each contributes to the
 #: set-aside. One spelling — `first_breach` ranks by these, `CardMonth`
 #: recombines them, and a second list would let the two disagree about what
 #: a reserve is made of. `opening` is first in time by construction: an
-#: import anchor's B−1 seed, present only on anchored budgets.
+#: import anchor's B−1 seed, present only on anchored budgets. `written_off`
+#: comes next because it is booked on the 1st, before anything else in its
+#: month: last month's overspending, absorbed by Ready to Assign.
 LEG_SIGNS: tuple[tuple[str, int], ...] = (
     ("opening", 1),
+    ("written_off", 1),
     ("assignments", 1),
     ("reservations", 1),
     ("released", -1),
@@ -44,13 +47,14 @@ LEG_SIGNS: tuple[tuple[str, int], ...] = (
 
 @dataclass(frozen=True)
 class CardMonth:
-    """One month of a card's reserve: the six legs' deltas, and where the
+    """One month of a card's reserve: the seven legs' deltas, and where the
     running totals stood once the month had happened."""
 
     month: date
     #: This month's movement in each leg, keyed as `LEG_SIGNS` names them.
     legs: dict[str, Decimal]
-    #: `CardReserve.set_aside(month)` — cumulative, unfloored.
+    #: `CardReserve.set_aside(month)` — the running total, brought back to
+    #: zero by the next month's `written_off` whenever a month ends below it.
     set_aside: Decimal
     #: The card's ledger through this month. Negative is owed.
     balance: Decimal
@@ -98,6 +102,7 @@ def card_timeline(
     """
     leg_series: dict[str, dict[date, Decimal]] = {
         "opening": reserve.opening,
+        "written_off": reserve.written_off,
         "assignments": reserve.assignments,
         "reservations": reserve.reservations,
         "released": reserve.released,

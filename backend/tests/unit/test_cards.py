@@ -232,11 +232,14 @@ class TestCardFunding:
         assert cf.funded_by_card == {VISA: {JAN: D("100"), FEB: D("-100")}, AMEX: {JAN: D("40")}}
         assert cf.floored_by_category == {}
 
-    def test_a_refund_posting_before_its_purchase_is_absorbed_when_it_lands(self):
-        # Replaces `test_a_pre_reservation_inflow_is_discarded`, which asserted
-        # the defect: the refund was written off forever and the envelope stayed
-        # 100 short. The reserve now goes negative and February's purchase
-        # absorbs it, with no memory of a refusal to redeem.
+    def test_a_refund_posting_before_its_purchase_is_covered_on_the_first(self):
+        # Replaces `test_a_pre_reservation_inflow_is_discarded` (which asserted
+        # a refusal) and then `..._is_absorbed_when_it_lands` (which let the
+        # negative sit until the purchase landed). The refund arrives first,
+        # so January ends overspent at -100; February 1 writes that off from
+        # Ready to Assign, and February's funded purchase then reserves 100
+        # like any other — spare, against a card that owes nothing, and free
+        # to release. YNAB does the same with a Credit Card Payments category.
         cf = funding(
             {FEB: D("100")},
             {JAN: D("100"), FEB: D("-100")},
@@ -245,9 +248,10 @@ class TestCardFunding:
         assert cf.funded_by_card == {VISA: {JAN: D("-100"), FEB: D("100")}}
         assert cf.residual_by_card == {VISA: {JAN: D("100")}}
         assert cf.floored_by_category == {}
-        # Set-aside back to zero against a zero balance. Before: 100 reserved
-        # against a card that owed nothing.
-        assert reserve_of(cf, VISA).set_aside(FEB) == D("0")
+        assert cf.written_off_by_card == {VISA: {FEB: D("100")}}
+        reserve = reserve_of(cf, VISA)
+        assert reserve.set_aside(JAN) == D("-100")
+        assert reserve.set_aside(FEB) == D("100")
 
     def test_a_repayment_beyond_lifetime_exposure_becomes_a_negative_reserve(self):
         # The second cardholder / reimbursement case: the category spent its
@@ -414,12 +418,26 @@ class TestTheReserveIsFiveLegs:
 
 
 def discrepancy(
-    set_aside, balance, assigned="0", covered="0", payments="0", residual="0", unclaimed="0"
+    set_aside,
+    balance,
+    assigned="0",
+    covered="0",
+    payments="0",
+    residual="0",
+    unclaimed="0",
+    written_off="0",
 ):
-    """`reserve_discrepancy` with the terms named, so a seven-argument call
+    """`reserve_discrepancy` with the terms named, so a many-argument call
     says which bound it is exercising."""
     return reserve_discrepancy(
-        D(set_aside), D(balance), D(assigned), D(covered), D(payments), D(residual), D(unclaimed)
+        D(set_aside),
+        D(balance),
+        D(assigned),
+        D(covered),
+        D(payments),
+        D(residual),
+        D(unclaimed),
+        written_off=D(written_off),
     )
 
 
@@ -624,10 +642,15 @@ class TestReservationInvariant:
             for card, balance in balances.items():
                 reserve = card_reserve(cf, card)
                 set_aside = reserve.set_aside(upto)
+                written_off = sum_through(reserve.written_off, upto)
+                # As the summary serves it: a write-off is Ready to Assign
+                # putting money into the envelope, so it joins `assigned`,
+                # and T3 names it for the credit it explains.
                 discrepancy = reserve_discrepancy(
                     set_aside,
                     balance,
-                    sum((v for m, v in reserve.assignments.items() if m <= upto), D("0")),
+                    sum((v for m, v in reserve.assignments.items() if m <= upto), D("0"))
+                    + written_off,
                     sum(
                         (v for m, v in cf.covered_by_card.get(card, {}).items() if m <= upto),
                         D("0"),
@@ -638,6 +661,7 @@ class TestReservationInvariant:
                         D("0"),
                     ),
                     deposits.get(card, D("0")),
+                    written_off=written_off,
                 )
                 assert discrepancy == D("0"), (
                     f"through {upto} on {card}: set_aside={set_aside} "
@@ -1023,6 +1047,24 @@ class TestTheClosedForm:
             {VISA: "card-visa"},
         )
         self.check(cf, VISA, spends=D("100"))
+
+
+class TestAFloorMustBeBookedToBeExcused:
+    """The boundary-floor ratchet, kept out by construction.
+
+    A card overpaid by 280 across two months and then charged 60, funded:
+    it holds 220 of the household's money, and Set aside reads 60. Booked as
+    a `written_off` leg, the 280 explains the credit (T3) and the spare 60
+    (T1, as an assignment-like term). Applied as a silent floor instead —
+    which is what the per-month clamp once did — nothing names it, and the
+    check must say so rather than accept a reserve that quietly lost money.
+    """
+
+    def test_a_floor_with_no_written_off_leg_is_reported(self):
+        assert discrepancy("60", "220") == D("220")
+
+    def test_the_same_floor_booked_as_a_leg_is_explained(self):
+        assert discrepancy("60", "220", assigned="280", written_off="280") == D("0")
 
 
 class TestT1NoLongerExcusesTheDriftItCaused:

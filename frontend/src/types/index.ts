@@ -359,10 +359,17 @@ export interface CardStatus {
   released: number
   residual: number
   payments: number
-  /** The sixth leg, first in time: YNAB's own CCP Available at an import
-   *  anchor's B−1 (server home: CardStatusOut → db.models.ImportAnchor).
-   *  Zero everywhere but budgets anchored at import; never derived here. */
+  /** YNAB's own CCP Available at an import anchor's B−1 (server home:
+   *  CardStatusOut → db.models.ImportAnchor). Zero everywhere but budgets
+   *  anchored at import; never derived here. */
   opening: number
+  /** What Ready to Assign absorbed, lifetime, each time a month ended with
+   *  this card's Set aside below zero — overspending on the card, written off
+   *  on the 1st like any envelope's. Served (CardStatusOut); never derived. */
+  written_off: number
+  /** This month's part of `written_off`: last month's overspending on this
+   *  card, absorbed by this month's Ready to Assign. */
+  written_off_this_month: number
   /** What is riding uncovered on this card, lifetime — distinct from
    *  `uncovered`, which is what the card OWES beyond its reserve. */
   riding: number
@@ -374,13 +381,13 @@ export interface CardStatus {
   /** What assignments to this card have retired of its ride, lifetime.
    *  Served; never reconstruct it as `gross rides − riding`. */
   covered: number
-  /** The part of `residual` that came back through a receivable ledger —
-   *  somebody settling up. Quote this for a settle-up, never lifetime
-   *  `residual`, which is every envelope's refunds for the card's whole life. */
-  residual_from_ledgers: number
-  /** This card's share of `paid_ahead_on_cards`: paid past its reserve with
-   *  nothing to mirror it. Ready to Assign already reflects it. */
-  paid_ahead_unmirrored: number
+  /** This month's residual — the figure `set_aside_state` was decided on. A
+   *  negative Set aside is always this month's (last month's was written
+   *  off), so quote this, never lifetime `residual`. */
+  residual_this_month: number
+  /** The part of this month's residual that came back through a receivable
+   *  ledger — somebody settling up. Quote this for a settle-up. */
+  residual_from_ledgers_this_month: number
   /** Does funding the month an envelope ended short retire THIS card's ride?
    *  False when the shortfall is shared with another card, which funds
    *  first. Key every "fund the month and it disappears" sentence on this. */
@@ -478,10 +485,6 @@ export interface BudgetMonth {
    *  needs no action at all. See `domain/cards.py`. */
   total_overspent_cash: number
   total_overspent_credit: number
-  /** Ready to Assign was reduced by this: money paid toward cards past what
-   *  their envelopes held, with nothing on the page to mirror it. Served
-   *  beside `to_be_assigned` so the hero can say where the money went. */
-  paid_ahead_on_cards: number
   /** How many categories carry a cash shortfall — what Cover Overspent lists.
    *  At most `overspent_count`. */
   overspent_count_cash: number

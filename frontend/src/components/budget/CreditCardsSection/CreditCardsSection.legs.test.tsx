@@ -32,52 +32,22 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 }))
 
 import { CreditCardsSection } from './CreditCardsSection'
-import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
+import { cardStatus } from '../../../test-utils/cardFixture'
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return assertServerProducible(
-    withPosition({
-      account_id: 'a1',
-      name: 'Sapphire Visa',
-      category_id: 'c1',
-      balance: -60,
-      set_aside: 115,
-      uncovered: 0,
-      is_closed: false,
-      overspent_this_month: 0,
-      reserve_discrepancy: 0,
-      assigned: 40,
-      reserved: 100,
-      released: 20,
-      residual: 0,
-      payments: 5,
-      riding: 0,
-      imported_riding: 0,
-      covered: 0,
-      residual_from_ledgers: 0,
-      paid_ahead_unmirrored: 0,
-      ride_reaches_this_card: true,
-      opening: 0,
-      // Kept coherent with balance/set_aside above rather than zeroed: 115
-      // reserved against 60 owed IS over-reserved by 55, and a fixture that
-      // said otherwise would let the row contradict itself unnoticed.
-      over_reserved: 55,
-      short_reserved: 0,
-      card_credit: 0,
-      // 115 set aside against 60 owed: the position IS a 55 surplus, and the
-      // server would label it so. It said `funded` here for months and every
-      // test passed, because nothing compared the label to the figures.
-      set_aside_state: 'surplus',
-      charged_this_month: 0,
-      inflows_this_month: 0,
-      paid_this_month: 0,
-      debt_change_this_month: 0,
-      pending_this_month: 0,
-      rode_by_month: [],
-      overspent_by_category: [],
-      ...over,
-    })
-  )
+  return cardStatus({
+    balance: -60,
+    set_aside: 115,
+    assigned: 40,
+    reserved: 100,
+    released: 20,
+    payments: 5,
+    // 115 set aside against 60 owed: the position IS a 55 surplus, and the
+    // server would label it so. It said `funded` here for months and every
+    // test passed, because nothing compared the label to the figures.
+    set_aside_state: 'surplus',
+    ...over,
+  })
 }
 
 beforeEach(() => {
@@ -371,6 +341,7 @@ describe('what the row says about a reserve', () => {
           uncovered: 1900,
           short_reserved: 100,
           residual: 500,
+          residual_this_month: 500,
           reserve_discrepancy: 12,
           set_aside_state: 'refund_outran_envelope',
         }),

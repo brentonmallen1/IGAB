@@ -183,19 +183,25 @@ class TestAnImportedBudgetWithTwoCards:
         assert visa_row.set_aside == D("150")
 
 
-class TestReadyToAssignAndANegativeSetAside:
-    """A card envelope's Set aside enters the envelope total SIGNED, so a Set
-    aside below zero RAISES Ready to Assign. Right when something mirrors it;
-    wrong when cash left and nothing does. Both walked, with the figure that
-    is correct in each, because the first draft of the correction broke the
-    mirrored case and only a test noticed."""
+class TestANegativeSetAsideIsOverspending:
+    """A card's Set aside below zero is overspending on its envelope, exactly
+    as YNAB treats a Credit Card Payments category paid past what it held:
+    red for the rest of that month, with Ready to Assign untouched, then
+    written off on the 1st — the envelope starts the month at zero and Ready
+    to Assign absorbs it. The same rule, on the same day, as every envelope.
 
-    async def test_paying_unreserved_card_debt_lowers_ready_to_assign(self, db_session):
-        """The unmirrored case. An envelope never funded spends 100 on the
-        card; 100 rides. The household pays the 100 from checking. Cash is
-        100 lower, the card owes nothing, and no envelope anywhere holds the
-        100 — Ready to Assign must be 100 lower too. It used to be unchanged:
-        the -100 Set aside gave the 100 straight back."""
+    Replaces an immediate correction (`paid_ahead_on_cards`) that lowered
+    Ready to Assign the moment a payment ran past the reserve and left the
+    negative on the card indefinitely; one rule instead of two, and nothing
+    lingers.
+    """
+
+    async def test_paying_unreserved_debt_is_overspending_until_the_first(self, db_session):
+        """An envelope never funded spends 100 on the card; 100 rides. The
+        household pays it from checking in July. July: the card is red and
+        Ready to Assign has not moved. August 1: the 100 is written off —
+        Ready to Assign falls by it, the card reads zero, and the write-off
+        retired the ride."""
         services, budget, checking, visa, _linked, groceries = await _setup(db_session)
         await create_transaction(
             db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
@@ -219,64 +225,80 @@ class TestReadyToAssignAndANegativeSetAside:
         )
         await db_session.flush()
 
-        after = await _summary(services, budget, JUL)
-        card = after.cards[0]
+        july = await _summary(services, budget, JUL)
+        card = july.cards[0]
         assert (card.balance, card.set_aside, card.card_credit) == (D("0"), D("-100.00"), D("0"))
-        # The ride is still on the card — payments retire debt, not rides —
-        # so the row says a month ended short and funding it retires the ride,
-        # which the last step shows. The correction does not care which: the
-        # payment left with nothing to mirror it either way.
         assert card.set_aside_state.value == "ride_unfunded"
-        assert card.paid_ahead_unmirrored == D("100.00")
-        assert after.paid_ahead_on_cards == D("100.00")
-        # Cash fell 100 and nothing on the page holds it: so does this. It
-        # used to stay at 1000 — the household had 900 in the bank and a page
-        # saying it could assign 1000.
-        assert after.to_be_assigned == D("900.00")
+        assert card.written_off == D("0")
+        # Overspent, and Ready to Assign has not absorbed it yet.
+        assert july.to_be_assigned == D("1000.00")
 
-        # Funding July's groceries retires the ride and squares the envelope,
-        # and moves Ready to Assign by nothing: the money was already spent.
+        august = await _summary(services, budget, AUG)
+        card = august.cards[0]
+        assert august.to_be_assigned == D("900.00")
+        assert card.set_aside == D("0")
+        assert card.written_off_this_month == D("100.00")
+        assert card.riding == D("0")
+
+    async def test_covering_it_in_the_month_carries_nothing(self, db_session):
+        """The same payment, and July's groceries funded before the month
+        ends: the charge reserves after all, Set aside is back at zero, and
+        there is nothing for August to write off."""
+        services, budget, checking, visa, _linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-100.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
         await services.budgets.set_assignment(budget.id, groceries.id, JUL, D("100.00"))
-        squared = await _summary(services, budget, JUL)
-        assert squared.cards[0].set_aside == D("0.00")
-        assert squared.paid_ahead_on_cards == D("0.00")
-        assert squared.to_be_assigned == D("900.00")
 
-    async def test_a_refund_while_carrying_a_balance_leaves_ready_to_assign_alone(self, db_session):
-        """The mirrored case. Groceries is funded 100 and spends 100 on the
-        card, so the card owes 100 with 100 reserved. An 80 refund for those
-        groceries lands on the card: the envelope has spent nothing it held,
-        so the 80 releases the reservation — the envelope gets its money back,
-        Set aside falls by 80, and the two cancel. Ready to Assign does not
-        move, and must not: no cash moved."""
+        july = await _summary(services, budget, JUL)
+        assert july.cards[0].set_aside == D("0.00")
+        assert july.to_be_assigned == D("900.00")
+        august = await _summary(services, budget, AUG)
+        assert august.to_be_assigned == D("900.00")
+        assert all(c.written_off == D("0") for c in august.cards)
+
+    async def test_a_refund_that_releases_its_reserve_never_goes_negative(self, db_session):
+        """Groceries is funded 100 and spends 100 on the card, so the card
+        owes 100 with 100 reserved. An 80 refund for those groceries releases
+        the reservation — the envelope gets its money back, Set aside falls by
+        80 and stays above zero. Nothing is overspent, so Ready to Assign
+        never moves, this month or next."""
         services, budget, _checking, visa, _linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
         await create_transaction(
             db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
         )
-        await db_session.flush()
-        before = await _summary(services, budget, JUL)
-        assert before.to_be_assigned == D("900.00")
-
         await create_transaction(
             db_session, budget, visa, "80.00", date(2026, 7, 15), category=groceries
         )
         await db_session.flush()
 
-        after = await _summary(services, budget, JUL)
-        card = after.cards[0]
+        july = await _summary(services, budget, JUL)
+        card = july.cards[0]
         assert card.balance == D("-20.00")
         assert card.set_aside == D("20.00")
-        assert after.paid_ahead_on_cards == D("0.00")
-        assert after.to_be_assigned == D("900.00")
+        assert july.to_be_assigned == D("900.00")
+        august = await _summary(services, budget, AUG)
+        assert august.to_be_assigned == D("900.00")
 
-    async def test_a_refund_beyond_the_reserve_still_leaves_ready_to_assign_alone(self, db_session):
-        """The case actually asked about: the envelope had NOTHING reserved on
-        this card, so the refund cannot release — it lands as residual and
-        Set aside goes below zero. The envelope is holding the 80 (spendable,
-        backed by 80 less card debt), the card's -80 is its mirror, and Ready
-        to Assign is unchanged. The first draft of the correction would have
-        taken 80 off here for no reason."""
+    async def test_a_refund_past_the_reserve_is_covered_on_the_first(self, db_session):
+        """The envelope had NOTHING reserved on this card, so an 80 refund
+        cannot release — it lands as residual: Groceries gains 80 and the
+        card's Set aside goes to -80. July: overspent, Ready to Assign
+        unchanged. August 1: the 80 is written off. Groceries keeps its 80;
+        Ready to Assign paid for it. YNAB does the same."""
         services, budget, _checking, visa, _linked, groceries = await _setup(db_session)
         # Owing 300 from before, on a different envelope, with nothing reserved.
         await create_transaction(db_session, budget, visa, "-300.00", date(2026, 6, 9))
@@ -288,14 +310,20 @@ class TestReadyToAssignAndANegativeSetAside:
         )
         await db_session.flush()
 
-        after = await _summary(services, budget, JUL)
-        card = after.cards[0]
+        july = await _summary(services, budget, JUL)
+        card = july.cards[0]
         assert card.balance == D("-220.00")
         assert card.set_aside == D("-80.00")
-        assert card.residual == D("80.00")
+        assert card.residual_this_month == D("80.00")
         assert card.set_aside_state.value == "refund_outran_envelope"
-        assert card.paid_ahead_unmirrored == D("0.00")
-        assert after.to_be_assigned == before.to_be_assigned
+        assert july.to_be_assigned == before.to_be_assigned
+
+        august = await _summary(services, budget, AUG)
+        assert august.cards[0].set_aside == D("0")
+        assert august.cards[0].written_off_this_month == D("80.00")
+        assert august.to_be_assigned == before.to_be_assigned - D("80.00")
+        grocery_row = next(b for b in august.category_balances if b.category_id == groceries.id)
+        assert grocery_row.available == D("80.00")
 
 
 class TestTheIdentity:
@@ -445,11 +473,14 @@ class TestTheIdentity:
         card = august.cards[0]
         assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
 
-    async def test_an_overpayment_carries_as_a_credit_balance(self, db_session):
-        """Defect B walked: paying 150 against a 100 reserve reads −50 in
-        July AND still −50 in August — the boundary floor used to absorb the
-        surplus into Ready to Assign, ratcheting the reserve upward by every
-        overpaid month."""
+    async def test_an_overpayment_is_overspent_in_july_and_covered_on_august_first(
+        self, db_session
+    ):
+        """Paying 150 against a 100 reserve reads −50 in July — overspent on
+        the card's envelope — and 0 in August, written off. Booked as a leg,
+        not a silent floor: the old boundary clamp absorbed the amount with
+        nothing saying so and ratcheted the reserve upward (Defect B); the
+        written-off leg names it, so the reserve still sums its legs."""
         services, budget, checking, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
         await create_transaction(
@@ -471,26 +502,23 @@ class TestTheIdentity:
         july = await _summary(services, budget, JUL)
         august = await _summary(services, budget, AUG)
         assert july.cards[0].set_aside == D("-50.00")
-        assert august.cards[0].set_aside == D("-50.00")
-        # And the figure agrees with itself across the boundary. It is 850,
-        # not 900: 1000 came in, 100 was assigned, and 150 left for the card
-        # — 50 of it from cash no envelope held. That 50 is gone. This used
-        # to read 900 ("income − assigned") because the envelope's -50 entered
-        # the total signed and gave the 50 back; the page said the household
-        # had money it had already spent, until someone assigned 50 to the
-        # card and made it true. `paid_ahead_on_cards` is the correction and
-        # is served beside it, so the hero can say where the 50 went.
-        assert july.to_be_assigned == august.to_be_assigned == D("850.00")
-        assert july.paid_ahead_on_cards == august.paid_ahead_on_cards == D("50.00")
-        # Funding July's groceries by the 50 retires the ride and squares the
-        # envelope — and moves Ready to Assign by exactly nothing, because
-        # the money was already gone. Under the old rule this was the act
-        # that took the figure from 900 to 850.
+        assert august.cards[0].set_aside == D("0")
+        assert august.cards[0].written_off == D("50.00")
+        # 1000 came in, 100 was assigned, and 150 left for the card — 50 of
+        # it from cash no envelope held. July still reads 900: the card's
+        # envelope is overspent, and like any overspent envelope it reaches
+        # Ready to Assign on the 1st. August reads 850.
+        assert july.to_be_assigned == D("900.00")
+        assert august.to_be_assigned == D("850.00")
+        # Funding July's groceries by the 50 before the month ends squares
+        # the envelope in July, so nothing is written off and both months
+        # read 850.
         await services.budgets.set_assignment(budget.id, groceries.id, JUL, D("150.00"))
-        squared = await _summary(services, budget, AUG)
-        assert squared.cards[0].set_aside == D("0.00")
-        assert squared.to_be_assigned == D("850.00")
-        assert squared.paid_ahead_on_cards == D("0.00")
+        squared_july = await _summary(services, budget, JUL)
+        squared_august = await _summary(services, budget, AUG)
+        assert squared_july.cards[0].set_aside == D("0.00")
+        assert squared_july.to_be_assigned == squared_august.to_be_assigned == D("850.00")
+        assert squared_august.cards[0].written_off == D("0")
 
     async def test_a_settled_closed_card_sends_no_row(self, db_session):
         """One list used to serve two purposes: include closed cards in the
@@ -946,10 +974,11 @@ class TestTheRefusedRepayment:
         # The two cancel in the envelope term, so the figure does not move.
         assert august.to_be_assigned == D("900.00")
 
-    async def test_a_refund_before_its_purchase_is_absorbed_by_the_purchase(self, db_session):
-        """July's refund has no reservation behind it yet; August's purchase
-        absorbs the negative reserve it left. The old walk wrote the refund off
-        permanently and left the reserve standing against a settled card."""
+    async def test_a_refund_before_its_purchase_is_covered_then_reserved(self, db_session):
+        """July's refund has no reservation behind it yet, so July ends with
+        the card's envelope overspent at −100. August 1 writes it off, and
+        August's funded purchase then reserves 100 like any other — spare Set
+        aside against a card that owes nothing, free to release."""
         services, budget, _, visa, _, groceries = await _setup(db_session)
         await create_transaction(
             db_session, budget, visa, "100.00", date(2026, 7, 9), category=groceries
@@ -962,25 +991,32 @@ class TestTheRefusedRepayment:
 
         august = await _summary(services, budget, AUG)
         card = august.cards[0]
-        assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
+        assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("100.00"), D("0"))
+        assert card.written_off == D("100.00")
+        assert card.set_aside_state.value == "surplus"
         assert card.reserve_discrepancy == D("0")
 
     @pytest.mark.parametrize(
-        "name,rows,assignment",
+        "name,rows,assignment,change",
         [
-            ("wholly ridden, repaid", [("-100.00", 7), ("100.00", 8)], None),
-            ("funded, refunded", [("-100.00", 7), ("100.00", 8)], "100.00"),
-            ("partly ridden, refunded", [("-100.00", 7), ("100.00", 8)], "60.00"),
-            ("refund before purchase", [("100.00", 7), ("-100.00", 8)], None),
-            ("repayment beyond exposure", [("50.00", 8)], None),
+            ("wholly ridden, repaid", [("-100.00", 7), ("100.00", 8)], None, "0"),
+            ("funded, refunded", [("-100.00", 7), ("100.00", 8)], "100.00", "0"),
+            ("partly ridden, refunded", [("-100.00", 7), ("100.00", 8)], "60.00", "0"),
+            # The one shape that crosses a month end below zero: July's
+            # refund leaves the card's envelope overspent, and August 1
+            # covers it from Ready to Assign.
+            ("refund before purchase", [("100.00", 7), ("-100.00", 8)], None, "-100"),
+            # Below zero too, but in August itself: not until September.
+            ("repayment beyond exposure", [("50.00", 8)], None, "0"),
         ],
     )
-    async def test_ready_to_assign_is_unchanged_by_any_card_inflow(
-        self, db_session, name, rows, assignment
+    async def test_ready_to_assign_moves_only_when_a_month_ends_overspent(
+        self, db_session, name, rows, assignment, change
     ):
         """The identity, over every shape an inflow can take. A card inflow
         moves no cash: whatever it does to the envelope, the card's reserve
-        does the opposite, to the cent.
+        does the opposite, to the cent — until a month ends with that reserve
+        below zero, which is overspending and is covered on the 1st.
 
         This is the pin that would have caught the counterweight. It kept Ready
         to Assign exact too — which is precisely why nothing noticed that it was
@@ -997,7 +1033,7 @@ class TestTheRefusedRepayment:
         await db_session.flush()
 
         after = await _summary(services, budget, AUG)
-        assert after.to_be_assigned == before, name
+        assert after.to_be_assigned == before + D(change), name
         assert all(c.reserve_discrepancy == D("0") for c in after.cards), name
 
     async def test_a_correction_never_creates_red_or_a_cover_offer(self, db_session):

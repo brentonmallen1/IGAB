@@ -74,6 +74,13 @@ export interface StateSentence {
  * reservations and payments. A card whose envelope plainly shows $500 read
  * "$100 came back" for exactly that reason.
  */
+/** How every below-zero state ends: a negative Set aside is overspending on
+ *  the card's envelope, and like any overspent envelope it is covered from
+ *  Ready to Assign on the 1st unless it is squared before then. */
+function thisMonthOrNext(amount: string): string {
+  return `Assign ${amount} to the card this month, or it comes out of next month\u2019s Ready to Assign.`
+}
+
 export function stateSentence(card: CardStatus, money: Money): StateSentence | null {
   switch (card.set_aside_state) {
     case 'funded':
@@ -97,23 +104,26 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
 
     case 'settled_by_others':
       return {
-        // `residual_from_ledgers`, the figure the state was decided on — not
-        // lifetime `residual` across every envelope, which read "$4,000 came
-        // back … somebody settled up" about a $150 settle-up.
+        // This month's ledger residual, the figure the state was decided on —
+        // not lifetime `residual`, which read "$4,000 came back … somebody
+        // settled up" about a $150 settle-up.
         sentence:
-          `${money(card.residual_from_ledgers)} came back onto this card from spending nobody budgeted ` +
-          `for — somebody settled up. It paid the card down by the same amount it took out ` +
-          `of Set aside, and no envelope of yours lost anything.`,
-        action: 'Nothing to do.',
+          `${money(card.residual_from_ledgers_this_month)} came back onto this card from ` +
+          `spending nobody budgeted for — somebody settled up. It paid the card down by the ` +
+          `same amount it took out of Set aside.`,
+        action:
+          'Nothing to change. If Set aside is still below zero at the end of the month, next ' +
+          'month\u2019s Ready to Assign covers it.',
       }
 
     case 'refund_outran_envelope':
       return {
-        // The residual that is NOT a settle-up: what an envelope kept.
+        // This month's residual that is NOT a settle-up: what an envelope kept.
         sentence:
-          `${money(card.residual - card.residual_from_ledgers)} came back onto this card beyond anything an envelope ` +
-          `charged here. An envelope is holding that money and you can spend it — but it ` +
-          `never arrived in your bank. It exists as a credit on this card.`,
+          `${money(card.residual_this_month - card.residual_from_ledgers_this_month)} came ` +
+          `back onto this card beyond anything an envelope charged here. The envelope it was ` +
+          `filed to is holding that money.`,
+        action: thisMonthOrNext(money(card.short_reserved)),
       }
 
     case 'settled_elsewhere':
@@ -122,7 +132,9 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `${money(card.riding)} of spending rode onto this card when a month ended short, ` +
           `and that month's shortfall rode onto another card as well. Money put into the ` +
           `envelope is shared out across those cards, so it may not reach this one.`,
-        action: `Assigning to this card is the only move that is certain to reach it.`,
+        action:
+          `Assigning to this card is the only move certain to reach it. ` +
+          thisMonthOrNext(money(card.short_reserved)),
       }
 
     case 'ride_unfunded':
@@ -132,8 +144,8 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `so your payment ran past what had been set aside.`,
         action:
           `Raise that month's assignment on the envelope and the ride is retired — the ` +
-          `breakdown names the months. Or assign ${money(card.short_reserved)} to the card ` +
-          `to cover it now.`,
+          `breakdown names the months. Or: ` +
+          thisMonthOrNext(money(card.short_reserved)),
       }
 
     case 'paid_ahead':
@@ -141,14 +153,7 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
         sentence:
           `You have paid ${money(card.short_reserved)} more toward this card than any ` +
           `envelope set aside — it went straight to the balance.`,
-        action:
-          // Ready to Assign is corrected server-side by the unmirrored part
-          // (`paid_ahead_on_cards`), so assigning here squares the envelope and
-          // changes Ready to Assign by nothing. It used to say the opposite —
-          // that assigning would make Ready to Assign fall — because until then
-          // the page had been overstating it by exactly this figure.
-          `Assign ${money(card.short_reserved)} to the card to square its envelope. Ready to ` +
-          `Assign already reflects this — the money left your account when you paid.`,
+        action: thisMonthOrNext(money(card.short_reserved)),
       }
 
     case 'moved_out':
@@ -157,7 +162,7 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `${money(card.short_reserved)} more was moved out of this card's envelope than it ` +
           `held. No payment happened and nothing came back onto the card — the money is in ` +
           `Ready to Assign, or wherever it was moved, and the envelope is overdrawn.`,
-        action: `Assign ${money(card.short_reserved)} to the card to put back what was taken.`,
+        action: thisMonthOrNext(money(card.short_reserved)),
       }
 
     case 'mixed': {
@@ -167,10 +172,12 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
       // one-label model answered it anyway, calling a two-thirds settle-up
       // "you have paid $300 ahead". The legs panel is the whole picture.
       const parts: string[] = []
-      if (card.residual_from_ledgers > 0) {
-        parts.push(`${money(card.residual_from_ledgers)} came back from somebody settling up`)
+      if (card.residual_from_ledgers_this_month > 0) {
+        parts.push(
+          `${money(card.residual_from_ledgers_this_month)} came back from somebody settling up`
+        )
       }
-      const kept = card.residual - card.residual_from_ledgers
+      const kept = card.residual_this_month - card.residual_from_ledgers_this_month
       if (kept > 0) parts.push(`${money(kept)} came back as a refund an envelope is holding`)
       if (card.riding > 0) parts.push(`${money(card.riding)} rode here when a month ended short`)
       parts.push('payments ran past what was set aside')
@@ -178,9 +185,7 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
         sentence:
           `More than one thing is going on: ${joinList(parts)}. None of them accounts for the ` +
           `whole ${money(card.short_reserved)}, and this row will not guess the split.`,
-        action:
-          'The breakdown has each figure. Assigning to the card squares whatever is yours; ' +
-          'Ready to Assign already reflects what you paid.',
+        action: 'The breakdown has each figure. ' + thisMonthOrNext(money(card.short_reserved)),
       }
     }
   }

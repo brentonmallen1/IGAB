@@ -18,7 +18,6 @@ from igab.domain.cards import (
     ride_is_exclusive,
     riding_series,
     set_aside_state,
-    unmirrored_shortfall,
 )
 from igab.domain.carryover import (
     available_at,
@@ -164,10 +163,11 @@ class CardStatus:
     #: invariant that would have caught them was excused for exactly the
     #: histories that produce them.
     reserve_discrepancy: Decimal = Decimal("0")
-    #: The five legs `set_aside` is the running total of, each summed through
-    #: the viewed month, plus what is still riding uncovered on the card.
+    #: The legs `set_aside` is the running total of, each summed through the
+    #: viewed month, plus what is still riding uncovered on the card.
     #:
-    #:     assigned + reserved − released − residual − payments == set_aside
+    #:     opening + written_off + assigned + reserved − released − residual
+    #:         − payments == set_aside
     #:
     #: Served because every question this model has raised was answered by
     #: decomposing one number into the flows that produced it, and the surface
@@ -179,11 +179,17 @@ class CardStatus:
     released: Decimal = Decimal("0")
     residual: Decimal = Decimal("0")
     payments: Decimal = Decimal("0")
-    #: The sixth leg, first in time: YNAB's own CCP Available at an import
-    #: anchor's B−1. Zero everywhere but anchored budgets. With it the legs
-    #: still sum to `set_aside` — `opening + assigned + reserved − released −
-    #: residual − payments` — and the other five stay post-anchor sums.
+    #: YNAB's own CCP Available at an import anchor's B−1. Zero everywhere but
+    #: anchored budgets; the other legs stay post-anchor sums.
     opening: Decimal = Decimal("0")
+    #: What Ready to Assign has absorbed, lifetime, each time a month ended with
+    #: this card's Set aside below zero — the leg that brings it back to zero
+    #: on the 1st. Overspending on a card, handled as on any envelope.
+    written_off: Decimal = Decimal("0")
+    #: This month's part of `written_off`: last month's overspending on this
+    #: card that the viewed month's Ready to Assign absorbed. The card's share
+    #: of `BudgetSummary.overspent_last_month`.
+    written_off_this_month: Decimal = Decimal("0")
     #: What is riding uncovered on this card, lifetime — what went on, less
     #: what an inflow discharged, less what an assignment covered. Distinct
     #: from `uncovered`, which is what the card OWES beyond its reserve.
@@ -198,20 +204,14 @@ class CardStatus:
     #: served leg the breakdown used to reconstruct as `gross rides − riding`,
     #: which went negative and clamped to zero on any imported budget.
     covered: Decimal = Decimal("0")
-    #: The part of `residual` that came back through a receivable ledger —
-    #: somebody settling up. The figure `set_aside_state` decides
-    #: SETTLED_BY_OTHERS on, served so the sentence quotes the same one:
-    #: it quoted lifetime `residual` across every envelope, so a card with
-    #: years of ordinary refunds read "$4,000 came back — somebody settled
-    #: up" about a $150 settle-up.
-    residual_from_ledgers: Decimal = Decimal("0")
-    #: The part of a negative Set aside that a PAYMENT produced — cash that
-    #: left the household with nothing on the page to mirror it. Ready to
-    #: Assign is reduced by the sum of these (`paid_ahead_on_cards`), because
-    #: a card envelope's signed Set aside would otherwise raise it: the
-    #: household paid $100 down and the page read as if it still had the $100.
-    #: `domain/cards.py` `unmirrored_shortfall` — a lower bound, never more.
-    paid_ahead_unmirrored: Decimal = Decimal("0")
+    #: This month's residual: inflows beyond anything their envelope had
+    #: riding on this card. The figure `set_aside_state` reads — a shortfall
+    #: is this month's, since last month's was written off — served so the
+    #: sentence quotes the figure the state was decided on.
+    residual_this_month: Decimal = Decimal("0")
+    #: The part of this month's residual that came back through a receivable
+    #: ledger — somebody settling up. SETTLED_BY_OTHERS is decided on it.
+    residual_from_ledgers_this_month: Decimal = Decimal("0")
     #: Whether funding the month an envelope ended short retires THIS card's
     #: ride. True when every envelope that rode here rode ONLY here. False
     #: when a shortfall is shared across cards: `allocate_capped` hands it
@@ -372,10 +372,6 @@ class BudgetSummary:
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
-    #: Ready to Assign was reduced by this: the sum over cards of what was
-    #: paid past the reserve with nothing to mirror it. Served so the hero can
-    #: say where the money went in one line. See `CardStatus.paid_ahead_unmirrored`.
-    paid_ahead_on_cards: Decimal = Decimal("0")
     #: The budget's cards, each with balance / set aside / uncovered —
     #: computed here because their card envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
@@ -1072,7 +1068,6 @@ class BudgetService:
         zero = Decimal("0")
         cards: list[CardStatus] = []
         uncovered_current = zero
-        paid_ahead_on_cards = zero
         walk = await self.card_walk(budget_id, month_start, categories=categories)
         card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
         funding, unclaimed = walk.funding, walk.unclaimed
@@ -1153,17 +1148,18 @@ class BudgetService:
                 from_ledgers = residual_from(
                     funding.residual_by_pair, account.id, ledgers, month_start
                 )
-                # The same `assigned` T2 reads (opening folded in), so the
-                # state and the bound agree on what "moved out" means: the
-                # net lifetime assignment where it has gone negative.
-                assigned_lifetime = opening_total + sum_through(card_assignments, month_start)
-                released_out = max(zero, -assigned_lifetime)
-                paid_ahead = unmirrored_shortfall(
-                    position,
-                    residual=sum_through(reserve.residual, month_start),
-                    released_out=released_out,
+                residual_this_month = reserve.residual.get(month_start, zero)
+                # This month's, like every input the state reads: a shortfall
+                # is always this month's, since last month's was written off.
+                released_out = max(zero, -card_assignments.get(month_start, zero))
+                written_off = sum_through(reserve.written_off, month_start)
+                # What T1 and T2 read as money put into the envelope: the
+                # opening reserve (a pre-anchor net assignment), every real
+                # assignment, and every write-off — Ready to Assign covering
+                # the card's overspending is an assignment in all but name.
+                assigned_lifetime = (
+                    opening_total + sum_through(card_assignments, month_start) + written_off
                 )
-                paid_ahead_on_cards += paid_ahead
                 own_ride = sum_through(funding.riding_by_card.get(account.id, {}), month_start)
                 # Nothing riding: the promise is vacuous, and the row will not
                 # make it. `ride_is_exclusive` says False for an empty ride.
@@ -1209,7 +1205,7 @@ class BudgetService:
                         # moves a different card.
                         set_aside_state=set_aside_state(
                             position,
-                            residual=sum_through(reserve.residual, month_start),
+                            residual=residual_this_month,
                             riding=sum_through(
                                 funding.riding_by_card.get(account.id, {}), month_start
                             ),
@@ -1235,8 +1231,10 @@ class BudgetService:
                         covered=sum_through(
                             funding.covered_by_card.get(account.id, {}), month_start
                         ),
-                        residual_from_ledgers=from_ledgers,
-                        paid_ahead_unmirrored=paid_ahead,
+                        written_off=written_off,
+                        written_off_this_month=reserve.written_off.get(month_start, zero),
+                        residual_this_month=residual_this_month,
+                        residual_from_ledgers_this_month=from_ledgers,
                         charged_this_month=-charged,
                         inflows_this_month=received,
                         paid_this_month=reserve.payments.get(month_start, zero),
@@ -1283,6 +1281,7 @@ class BudgetService:
                             sum_through(reserve.residual, month_start),
                             sum_through(unclaimed.get(account.id, {}), month_start),
                             opening_credit=max(zero, balance_at_anchor.get(account.id, zero)),
+                            written_off=written_off,
                         ),
                     )
                 )
@@ -1371,23 +1370,18 @@ class BudgetService:
             total_activity += bal.activity
 
         assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
-        # `paid_ahead_on_cards`: a card envelope's Set aside enters the
-        # envelope total SIGNED, so paying a card past its reserve LOWERED the
-        # total and RAISED this figure by the payment — the household had $100
-        # less and the page said it had the same. Subtracting the unmirrored
-        # part corrects that and only that: a refund's negative is mirrored by
-        # the envelope it landed in and is left alone (`unmirrored_shortfall`).
+        # A card envelope's Set aside enters the envelope total signed, like
+        # any envelope's available. Paying a card past its reserve leaves Ready
+        # to Assign where it was for the rest of that month — the envelope is
+        # overspent and shows red — and on the 1st the write-off brings the
+        # envelope back to zero, so Ready to Assign absorbs it then. The same
+        # rule, and the same timing, as every other overspent envelope.
         to_be_assigned = (
-            total_account_balance
-            - total_category_balance
-            - assigned_in_future
-            - uncovered_current
-            - paid_ahead_on_cards
+            total_account_balance - total_category_balance - assigned_in_future - uncovered_current
         )
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
-            paid_ahead_on_cards=paid_ahead_on_cards,
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,

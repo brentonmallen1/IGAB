@@ -11,7 +11,6 @@ import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
 import { overspending } from '../budgetTotals'
 import { CoverOverspentModal } from './CoverOverspentModal'
 import { OnCardsModal } from './OnCardsModal'
-import { PaidAheadModal } from './PaidAheadModal'
 import { TbaDrawer } from './TbaDrawer'
 import type { AssignStrategy } from '../../../types'
 import './TbaHero.css'
@@ -44,10 +43,6 @@ export function TbaHero({ budgetId, month }: Props) {
   const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const assignRef = useRef<HTMLDivElement>(null)
   const [showOnCards, setShowOnCards] = useState(false)
-  const [showPaidAhead, setShowPaidAhead] = useState(false)
-  // Served beside to_be_assigned. Ready to Assign was reduced by this, and a
-  // number that moved needs its reason next to it — the chip is the reason.
-  const paidAheadOnCards = Number(budgetMonth?.paid_ahead_on_cards ?? 0)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
   // One implementation of "how much is overspent" (budgetTotals), shared with
@@ -165,17 +160,6 @@ export function TbaHero({ budgetId, month }: Props) {
             </button>
           )}
 
-          {paidAheadOnCards > 0 && (
-            <button
-              className="tba-hero__on-cards"
-              onClick={() => setShowPaidAhead(true)}
-              aria-haspopup="dialog"
-            >
-              {formatMoney(-paidAheadOnCards)}
-              <span className="tba-hero__chip-word">paid ahead on cards</span>
-            </button>
-          )}
-
           <button
             className="tba-hero__history-btn"
             onClick={() => setDrawerOpen(true)}
@@ -271,9 +255,6 @@ export function TbaHero({ budgetId, month }: Props) {
           month={month}
           onClose={() => setShowCover(false)}
         />
-      )}
-      {showPaidAhead && (
-        <PaidAheadModal budgetId={budgetId} month={month} onClose={() => setShowPaidAhead(false)} />
       )}
       {showOnCards && (
         <OnCardsModal budgetId={budgetId} month={month} onClose={() => setShowOnCards(false)} />

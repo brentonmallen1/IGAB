@@ -15,50 +15,14 @@ import {
   stateSentence,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
-import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
+import { cardStatus } from '../../../test-utils/cardFixture'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
 /** Amounts are invented and rescaled from the budget that raised these cases —
  *  the ratios carry the lesson, the digits are nobody's. */
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return assertServerProducible(
-    withPosition({
-      account_id: 'a1',
-      name: 'Sapphire Visa',
-      category_id: 'c1',
-      balance: -100,
-      set_aside: 100,
-      uncovered: 0,
-      is_closed: false,
-      overspent_this_month: 0,
-      reserve_discrepancy: 0,
-      assigned: 0,
-      reserved: 100,
-      released: 0,
-      residual: 0,
-      payments: 0,
-      riding: 0,
-      imported_riding: 0,
-      covered: 0,
-      residual_from_ledgers: 0,
-      paid_ahead_unmirrored: 0,
-      ride_reaches_this_card: true,
-      opening: 0,
-      over_reserved: 0,
-      short_reserved: 0,
-      card_credit: 0,
-      set_aside_state: 'funded',
-      charged_this_month: 0,
-      inflows_this_month: 0,
-      paid_this_month: 0,
-      debt_change_this_month: 0,
-      pending_this_month: 0,
-      rode_by_month: [],
-      overspent_by_category: [],
-      ...over,
-    })
-  )
+  return cardStatus({ balance: -100, set_aside: 100, reserved: 100, ...over })
 }
 
 describe('what the Set aside column prints', () => {
@@ -127,7 +91,7 @@ describe('the sentence under the row', () => {
       card({
         set_aside: -100,
         short_reserved: 100,
-        residual: 500,
+        residual_this_month: 500,
         set_aside_state: 'refund_outran_envelope',
       }),
       money
@@ -136,20 +100,22 @@ describe('the sentence under the row', () => {
     expect(said?.sentence).not.toContain('$100.00')
   })
 
-  it('says a refund the envelope kept is spendable money that never arrived', () => {
+  it('says the envelope it was filed to kept the refund, and when that reaches Ready to Assign', () => {
     const said = stateSentence(
       card({
         set_aside: -100,
         short_reserved: 100,
-        residual: 500,
+        residual_this_month: 500,
         set_aside_state: 'refund_outran_envelope',
       }),
       money
     )
-    expect(said?.sentence).toMatch(/credit on this card/)
-    // Describe, don't prescribe: nobody knows which envelope should give it
-    // back, or whether it should.
-    expect(said?.action).toBeUndefined()
+    expect(said?.sentence).toMatch(/envelope it was filed to is holding that money/)
+    // The shortfall is overspending on the card's envelope: squared this
+    // month, or covered by next month's Ready to Assign.
+    expect(said?.action).toBe(
+      'Assign $100.00 to the card this month, or it comes out of next month\u2019s Ready to Assign.'
+    )
   })
 
   it('tells a settle-up that nothing is wrong, in as many words', () => {
@@ -157,26 +123,30 @@ describe('the sentence under the row', () => {
       card({
         set_aside: -200,
         short_reserved: 200,
-        residual: 400,
-        residual_from_ledgers: 400,
+        residual_this_month: 400,
+        residual_from_ledgers_this_month: 400,
         set_aside_state: 'settled_by_others',
       }),
       money
     )
     expect(said?.sentence).toContain('$400.00')
-    expect(said?.action).toBe('Nothing to do.')
+    // Nothing to change — but a negative Set aside still reaches Ready to
+    // Assign at the month's end, and the row says so.
+    expect(said?.action).toMatch(/^Nothing to change\./)
+    expect(said?.action).toMatch(/next month.s Ready to Assign covers it/)
   })
 
   it('quotes the settle-up figure, not every refund the card ever saw', () => {
-    // The state was decided on `residual_from_ledgers`; the sentence used to
-    // print lifetime `residual` — years of ordinary refunds across every
-    // envelope — as "came back … somebody settled up".
+    // The state was decided on this month's ledger residual; the sentence
+    // used to print lifetime `residual` — years of ordinary refunds across
+    // every envelope — as "came back … somebody settled up".
     const said = stateSentence(
       card({
         set_aside: -100,
         short_reserved: 100,
         residual: 4000,
-        residual_from_ledgers: 150,
+        residual_this_month: 150,
+        residual_from_ledgers_this_month: 150,
         set_aside_state: 'settled_by_others',
       }),
       money
@@ -193,8 +163,8 @@ describe('the sentence under the row', () => {
       card({
         set_aside: -300,
         short_reserved: 300,
-        residual: 200,
-        residual_from_ledgers: 200,
+        residual_this_month: 200,
+        residual_from_ledgers_this_month: 200,
         riding: 0,
         set_aside_state: 'mixed',
       }),
@@ -214,8 +184,6 @@ describe('the sentence under the row', () => {
       card({
         set_aside: -805,
         short_reserved: 805,
-        residual: 0,
-        residual_from_ledgers: 0,
         riding: 5,
         set_aside_state: 'mixed',
       }),
@@ -285,8 +253,12 @@ describe('the sentence under the row', () => {
       const figures = {
         surplus: { set_aside: 300, balance: -100 },
         card_holds_it: { set_aside: -50, balance: 50 },
-        settled_by_others: { set_aside: -200, balance: -600, residual_from_ledgers: 200 },
-        refund_outran_envelope: { set_aside: -80, balance: -420, residual: 80 },
+        settled_by_others: {
+          set_aside: -200,
+          balance: -600,
+          residual_from_ledgers_this_month: 200,
+        },
+        refund_outran_envelope: { set_aside: -80, balance: -420, residual_this_month: 80 },
         settled_elsewhere: { set_aside: -60, balance: -300, riding: 60 },
         ride_unfunded: { set_aside: -200, balance: -200, riding: 200 },
         paid_ahead: { set_aside: -300, balance: -1700 },

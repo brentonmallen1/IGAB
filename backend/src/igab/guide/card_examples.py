@@ -63,9 +63,13 @@ SCENARIO_INTENTS: dict[str, tuple[str, ...]] = {
     "month-ended-short": ("in-full", "paying-down", "carrying"),
     "over-reserved": ("in-full",),
     "reimbursed": ("in-full", "paying-down", "carrying"),
+    "refund-written-off": ("in-full", "paying-down", "carrying"),
     "unfiled-spending": ("in-full", "paying-down", "carrying"),
     "unlinked-payment": ("in-full", "paying-down", "carrying"),
-    "paid-ahead-then-caught-up": ("paying-down", "carrying"),
+    "paid-ahead-written-off": ("paying-down", "carrying"),
+    # Paying old debt past the reserve is what a paydown is; covering the
+    # difference the same month is how to do it without touching next month.
+    "paid-ahead-covered": ("paying-down",),
     "credit-balance": ("in-full",),
     "settled-by-others": ("in-full", "paying-down", "carrying"),
     "ride-unfunded": ("in-full", "paying-down", "carrying"),

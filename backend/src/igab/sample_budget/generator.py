@@ -24,7 +24,7 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
-from igab.domain.cards import card_funding, card_position, card_reserve, unmirrored_shortfall
+from igab.domain.cards import card_funding, card_position, card_reserve
 from igab.domain.carryover import available_at, available_through, sum_through
 from igab.domain.payment_due import validate_payment_due
 from igab.domain.schedule import first_occurrence_after, validate_schedule
@@ -787,7 +787,6 @@ class SampleBudgetGenerator:
         )
 
         available_total = _ZERO
-        paid_ahead_total = _ZERO
         assigned_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         activity_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
@@ -910,23 +909,6 @@ class SampleBudgetGenerator:
             reserve = card_reserve(funding, card_id)
             set_aside = reserve.set_aside(current_month)
             available_total += set_aside
-            # The same term BudgetService subtracts, mirrored here with the
-            # domain's own function so the sweep lands on target: paying a
-            # card past its reserve lowers Ready to Assign by the unmirrored
-            # part, and a sweep that did not know it overshot by exactly that.
-            # Every card, not only scenario cards — a textured card may be
-            # paid ahead too.
-            paid_ahead_total += unmirrored_shortfall(
-                card_position(set_aside, card_balances.get(card_id, _ZERO)),
-                residual=sum_through(reserve.residual, current_month),
-                released_out=max(
-                    _ZERO,
-                    -(
-                        sum_through(reserve.opening, current_month)
-                        + sum_through(reserve.assignments, current_month)
-                    ),
-                ),
-            )
             scenario = scenario_by_card_id.get(card_id)
             if scenario is None:
                 # A card with no scenario keeps the old guarantee, now said
@@ -975,6 +957,7 @@ class SampleBudgetGenerator:
                     imported_riding=sum_through(
                         funding.imported_riding_by_card.get(card_id, {}), current_month
                     ),
+                    written_off=sum_through(reserve.written_off, current_month),
                     charged_this_month=charged,
                     inflows_this_month=inflows,
                     paid_this_month=payments.get(card_id, {}).get(current_month, _ZERO),
@@ -993,9 +976,7 @@ class SampleBudgetGenerator:
             _ZERO,
         )
 
-        surplus = (
-            balances - available_total - uncovered_current - paid_ahead_total - spec.tba_target
-        )
+        surplus = balances - available_total - uncovered_current - spec.tba_target
         if sweep_category is None or surplus < 0:
             raise ValueError(
                 f"sample spec cannot reach TBA target {spec.tba_target}: surplus={surplus}, "

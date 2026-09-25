@@ -162,14 +162,14 @@ def test_the_timeline_restates_set_aside_at_every_month(scenario):
         assert timeline[0].legs["opening"] == inputs.openings.reserve_by_card[scenario.card]
 
 
-def test_paid_ahead_then_caught_up_dips_exactly_where_the_scenario_says():
-    """The scenario whose final position is unremarkable and whose story is
-    the dip: -150 after the first month's statement payment, +50 after the
-    next month reserved, 0 at the anchor. Hand-computed in the scenario;
-    restated here against the timeline because the dip is the one claim the
-    scenario's `expect` cannot carry."""
+def test_paid_ahead_is_written_off_on_the_first_of_the_next_month():
+    """-150 at the end of the month the statement payment ran past the
+    reserve; the 1st writes it off, and that month reserves 200; the anchor
+    month pays 50. Hand-computed in the scenario; restated here against the
+    timeline because the month-by-month path is the one claim the scenario's
+    `expect` cannot carry."""
     anchor = date(2026, 8, 15)
-    scenario = next(s for s in ALL_SCENARIOS if s.slug == "paid-ahead-then-caught-up")
+    scenario = next(s for s in ALL_SCENARIOS if s.slug == "paid-ahead-written-off")
     inputs = to_funding_inputs(scenario, anchor)
     funding = card_funding(
         inputs.assignments,
@@ -180,7 +180,8 @@ def test_paid_ahead_then_caught_up_dips_exactly_where_the_scenario_says():
     )
     reserve = card_reserve(funding, scenario.card)
     timeline = card_timeline(reserve, {}, funding.riding_by_card.get(scenario.card, {}))
-    assert [cm.set_aside for cm in timeline] == [D("-150"), D("50"), D("0")]
+    assert [cm.set_aside for cm in timeline] == [D("-150"), D("200"), D("150")]
+    assert timeline[1].legs["written_off"] == D("150")
     breach = first_breach(timeline)
     assert breach is not None
     assert breach.month == timeline[0].month

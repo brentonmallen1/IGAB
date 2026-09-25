@@ -150,6 +150,10 @@ class ExpectedPosition:
     #: by this name, rather than folding it into `riding` where a sentence
     #: about "a month that ended short" would quote it.
     imported_riding: Decimal = ZERO
+    #: What Ready to Assign has absorbed, lifetime, because a month ended with
+    #: this card's Set aside below zero. Zero on every scenario whose card
+    #: never went red at a month's end — which is most of them, and says so.
+    written_off: Decimal = ZERO
     #: 0 for every scenario here on purpose. Two of these cards are far from
     #: their balance for reasons the identity's bounds accept, and that is the
     #: point: a row keyed on this number says nothing about them.
@@ -460,6 +464,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
     reserve = card_reserve(funding, scenario.card)
     set_aside = reserve.set_aside(month)
     position = card_position(set_aside, balance)
+    written_off = sum_through(reserve.written_off, month)
     # The month ledger, summed straight off the events — deliberately a
     # different path from the SQL (`card_month_flows`) the served figure
     # takes, so the two check each other through the shared expectations.
@@ -480,18 +485,23 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
         card_credit=position.card_credit,
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
         imported_riding=sum_through(funding.imported_riding_by_card.get(scenario.card, {}), month),
+        written_off=written_off,
         # The serving arithmetic exactly (budget_service.get_budget_summary):
-        # the opening reserve folds into `assigned`, and `opening_credit` is
-        # the T3 allowance — this checker must not drift from what is served.
+        # the opening reserve and every write-off fold into `assigned`, and
+        # `opening_credit` is the T3 allowance — this checker must not drift
+        # from what is served.
         reserve_discrepancy=reserve_discrepancy(
             set_aside,
             balance,
-            sum_through(reserve.opening, month) + sum_through(reserve.assignments, month),
+            sum_through(reserve.opening, month)
+            + sum_through(reserve.assignments, month)
+            + written_off,
             sum_through(funding.covered_by_card.get(scenario.card, {}), month),
             sum_through(reserve.payments, month),
             sum_through(reserve.residual, month),
             sum_through(inputs.unclaimed, month),
             opening_credit=inputs.opening_credit,
+            written_off=written_off,
         ),
     )
 
@@ -542,21 +552,18 @@ def state(scenario: CardScenario, today: date, through: date | None = None) -> S
             for category, series in funding.end_balances.items()
         },
     )
+    # This month's figures, as budget_service reads them: a shortfall is
+    # always this month's, since last month's was written off.
     return set_aside_state(
         position,
-        residual=sum_through(reserve.residual, month),
+        residual=reserve.residual.get(month, ZERO),
         # The budget's own ride only — imported debt has no month to fund.
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
         residual_from_ledgers=residual_from(
             funding.residual_by_pair, scenario.card, ledgers, month
         ),
         ride_reaches_this_card=ride_is_exclusive(funding.floored_by_pair, scenario.card, month),
-        # The same `assigned` T2 reads, opening folded in — as budget_service
-        # computes it, so the scenario oracle and the served state agree.
-        released_out=max(
-            ZERO,
-            -(sum_through(reserve.opening, month) + sum_through(reserve.assignments, month)),
-        ),
+        released_out=max(ZERO, -reserve.assignments.get(month, ZERO)),
     )
 
 
@@ -1167,10 +1174,10 @@ REIMBURSED = CardScenario(
         "A share of the bill is settled by someone else and filed to the "
         "category that tracks what they owe. That category never charged this "
         "card, so there is nothing to hand back to it: the money reduces the "
-        "reserve without releasing any envelope's cash, uncapped, and the "
-        "reserve goes below zero while the card still owes thousands. Not an "
-        "overpayment — the card holds none of your money — and the second "
-        "shape the integrity check accepts by design."
+        "card's Set aside without releasing any envelope's cash, and Set aside "
+        "goes below zero this month while the card still owes thousands. That "
+        "is overspending on the card's envelope: unless the difference is "
+        "assigned before the month ends, next month's Ready to Assign covers it."
     ),
     card="Alder Grove Card",
     short="Alder Grove",
@@ -1181,19 +1188,23 @@ REIMBURSED = CardScenario(
         _pay(2, "200"),
         _fund(1, "200", "Alder Grove Groceries"),
         _spend(1, "200", "Alder Grove Groceries"),
-        _refund(1, "500", "Alder Grove Shared Expenses"),
+        _refund(0, "500", "Alder Grove Shared Expenses", day=1),
         _fund(0, "200", "Alder Grove Groceries"),
         _spend(0, "200", "Alder Grove Groceries", day=1),
     ),
+    # Hand-computed. Month 2: +200 reserved, −200 paid → 0. Month 1: +200.
+    # This month: the 500 settle-up releases nothing (the envelope never
+    # charged here) → −300, then +200 reserved → −100. Nothing earlier ended
+    # below zero, so nothing has been written off yet.
     expect=ExpectedPosition(
         balance=_d("-1900"),
         set_aside=_d("-100"),
         uncovered=_d("1900"),
         short_reserved=_d("100"),
         charged_this_month=_d("200"),
-        inflows_this_month=_d("0"),
+        inflows_this_month=_d("500"),
         paid_this_month=_d("0"),
-        debt_change_this_month=_d("-200"),
+        debt_change_this_month=_d("300"),
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.REFUND_OUTRAN_ENVELOPE,
@@ -1203,15 +1214,68 @@ REIMBURSED = CardScenario(
             "this card."
         ),
         reads=(
-            "Set aside shows $0.00 with $500.00 below zero beside it, while the card still owes "
-            "$1,900."
+            "That envelope gained $500. The card's Set aside is overspent: $100 below zero, "
+            "while the card still owes $1,900."
         ),
         todo=(
-            "That envelope now holds $500 you can spend, but it exists only as a credit on "
-            "this card and never as cash in your bank."
+            "Move $100 from that envelope to the card this month, or it comes out of next "
+            "month's Ready to Assign."
         ),
     ),
 )
+
+
+REFUND_WRITTEN_OFF = CardScenario(
+    slug="refund-written-off",
+    title="A refund to another envelope, covered by the next month",
+    story=(
+        "The same settle-up as the reimbursed card, a month earlier. Set aside "
+        "ended that month below zero, so the next month's Ready to Assign "
+        "covered it — exactly as it covers any overspent envelope — and the "
+        "card started the month at zero. The envelope that took the settle-up "
+        "keeps the money; Ready to Assign paid for it."
+    ),
+    card="Wren Card",
+    short="Wren",
+    opening=_d("-2000"),
+    events=(
+        _fund(2, "200", "Wren Groceries"),
+        _spend(2, "200", "Wren Groceries"),
+        _pay(2, "200"),
+        _fund(1, "200", "Wren Groceries"),
+        _spend(1, "200", "Wren Groceries"),
+        _refund(1, "500", "Wren Shared Expenses"),
+        _fund(0, "200", "Wren Groceries"),
+        _spend(0, "200", "Wren Groceries", day=1),
+    ),
+    # Hand-computed. Month 2 ends at 0. Month 1: +200 reserved, −500 of
+    # settle-up the envelope never charged → −300 at month end. This month
+    # opens with the 300 written off (→ 0), then +200 reserved.
+    expect=ExpectedPosition(
+        balance=_d("-1900"),
+        set_aside=_d("200"),
+        uncovered=_d("1700"),
+        written_off=_d("300"),
+        charged_this_month=_d("200"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-200"),
+    ),
+    tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "Last month somebody paid $500 onto the card, filed to an envelope that had never "
+            "charged it, and nothing was moved to the card before the month ended."
+        ),
+        reads=(
+            "This month the card started at $0. Its $300 of overspending came out of Ready "
+            "to Assign on the 1st."
+        ),
+        todo="Nothing. The envelope that took the $500 still holds it.",
+    ),
+)
+
 
 CREDIT_BALANCE = CardScenario(
     slug="credit-balance",
@@ -1236,12 +1300,17 @@ CREDIT_BALANCE = CardScenario(
         _fund(0, "60", "Nordvik Shopping"),
         _spend(0, "60", "Nordvik Shopping", day=1),
     ),
+    # Hand-computed. Each of the first two months: +60 reserved, −200 paid
+    # → −140, written off on the 1st of the next (2 × 140 = 280). This month
+    # starts at 0 and reserves 60. The card holds 220 of the household's
+    # money: 400 paid against 180 charged.
     expect=ExpectedPosition(
         balance=_d("220"),
-        set_aside=_d("-220"),
+        set_aside=_d("60"),
         uncovered=_d("0"),
-        short_reserved=_d("220"),
+        over_reserved=_d("60"),
         card_credit=_d("220"),
+        written_off=_d("280"),
         charged_this_month=_d("60"),
         inflows_this_month=_d("0"),
         paid_this_month=_d("0"),
@@ -1252,10 +1321,10 @@ CREDIT_BALANCE = CardScenario(
     lesson=CardLesson(
         happens="You paid the card more than it owed, month after month.",
         reads=(
-            "The balance is positive: the card is holding your money. This is the one case "
-            "where \u201coverpaid\u201d is really true."
+            "The balance is positive: the card is holding your money. Each overpayment was "
+            "overspending for its month, and came out of the next month's Ready to Assign."
         ),
-        todo="Nothing. Later spending on the card, or a refund, will use it up.",
+        todo="Nothing. Later spending on the card will use the credit up.",
     ),
 )
 
@@ -1357,18 +1426,16 @@ UNLINKED_PAYMENT = CardScenario(
     ),
 )
 
-PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
-    slug="paid-ahead-then-caught-up",
-    title="A payment ran ahead of the reserve, then the reserve caught up",
+PAID_AHEAD_WRITTEN_OFF = CardScenario(
+    slug="paid-ahead-written-off",
+    title="A payment ran ahead of the reserve, and the next month covered it",
     story=(
-        "The statement was paid in full — but the statement included debt "
-        "carried in from before the budget, which nothing had reserved "
-        "against, so the payment drove the reserve below zero. The next "
-        "month's funded spending reserved as usual and pulled it back up. "
-        "The final position is unremarkable, and that is the lesson: only "
-        "the month-by-month timeline shows the dip, which is why a card's "
-        "history is worth reading and its current figure is not the whole "
-        "story."
+        "The statement was paid in full — but it included debt carried in "
+        "from before the budget, which nothing had reserved against, so the "
+        "payment drove Set aside below zero. Nothing was assigned to the card "
+        "before the month ended, so the next month's Ready to Assign covered "
+        "it, as it covers any overspent envelope, and the card started that "
+        "month at zero. Funded spending since has built it back up."
     ),
     card="Foxglove Card",
     short="Foxglove",
@@ -1381,17 +1448,14 @@ PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
         _spend(1, "200", "Foxglove Groceries"),
         _pay(0, "50", day=1),
     ),
-    # Hand-computed. Reservations 100 + 200 = 300 against payments
-    # 250 + 50 = 300, so the reserve lands at exactly zero — after reading
-    # -150 at the end of the first month (100 reserved, 250 paid) and +50
-    # after the second. The 300 of pre-budget debt was never categorized, so
-    # every cent of what the card still owes is uncovered.
-    # The anchor month holds only the 50 payment: nothing charged, the
-    # payment is the card's one credit, and the debt steps -350 -> -300.
+    # Hand-computed. Month 2: +100 reserved, −250 paid → −150, written off
+    # on the 1st of month 1 (→ 0), then +200 reserved → 200. This month: −50
+    # paid → 150. Owed 300 − 150 set aside = 150 uncovered.
     expect=ExpectedPosition(
         balance=_d("-300"),
-        set_aside=_d("0"),
-        uncovered=_d("300"),
+        set_aside=_d("150"),
+        uncovered=_d("150"),
+        written_off=_d("150"),
         charged_this_month=_d("0"),
         inflows_this_month=_d("50"),
         paid_this_month=_d("50"),
@@ -1405,13 +1469,57 @@ PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
             "what had been set aside."
         ),
         reads=(
-            "Set aside reads $0.00 today and looks unremarkable. Only the month-by-month "
-            "history shows the dip."
+            "That month the card showed overspent. On the 1st the $150 came out of Ready to "
+            "Assign and the card started again at $0."
         ),
         todo=(
-            "Nothing now. The lesson is that a card's figure today is not the whole story — "
-            "open the breakdown."
+            "Nothing now. To keep it from reaching Ready to Assign, assign the difference to "
+            "the card in the month it happens."
         ),
+    ),
+)
+
+
+PAID_AHEAD_COVERED = CardScenario(
+    slug="paid-ahead-covered",
+    title="A payment ran ahead of the reserve, covered the same month",
+    story=(
+        "A big payment on debt from before the budget ran past what was set "
+        "aside, and the difference was assigned to the card in the same "
+        "month. The card never ends a month overspent, so nothing reaches "
+        "Ready to Assign on the 1st — the assignment already paid for it."
+    ),
+    card="Juniper Card",
+    short="Juniper",
+    opening=_d("-1000"),
+    events=(
+        _fund(2, "200", "Juniper Groceries"),
+        _spend(2, "200", "Juniper Groceries"),
+        _fund(1, "200", "Juniper Groceries"),
+        _spend(1, "200", "Juniper Groceries"),
+        _assign(0, "300"),
+        _pay(0, "700", day=1),
+    ),
+    # Hand-computed. 200 + 200 reserved = 400; this month +300 assigned,
+    # −700 paid → 0. Owed 1000 + 400 − 700 = 700, none of it set aside.
+    expect=ExpectedPosition(
+        balance=_d("-700"),
+        set_aside=_d("0"),
+        uncovered=_d("700"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("700"),
+        paid_this_month=_d("700"),
+        debt_change_this_month=_d("700"),
+    ),
+    tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "You paid $700 toward the card with $400 set aside, and assigned the other $300 "
+            "to the card that month."
+        ),
+        reads="Set aside is back at $0. Nothing was overspent, so nothing carries over.",
+        todo="Nothing. This is the way to pay down old debt without touching next month.",
     ),
 )
 
@@ -1423,9 +1531,11 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     MONTH_ENDED_SHORT,
     OVER_RESERVED,
     REIMBURSED,
+    REFUND_WRITTEN_OFF,
     UNFILED_SPENDING,
     UNLINKED_PAYMENT,
-    PAID_AHEAD_THEN_CAUGHT_UP,
+    PAID_AHEAD_WRITTEN_OFF,
+    PAID_AHEAD_COVERED,
     CREDIT_BALANCE,
     SETTLED_BY_OTHERS,
     RIDE_UNFUNDED,
@@ -1612,10 +1722,63 @@ ANCHORED_CREDIT_SPENT_DOWN = CardScenario(
 #: anchor, and splicing one into the demo would truncate every other
 #: scenario's history. `merge_into` refuses them; `build_scenario_spec`
 #: builds them a budget of their own.
+ANCHORED_NEGATIVE_OPENING = CardScenario(
+    slug="anchored-negative-opening",
+    title="A YNAB import whose card envelope was overspent",
+    story=(
+        "YNAB showed the card's payment category in the red when the budget "
+        "was imported. That is overspending, so the first imported month "
+        "covers it from Ready to Assign — the same rule an overspent "
+        "category opening follows — and it retires that much of the debt the "
+        "import brought in."
+    ),
+    card="Heron Visa",
+    short="Heron",
+    opening=_d("-200"),
+    # At B−1 the card owes 500 (200 carried in, 300 charged before the
+    # anchor) and YNAB's CCP Available reads −120, so the importer's
+    # max(0, −balance − ccp) puts 620 riding uncovered.
+    import_anchor=CardAnchor(months_ago=2, reserve=_d("-120"), uncovered=_d("620")),
+    events=(
+        # Before B: register history the walk does not re-derive.
+        _spend(3, "300", "Heron Groceries"),
+        _fund(0, "100", "Heron Groceries"),
+        _spend(0, "100", "Heron Groceries", day=1),
+    ),
+    tiers=("full",),
+    # Hand-computed. B opens with the −120 written off (→ 0), which retires
+    # 120 of the 620 opening ride → 500. Today +100 reserved. Owed 600 − 100
+    # set aside = 500 uncovered, all of it what the import brought.
+    expect=ExpectedPosition(
+        balance=_d("-600"),
+        set_aside=_d("100"),
+        uncovered=_d("500"),
+        riding=_d("0"),
+        imported_riding=_d("500"),
+        written_off=_d("120"),
+        charged_this_month=_d("100"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-100"),
+        reserve_discrepancy=_d("0"),
+    ),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="The budget was imported from YNAB while this card's payment category was red.",
+        reads=(
+            "The first imported month covered the $120 from Ready to Assign, and the card "
+            "started at $0."
+        ),
+        todo="Nothing. It was handled the way YNAB would have handled it.",
+    ),
+)
+
+
 ANCHORED_SCENARIOS: tuple[CardScenario, ...] = (
     ANCHORED_IMPORT,
     ANCHORED_IN_CREDIT,
     ANCHORED_CREDIT_SPENT_DOWN,
+    ANCHORED_NEGATIVE_OPENING,
 )
 
 

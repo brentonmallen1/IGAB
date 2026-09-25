@@ -62,6 +62,7 @@ def _both(scenario: CardScenario):
         inputs.outflows,
         inputs.card_categories,
         openings=probe_openings,
+        payments_by_card={scenario.card: inputs.payments},
     )
     theirs = domain_funding(
         inputs.assignments,
@@ -72,12 +73,6 @@ def _both(scenario: CardScenario):
         payments_by_card={scenario.card: inputs.payments},
     )
     return inputs, ours, theirs
-
-
-def _walked_payments(theirs, card):
-    """The payments the domain walk kept — truncated at an import anchor
-    there, once — handed to the probe so both sides read the same leg."""
-    return theirs.payments_by_card.get(card, {})
 
 
 @pytest.mark.parametrize("scenario", EVERY, ids=IDS)
@@ -97,6 +92,15 @@ def test_every_leg_series_agrees(scenario: CardScenario):
     assert ours.floored_by_card.get(card, {}) == theirs.floored_by_card.get(card, {})
     assert ours.end_balances == theirs.end_balances
     assert ours.residual_by_pair == theirs.residual_by_pair
+    assert ours.payments_by_card.get(card, {}) == reserve.payments
+    assert ours.opening_by_card.get(card, {}) == reserve.opening
+    # The month-end write-off: the probe must book it in the same month, for
+    # the same amount, and retire the same rides — or a report would place a
+    # card's overspending somewhere the app does not.
+    assert ours.written_off_by_card.get(card, {}) == reserve.written_off
+    assert ours.imported_riding_by_card.get(card, {}) == theirs.imported_riding_by_card.get(
+        card, {}
+    )
 
 
 @pytest.mark.parametrize("scenario", EVERY, ids=IDS)
@@ -104,14 +108,21 @@ def test_the_timeline_lands_on_the_domain_set_aside(scenario: CardScenario):
     inputs, ours, theirs = _both(scenario)
     card = scenario.card
     legs = {
-        "opening": theirs.opening_by_card.get(card, {}),
+        "opening": ours.opening_by_card.get(card, {}),
+        "written_off": ours.written_off_by_card.get(card, {}),
         "assigned": ours.assignments_by_card.get(card, {}),
         "reserved": ours.reservations_by_card.get(card, {}),
         "released": ours.released_by_card.get(card, {}),
         "residual": ours.residual_by_card.get(card, {}),
-        "payments": _walked_payments(theirs, card),
+        "payments": ours.payments_by_card.get(card, {}),
     }
-    timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
+    # Through the viewed month: the walk books a month's write-off on the 1st
+    # of the next, which the timeline would otherwise run on into.
+    timeline = [
+        cm
+        for cm in probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
+        if cm.month <= MONTH
+    ]
     want = card_reserve(theirs, card).set_aside(MONTH)
     got = timeline[-1].set_aside if timeline else Decimal("0")
     assert got == want, scenario.story
@@ -154,11 +165,12 @@ def test_a_negative_reserve_scenario_reports_a_breach():
     inputs, ours, theirs = _both(scenario)
     card = scenario.card
     legs = {
+        "written_off": ours.written_off_by_card.get(card, {}),
         "assigned": ours.assignments_by_card.get(card, {}),
         "reserved": ours.reservations_by_card.get(card, {}),
         "released": ours.released_by_card.get(card, {}),
         "residual": ours.residual_by_card.get(card, {}),
-        "payments": _walked_payments(theirs, card),
+        "payments": ours.payments_by_card.get(card, {}),
     }
     timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
     breach = probe.first_breach(timeline)
@@ -182,11 +194,13 @@ def test_breach_and_worst_months_agree_with_domain_card_timeline(scenario: CardS
     card = scenario.card
     probe_timeline = probe.card_timeline(
         {
+            "opening": ours.opening_by_card.get(card, {}),
+            "written_off": ours.written_off_by_card.get(card, {}),
             "assigned": ours.assignments_by_card.get(card, {}),
             "reserved": ours.reservations_by_card.get(card, {}),
             "released": ours.released_by_card.get(card, {}),
             "residual": ours.residual_by_card.get(card, {}),
-            "payments": _walked_payments(theirs, card),
+            "payments": ours.payments_by_card.get(card, {}),
         },
         {},
         ours.riding_by_card.get(card, {}),
@@ -279,6 +293,10 @@ def test_the_probe_agrees_on_the_shapes_no_scenario_reaches():
             outflows={"shared": {"card-a": {JAN: D("300")}, "card-b": {JAN: D("60")}}},
             card_categories={"card-a": "cat-a", "card-b": "cat-b"},
             openings=None,
+            # Both paid in full in February, past what was reserved: each is
+            # written off in March, retiring what rode — the write-off path,
+            # on two cards at once.
+            payments={"card-a": {FEB: D("300")}, "card-b": {FEB: D("60")}},
         ),
         "an assignment covering two rides beside an imported one": dict(
             assignments={"visa payment": {FEB: D("100")}},
@@ -289,12 +307,21 @@ def test_the_probe_agrees_on_the_shapes_no_scenario_reaches():
         ),
     }
     for name, c in cases.items():
+        payments = c.get("payments")
         if c["openings"] is None:
             ours = probe.card_funding(
-                c["assignments"], c["activity"], c["outflows"], c["card_categories"]
+                c["assignments"],
+                c["activity"],
+                c["outflows"],
+                c["card_categories"],
+                payments_by_card=payments,
             )
             theirs = domain_funding(
-                c["assignments"], c["activity"], c["outflows"], c["card_categories"]
+                c["assignments"],
+                c["activity"],
+                c["outflows"],
+                c["card_categories"],
+                payments_by_card=payments,
             )
         else:
             _, month, uncovered = c["openings"]
@@ -323,6 +350,8 @@ def test_the_probe_agrees_on_the_shapes_no_scenario_reaches():
                 ),
             )
         for series in (
+            "written_off_by_card",
+            "payments_by_card",
             "floored_by_card",
             "riding_by_card",
             "imported_riding_by_card",

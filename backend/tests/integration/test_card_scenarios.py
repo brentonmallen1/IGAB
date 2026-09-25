@@ -88,6 +88,7 @@ async def test_the_served_row_reads_what_the_scenario_says(db_session, scenario:
         card_credit=card.card_credit,
         riding=card.riding,
         imported_riding=card.imported_riding,
+        written_off=card.written_off,
         reserve_discrepancy=card.reserve_discrepancy,
         charged_this_month=card.charged_this_month,
         inflows_this_month=card.inflows_this_month,

@@ -39,6 +39,19 @@ def next_carryover(end_of_month: Decimal) -> Decimal:
     return max(ZERO, end_of_month)
 
 
+def write_off(end_of_month: Decimal) -> Decimal:
+    """What Ready to Assign absorbs when a month ends at `end_of_month`: the
+    overspending the floor discards, as a positive amount (zero when the month
+    ended non-negative).
+
+    Named beside `next_carryover` because it is the same rule read from the
+    other side. A card's envelope books it as a leg (`CardReserve.written_off`)
+    rather than applying the floor silently, so its Set aside still sums its
+    legs and the amount can be shown on the page.
+    """
+    return next_carryover(end_of_month) - end_of_month
+
+
 def monthly_end_balances(
     assignments_by_month: dict[date, Decimal],
     activity_by_month: dict[date, Decimal],

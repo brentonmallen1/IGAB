@@ -57,7 +57,7 @@ def test_the_reserve_identity_holds(scenario: CardScenario):
 
 
 @pytest.mark.parametrize("scenario", EVERY, ids=IDS)
-def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
+def test_the_legs_reconstruct_the_reserve(scenario: CardScenario):
     inputs = to_funding_inputs(scenario, ANCHOR)
     funding = card_funding(
         inputs.assignments,
@@ -71,6 +71,7 @@ def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
     month = date(ANCHOR.year, ANCHOR.month, 1)
     legs = (
         sum_through(reserve.opening, month)
+        + sum_through(reserve.written_off, month)
         + sum_through(reserve.assignments, month)
         + sum_through(reserve.reservations, month)
         - sum_through(reserve.released, month)
@@ -297,8 +298,8 @@ def _two_card_shortfall(envelope_funding: str, assigned_to_a: str):
 
     A shared tab charges 300 on card A and 60 on card B and is funded
     `envelope_funding`, so the month ends short by the difference. Both cards
-    are then paid in full. `assigned_to_a` is money put on card A's own
-    envelope the following month.
+    are then paid in full the following month, and read in that month.
+    `assigned_to_a` is money put on card A's own envelope that month.
     """
     month, later = date(2026, 6, 1), date(2026, 7, 1)
     funding = card_funding(
@@ -306,7 +307,10 @@ def _two_card_shortfall(envelope_funding: str, assigned_to_a: str):
         {"Shared": {month: Decimal("-360")}},
         {"Shared": {"card-a": {month: Decimal("300")}, "card-b": {month: Decimal("60")}}},
         {"card-a": "cat-a", "card-b": "cat-b"},
-        payments_by_card={"card-a": {month: Decimal("300")}, "card-b": {month: Decimal("60")}},
+        # Paid in the month being read: a month that ended below zero is
+        # written off on the 1st, so the shortfall this test measures is
+        # visible only in the month it happens.
+        payments_by_card={"card-a": {later: Decimal("300")}, "card-b": {later: Decimal("60")}},
     )
     return (
         funding,

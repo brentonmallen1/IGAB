@@ -71,3 +71,54 @@ export function assertServerProducible(card: CardStatus): CardStatus {
   }
   return card
 }
+
+/**
+ * A served card row, built from a neutral default — a funded card with nothing
+ * on it — plus the fields a test cares about. The four position terms are
+ * derived (`withPosition`) and the result is checked (`assertServerProducible`).
+ *
+ * One builder, because six test files each carried their own full copy of
+ * every field, so renaming one served field broke all six at once and a new
+ * field had to be added six times.
+ */
+export function cardStatus(over: Partial<CardStatus> = {}): CardStatus {
+  return assertServerProducible(
+    withPosition({
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      category_id: 'c1',
+      balance: 0,
+      set_aside: 0,
+      uncovered: 0,
+      is_closed: false,
+      overspent_this_month: 0,
+      reserve_discrepancy: 0,
+      assigned: 0,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 0,
+      opening: 0,
+      written_off: 0,
+      written_off_this_month: 0,
+      riding: 0,
+      imported_riding: 0,
+      covered: 0,
+      residual_this_month: 0,
+      residual_from_ledgers_this_month: 0,
+      ride_reaches_this_card: true,
+      over_reserved: 0,
+      short_reserved: 0,
+      card_credit: 0,
+      set_aside_state: 'funded',
+      charged_this_month: 0,
+      inflows_this_month: 0,
+      paid_this_month: 0,
+      debt_change_this_month: 0,
+      pending_this_month: 0,
+      rode_by_month: [],
+      overspent_by_category: [],
+      ...over,
+    })
+  )
+}

@@ -68,21 +68,28 @@ def test_every_event_reaches_the_reader_exactly_once(scenario):
     assert all(s.says.strip() for s in steps)
 
 
-def test_a_card_that_dips_and_recovers_shows_the_dip():
-    # `paid-ahead-then-caught-up` ends at zero and its whole lesson is the
-    # month in the middle. A walkthrough that only showed the final position
-    # would teach the opposite of what the scenario is for.
-    months = EXAMPLES["paid-ahead-then-caught-up"].months
-    assert any(m.set_aside < 0 for m in months), [m.set_aside for m in months]
-    assert months[-1].set_aside == 0
+def test_a_card_that_went_overspent_shows_the_month_it_did():
+    # `paid-ahead-written-off` ends well above zero, and its lesson is the
+    # month it was overspent and the 1st that covered it. A walkthrough that
+    # only showed the final position would hide both.
+    months = EXAMPLES["paid-ahead-written-off"].months
+    assert [m.set_aside for m in months] == [-150, 200, 150]
 
 
 def test_the_reimbursement_crosses_zero_in_the_month_the_money_came_back():
     # The reported confusion: the figure lands at -100 but 500 came back. Both
     # have to be visible, in the right months, or the story does not parse.
     months = {m.label: m for m in EXAMPLES["reimbursed"].months}
-    assert months["Last month"].set_aside == -300
+    assert months["Last month"].set_aside == 200
     assert months["This month"].set_aside == -100
+
+
+def test_last_months_overspending_is_covered_on_the_first():
+    # The same settle-up a month earlier: -300 at that month's end, zero on
+    # the 1st, and this month's funded spending on top.
+    months = {m.label: m for m in EXAMPLES["refund-written-off"].months}
+    assert months["Last month"].set_aside == -300
+    assert months["This month"].set_aside == 200
 
 
 def test_every_event_kind_has_a_phrase():
@@ -134,7 +141,15 @@ def test_a_situation_with_nothing_to_do_says_so_in_as_many_words(scenario):
     A page that ends every situation with a suggestion teaches that all of
     them are problems, which is the reading this whole tab exists to undo.
     """
-    quiet = {"paid-in-full", "credit-balance", "settled-by-others", "paid-ahead-then-caught-up"}
+    quiet = {
+        "paid-in-full",
+        "credit-balance",
+        "settled-by-others",
+        "paid-ahead-written-off",
+        "paid-ahead-covered",
+        "refund-written-off",
+        "anchored-negative-opening",
+    }
     says_nothing = scenario.lesson.todo.startswith("Nothing")
     assert says_nothing == (scenario.slug in quiet), (
         f"{scenario.slug}: todo starts with 'Nothing' = {says_nothing}, "
