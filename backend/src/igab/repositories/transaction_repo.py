@@ -29,9 +29,11 @@ from igab.db.models import (
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     COST_OF_LIVING_CLASSES,
+    DISCRETIONARY_ROW,
     TIER_TAG_KEYS,
     NecessityTier,
     apply_class_joins,
+    basis_is_chosen,
     tier_scope,
 )
 from igab.guide.concepts import EssentialsWindows, essentials_since, sinking_since
@@ -272,6 +274,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         cash_flow_only: bool = False,
         activity_classes: list[str] | None = None,
         necessity_tier: NecessityTier | None = None,
+        discretionary: bool = False,
         direction: str | None = None,
         day_of_week: int | None = None,
         cleared: str | None = None,
@@ -327,6 +330,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 cash_flow_only=cash_flow_only,
                 activity_classes=activity_classes,
                 necessity_tier=necessity_tier,
+                discretionary=discretionary,
                 direction=direction,
                 day_of_week=day_of_week,
                 cleared=cleared,
@@ -1428,6 +1432,53 @@ class TransactionRepository(BaseRepository[Transaction]):
                 ACTIVITY_CLASS.notin_(COST_OF_LIVING_CLASSES),
             )
             .group_by(Transaction.category_id, ACTIVITY_CLASS)
+        )
+        rows = (await self.session.execute(apply_class_joins(q))).all()
+        return list(rows), basis
+
+    async def discretionary_by_category_month(
+        self, budget_id: uuid.UUID, since: date, until: date
+    ) -> tuple[list, str]:
+        """(category_id, category_name, group_id, group_name, month, total)
+        rows of discretionary spending (`DISCRETIONARY_ROW`) in the window,
+        grouped by calendar month, and the basis the wide tier was decided on.
+
+        Uncategorized rows carry a null category and group: real spending,
+        and the bucket the report names rather than drops.
+
+        **No rows at all on basis "all".** With nothing tagged Essential or
+        Cost of living, "outside Cost of living" is every SPENDING row — the
+        whole burn rate, wearing a name that says it was chosen. The basis is
+        the wide tier's own (`_necessity_scope`), so this report and Cost of
+        Living agree about whether the household has chosen anything, and the
+        rows are not read when it has not: a figure that must not be shown is
+        safest never computed.
+        """
+        _, basis = await self._necessity_scope(budget_id, NecessityTier.COST_OF_LIVING, None)
+        if not basis_is_chosen(basis):
+            return [], basis
+        month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                CategoryGroup.id.label("group_id"),
+                CategoryGroup.name.label("group_name"),
+                month,
+                func.sum(Transaction.amount).label("total"),
+            )
+            .select_from(Transaction)
+            .outerjoin(Category, Category.id == Transaction.category_id)
+            .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.date >= since,
+                Transaction.date <= until,
+                DISCRETIONARY_ROW,
+            )
+            .group_by(
+                Transaction.category_id, Category.name, CategoryGroup.id, CategoryGroup.name, month
+            )
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis

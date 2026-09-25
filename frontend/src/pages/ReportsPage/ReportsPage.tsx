@@ -43,6 +43,7 @@ import { SpendingTrendsReport } from '../../components/reports/charts/SpendingTr
 import { SpendingBreakdownReport } from '../../components/reports/charts/SpendingBreakdownReport'
 import { CategoryHistoryReport } from '../../components/reports/charts/CategoryHistoryReport'
 import { CostOfLivingReport } from '../../components/reports/charts/CostOfLivingReport'
+import { DiscretionaryReport } from '../../components/reports/charts/DiscretionaryReport'
 import { WishlistDisciplineReport } from '../../components/reports/charts/WishlistDisciplineReport'
 import { IncomeSourcesReport } from '../../components/reports/charts/IncomeSourcesReport'
 import { ChevronDown, Star } from 'lucide-react'
@@ -199,6 +200,8 @@ export function ReportsPage() {
         return <IncomeSourcesReport budgetId={budgetId!} />
       case 'cost-of-living':
         return <CostOfLivingReport budgetId={budgetId!} />
+      case 'discretionary':
+        return <DiscretionaryReport budgetId={budgetId!} />
       case 'wishlist':
         return <WishlistDisciplineReport budgetId={budgetId!} />
     }

@@ -27,6 +27,7 @@ from igab.api.v1.schemas.report import (
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
+    DiscretionaryResponse,
     EmergencyCoverageResponse,
     EssentialsReportResponse,
     IncomeBySourceResponse,
@@ -97,6 +98,7 @@ from igab.services.essentials import essentials_summary
 from igab.services.liability_service import LiabilityService
 from igab.services.report_basics import (
     cost_of_living,
+    discretionary,
     income_by_source,
     savings_contributors,
     spending_trends,
@@ -934,6 +936,17 @@ async def cost_of_living_report(
         counted_classes=data["counted_classes"],
         necessity_tier=data["necessity_tier"],
     )
+
+
+@router.get("/{budget_id}/reports/discretionary", response_model=DiscretionaryResponse)
+async def discretionary_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: ReportMonths = 12,
+) -> DiscretionaryResponse:
+    """Spending outside Cost of living, by category within its group."""
+    return DiscretionaryResponse.model_validate(await discretionary(report_svc, budget_id, months))
 
 
 @router.get("/{budget_id}/reports/wishlist", response_model=WishlistDisciplineResponse)

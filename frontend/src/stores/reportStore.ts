@@ -35,6 +35,7 @@ export type ReportTab =
   | 'category-history'
   | 'income-sources'
   | 'cost-of-living'
+  | 'discretionary'
   | 'wishlist'
 
 export type TabGroup = 'overview' | 'financial' | 'cashflow' | 'budget' | 'spending' | 'insights'
@@ -54,6 +55,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },
   { id: 'essentials', label: 'Essentials', group: 'financial' },
   { id: 'cost-of-living', label: 'Cost of Living', group: 'financial' },
+  { id: 'discretionary', label: 'Discretionary', group: 'financial' },
   { id: 'emergency-fund', label: 'Emergency Fund', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'income-sources', label: 'Income by Source', group: 'cashflow' },
@@ -262,9 +264,19 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     accounts: false,
     groupBy: false,
   },
-  // Both drive their own window (or none at all), so the shared filter bar
-  // has nothing to offer either.
+  // These drive their own window (or none at all), so the shared filter bar
+  // has nothing to offer them.
   'cost-of-living': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  // Its scope is the Essential and Cost of living tags, like Cost of Living's;
+  // a category filter narrowing it would make the share of spending mean
+  // something else.
+  discretionary: {
     dates: false,
     categories: false,
     payees: false,
@@ -347,6 +359,10 @@ export interface DrillDownContext {
    *  membership is per row — debt principal by class — so categories and
    *  classes alone list rows the bar never counted. */
   necessityTier?: string
+  /** Only discretionary spending (served as `discretionary`): the
+   *  Discretionary report's lines are cut by tag and class, so their category
+   *  ids alone list rows the line never counted. */
+  discretionary?: boolean
   startDate: string
   endDate: string
 }

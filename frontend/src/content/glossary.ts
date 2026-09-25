@@ -65,6 +65,7 @@ export const GLOSSARY_IDS = [
   'reconciled',
   'essential-expenses',
   'cost-of-living',
+  'discretionary',
   'cooling-off',
   'set-aside',
   'card-envelope',
@@ -123,6 +124,7 @@ export const TOPIC_MEMBERS: Record<GlossaryTopic, GlossaryId[]> = {
     'sinking-fund',
     'essential-expenses',
     'cost-of-living',
+    'discretionary',
     'living-within-means',
     'cooling-off',
     'credit-overspending',
@@ -287,7 +289,18 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Wider than essentials and containing them. Rent and utilities are both; a streaming subscription, a gym membership and a storage unit are cost of living but not essential — you pay them every month and you would cancel them in a genuine emergency. Debt payments belong here too. The gap between the two tiers is the useful part: it is what a lean month could shed, which is a different question from what you spend.',
     inIgab:
       'Tag a category Cost of living for the wider tier, Essential for the narrower one; Essential counts in both. Debt principal joins cost of living by its activity class, so a loan needs no tag at all. The Cost of Living report shows both figures over one window and the difference between them, against take-home.',
-    related: ['essential-expenses', 'emergency-fund'],
+    related: ['essential-expenses', 'discretionary', 'emergency-fund'],
+  },
+  {
+    id: 'discretionary',
+    term: 'Discretionary spending',
+    aliases: ['discretionary', 'wants', 'optional spending'],
+    short:
+      'Spending outside cost of living: what you chose to spend once the committed bills are paid.',
+    body: 'The rest of your spending once cost of living is set aside — dining out, hobbies, shopping, a trip. It is not the same as non-essential: non-essential is the part of cost of living that is committed but sheddable, like a subscription or a gym membership, while discretionary sits outside both tiers and can change next month without cancelling anything. Savings, debt payments and transfers are neither.',
+    inIgab:
+      'Spending in any category tagged neither Essential nor Cost of living, net of refunds; spending with no category counts until it is filed. The Discretionary report shows it by category and by month, with its share of all spending — once something carries one of those tags, since with nothing tagged every category would count.',
+    related: ['cost-of-living', 'essential-expenses', 'cooling-off'],
   },
   {
     id: 'cooling-off',

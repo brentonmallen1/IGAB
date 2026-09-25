@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { apiClient } from './client'
 import type {
   CostOfLivingReport,
+  DiscretionaryReport,
   WishlistDisciplineReport,
   AccountCompositionReport,
   AnomalyReport,
@@ -837,6 +838,21 @@ export function useCostOfLivingReport(budgetId: string | null, months = 12) {
     queryFn: async () => {
       const { data } = await apiClient.get<CostOfLivingReport>(
         `/${budgetId}/reports/cost-of-living`,
+        { params: { months } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: 60_000,
+  })
+}
+
+export function useDiscretionaryReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'discretionary', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<DiscretionaryReport>(
+        `/${budgetId}/reports/discretionary`,
         { params: { months } }
       )
       return data

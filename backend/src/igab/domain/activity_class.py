@@ -52,6 +52,7 @@ from igab.repositories.category_filters import (
 )
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
+    CLASS_TOTAL_ROW,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
     LEAF,
@@ -1018,3 +1019,47 @@ def tier_scope(tier: NecessityTier):
         tagged,
         and_(ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value, Transaction.amount < 0),
     )
+
+
+#: Discretionary spending: SPENDING-class rows outside Cost of living — what a
+#: household chose to spend, as against what leaves the account whether or not
+#: it feels like it. Read by the Discretionary report
+#: (`TransactionRepository.discretionary_by_category_month`) and by the drill
+#: behind its figures (`txn_query.TransactionFilters.discretionary`), so a
+#: line and the rows it opens are one predicate. Apply `apply_class_joins`.
+#:
+#: **Not "Non-essential".** That name is taken, and means something narrower:
+#: Cost of living minus Essential, the committed spending a lean month could
+#: shed (the Cost of Living report's gap). Discretionary is everything outside
+#: BOTH tiers — the dinner out, not the gym membership.
+#:
+#: **SPENDING only, and deliberately not a third `NecessityTier`.** The tiers
+#: count `COST_OF_LIVING_CLASSES`, which carries DEBT_PRINCIPAL so a mortgage
+#: is a cost of living. The complement of a tier would inherit that class, and
+#: so admit money arriving FROM a tracked loan — the $5,000 of proceeds
+#: `tier_scope` had to fence off — plus every untagged loan payment the wide
+#: tier already counts by class. A loan is not discretionary in either
+#: direction; spending is the only class this can mean.
+#:
+#: What that buys is an identity rather than a hope: over the same window,
+#: SPENDING-class net = the wide tier's SPENDING rows + these, row for row.
+#: Both start from `CLASS_TOTAL_ROW`, ask one class, and split it on the tag
+#: arm `tier_scope` builds from `TIER_TAG_KEYS` — here negated. So it is never
+#: "spending minus Cost of living": those row sets differ in class (debt
+#: principal) and sign convention (the spending rollups are gross), and the
+#: difference can go negative. Pinned in tests/integration/test_discretionary.py.
+#:
+#: Net of refunds, like the tiers' tag arms: a refund filed to Dining Out
+#: reduces the figure the way it reduces the envelope's activity. An
+#: uncategorized outflow is SPENDING by the default rule and carries no tag,
+#: so it is discretionary until someone files it.
+#:
+#: Here rather than in `txn_filters`, where the row shapes live, because it
+#: reads ACTIVITY_CLASS, which is built from that module's constants — the
+#: reason `planned_spend_filter` lives here too. The row shape it starts from
+#: is `txn_filters.CLASS_TOTAL_ROW`, by name.
+DISCRETIONARY_ROW = and_(
+    CLASS_TOTAL_ROW,
+    ACTIVITY_CLASS == ActivityClass.SPENDING.value,
+    not_(category_tagged(*TIER_TAG_KEYS[NecessityTier.COST_OF_LIVING])),
+)

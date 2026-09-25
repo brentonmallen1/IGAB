@@ -35,8 +35,9 @@ from igab.sample_budget.data import CAT_HOME_MAINT
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.essentials import essentials_summary
-from igab.services.report_basics import cost_of_living
+from igab.services.report_basics import cost_of_living, discretionary
 from igab.services.report_favorites import ReportFavoritesService
+from igab.services.report_service import ReportService
 
 from .factories import create_budget, create_user
 
@@ -234,6 +235,24 @@ async def test_the_demo_actually_shows_a_gap(db_session):
     for name in ("Streaming", CAT_HOME_MAINT):
         cid = await _category_id(db_session, budget, name)
         assert cid in wide_ids and cid not in lean_ids, name
+
+
+async def test_the_discretionary_tab_has_something_to_show(db_session):
+    """The complement of the demo above: what the household CHOSE to spend.
+    The sample tags its bills and leaves Dining Out, Coffee and Shopping
+    alone, so the tab opens on a figure rather than its "tag something"
+    empty state — and on untagged envelopes only."""
+    for tier in ("starter", "full"):
+        budget, _ = await _world(db_session, tier)
+        report = await discretionary(ReportService(db_session), budget.id, 12)
+
+        assert report["tagged"] is True, tier
+        assert report["total"] > Decimal("1000"), tier
+        assert report["total"] < report["spending_total"], tier
+        lines = {c["category_name"] for g in report["groups"] for c in g["categories"]}
+        assert {"Dining Out", "Coffee", "Shopping"} <= lines, tier
+        # Tagged Essential or Cost of living: counted on the other tab.
+        assert not lines & {"Rent", "Groceries", "Streaming", CAT_HOME_MAINT}, tier
 
 
 async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):

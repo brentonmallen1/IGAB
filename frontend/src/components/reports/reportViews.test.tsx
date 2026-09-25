@@ -51,6 +51,7 @@ import { useReportStore } from '../../stores/reportStore'
 import { useAppStore } from '../../stores/appStore'
 import { PRIVACY_MASK } from '../../utils/money'
 import { CostOfLivingReport } from './charts/CostOfLivingReport'
+import { DiscretionaryReport } from './charts/DiscretionaryReport'
 import { EssentialsReport } from './charts/EssentialsReport'
 import { EmergencyCoverageReport } from './charts/EmergencyCoverageReport'
 import { WishlistDisciplineReport } from './charts/WishlistDisciplineReport'
@@ -83,6 +84,7 @@ import { VolatilityReport } from './charts/VolatilityChart'
 const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Overview', OverviewReport],
   ['CostOfLiving', CostOfLivingReport],
+  ['Discretionary', DiscretionaryReport],
   ['Essentials', EssentialsReport],
   ['EmergencyCoverage', EmergencyCoverageReport],
   ['WishlistDiscipline', WishlistDisciplineReport],
@@ -1467,6 +1469,136 @@ describe('CostOfLivingReport tiers', () => {
     expect(screen.getByText('needs Essentials tagged')).toBeInTheDocument()
     expect(screen.queryByText('could not be cut')).toBeNull()
     expect(screen.queryByText(/costs more than you take home/i)).toBeNull()
+  })
+})
+
+describe('DiscretionaryReport', () => {
+  // Two complete months of the household test_discretionary.py builds:
+  // Everyday 500 (Dining Out 450, Coffee 50), Fun 150 and 75 unfiled —
+  // 725 in all, of 2,900 spent. Figures invented and round.
+  const report = {
+    months: ['2026-07-01', '2026-08-01'],
+    months_averaged: 2,
+    window_start: '2026-07-01',
+    window_end: '2026-08-31',
+    basis: 'tag' as const,
+    tagged: true,
+    total: 725,
+    avg_monthly: 362.5,
+    monthly_totals: [300, 425],
+    spending_total: 2900,
+    groups: [
+      {
+        group_id: 'g-everyday',
+        group_name: 'Everyday',
+        total: 500,
+        avg_monthly: 250,
+        categories: [
+          { category_id: 'c-dining', category_name: 'Dining Out', total: 450, avg_monthly: 225 },
+          { category_id: 'c-coffee', category_name: 'Coffee', total: 50, avg_monthly: 25 },
+        ],
+      },
+      {
+        group_id: 'g-fun',
+        group_name: 'Fun',
+        total: 150,
+        avg_monthly: 75,
+        categories: [
+          { category_id: 'c-hobbies', category_name: 'Hobbies', total: 150, avg_monthly: 75 },
+        ],
+      },
+      { group_id: null, group_name: 'Uncategorized', total: 75, avg_monthly: 37.5, categories: [] },
+    ],
+  }
+
+  afterEach(() => useReportStore.setState({ drillDown: null }))
+
+  it('prints the average, the window total and the share of spending', () => {
+    setQuery({ data: report })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+
+    expect(card('Discretionary')).toEqual({
+      value: '$362.50',
+      sub: 'per month, over 2 complete months',
+    })
+    expect(card('Window total').value).toBe('$725.00')
+    // 725 of 2,900, composed on the page from two served figures.
+    expect(card('Share of spending')).toEqual({ value: '25%', sub: 'of $2,900.00 spent' })
+  })
+
+  it('lists each category under its group, and unfiled spending on its own line', () => {
+    setQuery({ data: report })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+
+    const table = screen.getByRole('table', { name: 'Discretionary spending by category' })
+    const lines = within(table)
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+    expect(lines).toEqual(['Everyday', 'Dining Out', 'Coffee', 'Fun', 'Hobbies', 'Uncategorized'])
+    expect(cellsOf('Dining Out')).toEqual(['Dining Out', '$225.00', '$450.00', '62%'])
+    expect(cellsOf('Uncategorized')).toEqual(['Uncategorized', '$37.50', '$75.00', '10%'])
+    // The foot is the headline, so the column adds up to what the card says.
+    const foot = Array.from(table.querySelectorAll('tfoot td')).map((td) => td.textContent)
+    expect(foot).toEqual(['Total', '$362.50', '$725.00', ''])
+  })
+
+  it('opens a category with the report’s own predicate over its window', () => {
+    setQuery({ data: report })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show the transactions behind Dining Out' }))
+    expect(useReportStore.getState().drillDown).toMatchObject({
+      label: 'Dining Out',
+      scope: 'leaf',
+      categoryIds: ['c-dining'],
+      discretionary: true,
+      startDate: '2026-07-01',
+      endDate: '2026-08-31',
+    })
+  })
+
+  it('opens the Uncategorized line by "no category", never by an empty id list', () => {
+    setQuery({ data: report })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Uncategorized' })
+    )
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ noCategory: true, discretionary: true })
+    expect(drill?.categoryIds).toBeUndefined()
+  })
+
+  it('shows no number until something is tagged, and says where to tag', () => {
+    setQuery({
+      data: {
+        ...report,
+        basis: 'all',
+        tagged: false,
+        total: null,
+        avg_monthly: null,
+        monthly_totals: [],
+        spending_total: null,
+        groups: [],
+      },
+    })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+
+    expect(screen.getByText(/Nothing carries either tag yet/)).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /Tag your committed categories/ })
+    expect(link).toHaveAttribute('href', '/settings/tags')
+    // No figure anywhere: no cards, no table.
+    expect(document.querySelector('.metric-card')).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.queryByText(/\$/)).toBeNull()
+  })
+
+  it('says so when everything spent was tagged', () => {
+    setQuery({
+      data: { ...report, total: 0, avg_monthly: 0, monthly_totals: [0, 0], groups: [] },
+    })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+    expect(screen.getByText(/No discretionary spending in this window/)).toBeInTheDocument()
   })
 })
 

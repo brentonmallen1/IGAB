@@ -39,7 +39,12 @@ from igab.db.models import (
     Transaction,
     TransactionAttachment,
 )
-from igab.domain.activity_class import ACTIVITY_CLASS, NecessityTier, apply_class_joins
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    DISCRETIONARY_ROW,
+    NecessityTier,
+    apply_class_joins,
+)
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -73,6 +78,10 @@ class TransactionFilters:
     cash_flow_only: bool = False
     activity_classes: list[str] | None = None
     necessity_tier: NecessityTier | None = None
+    #: Only discretionary spending (`activity_class.DISCRETIONARY_ROW`), the
+    #: rows the Discretionary report totals. A flag rather than a fourth
+    #: tier: see there for why it is not a `NecessityTier`.
+    discretionary: bool = False
     direction: str | None = None
     day_of_week: int | None = None
     cleared: str | None = None
@@ -122,6 +131,12 @@ def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | 
         # with the fuel beside it. The tier's own scope — the report's
         # rule, fallback included — is what the panel lists.
         where.extend(necessity_where)
+    if f.discretionary:
+        # The report's own predicate, not categories plus a class: a line's
+        # ids alone also list rows filed there that are not discretionary
+        # spending — a move to savings, a purchase on an off-budget account.
+        # No fallback to resolve, so unlike a tier it needs no session.
+        where.append(DISCRETIONARY_ROW)
     return where
 
 
@@ -240,7 +255,7 @@ def build_where(
             *_relations(f, scope),
             *_state(f),
         ],
-        class_joins=bool(f.activity_classes) or f.necessity_tier is not None,
+        class_joins=bool(f.activity_classes) or f.necessity_tier is not None or f.discretionary,
         payee_join=bool(f.search),
     )
 

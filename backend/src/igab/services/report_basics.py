@@ -12,7 +12,7 @@ does not already show.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, TypedDict
@@ -660,11 +660,48 @@ async def subscriptions_report(
     }
 
 
-class CostOfLivingGroup(TypedDict):
-    group_name: str
+class CostSeries(TypedDict):
+    """A cost over the window's complete months: per month, in all, and the
+    monthly average — `_as_costs`."""
+
     monthly_amounts: list[Decimal]
     total: Decimal
     avg_monthly: Decimal
+
+
+def _as_costs(signed: Iterable[tuple[date, Decimal]], month_list: Sequence[date]) -> CostSeries:
+    """Signed ledger sums, each dated in its month, as the series a cost
+    report draws: flipped positive, bucketed into the window's months, and
+    averaged over every one of them.
+
+    Outflows are negative in the ledger and a cost reads positive, so each sum
+    is flipped — and a month whose refunds beat its spending stays negative
+    rather than being clamped, because that is what happened. A sum dated in
+    no month of the window is ignored. Every month in the window is complete
+    (`complete_month_window`), so the average divides by all of them.
+
+    One implementation for Cost of Living's groups and Discretionary's lines,
+    groups and headline. The two reports sit side by side and answer halves of
+    one question; bucketing, summing or averaging two ways would make their
+    figures disagree about the same month.
+    """
+    index = {m: i for i, m in enumerate(month_list)}
+    amounts = [Decimal("0")] * len(month_list)
+    for month, total in signed:
+        slot = index.get(date(month.year, month.month, 1))
+        if slot is not None:
+            amounts[slot] += -Decimal(total)
+    whole = sum(amounts, Decimal("0"))
+    n = len(month_list)
+    return {
+        "monthly_amounts": amounts,
+        "total": quantize_cents(whole),
+        "avg_monthly": quantize_cents(whole / n) if n else Decimal("0"),
+    }
+
+
+class CostOfLivingGroup(CostSeries):
+    group_name: str
     #: This group's share of the cost-of-living total, 0-100. Not of income —
     #: the shares have to add to 100 or the bar reads as arithmetic nobody
     #: can check.
@@ -771,7 +808,6 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # 3,000 here and 3,100 there.
     start_date, end_date = complete_month_window(date.today(), months)
     month_list = month_starts(start_date, end_date)
-    index = {m: i for i, m in enumerate(month_list)}
 
     repo = TransactionRepository(session)
     # The WIDE tier drives the groups, and the lean tier is measured over the
@@ -805,34 +841,25 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     #: adjustment on an account someone had imported on-budget did exactly
     #: that — and the report had no drill-down at all, so the only honest
     #: reading of an unexplainable block was "this report is broken".
-    by_group: dict[str, list[Decimal]] = {}
+    by_group: dict[str, list[tuple[date, Decimal]]] = {}
     ids_by_group: dict[str, set[str]] = {}
     for row in rows:
         name = row.group_name or UNCATEGORIZED_GROUP
-        bucket = by_group.setdefault(name, [Decimal("0")] * len(month_list))
+        by_group.setdefault(name, []).append((row.month, row.total))
         seen = ids_by_group.setdefault(name, set())
         if row.category_id is not None:
             seen.add(str(row.category_id))
-        slot = index.get(date(row.month.year, row.month.month, 1))
-        if slot is not None:
-            # Outflows are negative in the ledger; a cost reads positive here.
-            bucket[slot] += -Decimal(row.total)
 
-    groups: list[CostOfLivingGroup] = []
-    cost_of_living_total = Decimal("0")
-    for name, amounts in by_group.items():
-        total = sum(amounts, Decimal("0"))
-        cost_of_living_total += total
-        groups.append(
-            {
-                "group_name": name,
-                "monthly_amounts": amounts,
-                "total": quantize_cents(total),
-                "avg_monthly": quantize_cents(total / n),
-                "share": Decimal("0"),
-                "category_ids": sorted(ids_by_group.get(name, set())),
-            }
-        )
+    groups: list[CostOfLivingGroup] = [
+        {
+            **_as_costs(signed, month_list),
+            "group_name": name,
+            "share": Decimal("0"),
+            "category_ids": sorted(ids_by_group.get(name, set())),
+        }
+        for name, signed in by_group.items()
+    ]
+    cost_of_living_total = sum((g["total"] for g in groups), Decimal("0"))
     for g in groups:
         g["share"] = (
             quantize_cents(g["total"] / cost_of_living_total * 100)
@@ -891,6 +918,122 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: row, so a bar's categories and classes are not enough: the drill
         #: sends this and lists the tier's own rows.
         "necessity_tier": NecessityTier.COST_OF_LIVING.value,
+    }
+
+
+class DiscretionaryLine(TypedDict):
+    category_id: str
+    category_name: str
+    total: Decimal
+    avg_monthly: Decimal
+
+
+class DiscretionaryGroup(TypedDict):
+    #: None on the Uncategorized line: rows with no category at all, opened by
+    #: "no category" rather than by a list of ids.
+    group_id: str | None
+    group_name: str
+    total: Decimal
+    avg_monthly: Decimal
+    #: Empty on the Uncategorized line, which is one line of its own.
+    categories: list[DiscretionaryLine]
+
+
+def _by_total(item: DiscretionaryLine | DiscretionaryGroup) -> Decimal:
+    return item["total"]
+
+
+async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 12) -> dict:
+    """Spending outside Cost of living, by category within its group.
+
+    The rows are `DISCRETIONARY_ROW` — SPENDING-class rows in no category
+    tagged Essential or Cost of living, net of refunds — over the window the
+    Cost of Living report reads, so the two tabs speak about the same months.
+    Uncategorized spending is its own line: it is discretionary until someone
+    files it, and dropping it would hide exactly the rows most worth opening.
+
+    **Nothing is served on basis "all".** Untagged, every category is
+    "outside Cost of living", and the figure would be the whole burn rate
+    under a name that says a choice was made. The page explains what to tag
+    instead; `tagged` says which case this is, and every figure is None.
+
+    `spending_total` is the SPENDING class over the same window — the
+    Income vs Expenses report's Expenses, summed — which this is a part of by
+    construction (see `DISCRETIONARY_ROW`). The share between them is the
+    page's arithmetic: two served figures and no missing input.
+    """
+    start_date, end_date = complete_month_window(date.today(), months)
+    month_list = month_starts(start_date, end_date)
+    rows, basis = await svc.txns.discretionary_by_category_month(budget_id, start_date, end_date)
+    tagged = basis_is_chosen(basis)
+    served: dict = {
+        "months": month_list,
+        # The exact window, so a drill-down asks for the same days.
+        "window_start": start_date,
+        "window_end": end_date,
+        "months_averaged": len(month_list),
+        "basis": basis,
+        "tagged": tagged,
+    }
+    if not tagged:
+        return {
+            **served,
+            "total": None,
+            "avg_monthly": None,
+            "monthly_totals": [],
+            "spending_total": None,
+            "groups": [],
+        }
+
+    by_group: dict[uuid.UUID | None, dict] = {}
+    for row in rows:
+        signed = (row.month, row.total)
+        group = by_group.setdefault(
+            row.group_id,
+            {"name": row.group_name or UNCATEGORIZED_GROUP, "signed": [], "lines": {}},
+        )
+        group["signed"].append(signed)
+        if row.category_id is not None:
+            line = group["lines"].setdefault(
+                row.category_id, {"name": row.category_name, "signed": []}
+            )
+            line["signed"].append(signed)
+
+    groups: list[DiscretionaryGroup] = []
+    for group_id, group in by_group.items():
+        series = _as_costs(group["signed"], month_list)
+        lines: list[DiscretionaryLine] = []
+        for category_id, line in group["lines"].items():
+            line_series = _as_costs(line["signed"], month_list)
+            lines.append(
+                {
+                    "category_id": str(category_id),
+                    "category_name": line["name"],
+                    "total": line_series["total"],
+                    "avg_monthly": line_series["avg_monthly"],
+                }
+            )
+        groups.append(
+            {
+                "group_id": str(group_id) if group_id is not None else None,
+                "group_name": group["name"],
+                "total": series["total"],
+                "avg_monthly": series["avg_monthly"],
+                "categories": sorted(lines, key=_by_total, reverse=True),
+            }
+        )
+    groups.sort(key=_by_total, reverse=True)
+
+    whole = _as_costs(((r.month, r.total) for r in rows), month_list)
+    by_month = await svc._monthly_class_totals(budget_id, start_date, end_date)
+    spending = sum((flows(by_month.get(m, {})).spending for m in month_list), Decimal("0"))
+    return {
+        **served,
+        "total": whole["total"],
+        "avg_monthly": whole["avg_monthly"],
+        "monthly_totals": [quantize_cents(a) for a in whole["monthly_amounts"]],
+        "spending_total": quantize_cents(spending),
+        "groups": groups,
     }
 
 
