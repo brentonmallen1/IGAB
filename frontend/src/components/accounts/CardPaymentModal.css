@@ -27,3 +27,8 @@
   color: var(--text-primary);
   background: var(--bg-hover);
 }
+
+/* Paying past Set aside turns the card red — said in the red it will be. */
+.card-payment__overspends {
+  color: var(--color-negative);
+}

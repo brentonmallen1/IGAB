@@ -1,5 +1,6 @@
 import type { CardStatus } from '../../../types'
 import type { DueNotice } from '../../../utils/paymentDue'
+import { thisMonthOrNext } from '../../../utils/cardOverspending'
 
 /**
  * What a card's row says about itself, decided once and away from the DOM.
@@ -117,13 +118,6 @@ export interface StateSentence {
  * reservations and payments. A card whose envelope plainly shows $500 read
  * "$100 came back" for exactly that reason.
  */
-/** How every below-zero state ends: a negative Set aside is overspending on
- *  the card's envelope, and like any overspent envelope it is covered from
- *  Ready to Assign on the 1st unless it is squared before then. */
-function thisMonthOrNext(amount: string): string {
-  return `Assign ${amount} to the card this month, or it comes out of next month\u2019s Ready to Assign.`
-}
-
 export function stateSentence(card: CardStatus, money: Money): StateSentence | null {
   switch (card.set_aside_state) {
     case 'funded':
