@@ -558,25 +558,63 @@
     gap: var(--spacing-lg);
   }
 
-  /* Rows a thumb can hit, with the chevron saying they open a screen. */
+  /* Rows a thumb can hit, grouped on a raised card with a chevron — the
+     phone's own settings-list idiom. Bare text between hairlines on the page
+     ground read as a paragraph with rules in it: nothing said "tap". */
   .settings-nav__link {
     min-height: var(--tap-min);
-    padding: var(--spacing-sm) var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-size-base);
+    color: var(--text-primary);
     white-space: normal;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .settings-nav__link:active {
+    background-color: var(--bg-hover);
   }
 
   .settings-nav__group {
     gap: 0;
   }
 
-  .settings-nav__group .settings-nav__link + .settings-nav__link {
-    border-top: 1px solid var(--edge);
-    border-radius: 0;
+  /* One hairline between rows: each row keeps its top border, only the
+     last keeps its bottom one. */
+  .settings-nav__group .settings-nav__link:not(:last-of-type) {
+    border-bottom: 0;
+  }
+
+  .settings-nav__group .settings-nav__link:first-of-type {
+    border-top-left-radius: var(--border-radius-md);
+    border-top-right-radius: var(--border-radius-md);
+  }
+
+  .settings-nav__group .settings-nav__link:last-of-type {
+    border-bottom-left-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
   }
 
   .settings-nav__chevron {
     display: block;
+    color: var(--text-secondary);
+  }
+
+  /* The Settings ↔ System cross-link is a row of its own card, not muted
+     text under a rule. */
+  .settings-nav__pre,
+  .settings-nav__footer {
+    padding: 0;
+    border: 0;
+  }
+
+  .settings-nav__pre .settings-nav__link,
+  .settings-nav__footer .settings-nav__link {
+    display: flex;
+    color: var(--text-primary);
+    border-radius: var(--border-radius-md);
   }
 
   .settings-nav__hint {
