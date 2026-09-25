@@ -108,6 +108,10 @@ class AICallResult:
     messages: list[dict[str, Any]] = field(default_factory=list)
     response: str | None = None
     thinking: str | None = None
+    #: Why generation stopped: "stop" when the model finished, "length" when
+    #: it ran out of room. A reply cut off by the window reads exactly like a
+    #: malformed one without this.
+    done_reason: str | None = None
     options: dict[str, Any] = field(default_factory=dict)
     tools: list[dict[str, Any]] = field(default_factory=list)
     tool_invocations: list[ToolInvocation] = field(default_factory=list)
@@ -146,4 +150,6 @@ def debug_view(result: "AICallResult | None") -> dict:
         view["raw_response"] = clip(result.response)
     if result.thinking:
         view["thinking"] = clip(result.thinking)
+    if result.done_reason:
+        view["done_reason"] = result.done_reason
     return view

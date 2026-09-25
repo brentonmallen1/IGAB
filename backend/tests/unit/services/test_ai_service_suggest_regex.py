@@ -38,6 +38,8 @@ def make_service(response: str | Exception, other_payees: list[str] | None = Non
         client.generate = AsyncMock(side_effect=response)
     else:
         client.generate = AsyncMock(return_value=response)
+    client.capabilities = AsyncMock(return_value=None)
+    client.context_length = AsyncMock(return_value=None)
     svc._client = AsyncMock(return_value=client)  # type: ignore[method-assign]
     return svc
 

@@ -2,7 +2,6 @@
 bookkeeping, terminal-failure stub, stub refill on retry, crash recovery."""
 
 import base64
-import json
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -15,6 +14,7 @@ from PIL import Image
 
 import igab.config
 from igab.ai.context import AICallContext, AICallResult
+from igab.ai.reply_json import ReplyNotJSON
 from igab.db.models import AIJob, Transaction, TransactionAttachment
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.services.ai_service import AIService
@@ -665,10 +665,11 @@ class TestRequestLogging:
         monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
         monkeypatch.setattr(OllamaClient, "generate", AM(return_value="NOT JSON {"))
         monkeypatch.setattr(OllamaClient, "capabilities", AM(return_value=["vision"]))
+        monkeypatch.setattr(OllamaClient, "context_length", AM(return_value=None))
 
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account)
-        with pytest.raises(json.JSONDecodeError) as exc_info:
+        with pytest.raises(ReplyNotJSON) as exc_info:
             await process_one_job(db_session, job)
 
         debug = exc_info.value.ai_debug
@@ -678,7 +679,7 @@ class TestRequestLogging:
         job.result = None
         await record_job_failure(db_session, job, exc_info.value)
         assert job.result["raw_response"] == "NOT JSON {"
-        # JSON errors are retryable: first failure requeues with backoff
+        # An unreadable reply is retryable: first failure requeues with backoff
         assert job.status == "queued"
 
 

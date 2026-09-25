@@ -27,7 +27,7 @@ from igab.ai.context import (
     AICallResult,
     ToolInvocation,
 )
-from igab.ai.gateway import AIGateway
+from igab.ai.gateway import AIGateway, absorb_meta
 from igab.ai.grounding import GroundingReport
 from igab.ai.grounding import check as check_grounding
 from igab.ai.tools import executor
@@ -213,18 +213,13 @@ def _grounding_event(outcome: ChatOutcome, answer: str) -> ChatEvent:
 def _absorb(result: AICallResult, message: dict, client: OllamaClient) -> str:
     """Copy what came back onto the record, and return the prose.
 
-    Thinking and token counts arrive on the client's `last_meta` rather than in
-    the message body, so both are read here in one place.
+    Thinking, the stop reason and token counts arrive on the client's
+    `last_meta` rather than in the message body; the gateway's reader takes
+    them, for chat rounds and generate calls alike.
     """
     text = (message.get("content") or "").strip()
-    meta = client.last_meta or {}
-    thinking = meta.get("thinking")
     result.response = text
-    result.thinking = thinking if isinstance(thinking, str) else None
-    if isinstance(meta.get("prompt_eval_count"), int):
-        result.prompt_tokens = meta["prompt_eval_count"]
-    if isinstance(meta.get("eval_count"), int):
-        result.completion_tokens = meta["eval_count"]
+    absorb_meta(result, client)
     result.status = STATUS_OK
     return text
 

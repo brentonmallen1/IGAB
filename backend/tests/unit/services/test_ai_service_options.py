@@ -16,16 +16,26 @@ import respx
 
 import igab.services.ai_service as ai_service_module
 from igab.ai.context import debug_view
+from igab.ai.reply_json import ReplyNotJSON
 from igab.integrations.ollama.client import OllamaClient
-from igab.services.ai_service import AIService, _json_from_response
+from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RECEIPT_REPLY_SCHEMA
+from igab.services.ai_service import AIService
 from igab.services.settings_service import DEFAULTS
 
 
 @pytest.fixture(autouse=True)
-def clear_caps_cache():
+def clear_probe_caches():
     ai_service_module._caps_cache.clear()
+    ai_service_module._ctx_cache.clear()
     yield
     ai_service_module._caps_cache.clear()
+    ai_service_module._ctx_cache.clear()
+
+
+def model_reports(monkeypatch, *, caps=None, context_length=None) -> None:
+    """What /api/show says about every model, without a network."""
+    monkeypatch.setattr(OllamaClient, "capabilities", AsyncMock(return_value=caps))
+    monkeypatch.setattr(OllamaClient, "context_length", AsyncMock(return_value=context_length))
 
 
 def make_service(overrides: dict[str, str] | None = None) -> AIService:
@@ -37,14 +47,27 @@ def make_service(overrides: dict[str, str] | None = None) -> AIService:
 
 
 class TestOptionsMerge:
-    async def test_task_defaults_alone(self):
-        svc = make_service()
-        opts = await svc._merged_options(vision=False, task_defaults={"temperature": 0})
-        assert opts == {"temperature": 0}
+    """options = context window < task defaults < ollama_options <
+    ollama_vision_options."""
 
-    async def test_global_options_override_task_defaults(self):
+    CLIENT = OllamaClient("http://x:11434", "m")
+
+    @pytest.fixture(autouse=True)
+    def a_128k_model(self, monkeypatch):
+        model_reports(monkeypatch, context_length=131_072)
+
+    async def test_task_defaults_over_the_window(self):
+        svc = make_service()
+        opts = await svc._merged_options(
+            self.CLIENT, vision=False, task_defaults={"temperature": 0}
+        )
+        assert opts == {"num_ctx": 32_768, "temperature": 0}
+
+    async def test_global_options_override_task_defaults_and_the_window(self):
         svc = make_service({"ollama_options": '{"temperature": 0.4, "num_ctx": 8192}'})
-        opts = await svc._merged_options(vision=False, task_defaults={"temperature": 0})
+        opts = await svc._merged_options(
+            self.CLIENT, vision=False, task_defaults={"temperature": 0}
+        )
         assert opts == {"temperature": 0.4, "num_ctx": 8192}
 
     async def test_vision_options_win_for_vision_tasks_only(self):
@@ -54,20 +77,47 @@ class TestOptionsMerge:
                 "ollama_vision_options": '{"num_ctx": 4096, "image_tokens": 512}',
             }
         )
-        vision = await svc._merged_options(vision=True, task_defaults={})
+        vision = await svc._merged_options(self.CLIENT, vision=True)
         assert vision == {"num_ctx": 4096, "image_tokens": 512}
-        text = await svc._merged_options(vision=False, task_defaults={})
+        text = await svc._merged_options(self.CLIENT, vision=False)
         assert text == {"num_ctx": 8192}
 
     async def test_invalid_json_never_breaks_a_call(self):
         svc = make_service({"ollama_options": "{not json"})
-        opts = await svc._merged_options(vision=False, task_defaults={"temperature": 0})
-        assert opts == {"temperature": 0}
+        opts = await svc._merged_options(
+            self.CLIENT, vision=False, task_defaults={"temperature": 0}
+        )
+        assert opts == {"num_ctx": 32_768, "temperature": 0}
 
     async def test_non_object_json_ignored(self):
         svc = make_service({"ollama_options": '["a", "b"]'})
-        opts = await svc._merged_options(vision=False, task_defaults={})
-        assert opts == {}
+        assert await svc._merged_options(self.CLIENT, vision=False) == {"num_ctx": 32_768}
+
+
+class TestEveryCallStatesTheSameWindow:
+    """Ollama reloads a model whose num_ctx changes, and a call that states
+    none gets the server's default — 4,096 on a GPU under 24 GB, where a
+    thinking model reading 180 categories ran out of room mid-answer."""
+
+    async def test_gate_scan_nl_and_suggestions_agree(self, monkeypatch):
+        sent: list[dict] = []
+
+        async def fake_generate(self, prompt, system=None, **kwargs):
+            sent.append(kwargs["options"])
+            return '{"is_receipt": true, "total": 1, "category": null}'
+
+        monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+        model_reports(monkeypatch, caps=["vision", "thinking"], context_length=131_072)
+        svc = make_service()
+        monkeypatch.setattr(svc, "_get_categories", AsyncMock(return_value=[]))
+        await svc.is_receipt_image("aW1n")
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 9, 25))
+        monkeypatch.setattr(
+            svc, "_get_categories", AsyncMock(return_value=[{"id": 1, "name": "G", "group": "E"}])
+        )
+        await svc.suggest_category(uuid.uuid4(), "Harborstone Market", -4.0)
+        assert [o["num_ctx"] for o in sent] == [32_768] * 4
 
 
 class TestThinkGating:
@@ -92,9 +142,19 @@ class TestThinkGating:
         svc = make_service({"ai_thinking": "on"})
         assert await svc._resolve_think(self.client_with_caps(None)) is True
 
-    async def test_forced_off_omits_field(self):
+    async def test_off_is_false_for_a_model_that_thinks_by_default(self):
+        """gemma4 reports thinking {default: true}: leaving the field out was
+        not off, it was the model's default."""
         svc = make_service({"ai_thinking": "off"})
-        assert await svc._resolve_think(self.client_with_caps(["thinking"])) is None
+        assert await svc._resolve_think(self.client_with_caps(["thinking"])) is False
+
+    async def test_off_omits_the_field_for_a_model_that_does_not_think(self):
+        svc = make_service({"ai_thinking": "off"})
+        assert await svc._resolve_think(self.client_with_caps(["completion"])) is None
+
+    async def test_off_omits_the_field_for_a_server_too_old_to_say(self):
+        svc = make_service({"ai_thinking": "off"})
+        assert await svc._resolve_think(self.client_with_caps(None)) is None
 
 
 class TestVisionSupport:
@@ -113,6 +173,7 @@ class TestReceiptGate:
     def gated_service(self, response: str, monkeypatch) -> AIService:
         svc = make_service()
         monkeypatch.setattr(OllamaClient, "generate", AsyncMock(return_value=response))
+        model_reports(monkeypatch)
         return svc
 
     async def test_true_and_false_pass_through(self, monkeypatch):
@@ -126,7 +187,7 @@ class TestReceiptGate:
             svc = self.gated_service(response, monkeypatch)
             assert await svc.is_receipt_image("aW1n") is None
 
-    async def test_gate_never_requests_thinking(self, monkeypatch):
+    def capture_gate(self, monkeypatch, caps) -> tuple[AIService, dict]:
         captured: dict = {}
 
         async def fake_generate(self, prompt, system=None, **kwargs):
@@ -134,17 +195,31 @@ class TestReceiptGate:
             return '{"is_receipt": true}'
 
         monkeypatch.setattr(OllamaClient, "generate", fake_generate)
-        svc = make_service({"ai_thinking": "on"})
-        await svc.is_receipt_image("aW1n")
-        assert "think" not in captured or captured.get("think") is None
+        model_reports(monkeypatch, caps=caps)
+        return make_service({"ai_thinking": "on"}), captured
+
+    async def test_gate_turns_thinking_off_for_a_model_that_thinks_by_default(self, monkeypatch):
+        """With `think` left out gemma4 spent the gate's 64 tokens thinking and
+        answered nothing, so the gate was inconclusive on every scan."""
+        svc, captured = self.capture_gate(monkeypatch, ["vision", "thinking"])
+        assert await svc.is_receipt_image("aW1n") is True
+        assert captured["think"] is False
         assert captured["options"]["num_predict"] == 64
 
+    async def test_gate_leaves_think_out_for_a_model_that_does_not_think(self, monkeypatch):
+        svc, captured = self.capture_gate(monkeypatch, ["vision"])
+        await svc.is_receipt_image("aW1n")
+        assert captured["think"] is None
 
-class TestFormatThinkConflict:
-    """format=json grammar-constrains decoding from the first token, which
-    silently suppresses the thinking phase — the two must never be combined."""
 
-    def capture_service(self, overrides, monkeypatch) -> tuple[AIService, dict]:
+class TestTheReplyHasASchema:
+    """`format` carries the schema parse_extraction reads, thinking or not.
+
+    It used to be dropped whenever the model thought ("grammar kills
+    thinking"), which left a thinking model free to answer in any shape. On
+    Ollama 0.34 gemma4 thinks, then answers to the schema."""
+
+    def capture_service(self, overrides, monkeypatch, caps=None) -> tuple[AIService, dict]:
         captured: dict = {}
 
         async def fake_generate(self, prompt, system=None, **kwargs):
@@ -152,27 +227,30 @@ class TestFormatThinkConflict:
             return '{"total": 1}'
 
         monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+        model_reports(monkeypatch, caps=caps)
         svc = make_service(overrides)
         monkeypatch.setattr(svc, "_get_categories", AsyncMock(return_value=[]))
         return svc, captured
 
-    async def test_receipt_drops_json_format_when_thinking(self, monkeypatch):
+    async def test_receipt_sends_the_schema_while_thinking(self, monkeypatch):
         svc, captured = self.capture_service({"ai_thinking": "on"}, monkeypatch)
         await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
         assert captured["think"] is True
-        assert captured["format"] is None
+        assert captured["format"] == RECEIPT_REPLY_SCHEMA
 
-    async def test_receipt_keeps_json_format_without_thinking(self, monkeypatch):
-        svc, captured = self.capture_service({"ai_thinking": "off"}, monkeypatch)
+    async def test_receipt_sends_the_schema_with_thinking_off(self, monkeypatch):
+        svc, captured = self.capture_service(
+            {"ai_thinking": "off"}, monkeypatch, caps=["vision", "thinking"]
+        )
         await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
-        assert captured["think"] is None
-        assert captured["format"] == "json"
+        assert captured["think"] is False
+        assert captured["format"] == RECEIPT_REPLY_SCHEMA
 
-    async def test_nl_parse_gates_format_the_same_way(self, monkeypatch):
+    async def test_nl_parse_sends_its_schema(self, monkeypatch):
         svc, captured = self.capture_service({"ai_thinking": "on"}, monkeypatch)
         await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 8, 16))
         assert captured["think"] is True
-        assert captured["format"] is None
+        assert captured["format"] == NL_REPLY_SCHEMA
 
 
 class TestTheCallIsRecorded:
@@ -190,6 +268,7 @@ class TestTheCallIsRecorded:
             return '{"total": 1}'
 
         monkeypatch.setattr(OllamaClient, "generate", generate or default_generate)
+        model_reports(monkeypatch)
         svc = make_service({"ai_thinking": "on", "ollama_model": "gemma4:test"})
         monkeypatch.setattr(
             svc,
@@ -275,26 +354,28 @@ class TestTheCallIsRecorded:
     def test_debug_view_of_nothing_is_empty(self):
         assert debug_view(None) == {}
 
+    async def test_a_cut_off_reply_says_so(self, monkeypatch):
+        """Without the stop reason a reply the window cut short read exactly
+        like a malformed one."""
 
-class TestJsonFromResponse:
-    def test_plain_json(self):
-        assert _json_from_response('{"a": 1}') == {"a": 1}
+        async def cut_off(self, prompt, system=None, **kwargs):
+            self.last_meta = {"done_reason": "length"}
+            return '```json\n{"total": 39.53, "line_items": [{"description": "Soap", "amount": 1}'
 
-    def test_fenced_json(self):
-        assert _json_from_response('```json\n{"a": 1}\n```') == {"a": 1}
+        svc = self.capture_service(monkeypatch, generate=cut_off)
+        with pytest.raises(ReplyNotJSON, match="cut off"):
+            await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert debug_view(svc.gateway.last_result)["done_reason"] == "length"
 
-    def test_fenced_without_language(self):
-        assert _json_from_response('```\n{"a": 1}\n```') == {"a": 1}
+    async def test_an_answer_left_in_the_thinking_is_read(self, monkeypatch):
+        async def thought_it(self, prompt, system=None, **kwargs):
+            self.last_meta = {"thinking": 'Total 39.53.\n{"total": 39.53}', "done_reason": "stop"}
+            return ""
 
-    def test_non_object_raises(self):
-        with pytest.raises(ValueError):
-            _json_from_response("[1, 2]")
-
-    def test_junk_raises(self):
-        import json
-
-        with pytest.raises(json.JSONDecodeError):
-            _json_from_response("the total is $42")
+        svc = self.capture_service(monkeypatch, generate=thought_it)
+        assert await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25)) == {
+            "total": 39.53
+        }
 
 
 class TestReceiptModelResolution:
@@ -465,13 +546,13 @@ class TestTheAssistantWindow:
 
     async def test_auto_sizes_from_the_model(self):
         svc = make_service({"ai_chat_num_ctx": "auto"})
-        num_ctx, model_max = await svc.chat_window(self.client_reporting(131_072))
+        num_ctx, model_max = await svc.context_window(self.client_reporting(131_072))
         assert model_max == 131_072
         assert num_ctx == 32_768
 
     async def test_an_explicit_window_is_honoured(self):
         svc = make_service({"ai_chat_num_ctx": "65536"})
-        num_ctx, _ = await svc.chat_window(self.client_reporting(131_072))
+        num_ctx, _ = await svc.context_window(self.client_reporting(131_072))
         assert num_ctx == 65_536
 
     async def test_the_chat_model_falls_back_to_the_main_one(self):

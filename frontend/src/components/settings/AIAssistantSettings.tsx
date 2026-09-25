@@ -59,7 +59,8 @@ export function AIAssistantSettings() {
           <div className="settings-row__desc">
             How much the model can hold at once: your question, the history, and everything it
             looked up. Auto uses what the model supports, up to 32k. Larger windows use more memory
-            on the Ollama host.
+            on the Ollama host. Receipt scans and every other AI call use the same window, so the
+            model is not reloaded between them.
             {modelMax ? ` This model supports up to ${formatTokens(modelMax)}.` : ''}
           </div>
         </div>
