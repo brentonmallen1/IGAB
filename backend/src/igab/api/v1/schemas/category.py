@@ -560,9 +560,9 @@ class CardStatusOut(ApiModel):
     #: was ever true of. A negative `set_aside` alone is NOT it, and printing
     #: the word on the sign alone is the defect this field exists to end.
     card_credit: Decimal
-    #: Which of the eight situations this card's Set aside is in
-    #: (domain/cards.py `SetAsideState`). **Required, not optional.** The
-    #: client cannot compute it — two of the eight are told apart only by
+    #: Which situation this card's Set aside is in (domain/cards.py
+    #: `SetAsideState`). **Required, not optional.** The client cannot
+    #: compute it — two of them are told apart only by
     #: `residual_by_pair` and by whether an envelope was ever assigned to,
     #: and neither crosses the wire — so a path that forgot this field would
     #: have the row fall back to the very guess this replaces rather than
@@ -669,7 +669,8 @@ class CardTimelineMonthOut(ApiModel):
     #: What this month did to the reserve, signed — served so the client
     #: ranks rather than re-deriving the legs' arithmetic.
     reserve_delta: Decimal
-    #: Cumulative through this month, unfloored.
+    #: Cumulative through this month, signed: below zero at a month's end is
+    #: overspending, brought back to zero by the next month's `written_off`.
     set_aside: Decimal
     #: The card's ledger through this month. Negative is owed.
     balance: Decimal

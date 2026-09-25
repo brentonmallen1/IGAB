@@ -942,10 +942,10 @@ def card_position(set_aside: Decimal, balance: Decimal) -> CardPosition:
 
 
 class SetAsideState(StrEnum):
-    """Which of the eight situations a card's Set aside is in.
+    """Which situation a card's Set aside is in.
 
     The surface used to decide this for itself, out of `set_aside` and
-    `balance`, and it could not: two of the eight are told apart only by
+    `balance`, and it could not: two of these are told apart only by
     `residual_by_pair` and by whether an envelope was EVER assigned to, and
     neither crosses the wire. So the row spent one label — "ahead of budget" —
     on three causes whose remedies differ, and on the fourth it offered advice
@@ -953,16 +953,18 @@ class SetAsideState(StrEnum):
 
     Named for the situation rather than for the sign of a number, because the
     sign is what the user already sees and is not what they are asking about.
-    A negative Set aside deliberately gets **no** noun of its own: four of
-    these states produce one, they want opposite responses, and a single word
-    for all four is precisely the flattening that made the column unreadable.
+    A negative Set aside is overspending whatever put it there — that is the
+    card line's word, and the 1st covers it the same way in every case. What
+    differs between the below-zero states is the cause and the cheapest
+    remedy, and that is what these names are for: one word for the cause of
+    all of them is the flattening that made the column unreadable.
 
     `StrEnum` because this crosses the API to the client, like `TargetType`.
     """
 
     #: Set aside is doing its job: money is waiting for a bill, and nothing
     #: about the figure needs explaining. The card may still owe more than it
-    #: holds — that is Uncovered's column to answer, not this one.
+    #: holds — that is `uncovered`'s to answer, not this one.
     FUNDED = "funded"
     #: More set aside than the card owes. Assignments stay in a card's
     #: envelope until riding debt turns up to retire, so on a card always paid
@@ -974,7 +976,8 @@ class SetAsideState(StrEnum):
     #: Somebody else's settle-up drove Set aside below zero. Their spending ran
     #: through a running tab rather than a fund (`residual_is_pass_through`),
     #: so no envelope of yours is holding the money: the repayment paid this
-    #: card down by exactly as much as it took out of Set aside. Nothing to do.
+    #: card down by exactly as much as it took out of Set aside. Nothing to
+    #: do; the 1st covers it, and the card owes that much less.
     SETTLED_BY_OTHERS = "settled_by_others"
     #: Money came back onto the card beyond anything an envelope charged here,
     #: and an envelope IS holding it. The tension is real and worth naming:
@@ -996,14 +999,15 @@ class SetAsideState(StrEnum):
     #: Payment ran past everything reserved, with NOTHING else present: no
     #: residual of any kind and no ride. A deliberate paydown out of money no
     #: envelope had set aside; it went straight to the balance. The only
-    #: state that may quote `short_reserved` as "what you paid ahead" — with
-    #: a second cause present, that figure includes the other cause's money.
+    #: state that may quote `short_reserved` as what the payment ran past Set
+    #: aside by — with a second cause present, that figure includes the other
+    #: cause's money.
     PAID_AHEAD = "paid_ahead"
     #: More than one thing put Set aside below zero, and none of them explains
     #: all of it. The row names what is present and quotes each served leg,
     #: and says nothing about how much of the shortfall is which: the reserve
     #: identity is bounds, not parts (`reserve_discrepancy`'s T2 is `<=`), so
-    #: any split into "this much settle-up, this much paid ahead" would be an
+    #: any split into "this much settle-up, this much paydown" would be an
     #: attribution rule — the same shape of confident wrong answer that
     #: labelled a two-thirds settle-up as overpayment. The legs panel is the
     #: whole picture; this points at it.

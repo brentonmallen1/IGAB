@@ -234,9 +234,9 @@ class CardStatus:
     #: The card owes nothing and holds your money — the only state the word
     #: "overpaid" was ever true of. `short_reserved` alone is not it.
     card_credit: Decimal = Decimal("0")
-    #: Which of the eight situations this card's Set aside is in
-    #: (domain/cards.py `SetAsideState`). Served because the client CANNOT
-    #: decide it: two of the eight are told apart only by `residual_by_pair`
+    #: Which situation this card's Set aside is in (domain/cards.py
+    #: `SetAsideState`). Served because the client CANNOT decide it: two of
+    #: them are told apart only by `residual_by_pair`
     #: and by whether an envelope was ever assigned to, and neither crosses
     #: the wire — so the row spent one label on three causes with different
     #: remedies, and on a fourth it offered advice that does nothing.
@@ -1182,7 +1182,7 @@ class BudgetService:
                         over_reserved=position.over_reserved,
                         short_reserved=position.short_reserved,
                         card_credit=position.card_credit,
-                        # Which of the eight, decided in the domain from the
+                        # Which situation, decided in the domain from the
                         # terms above plus the two the client cannot see: how
                         # much of this card's residual came from a ledger, and
                         # whether the envelopes that rode here rode ONLY here.

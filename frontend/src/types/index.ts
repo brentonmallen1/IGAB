@@ -73,7 +73,7 @@ export interface Account {
    * uncategorized one is not flagged as needing a category.
    *
    * A card carried in with three months of bank history is the case — that
-   * spending predates the budget, so it belongs in the card's Uncovered and is
+   * spending predates the budget, so it belongs in the card's debt not covered and is
    * retired by assigning to the card, not by filling envelopes after the fact.
    *
    * Null on every account that has never been asked, which behaves exactly as
@@ -289,7 +289,7 @@ export interface CategoryBalance {
    *
    * It answers whether this red costs anything, and it does not: filing a card
    * charge moves Ready to Assign by exactly zero, and at the month boundary
-   * this part rides onto the card as Uncovered instead of being written off.
+   * this part rides onto the card as debt not covered instead of being written off.
    * Only `available + credit_overspent` — the cash part — is ever charged.
    * So a row where this equals the whole shortfall gets the calm treatment,
    * and Cover Overspent does not offer to fund it.
@@ -299,9 +299,9 @@ export interface CategoryBalance {
 
 /** One card in the budget's cards section — see `CardStatusOut` on the
  *  server (api/v1/schemas/category.py) and domain/cards.py for the model. */
-/** The eight situations a card's Set aside can be in (backend
- *  `domain/cards.py` `SetAsideState`). Deliberately no single word for "below
- *  zero": four of these produce that, and they want opposite responses. */
+/** The situation a card's Set aside is in (backend `domain/cards.py`
+ *  `SetAsideState`). Below zero is always "overspent" on the card's line;
+ *  these name the cause, because the causes want different remedies. */
 export type SetAsideState =
   | 'funded'
   | 'surplus'
@@ -327,7 +327,8 @@ export interface CardStatus {
   category_id: string | null
   /** Ledger through the viewed month; negative = owed. */
   balance: number
-  /** Cash reserved for this card; negative when payments outran the reserve. */
+  /** Cash reserved for this card. Negative is overspent: covered from Ready to
+   *  Assign on the 1st unless assigned before then. */
   set_aside: number
   /** Owed beyond the reserve. Calm and informational — a due date crossing
    *  the month boundary is a normal state, not overspending. */
@@ -407,7 +408,7 @@ export interface CardStatus {
    *  true of — a negative `set_aside` alone is not it, and printing the word
    *  on the sign alone is the defect these fields exist to end. */
   card_credit: number
-  /** Which of the eight situations this card's Set aside is in. Served, and
+  /** Which situation this card's Set aside is in. Served, and
    *  NOT derivable here: `settled_by_others` and `refund_outran_envelope`
    *  are told apart only by `residual_by_pair` and by whether an envelope was
    *  ever assigned to, and `settled_elsewhere` needs `floored_by_pair` —
