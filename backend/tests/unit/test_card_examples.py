@@ -9,11 +9,12 @@ generator are all held to.
 
 import re
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
 from igab.guide.card_examples import INTENTS, SCENARIO_INTENTS, card_examples
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS
+from igab.sample_budget.card_scenarios import ALL_SCENARIOS, walk
 
 TODAY = date(2026, 9, 22)
 EXAMPLES = {e.slug: e for e in card_examples(TODAY)}
@@ -63,7 +64,8 @@ def test_months_run_forward_with_no_gaps(scenario):
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=lambda s: s.slug)
 def test_every_event_reaches_the_reader_exactly_once(scenario):
-    steps = [s for m in EXAMPLES[scenario.slug].months for s in m.steps]
+    # The 1st's cover is the month turning, not an event anybody made.
+    steps = [s for m in EXAMPLES[scenario.slug].months for s in m.steps if s.kind != "covered"]
     assert len(steps) == len(scenario.events)
     assert all(s.says.strip() for s in steps)
 
@@ -90,6 +92,27 @@ def test_last_months_overspending_is_covered_on_the_first():
     months = {m.label: m for m in EXAMPLES["refund-written-off"].months}
     assert months["Last month"].set_aside == -300
     assert months["This month"].set_aside == 200
+
+
+def test_the_1st_that_covered_it_is_a_step_of_its_own():
+    """Without it the card read −$300 one month and $200 the next, and no
+    step said where the $300 went. It leads the month: it happens before
+    anybody does anything."""
+    first = next(m for m in EXAMPLES["refund-written-off"].months if m.label == "This month")
+    assert first.steps[0].kind == "covered"
+    assert first.steps[0].amount == Decimal("300")
+    assert "$300.00 of overspending comes out of Ready to Assign" in first.steps[0].says
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=lambda s: s.slug)
+def test_the_covered_steps_add_up_to_the_written_off_leg(scenario):
+    """Differenced from the walk's lifetime leg, so the steps can neither
+    miss a 1st nor count one twice."""
+    covered = sum(
+        (s.amount for m in EXAMPLES[scenario.slug].months for s in m.steps if s.kind == "covered"),
+        Decimal("0"),
+    )
+    assert covered == walk(scenario, TODAY).written_off
 
 
 def test_every_event_kind_has_a_phrase():

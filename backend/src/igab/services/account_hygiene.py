@@ -525,7 +525,7 @@ class AccountHygieneService:
                 "uncategorized is also fine."
             ),
             why=(
-                "The card's balance moves and the debt lands in Uncovered, but nothing in "
+                "The card's balance moves and the debt reads as not covered, but nothing in "
                 "the budget names the spending. Interest charges get here on their own "
                 "when a payee's history is bank interest."
             ),
@@ -635,7 +635,7 @@ class AccountHygieneService:
         return HygieneFinding(
             kind="card_debt_predates_budget",
             title=f"{count} card{'s' if count != 1 else ''} carrying debt from before the budget",
-            summary="Debt the budget never set money aside for. It reads as Uncovered.",
+            summary="Debt the budget never set money aside for. It reads as not covered.",
             items=items,
             action="Assign toward it on the card as you pay it down.",
             why=(

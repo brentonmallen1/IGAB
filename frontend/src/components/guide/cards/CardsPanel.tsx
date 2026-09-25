@@ -92,9 +92,11 @@ export function CardsPanel() {
           </li>
         </ol>
         <p className="guide-article__lede">
-          Anything the card owes beyond Set aside is <b>Uncovered</b> — debt with nothing behind it.
-          That is the whole model. Everything below is what happens when a month does not run that
-          cleanly.
+          Two things can go off that script. Debt with nothing set aside behind it is{' '}
+          <b>not covered</b>: it waits on the card, calm, until you assign to the card. And paying
+          more than is set aside takes Set aside <b>below zero</b>: the card is overspent, red like
+          any envelope, and on the 1st it comes out of Ready to Assign. The situations below walk
+          through each, month by month.
         </p>
       </Section>
 

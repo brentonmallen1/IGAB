@@ -9,13 +9,13 @@ export const CARD_CATCH_OUTS: CatchOutItem[] = [
     id: 'set-aside-is-not-the-bill',
     title: 'Set aside is not what you should pay',
     detail:
-      'It is money committed to this card so far, not a target. On a card you carry it sits far below the balance every month, and that is the normal reading — the gap is Uncovered.',
+      'It is money committed to this card so far, not a target. On a card you carry it sits far below the balance every month, and that is the normal reading — the gap is the debt not covered.',
   },
   {
     id: 'uncovered-is-not-an-alarm',
-    title: 'Uncovered is information, not a warning',
+    title: 'Debt not covered is information, not a warning',
     detail:
-      'It is debt with nothing set aside behind it — an old balance, or spending an envelope could not cover. Sitting there, it charges nothing to Ready to Assign. Paying it down from checking does, because that money leaves; assigning to the card squares its envelope.',
+      'It is debt with nothing set aside behind it — an old balance, or spending an envelope could not cover. Sitting there, it charges nothing to Ready to Assign. Assign to the card before you pay it down, or the payment overspends the card.',
   },
   {
     id: 'only-a-transfer-pays',
@@ -33,24 +33,24 @@ export const CARD_CATCH_OUTS: CatchOutItem[] = [
     id: 'a-refund-goes-where-the-money-came-from',
     title: 'Money only returns to the envelope that put it on the card',
     detail:
-      'A refund of something bought before you started budgeting, or a settle-up filed to an envelope that never charged this card, reduces the debt without handing any envelope its cash back. Set aside falls and can go below zero — a real position, not an error. Ready to Assign does not move: the envelope’s gain is the mirror of the card’s fall.',
+      'A refund filed to an envelope that never charged this card lowers the debt, and that envelope keeps the money. Set aside falls by the same amount; below zero the card is overspent. Move the money to the card, or the 1st takes it from Ready to Assign.',
   },
   {
     id: 'releasing-is-allowed',
     title: 'You can take set-aside money back out',
     detail:
-      'It is not locked. Release moves it to Ready to Assign or another envelope — down to what the envelope holds and no further, because below zero there is no money, only a deficit. Past the spare part it raises Uncovered dollar for dollar: you are choosing to carry the debt another month, which is an ordinary call to make.',
+      'It is not locked. Release moves it to Ready to Assign or another envelope — down to what the envelope holds and no further. Past the spare part, every dollar you take is a dollar of debt not covered: you are choosing to carry it another month, which is an ordinary call to make.',
   },
   {
-    id: 'paying-ahead-lowers-ready-to-assign',
-    title: 'Paying a card more than you set aside lowers Ready to Assign',
+    id: 'paying-past-set-aside-overspends-the-card',
+    title: 'Paying a card more than you set aside overspends it',
     detail:
-      'Pay a card past what its envelope held and that money has left your account. Ready to Assign drops by the unmatched part and the hero says so — “paid ahead on cards”. Assigning to the card afterwards squares its envelope and does not move Ready to Assign again; the money went when you paid.',
+      'No envelope was holding the extra, so the card turns red like any overspent envelope. Assign the difference to the card that month; otherwise the 1st takes it out of next month’s Ready to Assign and the card starts again at $0.',
   },
   {
     id: 'file-card-spending',
     title: 'Categorising card spending never takes money you do not have',
     detail:
-      'An envelope only ever gives up what it actually holds; any shortfall rides on the card instead. So file everything — the spending reports come free, and the debt cannot charge you twice. A row left uncategorised moves the balance and nothing else, so all of it reads as Uncovered.',
+      'An envelope only ever gives up what it actually holds; any shortfall rides on the card instead. So file everything — the spending reports come free, and the debt cannot charge you twice. A row left uncategorised moves the balance and nothing else, so all of it reads as not covered.',
   },
 ]

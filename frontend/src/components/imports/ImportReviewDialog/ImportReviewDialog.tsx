@@ -707,7 +707,7 @@ function ParityBlock({
       consistency.activity_cells_disagreeing > 0 &&
       `${percent(consistency.activity_cells_disagreeing, consistency.activity_cells_checked)} of its activity figures (${n(consistency.activity_cells_disagreeing)} of ${n(consistency.activity_cells_checked)}) do not match the transactions shipped in the same file.`,
     debt !== 0 &&
-      `${formatMoney(Math.abs(debt))} is card debt with nothing set aside behind it — both apps leave it out of Ready to Assign; here it shows as Uncovered in the cards section.`,
+      `${formatMoney(Math.abs(debt))} is card debt with nothing set aside behind it — both apps leave it out of Ready to Assign; here it shows as not covered in the cards section.`,
     unfiled !== 0 &&
       `${formatMoney(Math.abs(unfiled))} of uncategorized transactions stays out of Ready to Assign until you file it; YNAB leaves it out of its plan entirely.`,
     parity.categories_pending > 0 &&

@@ -209,7 +209,7 @@ export function AccountPage() {
                         title={
                           'Anything before this date is opening balance: kept in the register, left ' +
                           'uncategorized on purpose, and not counted as needing a category. On a card ' +
-                          'it shows as Uncovered and is paid down by assigning to the card.'
+                          'it shows as debt not covered and is paid down by assigning to the card.'
                         }
                       >
                         <CalendarClock size={12} />

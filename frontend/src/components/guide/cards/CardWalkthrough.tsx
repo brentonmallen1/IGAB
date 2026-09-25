@@ -66,7 +66,7 @@ export function CardWalkthrough({ example }: Props) {
           <Figure label="Overspent" value={month.short_reserved} money={formatMoney} />
         )}
         <Figure label="Balance" value={month.balance} money={formatMoney} />
-        <Figure label="Uncovered" value={month.uncovered} money={formatMoney} />
+        <Figure label="Not covered" value={month.uncovered} money={formatMoney} />
         {month.over_reserved > 0 && (
           <Figure label="Spare" value={month.over_reserved} money={formatMoney} />
         )}
