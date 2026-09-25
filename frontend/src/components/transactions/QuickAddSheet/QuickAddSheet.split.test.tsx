@@ -443,9 +443,11 @@ describe('choosing the account', () => {
     mountSheet()
     expect(screen.getByText('Choose account')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12.00' } })
-    expect(save().hasAttribute('disabled')).toBe(true)
 
-    chooseAccount()
-    expect(save().hasAttribute('disabled')).toBe(false)
+    // Save asks for the account instead of booking to one nobody chose —
+    // QuickAddSheet.account.test.tsx follows the question through.
+    fireEvent.click(save())
+    expect(createMutate).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('Search accounts…')).toBeTruthy()
   })
 })

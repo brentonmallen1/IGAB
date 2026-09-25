@@ -1,11 +1,11 @@
 /**
- * Scan receipt with no account chosen.
+ * Scan and Save with no account chosen.
  *
- * v2026.09.21 stopped pre-selecting the account, and Scan sat disabled until
- * one was picked — greyed out, with nothing on screen saying why, so on a
- * phone it read as "scanning is broken". Scan now asks: it opens the account
- * picker, choosing one goes straight on to the camera, and a dismissed picker
- * leaves the Account row marked with what Scan is waiting for.
+ * v2026.09.21 stopped pre-selecting the account, and Scan and Save sat
+ * disabled until one was picked — greyed out, with nothing on screen saying
+ * why, so on a phone it read as "scanning is broken". Both now ask: they open
+ * the account picker, choosing one carries on with what was tapped, and a
+ * dismissed picker leaves the Account row marked with what is waiting on it.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   submit: vi.fn(),
+  create: vi.fn(),
 }))
 
 vi.mock('../../../api/client', () => ({
@@ -20,7 +21,7 @@ vi.mock('../../../api/client', () => ({
   apiErrorMessage: (_e: unknown, fallback: string) => fallback,
 }))
 vi.mock('../../../api/transactions', () => ({
-  useCreateTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateTransaction: () => ({ mutateAsync: h.create, isPending: false }),
 }))
 vi.mock('../../../api/attachments', () => ({
   ATTACHMENT_ACCEPT: '',
@@ -90,6 +91,8 @@ let opened: HTMLInputElement[] = []
 beforeEach(() => {
   h.submit.mockReset()
   h.submit.mockResolvedValue({})
+  h.create.mockReset()
+  h.create.mockResolvedValue({ id: 'txn-new', account_id: 'acc-1' })
   opened = []
   vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (
     this: HTMLInputElement
@@ -186,6 +189,66 @@ describe('Scan receipt before an account is chosen', () => {
     fireEvent.click(scanButton())
 
     expect(opened).toEqual([scanInput()])
+    expect(accountRow()).not.toHaveClass('quick-add__row--asked')
+  })
+})
+
+describe('Save before an account is chosen', () => {
+  const saveButton = () => screen.getByRole('button', { name: 'Save' })
+  const saveAnotherButton = () => screen.getByRole('button', { name: 'Save & add another' })
+  const typeAmount = (value: string) =>
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value } })
+
+  it('stays disabled while the amount is missing — asking is only for the account', () => {
+    renderSheet()
+    expect(saveButton()).toBeDisabled()
+    expect(saveAnotherButton()).toBeDisabled()
+  })
+
+  it('asks for the account, then saves to it', async () => {
+    renderSheet()
+    typeAmount('12.50')
+    expect(saveButton()).not.toBeDisabled()
+
+    fireEvent.click(saveButton())
+    expect(h.create).not.toHaveBeenCalled()
+    fireEvent.click(optionRow('Checking'))
+
+    await waitFor(() => expect(h.create).toHaveBeenCalledTimes(1))
+    expect(h.create.mock.calls[0][0]).toMatchObject({ account_id: 'acc-1', amount: -12.5 })
+  })
+
+  it('carries Save & add another through the same question', async () => {
+    renderSheet()
+    typeAmount('4.00')
+    fireEvent.click(saveAnotherButton())
+    fireEvent.click(optionRow('Checking'))
+
+    await waitFor(() => expect(h.create).toHaveBeenCalledTimes(1))
+    expect(h.create.mock.calls[0][0]).toMatchObject({ account_id: 'acc-1', amount: -4 })
+  })
+
+  it('says what is waiting when the picker is dismissed, and saves nothing', () => {
+    renderSheet()
+    typeAmount('12.50')
+    fireEvent.click(saveButton())
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(accountRow()).toHaveClass('quick-add__row--asked')
+    expect(screen.getByText('Choose account to save')).toBeInTheDocument()
+    expect(h.create).not.toHaveBeenCalled()
+  })
+
+  it('does not save when the account is chosen from its own row later', () => {
+    renderSheet()
+    typeAmount('12.50')
+    fireEvent.click(saveButton())
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.click(accountRow())
+    fireEvent.click(optionRow('Checking'))
+
+    expect(h.create).not.toHaveBeenCalled()
     expect(accountRow()).not.toHaveClass('quick-add__row--asked')
   })
 })
