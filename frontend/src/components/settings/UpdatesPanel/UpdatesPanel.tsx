@@ -5,6 +5,7 @@ import { useUpdateStatus } from '../../../api/system'
 import './UpdatesPanel.css'
 import { ROOT } from '../../../api/queryKeys'
 import { buildId } from '../../../hooks/useViewportDiagnostics'
+import { SettingsToggle } from '../SettingsToggle/SettingsToggle'
 
 /** Opt-in update notification for self-hosted installs. Off by default —
  * the app never contacts GitHub until the toggle is switched on. */
@@ -25,21 +26,12 @@ export function UpdatesPanel() {
 
   return (
     <div className="updates-panel">
-      <div className="settings-row">
-        <div>
-          <div className="settings-row__label">Check for updates</div>
-          <div className="settings-row__desc">
-            Compares this install against the latest GitHub release (checked at most every 6 hours).
-            Off by default — nothing is sent until you enable it.
-          </div>
-        </div>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => toggle(e.target.checked)}
-          aria-label="Check for updates"
-        />
-      </div>
+      <SettingsToggle
+        label="Check for updates"
+        desc="Compares this install against the latest GitHub release (checked at most every 6 hours). Off by default — nothing is sent until you enable it."
+        checked={enabled}
+        onChange={toggle}
+      />
 
       <div className="settings-row">
         <div>

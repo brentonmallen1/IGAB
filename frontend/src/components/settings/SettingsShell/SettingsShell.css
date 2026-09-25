@@ -224,13 +224,16 @@
   padding: var(--spacing-lg) var(--spacing-xl);
 }
 
-/* Back to the list: a phone affordance, see the media query. */
+/* Back to the list: a phone affordance, see the media query. In the accent,
+   like every link: grey text at the top of a card read as a caption, and on
+   a phone it is the only way out of a section. */
 .settings-section__back {
   display: none;
   align-items: center;
   gap: 2px;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-weight: 500;
+  color: var(--color-accent);
   text-decoration: none;
   align-self: flex-start;
 }
@@ -306,13 +309,14 @@
   align-items: center;
   gap: 2px;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-weight: 500;
+  color: var(--color-accent);
   text-decoration: none;
   padding: var(--spacing-xs) 0;
 }
 
 .settings-section__pager-link:hover {
-  color: var(--text-primary);
+  text-decoration: underline;
 }
 
 .settings-section__pager-link--next {
@@ -402,8 +406,10 @@
 }
 
 .settings-btn--secondary {
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  /* Primary text on a strong edge: secondary text inside a faint border was
+     a button that read as a label. */
+  border: 1px solid var(--edge-strong);
+  color: var(--text-primary);
 }
 
 .settings-btn--danger {
@@ -413,6 +419,73 @@
 
 .settings-btn:hover {
   opacity: 0.8;
+}
+
+/* An on/off row (SettingsToggle): the whole row is the tap target, and the
+   control is a switch rather than a bare 13px checkbox. */
+.settings-toggle {
+  cursor: pointer;
+}
+
+.settings-toggle--disabled {
+  cursor: default;
+}
+
+.settings-toggle__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  /* Off: a visible track on the field background. --input-border is the
+     token the contrast suite holds to 3:1 against --input-bg. */
+  border: 1px solid var(--input-border);
+  border-radius: 999px;
+  background-color: var(--input-bg);
+  cursor: inherit;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.settings-switch::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  transition:
+    transform var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.settings-switch:checked {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+}
+
+.settings-switch:checked::before {
+  transform: translateX(16px);
+  background-color: var(--text-inverse);
+}
+
+.settings-switch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.settings-switch:disabled {
+  opacity: 0.5;
 }
 
 /* A group of related rows inside a section. The group's name sits in a
@@ -485,25 +558,63 @@
     gap: var(--spacing-lg);
   }
 
-  /* Rows a thumb can hit, with the chevron saying they open a screen. */
+  /* Rows a thumb can hit, grouped on a raised card with a chevron — the
+     phone's own settings-list idiom. Bare text between hairlines on the page
+     ground read as a paragraph with rules in it: nothing said "tap". */
   .settings-nav__link {
     min-height: var(--tap-min);
-    padding: var(--spacing-sm) var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-size-base);
+    color: var(--text-primary);
     white-space: normal;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .settings-nav__link:active {
+    background-color: var(--bg-hover);
   }
 
   .settings-nav__group {
     gap: 0;
   }
 
-  .settings-nav__group .settings-nav__link + .settings-nav__link {
-    border-top: 1px solid var(--edge);
-    border-radius: 0;
+  /* One hairline between rows: each row keeps its top border, only the
+     last keeps its bottom one. */
+  .settings-nav__group .settings-nav__link:not(:last-of-type) {
+    border-bottom: 0;
+  }
+
+  .settings-nav__group .settings-nav__link:first-of-type {
+    border-top-left-radius: var(--border-radius-md);
+    border-top-right-radius: var(--border-radius-md);
+  }
+
+  .settings-nav__group .settings-nav__link:last-of-type {
+    border-bottom-left-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
   }
 
   .settings-nav__chevron {
     display: block;
+    color: var(--text-secondary);
+  }
+
+  /* The Settings ↔ System cross-link is a row of its own card, not muted
+     text under a rule. */
+  .settings-nav__pre,
+  .settings-nav__footer {
+    padding: 0;
+    border: 0;
+  }
+
+  .settings-nav__pre .settings-nav__link,
+  .settings-nav__footer .settings-nav__link {
+    display: flex;
+    color: var(--text-primary);
+    border-radius: var(--border-radius-md);
   }
 
   .settings-nav__hint {
@@ -528,6 +639,10 @@
     min-height: var(--tap-min);
   }
 
+  .settings-section__pager-link {
+    min-height: var(--tap-min);
+  }
+
   .settings-section__head {
     flex-direction: column;
   }
@@ -539,6 +654,13 @@
   .settings-row {
     flex-wrap: wrap;
     gap: var(--spacing-sm);
+  }
+
+  /* A switch stays beside its words. Wrapped, it fell under the paragraph
+     at the left edge, alone, where it read as decoration. */
+  .settings-toggle {
+    flex-wrap: nowrap;
+    min-height: var(--tap-min);
   }
 
   /* The gutter has no room on a phone: the group's name sits above its rows,

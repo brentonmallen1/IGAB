@@ -66,6 +66,12 @@
   .settings-account-item__actions .settings-btn {
     min-height: var(--tap-min);
   }
+
+  /* The page scrolls on a phone; a 360px scroll box inside it was a list
+     your thumb had to find the right half of the screen to move. */
+  .settings-account-list {
+    --scroll-list-max: none;
+  }
 }
 
 .settings-account-item--closed .settings-account-item__name {

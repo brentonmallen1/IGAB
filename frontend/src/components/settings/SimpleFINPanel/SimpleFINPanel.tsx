@@ -10,6 +10,7 @@ import { confirmAsync } from '../../../stores/confirmStore'
 import { SimpleFINConfigNotice, SimpleFINSetup } from '../../simplefin/SimpleFINSetup'
 import { SyncSchedule } from '../SyncSchedule/SyncSchedule'
 import './SimpleFINPanel.css'
+import { SettingsToggle } from '../SettingsToggle/SettingsToggle'
 
 /**
  * The SimpleFIN connection: setup when there is none, and the sync switch,
@@ -48,21 +49,12 @@ export function SimpleFINPanel() {
       <SimpleFINConfigNotice />
       {connections.map((conn) => (
         <div key={conn.id} className="sf-connection">
-          <div className="settings-row">
-            <div>
-              <div className="settings-row__label">Sync enabled</div>
-              <div className="settings-row__desc">
-                Last synced: {conn.last_sync_at ? formatDateTime(conn.last_sync_at) : 'Never'}
-              </div>
-            </div>
-            <input
-              type="checkbox"
-              checked={conn.sync_enabled}
-              onChange={(e) =>
-                updateConnection.mutate({ id: conn.id, sync_enabled: e.target.checked })
-              }
-            />
-          </div>
+          <SettingsToggle
+            label="Sync enabled"
+            desc={`Last synced: ${conn.last_sync_at ? formatDateTime(conn.last_sync_at) : 'Never'}`}
+            checked={conn.sync_enabled}
+            onChange={(on) => updateConnection.mutate({ id: conn.id, sync_enabled: on })}
+          />
 
           <SyncSchedule connection={conn} />
 
@@ -102,26 +94,14 @@ export function SimpleFINPanel() {
             </div>
           )}
 
-          <label className="sf-autorelink">
-            <input
-              type="checkbox"
-              checked={autoRelink}
-              onChange={(e) =>
-                updateSetting.mutate({
-                  key: 'simplefin_auto_relink',
-                  value: e.target.checked ? 'true' : 'false',
-                })
-              }
-            />
-            <span>
-              Relink automatically when a bank reissues an account
-              <small>
-                Only when exactly one bank account carries this account&rsquo;s own name. A similar
-                name is offered for you to confirm instead — two cards at one bank read almost
-                alike, and a wrong relink files one account&rsquo;s transactions into another.
-              </small>
-            </span>
-          </label>
+          <SettingsToggle
+            label="Relink automatically when a bank reissues an account"
+            desc="Only when exactly one bank account carries this account’s own name. A similar name is offered for you to confirm instead — two cards at one bank read almost alike, and a wrong relink files one account’s transactions into another."
+            checked={autoRelink}
+            onChange={(on) =>
+              updateSetting.mutate({ key: 'simplefin_auto_relink', value: on ? 'true' : 'false' })
+            }
+          />
 
           <div style={{ paddingTop: 4 }}>
             <button

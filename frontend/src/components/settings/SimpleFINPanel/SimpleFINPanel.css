@@ -77,26 +77,3 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
-
-.sf-autorelink {
-  display: flex;
-  gap: var(--spacing-xs);
-  align-items: flex-start;
-  padding-top: var(--spacing-xs);
-  font-size: 12px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.sf-autorelink input {
-  margin-top: 2px;
-  flex: none;
-}
-
-.sf-autorelink small {
-  display: block;
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.5;
-  margin-top: 2px;
-}

@@ -7,6 +7,7 @@ import { AIAssistantSettings } from './AIAssistantSettings'
 import { AIAdvancedSettings } from './AIAdvancedSettings'
 import { AIPromptSettings } from './AIPromptSettings'
 import './AISettingsPanel.css'
+import { SettingsToggle } from './SettingsToggle/SettingsToggle'
 
 /**
  * The AI section's body, in the order a person sets it up: switch it on, point it
@@ -84,25 +85,13 @@ export function AISettingsPanel() {
   // AIStatusBadge); the body is the settings themselves.
   return (
     <>
-      <div className="settings-row">
-        <div>
-          <div className="settings-row__label">Enable AI features</div>
-          <div className="settings-row__desc">
-            Receipt scanning, category suggestions, natural-language entry, and the budget
-            assistant. Everything runs on your own Ollama server.
-          </div>
-        </div>
-        <label className="ai-panel__toggle">
-          <input
-            type="checkbox"
-            checked={aiEnabled}
-            onChange={toggleEnabled}
-            disabled={updateSetting.isPending}
-            aria-label="Enable AI features"
-          />
-          <span className="ai-panel__toggle-slider" />
-        </label>
-      </div>
+      <SettingsToggle
+        label="Enable AI features"
+        desc="Receipt scanning, category suggestions, natural-language entry, and the budget assistant. Everything runs on your own Ollama server."
+        checked={aiEnabled}
+        disabled={updateSetting.isPending}
+        onChange={() => void toggleEnabled()}
+      />
 
       {aiEnabled && (
         <>
