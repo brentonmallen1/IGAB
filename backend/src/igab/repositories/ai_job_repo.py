@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.orm import with_expression
 
 from igab.db.models import AIJob, Transaction
 from igab.repositories.base import BaseRepository
 from igab.repositories.card_ending_repo import card_ending_owner
 from igab.repositories.txn_filters import AI_NEEDS_REVIEW
+from igab.services.receipt_placement import UNPLACED
 
 ACTIVE_STATUSES = ("queued", "processing")
 
@@ -20,10 +21,17 @@ ACTIVE_STATUSES = ("queued", "processing")
 #: The predicate itself is `AI_NEEDS_REVIEW`, the same one
 #: `count_ai_needs_review` sums. That is the whole point of the field: the nav
 #: badge's number and this page's sections are one population, not two.
-NEEDS_REVIEW_EXPR = exists(
-    select(1)
-    .select_from(Transaction)
-    .where(Transaction.id == AIJob.transaction_id, AI_NEEDS_REVIEW)
+#:
+#: A receipt waiting for an account needs the user too, and more urgently: it
+#: has no row to approve until someone says where it goes. It is filed with
+#: the rows to approve, and the badge counts it (`unplaced_count`).
+NEEDS_REVIEW_EXPR = or_(
+    AIJob.status == UNPLACED,
+    exists(
+        select(1)
+        .select_from(Transaction)
+        .where(Transaction.id == AIJob.transaction_id, AI_NEEDS_REVIEW)
+    ),
 )
 
 
@@ -171,6 +179,17 @@ class AIJobRepository(BaseRepository[AIJob]):
             await self.session.execute(delete(AIJob).where(AIJob.id.in_(ids)))
             await self.session.flush()
         return ids
+
+    async def unplaced_count(self, budget_id: uuid.UUID) -> int:
+        """Receipts waiting for an account."""
+        return int(
+            await self.session.scalar(
+                select(func.count())
+                .select_from(AIJob)
+                .where(AIJob.budget_id == budget_id, AIJob.status == UNPLACED)
+            )
+            or 0
+        )
 
     async def reset_stale_processing(self) -> int:
         """Crash recovery: rows stuck in 'processing' from a previous run go

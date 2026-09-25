@@ -4,8 +4,12 @@ import { downscaleForUpload } from '../utils/imageUpload'
 import { today } from '../utils/dates'
 import { useAIStatus } from './ai'
 import { ROOT } from './queryKeys'
+import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
+import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
 
-export type AIJobStatus = 'queued' | 'processing' | 'done' | 'error'
+/** `unplaced`: a receipt scanned with no account, waiting for one — no
+ *  transaction exists yet, so nothing has moved (`receipt_placement`). */
+export type AIJobStatus = 'queued' | 'processing' | 'done' | 'error' | 'unplaced'
 export type AIJobKind = 'receipt' | 'nl_parse'
 
 export interface AIJobDraft {
@@ -51,6 +55,13 @@ export interface AIJobResult {
   done_reason?: string
 }
 
+export interface ReceiptBankMatch {
+  id: string
+  account_id: string
+  date: string
+  amount: string
+}
+
 export interface AIJob {
   id: string
   budget_id: string
@@ -87,6 +98,9 @@ export interface AIJob {
    *  (`AIJob.card_ending_account_id`), because which account an ending is on
    *  is the server's question: the worker asks it to place a scan. */
   card_ending_account_id: string | null
+  /** For a receipt waiting for an account: the one existing row it matches
+   *  (`receipt_placement.bank_match`), asked at read time. */
+  bank_match?: ReceiptBankMatch | null
   attachment_id: string | null
   created_at: string
   started_at: string | null
@@ -204,13 +218,15 @@ export function useAIJobCounts(budgetId: string | null) {
 export function useSubmitReceipt(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ file, accountId }: { file: File; accountId: string }) => {
+    // `accountId: null` scans with no account: the receipt waits, unplaced,
+    // until the card on it or a person says where it goes.
+    mutationFn: async ({ file, accountId }: { file: File; accountId: string | null }) => {
       const formData = new FormData()
       // API-layer downscale: covers ReceiptScanTab too, which used to send
       // the raw camera file. Re-running on an already-downscaled file is a
       // no-op (size gate in shouldDownscale).
       formData.append('file', await downscaleForUpload(file))
-      formData.append('account_id', accountId)
+      if (accountId) formData.append('account_id', accountId)
       formData.append('client_today', today())
       const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData)
       return data
@@ -221,6 +237,29 @@ export function useSubmitReceipt(budgetId: string) {
     },
   })
 }
+
+/** Give a waiting receipt its account, or the existing row it belongs on.
+ *  It creates or edits a transaction, so everything a transaction change
+ *  stales goes stale here too. */
+export function usePlaceReceipt(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ jobId, ...target }: { jobId: string } & PlaceTarget) =>
+      apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/place`, target).then((r) => r.data),
+    onSuccess: (job) => {
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
+      void invalidateAfterTransactionChange(qc, {
+        budgetId,
+        accountId: job.transaction_account_id,
+        transactionIds: job.transaction_id ? [job.transaction_id] : [],
+      })
+      void invalidateAfterAttachmentChange(qc, job.transaction_id ? [job.transaction_id] : [])
+    },
+  })
+}
+
+export type PlaceTarget = { account_id: string } | { transaction_id: string }
 
 export function useRetryAIJob(budgetId: string) {
   const qc = useQueryClient()

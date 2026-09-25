@@ -351,16 +351,19 @@ class TestReceiptFailures:
         assert txn.approved is False
         await assert_financial_invariants(db_session, budget.id)
 
-    async def test_non_retryable_failure_skips_stub_when_account_gone(
-        self, db_session, attachments_dir
-    ):
+    async def test_a_failure_with_its_account_gone_waits_for_one(self, db_session, attachments_dir):
+        # It used to end as an error with no stub and nowhere to put one —
+        # the image stranded in staging until retention deleted it. Now it
+        # waits, unplaced, image kept, for a person to choose an account.
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=1)
         job.payload = {**job.payload, "account_id": str(uuid.uuid4())}
         await db_session.flush()
         await record_job_failure(db_session, job, NonRetryableJobError("account gone"))
-        assert job.status == "error"
+        assert job.status == "unplaced"
         assert job.transaction_id is None
+        assert job.error is not None
+        assert (attachments_dir / "ai_staging" / str(job.id) / "receipt.jpg").exists()
 
 
 class TestReceiptGate:

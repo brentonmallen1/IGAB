@@ -252,3 +252,36 @@ describe('Save before an account is chosen', () => {
     expect(accountRow()).not.toHaveClass('quick-add__row--asked')
   })
 })
+
+describe('Scan receipt, deciding the account later', () => {
+  const DECIDE_LATER = 'Decide later — it waits in AI Activity'
+
+  it('scans with no account, straight on to the camera', async () => {
+    renderSheet()
+    fireEvent.click(scanButton())
+    fireEvent.click(optionRow(DECIDE_LATER))
+
+    expect(opened).toEqual([scanInput()])
+    const receipt = new File(['x'], 'receipt.jpg', { type: 'image/jpeg' })
+    fireEvent.change(scanInput(), { target: { files: [receipt] } })
+    await waitFor(() => expect(h.submit).toHaveBeenCalledWith({ file: receipt, accountId: null }))
+  })
+
+  const offered = () =>
+    screen
+      .queryAllByText(DECIDE_LATER)
+      .filter((el) => el.className.includes('selection-sheet__option-label'))
+
+  it('is not offered when the account row is opened on its own', () => {
+    renderSheet()
+    fireEvent.click(accountRow())
+    expect(offered()).toEqual([])
+  })
+
+  it('is not offered when Save is the one asking — a saved row needs its account', () => {
+    renderSheet()
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12.50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(offered()).toEqual([])
+  })
+})

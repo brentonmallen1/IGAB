@@ -133,6 +133,12 @@ export function QuickAddSheet() {
   // What the account picker was opened for: choosing an account carries it
   // on. A ref, not state — it is read inside the same tap that picks.
   const afterAccountRef = useRef<AfterAccount | null>(null)
+  // Scan is asking for an account right now — the picker then offers
+  // "Decide later" as well, which scans with none (the receipt waits in AI
+  // Activity until the card on it or a person says where it goes). State,
+  // not the ref: the picker's options are drawn from it.
+  const [scanAsking, setScanAsking] = useState(false)
+  const decidedLaterRef = useRef(false)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
@@ -296,6 +302,7 @@ export function QuickAddSheet() {
   function askForAccount(next: AfterAccount) {
     setAccountAskedFor(next)
     afterAccountRef.current = next
+    setScanAsking(next === 'scan')
     setAccountSheetOpen(true)
   }
 
@@ -304,9 +311,21 @@ export function QuickAddSheet() {
     else askForAccount('scan')
   }
 
+  /** Scan with no account: the receipt waits, unplaced, in AI Activity. */
+  function decideLater() {
+    afterAccountRef.current = null
+    setAccountAskedFor(null)
+    setScanAsking(false)
+    setAccountSheetOpen(false)
+    decidedLaterRef.current = true
+    // Same gesture rule as chooseAccount: the camera opens inside this tap.
+    aiScanInputRef.current?.click()
+  }
+
   function chooseAccount(id: string) {
     setAccountId(id)
     setAccountAskedFor(null)
+    setScanAsking(false)
     const next = afterAccountRef.current
     afterAccountRef.current = null
     // Still inside the tap that picked the account, which is what lets iOS
@@ -319,7 +338,10 @@ export function QuickAddSheet() {
   }
 
   async function scanReceipts(files: File[]) {
-    if (!accountId || files.length === 0) return
+    // Read once: the choice covers this batch of photos and no later one.
+    const unplaced = !accountId && decidedLaterRef.current
+    decidedLaterRef.current = false
+    if ((!accountId && !unplaced) || files.length === 0) return
 
     const accepted: File[] = []
     for (const file of files) {
@@ -343,7 +365,7 @@ export function QuickAddSheet() {
       setScanDone(i)
       try {
         // Downscale happens inside useSubmitReceipt now, for every caller.
-        await submitReceipt.mutateAsync({ file: original, accountId })
+        await submitReceipt.mutateAsync({ file: original, accountId: accountId || null })
         queued += 1
       } catch (err: unknown) {
         const response = (err as { response?: { status?: number } })?.response
@@ -362,13 +384,17 @@ export function QuickAddSheet() {
     setFailedScans(failed)
 
     if (queued > 0) {
-      noteAccountUsed(accountId)
+      if (accountId) noteAccountUsed(accountId)
       hapticTick()
       toast.success(
-        queued === 1
-          ? "Receipt queued — it'll show up in your transactions to review"
-          : `${queued} receipts queued — they'll show up in your transactions to review`,
-        { duration: 5000 }
+        unplaced
+          ? queued === 1
+            ? "Receipt queued — it waits in AI Activity until it has an account, and isn't in your budget until then"
+            : `${queued} receipts queued — they wait in AI Activity until they have an account, and aren't in your budget until then`
+          : queued === 1
+            ? "Receipt queued — it'll show up in your transactions to review"
+            : `${queued} receipts queued — they'll show up in your transactions to review`,
+        { duration: 6000 }
       )
     }
     if (duplicates > 0) {
@@ -1058,17 +1084,20 @@ export function QuickAddSheet() {
         open={accountSheetOpen}
         onClose={() => {
           afterAccountRef.current = null
+          setScanAsking(false)
           setAccountSheetOpen(false)
         }}
         title="Account"
         options={accountOptions}
+        allowNone={scanAsking}
+        noneLabel="Decide later — it waits in AI Activity"
         topSection={
           recent.length > 0
             ? { label: 'Recent', options: recent.map((a) => ({ id: a.id, label: a.name })) }
             : undefined
         }
         value={accountId}
-        onChange={(id) => id && chooseAccount(id)}
+        onChange={(id) => (id ? chooseAccount(id) : decideLater())}
         placeholder="Search accounts…"
       />
     </>

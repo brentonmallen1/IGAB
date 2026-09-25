@@ -21,7 +21,8 @@ from igab.api.v1.schemas.ai_job import (
     NLParseRequest,
     NLParseResponse,
 )
-from igab.db.models import AIJob
+from igab.api.v1.schemas.base import ApiModel
+from igab.db.models import AIJob, Transaction
 from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
@@ -34,12 +35,14 @@ from igab.dependencies import (
     get_transaction_repo,
     get_transaction_service,
 )
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.ai_draft_service import AIDraftService, draft_result_json, parse_extraction
 from igab.services.ai_service import AIService
+from igab.services.receipt_placement import UNPLACED, bank_match
 from igab.services.settings_service import SettingsService
 from igab.services.transaction_service import TransactionService
 from igab.tasks.ai_worker import ai_worker, cleanup_staging, staging_dir
@@ -78,6 +81,37 @@ async def _removed_transaction_ids(repo: AIJobRepository, jobs: list[AIJob]) -> 
         return set()
     existing = await repo.existing_transaction_ids(txn_ids)
     return {tid for tid in txn_ids if tid not in existing}
+
+
+async def _bank_matches(session, jobs: list[AIJob]) -> dict[uuid.UUID, Transaction]:
+    """For each receipt still waiting for an account, the one row in the
+    budget it could be the paper for — asked now, because the bank's row
+    usually arrives after the photo."""
+    from decimal import Decimal
+
+    out: dict[uuid.UUID, Transaction] = {}
+    for job in jobs:
+        draft = (job.result or {}).get("draft") if job.status == UNPLACED else None
+        if not draft or not draft.get("amount") or not draft.get("date"):
+            continue
+        match = await bank_match(
+            session, job.budget_id, Decimal(draft["amount"]), date.fromisoformat(draft["date"])
+        )
+        if match is not None:
+            out[job.id] = match
+    return out
+
+
+async def _respond(session, repo: AIJobRepository, jobs: list[AIJob]) -> list[AIJobResponse]:
+    """Serialise jobs with everything that is asked at read time."""
+    removed = await _removed_transaction_ids(repo, jobs)
+    matches = await _bank_matches(session, jobs)
+    return [
+        AIJobResponse.from_job(
+            j, transaction_removed=j.transaction_id in removed, bank_match=matches.get(j.id)
+        )
+        for j in jobs
+    ]
 
 
 def _safe_filename(name: str | None) -> str:
@@ -135,7 +169,9 @@ async def submit_receipt(
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     settings_svc: Annotated[SettingsService, Depends(get_settings_service)],
     file: UploadFile = File(...),
-    account_id: uuid.UUID = Form(...),
+    # Optional: a receipt scanned with no account waits, unplaced, until
+    # the card on it or a person says where it goes (receipt_placement).
+    account_id: uuid.UUID | None = Form(None),
     client_today: str | None = Form(None),
 ) -> AIJobResponse:
     """Queue a receipt photo for AI extraction. Returns immediately; the
@@ -155,9 +191,10 @@ async def submit_receipt(
             detail="Ollama is not configured — set a host in System → AI",
         )
 
-    account = await account_repo.get(account_id)
-    if account is None or str(account.budget_id) != str(budget_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    if account_id is not None:
+        account = await account_repo.get(account_id)
+        if account is None or str(account.budget_id) != str(budget_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -201,7 +238,7 @@ async def submit_receipt(
         kind="receipt",
         status="queued",
         payload={
-            "account_id": str(account_id),
+            **({"account_id": str(account_id)} if account_id is not None else {}),
             "original_filename": original_filename,
             "content_type": file.content_type or "image/jpeg",
             "staged_path": f"ai_staging/{job_id}/{original_filename}",
@@ -225,6 +262,7 @@ async def submit_receipt(
 async def list_jobs(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
+    session: SessionDep,
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
     status_filter: str | None = None,
     kind: str | None = None,
@@ -246,13 +284,7 @@ async def list_jobs(
         limit=min(limit, 200),
         offset=offset,
     )
-    removed = await _removed_transaction_ids(job_repo, jobs)
-    return AIJobListResponse(
-        jobs=[
-            AIJobResponse.from_job(j, transaction_removed=j.transaction_id in removed) for j in jobs
-        ],
-        total_count=total,
-    )
+    return AIJobListResponse(jobs=await _respond(session, job_repo, jobs), total_count=total)
 
 
 @router.get("/{budget_id}/ai/jobs/active-count", response_model=ActiveCountResponse)
@@ -262,10 +294,13 @@ async def active_job_count(
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> ActiveCountResponse:
-    """Badge counts: work in flight, and work waiting for the user."""
+    """Badge counts: work in flight, and work waiting for the user — rows to
+    approve, and receipts waiting for an account. The page files both under
+    "needs you" (`NEEDS_REVIEW_EXPR`), so the badge counts both."""
     return ActiveCountResponse(
         count=await job_repo.active_count(budget_id),
-        needs_review=await txn_repo.count_ai_needs_review(budget_id),
+        needs_review=await txn_repo.count_ai_needs_review(budget_id)
+        + await job_repo.unplaced_count(budget_id),
     )
 
 
@@ -274,11 +309,12 @@ async def get_job(
     budget_id: BudgetAccess,
     job_id: uuid.UUID,
     current_user: CurrentUser,
+    session: SessionDep,
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
 ) -> AIJobResponse:
     job = await _get_owned_job(job_repo, job_id, budget_id)
-    removed = await _removed_transaction_ids(job_repo, [job])
-    return AIJobResponse.from_job(job, transaction_removed=job.transaction_id in removed)
+    [response] = await _respond(session, job_repo, [job])
+    return response
 
 
 @router.post("/{budget_id}/ai/jobs/{job_id}/retry", response_model=AIJobResponse)
@@ -317,7 +353,7 @@ async def reprocess_job(
     """Re-queue a completed job to run again with the current model settings.
     Useful after changing models or for getting better results on a failed extraction."""
     job = await _get_owned_job(job_repo, job_id, budget_id)
-    if job.status not in ("done", "error"):
+    if job.status not in ("done", "error", UNPLACED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only completed jobs can be reprocessed",
@@ -333,6 +369,94 @@ async def reprocess_job(
     session.add(job)
     await session.commit()
     ai_worker.notify()
+    return AIJobResponse.from_job(await _reloaded(job_repo, job))
+
+
+class PlaceReceiptBody(ApiModel):
+    """Exactly one: the account to put the receipt in, or the existing row
+    (the bank's own) to put it on."""
+
+    account_id: uuid.UUID | None = None
+    transaction_id: uuid.UUID | None = None
+
+
+@router.post("/{budget_id}/ai/jobs/{job_id}/place", response_model=AIJobResponse)
+async def place_receipt(
+    budget_id: BudgetAccess,
+    job_id: uuid.UUID,
+    body: PlaceReceiptBody,
+    current_user: CurrentUser,
+    session: SessionDep,
+    job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
+) -> AIJobResponse:
+    """Give a waiting receipt its account, or its bank row.
+
+    The stored extraction is read again against today's categories, so a
+    category added while the receipt waited is one it can land in. A receipt
+    whose extraction failed becomes the same $0 stub a failure with an
+    account always became. What this creates or edits records through
+    TransactionService, so ⌘Z takes it back like any other entry."""
+    from igab.services.receipt_placement import attach_to, create_in, open_account
+    from igab.tasks.ai_worker import _build_services, finish_placement, staged_image
+
+    if (body.account_id is None) == (body.transaction_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Choose an account or a transaction, not both",
+        )
+    job = await _get_owned_job(job_repo, job_id, budget_id)
+    if job.status != UNPLACED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="This receipt already has an account"
+        )
+    payload = job.payload or {}
+    staged = staged_image(job)
+    if staged is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="The receipt image is no longer stored"
+        )
+
+    svcs = _build_services(session)
+    # A person placing it: their undo stack, as with any entry they make
+    # (the worker's own writes carry no actor — see get_transaction_service).
+    svcs["transactions"].changes.actor_user_id = current_user.id
+    draft = None
+    extraction = (job.result or {}).get("extraction")
+    if isinstance(extraction, dict):
+        categories = await svcs["transactions"].category_repo.get_all_with_group_names(budget_id)
+        today = (
+            date.fromisoformat(payload["client_today"])
+            if payload.get("client_today")
+            else recorded_on(None, None)
+        )
+        try:
+            draft = parse_extraction(
+                extraction,
+                kind="receipt",
+                client_today=today,
+                category_names=[(cat.name, group) for cat, group in categories],
+            )
+        except InvariantViolation:
+            draft = None  # an unusable extraction places like a failed one
+
+    if body.transaction_id is not None:
+        txn = await svcs["transactions"].transaction_repo.get(body.transaction_id)
+        if txn is None or txn.budget_id != budget_id or txn.parent_transaction_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
+            )
+        await attach_to(svcs, job, txn, draft)
+    else:
+        account = await open_account(session, budget_id, body.account_id)
+        if account is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+        txn = await create_in(svcs, job, account.id, draft)
+
+    await finish_placement(svcs, job, txn, staged.read_bytes())
+    job.status = "error" if job.error else "done"
+    job.result = {**(job.result or {}), "placed_by": "person"}
+    session.add(job)
+    await session.commit()
     return AIJobResponse.from_job(await _reloaded(job_repo, job))
 
 

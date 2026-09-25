@@ -28,6 +28,7 @@ from sqlalchemy import (
     and_,
     case,
     cast,
+    exists,
     false,
     func,
     not_,
@@ -43,6 +44,7 @@ from igab.db.models import (
     Category,
     Payee,
     Transaction,
+    TransactionAttachment,
 )
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
@@ -593,6 +595,28 @@ AI_NEEDS_REVIEW = and_(
     POSTED,
     Transaction.approved == False,  # noqa: E712
     Transaction.created_via.like("ai%"),
+)
+
+
+#: A row a scanned receipt could be the paper for: posted, a whole
+#: transaction, not itself an AI draft, and carrying no receipt already.
+#: A receipt waiting for an account is offered the one row in the budget
+#: that matches it (`receipt_placement.bank_match`); a row with a receipt is
+#: somebody else's, and an AI row is another scan — offering either would
+#: pair two receipts, or a receipt with itself.
+RECEIPT_CANDIDATE_ROW = and_(
+    BALANCE_ROW,
+    or_(Transaction.created_via.is_(None), not_(Transaction.created_via.like("ai%"))),
+    not_(
+        exists(
+            select(1)
+            .select_from(TransactionAttachment)
+            .where(
+                TransactionAttachment.transaction_id == Transaction.id,
+                TransactionAttachment.is_deleted == False,  # noqa: E712
+            )
+        )
+    ),
 )
 
 
