@@ -141,6 +141,11 @@
   border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
 }
 
+.ai-activity__chip--unplaced {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+
 .ai-activity__chip--removed {
   color: var(--text-muted);
   border-style: dashed;
@@ -167,6 +172,14 @@
   font-size: var(--font-size-xs);
   font-style: italic;
   color: var(--text-muted);
+}
+
+/* The category the model named that resolved to none here — beside the
+   reason that names it, so the uncategorized row does not read as misfiled. */
+.ai-activity__unresolved {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 
 /* Raw typed/dictated input for text entries — the source the draft came from */

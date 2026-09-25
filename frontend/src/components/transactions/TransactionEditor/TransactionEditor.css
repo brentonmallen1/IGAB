@@ -169,6 +169,14 @@
   flex-wrap: wrap;
 }
 
+/* Its own line: a model's category that resolved to none here. Body colour,
+   not accent — it explains the row, it is not the AI's voice. */
+.txn-editor__ai-banner-note {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
 .txn-editor__ai-banner-link {
   color: inherit;
   font-weight: 600;

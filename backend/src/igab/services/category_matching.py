@@ -6,6 +6,14 @@ and an ambiguous name may come back group-qualified ("Gifts (Household)").
 Matching is tiered — exact first, then progressively more tolerant — and it
 never guesses between two categories that remain ambiguous at the strictest
 tier that matched anything.
+
+The funding reminder has more than one spelling. Many YNAB budgets carry it
+as a dash suffix instead of braces — "Garden – $150", "Home Repair – $100x2",
+"Gifts - ~$200", "Insurance – $107/12" — and a small vision model reads that
+suffix as decoration and drops it just the same. Only the brace form was
+stripped, so in a budget where most names carried a suffix the model could
+reach a category only by copying the reminder verbatim; "Garden" matched
+nothing and the scan was filed by payee history instead.
 """
 
 from __future__ import annotations
@@ -15,6 +23,14 @@ from collections.abc import Sequence
 
 # "{...}" funding reminders and "*" markers are decoration, not identity.
 _DECORATION_RE = re.compile(r"\{[^}]*\}")
+# The dash-suffix spelling of the same reminder: a dash, then an amount-ish
+# token ("$", "~", "≈"). A hyphen followed by anything else is part of the
+# name — "Wi-Fi", "Back-to-school" — and stays.
+_TARGET_SUFFIX_RE = re.compile(r"\s+[–—-]\s*[~$≈].*$")
+# What may follow a name when the rest is decoration of a shape nobody
+# anticipated: a dash, colon, bar or opening bracket. A bare space is NOT one
+# — "Home" must never reach "Home Repair" by prefix.
+_PREFIX_SEPARATOR_RE = re.compile(r"\s*[–—\-:|(\[{]")
 
 Candidate = tuple[str, str | None]  # (category name, group name or None)
 
@@ -22,8 +38,16 @@ Candidate = tuple[str, str | None]  # (category name, group name or None)
 def normalize_category_name(name: str) -> str:
     """Matching key for a category name: decorations stripped, whitespace
     collapsed, casefolded."""
-    text = _DECORATION_RE.sub(" ", name).replace("*", " ")
+    text = _TARGET_SUFFIX_RE.sub("", _DECORATION_RE.sub(" ", name)).replace("*", " ")
     return " ".join(text.split()).casefold()
+
+
+def _has_prefix(name: str, stem: str) -> bool:
+    """`name` is `stem` followed by a separator and decoration."""
+    if not stem:  # the model returned only decoration
+        return False
+    folded = " ".join(name.replace("*", " ").split()).casefold()
+    return folded.startswith(stem) and _PREFIX_SEPARATOR_RE.match(folded, len(stem)) is not None
 
 
 def match_category(raw: str | None, candidates: Sequence[Candidate]) -> int | None:
@@ -31,8 +55,12 @@ def match_category(raw: str | None, candidates: Sequence[Candidate]) -> int | No
 
     Tiers, strictest first; the first tier with hits decides:
     exact name → exact "name (group)" → normalized name → normalized
-    "name (group)". More than one hit at that tier (the same name in
-    several groups, unqualified) is ambiguous — never guess.
+    "name (group)" → unique prefix. More than one hit at that tier (the same
+    name in several groups, unqualified) is ambiguous — never guess.
+
+    The prefix tier is the catch-all for decoration spelled some way the
+    suffix pattern does not know ("Garden: 150/mo"): the candidate must be
+    the model's text followed by a separator, not merely start with it.
     """
     if not raw or not raw.strip():
         return None
@@ -48,7 +76,14 @@ def match_category(raw: str | None, candidates: Sequence[Candidate]) -> int | No
         lambda name, group: exact(text, name),
         lambda name, group: group is not None and exact(text, f"{name} ({group})"),
         lambda name, group: normalized(text, name),
-        lambda name, group: group is not None and normalized(text, f"{name} ({group})"),
+        # The name is normalized BEFORE it is qualified: a dash suffix runs to
+        # the end of the string, so "A – $75 (Two)" would lose its group too.
+        lambda name, group: (
+            group is not None
+            and normalize_category_name(text)
+            == f"{normalize_category_name(name)} ({' '.join(group.split()).casefold()})"
+        ),
+        lambda name, group: _has_prefix(name, normalize_category_name(text)),
     )
     for tier in tiers:
         hits = [i for i, (name, group) in enumerate(candidates) if tier(name, group)]

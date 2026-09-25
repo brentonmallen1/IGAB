@@ -1,11 +1,24 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from igab.api.v1.schemas.base import ApiModel
+from igab.domain.money import Money
 
 # payload keys safe to expose to the client (staged_path stays internal)
 PUBLIC_PAYLOAD_KEYS = ("account_id", "original_filename", "content_type", "text", "client_today")
+
+
+class ReceiptBankMatch(ApiModel):
+    """The existing row a waiting receipt matches, named well enough to
+    recognise: where, when, how much."""
+
+    id: uuid.UUID
+    account_id: uuid.UUID
+    date: date
+    amount: Money
+
+    model_config = {"from_attributes": True}
 
 
 class AIJobResponse(ApiModel):
@@ -38,13 +51,25 @@ class AIJobResponse(ApiModel):
     #: whose required-ness is what makes a forgotten loader fail loudly: None
     #: here is a real answer and cannot be told apart from an unloaded one.
     transaction_account_id: uuid.UUID | None
+    #: Which account owns the card ending printed on the receipt, as of now
+    #: (`AIJob.card_ending_account_id`). None: no ending on the receipt, or
+    #: none on file. Beside `transaction_account_id` it says whether the scan
+    #: sits in the account whose card paid.
+    card_ending_account_id: uuid.UUID | None
+    #: For a receipt waiting for an account: the one row in the budget it
+    #: could be the paper for (`receipt_placement.bank_match`), asked at
+    #: read time because the bank's row usually arrives after the photo.
+    #: None for every other job, and when no row — or more than one — fits.
+    bank_match: ReceiptBankMatch | None = None
     attachment_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
 
     @classmethod
-    def from_job(cls, job, *, transaction_removed: bool = False) -> "AIJobResponse":
+    def from_job(
+        cls, job, *, transaction_removed: bool = False, bank_match=None
+    ) -> "AIJobResponse":
         payload = job.payload or {}
         if job.needs_review is None:
             raise RuntimeError(
@@ -67,6 +92,8 @@ class AIJobResponse(ApiModel):
             transaction_removed=transaction_removed,
             needs_review=job.needs_review,
             transaction_account_id=job.transaction_account_id,
+            card_ending_account_id=job.card_ending_account_id,
+            bank_match=ReceiptBankMatch.model_validate(bank_match) if bank_match else None,
             attachment_id=job.attachment_id,
             created_at=job.created_at,
             started_at=job.started_at,
@@ -82,7 +109,8 @@ class AIJobListResponse(ApiModel):
 class ActiveCountResponse(ApiModel):
     #: Jobs queued or processing right now.
     count: int
-    #: AI-created transactions still awaiting review. Drives the header badge
+    #: AI-created transactions still awaiting review, plus receipts waiting
+    #: for an account. Drives the header badge
     #: after the work finishes — `count` alone drops to zero at exactly the
     #: moment there is something for the user to look at.
     needs_review: int = 0

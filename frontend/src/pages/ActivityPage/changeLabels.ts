@@ -32,6 +32,7 @@ const ENTITY_LABELS: Record<string, string> = {
   guide_binding: 'guide answer',
   budget_member: 'member',
   attachment: 'attachment',
+  card_ending: 'card ending',
 }
 
 export function entityTypeLabel(entityType: string, action?: string): string {

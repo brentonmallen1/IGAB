@@ -15,6 +15,7 @@ import {
   ReceiptText,
   RotateCcw,
   Trash2,
+  Wallet,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
@@ -33,6 +34,9 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import '../AIActivityPage.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { scanFailureReason } from '../../../components/transactions/TransactionEditor/scanFailure'
+import { unresolvedCategoryNote } from '../../../components/ai/draftNotes'
+import { CardEndingNotice } from '../../../components/ai/CardEndingNotice'
+import { PlaceReceipt } from './PlaceReceipt'
 
 const PAGE_SIZE = 50
 
@@ -41,6 +45,7 @@ const STATUS_LABEL: Record<AIJobStatus, string> = {
   processing: 'Processing',
   done: 'Done',
   error: 'Failed',
+  unplaced: 'Needs an account',
 }
 
 function StatusChip({ status }: { status: AIJobStatus }) {
@@ -50,6 +55,7 @@ function StatusChip({ status }: { status: AIJobStatus }) {
       {status === 'queued' && <Clock size={11} />}
       {status === 'done' && <CheckCircle size={11} />}
       {status === 'error' && <AlertTriangle size={11} />}
+      {status === 'unplaced' && <Wallet size={11} />}
       {STATUS_LABEL[status]}
     </span>
   )
@@ -133,6 +139,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
 
   const draft = job.result?.draft
   const reason = job.result?.extraction?.reason
+  const unresolved = unresolvedCategoryNote(draft)
   const title =
     draft?.payee ??
     job.payload.text ??
@@ -213,11 +220,12 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           {/* From the first attempt, not only retries: a job that failed once
               and is waiting out its backoff looked idle, which read as
               "it doesn't retry". */}
-          {job.attempts >= 1 && job.status !== 'done' && (
-            <span className="ai-activity__attempts">
-              attempt {job.attempts}/{job.max_attempts}
-            </span>
-          )}
+          {job.attempts >= 1 &&
+            (job.status === 'queued' || job.status === 'processing' || job.status === 'error') && (
+              <span className="ai-activity__attempts">
+                attempt {job.attempts}/{job.max_attempts}
+              </span>
+            )}
           {job.transaction_removed && (
             <span
               className="ai-activity__chip ai-activity__chip--removed"
@@ -236,6 +244,9 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             {reason}
           </div>
         )}
+        {unresolved && <div className="ai-activity__unresolved">{unresolved}</div>}
+        <CardEndingNotice job={job} budgetId={budgetId} canMove />
+        {job.status === 'unplaced' && <PlaceReceipt job={job} budgetId={budgetId} />}
         {job.error && (
           <div className="ai-activity__error">
             <button className="ai-activity__error-toggle" onClick={() => setErrorOpen((v) => !v)}>
@@ -339,7 +350,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             <span>{job.needs_review ? 'Edit' : 'View'}</span>
           </button>
         )}
-        {(job.status === 'done' || job.status === 'error') && (
+        {(job.status === 'done' || job.status === 'error' || job.status === 'unplaced') && (
           <button
             className="ai-activity__action"
             onClick={handleReprocess}
@@ -381,7 +392,12 @@ function NeedsApprovalSection({ budgetId }: { budgetId: string }) {
   const { data, isLoading } = useAIJobs(budgetId, { needsReview: true, limit: 200 })
   const { data: counts } = useAIJobCounts(budgetId)
 
-  const jobs = data?.jobs ?? []
+  // A receipt waiting for an account first: nothing else here can happen
+  // until it has one, and it is the one thing on the list not yet in the
+  // budget at all.
+  const jobs = [...(data?.jobs ?? [])].sort(
+    (a, b) => Number(b.status === 'unplaced') - Number(a.status === 'unplaced')
+  )
   // Falls back to what is on screen rather than to zero. The counts query is
   // gated on the AI being *enabled*, so a budget with unapproved AI rows and
   // the feature since switched off has rows here and no served number — and a
@@ -402,7 +418,7 @@ function NeedsApprovalSection({ budgetId }: { budgetId: string }) {
   return (
     <section className="ai-activity__section">
       <h2 className="ai-activity__section-title">
-        Needs your approval
+        Needs you
         <span className="count-badge count-badge--accent">{waiting}</span>
       </h2>
       <div className="ai-activity__list">

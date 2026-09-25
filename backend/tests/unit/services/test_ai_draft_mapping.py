@@ -167,6 +167,35 @@ class TestCategories:
         )
         assert draft.category_name is None
 
+    def test_an_unresolved_name_is_kept_as_the_models_opinion(self):
+        draft = parse_extraction(
+            receipt(category="Fun Money"),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert draft.category_unresolved == "Fun Money"
+
+    def test_a_resolved_or_absent_name_is_not_unresolved(self):
+        for value in ("Groceries", None, "", "   "):
+            draft = parse_extraction(
+                receipt(category=value),
+                kind="receipt",
+                client_today=TODAY,
+                category_names=CATEGORIES,
+            )
+            assert draft.category_unresolved is None, value
+
+    def test_an_ambiguous_name_is_unresolved(self):
+        draft = parse_extraction(
+            receipt(category="Gifts"),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=[("Gifts", "A"), ("Gifts", "B")],
+        )
+        assert draft.category_name is None
+        assert draft.category_unresolved == "Gifts"
+
     def test_no_category_names_provided_drops_category(self):
         draft = parse_extraction(receipt(category="Groceries"), kind="receipt", client_today=TODAY)
         assert draft.category_name is None
@@ -336,3 +365,27 @@ class TestSuggestedSplit:
             category_names=CATEGORIES,
         )
         assert draft.suggested_split is None
+
+
+class TestCardEnding:
+    def test_the_card_that_paid_is_read_off_the_receipt(self):
+        draft = parse_extraction(
+            receipt(card_last4="VISA ****4417"), kind="receipt", client_today=TODAY
+        )
+        assert draft.card_last4 == "4417"
+
+    def test_cash_or_no_number_is_no_card(self):
+        for value in (None, "", "cash", "**17"):
+            draft = parse_extraction(receipt(card_last4=value), kind="receipt", client_today=TODAY)
+            assert draft.card_last4 is None, value
+
+    def test_a_prompt_that_never_asks_leaves_it_empty(self):
+        # A customized prompt from before the field existed returns no key.
+        draft = parse_extraction(receipt(), kind="receipt", client_today=TODAY)
+        assert draft.card_last4 is None
+
+    def test_the_recorded_result_carries_it(self):
+        from igab.services.ai_draft_service import draft_result_json
+
+        draft = parse_extraction(receipt(card_last4="4417"), kind="receipt", client_today=TODAY)
+        assert draft_result_json(draft)["draft"]["card_last4"] == "4417"

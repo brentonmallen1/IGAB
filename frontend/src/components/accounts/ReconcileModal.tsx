@@ -7,6 +7,8 @@ import { Modal } from '../common/Modal/Modal'
 import '../common/Dialog/DialogForm.css'
 import { useReconciliationStatus } from '../../api/reconciliation'
 import { useUIStore } from '../../stores/uiStore'
+import { useAppStore } from '../../stores/appStore'
+import { WaitingReceiptsNote } from './WaitingReceiptsNote'
 import { useFormatters } from '../../hooks/useFormatters'
 import './ReconcileModal.css'
 
@@ -23,6 +25,7 @@ interface Props {
 export function ReconcileModal({ accountId, accountName }: Props) {
   const { formatMoney } = useFormatters()
   const { setReconcileStatementBalance, cancelReconciliation } = useUIStore()
+  const budgetId = useAppStore((s) => s.currentBudgetId)
 
   const [showInput, setShowInput] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -82,6 +85,14 @@ export function ReconcileModal({ accountId, accountName }: Props) {
               .join(' · ')}{' '}
             not counted in this balance
           </p>
+        )}
+
+        {budgetId && (
+          <WaitingReceiptsNote
+            budgetId={budgetId}
+            accountId={accountId}
+            accountName={accountName}
+          />
         )}
 
         <form className="dialog-form reconcile-modal__form" onSubmit={handleContinue}>

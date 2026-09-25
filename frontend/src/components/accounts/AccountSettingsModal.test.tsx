@@ -48,6 +48,13 @@ vi.mock('../../api/syncLogs', () => ({
   }),
 }))
 // No registry yet: the form falls back to the built-in mirror.
+// The card endings list has tests of its own (CardEndingsSection.test.tsx).
+vi.mock('../../api/cardEndings', () => ({
+  useCardEndings: () => ({ data: [] }),
+  useCreateCardEnding: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateCardEnding: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteCardEnding: () => ({ mutate: vi.fn(), isPending: false }),
+}))
 vi.mock('../../api/accountTypes', () => ({
   useAccountTypes: () => ({ data: undefined }),
 }))

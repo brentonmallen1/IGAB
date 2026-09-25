@@ -61,7 +61,10 @@ DEFAULT_PROMPTS: dict[str, str] = {
         ' if the payee name already says it",\n'
         '  "line_items": [{"description": "item as printed", "amount": 0.00,'
         ' "category": "best category NAME or null"}],\n'
-        '  "suggested_split": [{"category": "category NAME", "amount": 0.00}]\n'
+        '  "suggested_split": [{"category": "category NAME", "amount": 0.00}],\n'
+        '  "card_last4": "the last four digits of the card that paid, as printed'
+        " (e.g. '4417' from 'VISA ****4417'), or null for cash or when no card"
+        ' number is shown"\n'
         "}\n\n"
         "Rules:\n"
         "- total is the grand total actually paid, after tax and discounts.\n"

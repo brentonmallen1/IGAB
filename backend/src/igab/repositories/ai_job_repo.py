@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.orm import with_expression
 
 from igab.db.models import AIJob, Transaction
 from igab.repositories.base import BaseRepository
+from igab.repositories.card_ending_repo import card_ending_owner
 from igab.repositories.txn_filters import AI_NEEDS_REVIEW
+from igab.services.receipt_placement import UNPLACED
 
 ACTIVE_STATUSES = ("queued", "processing")
 
@@ -19,10 +21,17 @@ ACTIVE_STATUSES = ("queued", "processing")
 #: The predicate itself is `AI_NEEDS_REVIEW`, the same one
 #: `count_ai_needs_review` sums. That is the whole point of the field: the nav
 #: badge's number and this page's sections are one population, not two.
-NEEDS_REVIEW_EXPR = exists(
-    select(1)
-    .select_from(Transaction)
-    .where(Transaction.id == AIJob.transaction_id, AI_NEEDS_REVIEW)
+#:
+#: A receipt waiting for an account needs the user too, and more urgently: it
+#: has no row to approve until someone says where it goes. It is filed with
+#: the rows to approve, and the badge counts it (`unplaced_count`).
+NEEDS_REVIEW_EXPR = or_(
+    AIJob.status == UNPLACED,
+    exists(
+        select(1)
+        .select_from(Transaction)
+        .where(Transaction.id == AIJob.transaction_id, AI_NEEDS_REVIEW)
+    ),
 )
 
 
@@ -37,6 +46,14 @@ TRANSACTION_ACCOUNT_EXPR = (
     .where(Transaction.id == AIJob.transaction_id, Transaction.is_deleted == False)  # noqa: E712
     .scalar_subquery()
 )
+
+
+#: The account whose card paid for this job's receipt — see the model's
+#: comment. The lookup is `card_ending_owner`, the same select the worker runs
+#: to place a scan, embedded here as a correlated subquery.
+CARD_ENDING_ACCOUNT_EXPR = card_ending_owner(
+    AIJob.budget_id, AIJob.result["draft"]["card_last4"].astext
+).scalar_subquery()
 
 
 class AIJobRepository(BaseRepository[AIJob]):
@@ -73,6 +90,7 @@ class AIJobRepository(BaseRepository[AIJob]):
         return stmt.options(
             with_expression(AIJob.needs_review, NEEDS_REVIEW_EXPR),
             with_expression(AIJob.transaction_account_id, TRANSACTION_ACCOUNT_EXPR),
+            with_expression(AIJob.card_ending_account_id, CARD_ENDING_ACCOUNT_EXPR),
         )
 
     async def get_with_review(self, job_id: uuid.UUID) -> AIJob | None:
@@ -161,6 +179,17 @@ class AIJobRepository(BaseRepository[AIJob]):
             await self.session.execute(delete(AIJob).where(AIJob.id.in_(ids)))
             await self.session.flush()
         return ids
+
+    async def unplaced_count(self, budget_id: uuid.UUID) -> int:
+        """Receipts waiting for an account."""
+        return int(
+            await self.session.scalar(
+                select(func.count())
+                .select_from(AIJob)
+                .where(AIJob.budget_id == budget_id, AIJob.status == UNPLACED)
+            )
+            or 0
+        )
 
     async def reset_stale_processing(self) -> int:
         """Crash recovery: rows stuck in 'processing' from a previous run go

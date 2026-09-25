@@ -1,0 +1,106 @@
+.card-endings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+}
+
+.card-endings > li + li {
+  border-top: 1px solid var(--edge);
+}
+
+.card-endings__row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 4px var(--spacing-sm);
+}
+
+.card-endings__digits {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.card-endings__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.card-endings__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.card-endings__icon-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+.card-endings__icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.card-endings__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.card-endings__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+}
+
+.card-endings > li > .card-endings__editor {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.card-endings__inputs {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.card-endings__inputs input {
+  min-width: 0;
+  flex: 1;
+}
+
+.card-endings__inputs .card-endings__last4 {
+  flex: 0 0 5.5em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.04em;
+}
+
+.card-endings__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+@media (max-width: 768px) {
+  .card-endings__icon-btn {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}

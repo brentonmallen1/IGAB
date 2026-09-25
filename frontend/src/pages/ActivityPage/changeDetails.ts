@@ -128,6 +128,7 @@ const FIGURE_SUMMARY: Record<string, (snap: Snap) => string> = {
   liability_snapshot: (s) => datedFigure(s.balance, s),
   asset_value: (s) => datedFigure(s.value, s),
   reconciliation: (s) => (s.statement_balance ? `Statement ${money(s.statement_balance)}` : ''),
+  card_ending: (s) => (s.last4 ? `Card ending ${s.last4 as string}` : ''),
 }
 
 /** One summarizer for both sides — a create reads `after`, a delete reads

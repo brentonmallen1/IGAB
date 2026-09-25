@@ -186,6 +186,64 @@ class TestReceiptSuccess:
         assert job.result["suggested_split"] is None
 
 
+class TestTheModelsCategoryIsKept:
+    """Reported 2026-09-24: the model named Garden and gave a correct
+    reason; the category was "Garden – $150", nothing matched, and payee
+    history filed the row in an unrelated envelope — so the review showed a
+    reason naming one category beside a row filed in another."""
+
+    async def _with_history(self, db_session, attachments_dir, name: str):
+        from .factories import create_payee, create_transaction
+
+        budget, account = await _setup(db_session, attachments_dir, with_categories=False)
+        group = await create_category_group(db_session, budget, "Home")
+        garden = await create_category(db_session, budget, group, name)
+        dining = await create_category(db_session, budget, group, "Dining Out")
+        payee = await create_payee(db_session, budget, "Whole Foods")
+        await create_transaction(
+            db_session, budget, account, "-9.00", date(2024, 3, 1), category=dining, payee=payee
+        )
+        return budget, account, garden, dining
+
+    async def test_a_dash_suffixed_target_resolves_from_the_bare_name(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        mock_extraction.return_value = {**GOOD_EXTRACTION, "category": "Garden"}
+        mock_extraction.return_value["suggested_split"] = []
+        budget, account, garden, _ = await self._with_history(
+            db_session, attachments_dir, "Garden – $150"
+        )
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.category_id == garden.id
+        assert job.result["draft"]["category_unresolved"] is None
+
+    async def test_a_named_category_that_resolves_nowhere_is_not_replaced_by_history(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        mock_extraction.return_value = {**GOOD_EXTRACTION, "category": "Garden Tools"}
+        mock_extraction.return_value["suggested_split"] = []
+        budget, account, _, _ = await self._with_history(db_session, attachments_dir, "Garden")
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.category_id is None
+        assert job.result["draft"]["category_unresolved"] == "Garden Tools"
+
+    async def test_no_opinion_still_falls_back_to_payee_history(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        mock_extraction.return_value = {**GOOD_EXTRACTION, "category": None}
+        mock_extraction.return_value["suggested_split"] = []
+        budget, account, _, dining = await self._with_history(db_session, attachments_dir, "Garden")
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.category_id == dining.id
+        assert job.result["draft"]["category_unresolved"] is None
+
+
 class TestReceiptFailures:
     async def test_missing_staged_file_is_non_retryable(
         self, db_session, attachments_dir, mock_extraction
@@ -293,16 +351,19 @@ class TestReceiptFailures:
         assert txn.approved is False
         await assert_financial_invariants(db_session, budget.id)
 
-    async def test_non_retryable_failure_skips_stub_when_account_gone(
-        self, db_session, attachments_dir
-    ):
+    async def test_a_failure_with_its_account_gone_waits_for_one(self, db_session, attachments_dir):
+        # It used to end as an error with no stub and nowhere to put one —
+        # the image stranded in staging until retention deleted it. Now it
+        # waits, unplaced, image kept, for a person to choose an account.
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=1)
         job.payload = {**job.payload, "account_id": str(uuid.uuid4())}
         await db_session.flush()
         await record_job_failure(db_session, job, NonRetryableJobError("account gone"))
-        assert job.status == "error"
+        assert job.status == "unplaced"
         assert job.transaction_id is None
+        assert job.error is not None
+        assert (attachments_dir / "ai_staging" / str(job.id) / "receipt.jpg").exists()
 
 
 class TestReceiptGate:
