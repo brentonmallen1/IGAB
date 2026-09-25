@@ -9,10 +9,16 @@ export function netWorthDelta(current: number, prev: number): number {
   return ((current - prev) / Math.abs(prev)) * 100
 }
 
-/** Percent change in spending vs the prior period; 0 when there was no
- * prior spending to compare against. */
-export function spendingDelta(current: number, prev: number): number {
-  if (prev <= 0) return 0
+/** Percent change in spending vs the prior period; null when there was no
+ * prior spending to compare against — not 0, which would read "unchanged".
+ *
+ * Every spending comparison reads this for whether a percentage exists at
+ * all: the Spent card's delta, the means dialog's sentence and both burn-rate
+ * lines (`charts/burnRateView.ts`). The first two each guarded `prev > 0`
+ * beside a function that returned 0 for the same case, so the rule was
+ * written three times. */
+export function spendingDelta(current: number, prev: number): number | null {
+  if (prev <= 0) return null
   return ((current - prev) / prev) * 100
 }
 

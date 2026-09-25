@@ -17,6 +17,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { ReportErrorState } from './ReportErrorState'
 import { SavingsRateDialog } from './SavingsRateDialog'
 import { pct, ratePercent } from './charts/savingsRateView'
+import { burnPriorLine } from './charts/burnRateView'
 import {
   essentialsReserve,
   netWorthDelta,
@@ -64,18 +65,22 @@ export function OverviewReport({ budgetId }: Props) {
               range except burn rates, which use rolling windows from today.
             </p>
             <p>
-              <strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days.{' '}
-              <strong>Essentials</strong>: the same 90-day average, counting only categories tagged
-              Essential — what a lean month costs, and the figure the Guide’s emergency-fund target
-              is built from. Yearly bills in Long-term expense categories are spread over 12 months
-              when that setting is on (Essentials report), and the as-paid figure is shown beside
-              it. Shows “—” until something is tagged. <strong>Savings Rate</strong>: Saved ÷ Income
-              — money moved into savings or investments, or held in a Savings envelope that counts
-              while it’s in the budget, not simply money left over. Shows “—” for a window with no
-              income. Open it to see where the savings went and where the income came from.{' '}
-              <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate — how long the
-              budget’s cash accounts would last at this pace. Cards, loans and tracked investments
-              are out: net worth is not money you can spend next week.
+              <strong>Burn Rate</strong>: spending over the last 30 days, net of refunds, beside the
+              60 days before them averaged per 30 days, and the change between the two. The windows
+              share no day, so a jump in recent spending shows as a change instead of being averaged
+              into both; no change is shown when the prior 60 days had no spending.{' '}
+              <strong>Essentials</strong>: those same 90 days averaged per month, counting only
+              categories tagged Essential — what a lean month costs, and the figure the Guide’s
+              emergency-fund target is built from. Yearly bills in Long-term expense categories are
+              spread over 12 months when that setting is on (Essentials report), and the as-paid
+              figure is shown beside it. Shows “—” until something is tagged.{' '}
+              <strong>Savings Rate</strong>: Saved ÷ Income — money moved into savings or
+              investments, or held in a Savings envelope that counts while it’s in the budget, not
+              simply money left over. Shows “—” for a window with no income. Open it to see where
+              the savings went and where the income came from. <strong>Days Until Zero</strong>:
+              cash on hand ÷ daily burn rate — how long the budget’s cash accounts would last at
+              this pace. Cards, loans and tracked investments are out: net worth is not money you
+              can spend next week.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending
@@ -116,7 +121,7 @@ export function OverviewReport({ budgetId }: Props) {
                   : []),
                 { metric: 'net_worth', value: data.net_worth },
                 { metric: 'burn_rate_30', value: data.burn_rate_30 },
-                { metric: 'burn_rate_90', value: data.burn_rate_90 },
+                { metric: 'burn_rate_prior_60', value: data.burn_rate_prior_60 },
                 ...(data.essentials
                   ? [
                       { metric: 'essentials_monthly', value: data.essentials.monthly },
@@ -172,7 +177,7 @@ export function OverviewReport({ budgetId }: Props) {
           <MetricCard
             label="30-Day Burn Rate"
             value={formatMoney(data.burn_rate_30)}
-            sub={`90-day avg: ${formatMoney(data.burn_rate_90)}`}
+            sub={burnPriorLine(data.burn_rate_30, data.burn_rate_prior_60, formatMoney)}
           />
           <MetricCard
             label="Essentials / month"
@@ -213,7 +218,7 @@ export function OverviewReport({ budgetId }: Props) {
             label="Spent This Period"
             value={formatMoney(data.expenses_this_month)}
             delta={
-              data.expenses_prev_month > 0
+              spendingDeltaPct !== null
                 ? { value: spendingDeltaPct, label: 'vs prior period' }
                 : undefined
             }

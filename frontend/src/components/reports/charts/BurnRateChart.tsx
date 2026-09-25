@@ -22,6 +22,7 @@ import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportI
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { burnChangeLine, PRIOR_SERIES } from './burnRateView'
 import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
@@ -46,7 +47,7 @@ export function BurnRateReport({ budgetId }: Props) {
   const chartData = points.map((p) => ({
     date: p.date.slice(0, 7),
     '30-Day': p.rolling_30,
-    '90-Day Avg': p.rolling_90,
+    [PRIOR_SERIES]: p.prior_60,
   }))
 
   return (
@@ -55,18 +56,19 @@ export function BurnRateReport({ budgetId }: Props) {
         <h2 className="report-section__title">Rolling Burn Rate</h2>
         <ReportInfoButton title="Rolling Burn Rate">
           <p>
-            Shows your average monthly spending smoothed over <strong>30-day</strong> and{' '}
-            <strong>90-day</strong> rolling windows.
+            Each point is your spending over the <strong>30 days</strong> ending on that month’s
+            last day — today, for this month — beside the <strong>60 days before them</strong>,
+            averaged per 30 days. Refunds count against the spending they return.
           </p>
           <p>
-            Rolling averages reduce calendar-month noise (e.g. quarterly bills). The 90-day line is
-            more stable and better reflects your true spending rate. A widening gap between them
-            signals recent spending changes.
+            The two windows share no day, so a change in the last 30 days shows as a gap between the
+            lines instead of being averaged into both. The solid line above the dashed one means
+            spending has picked up; below it, slowed down.
           </p>
           <ReportScopeNote report="burn-rate" />
           <SpendingClassNote />
         </ReportInfoButton>
-        <p className="report-section__subtitle">Monthly spending rolling averages</p>
+        <p className="report-section__subtitle">Last 30 days against the 60 before them</p>
         <div className="flex-row ms-auto">
           <ReportRangeSelect />
           <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
@@ -76,7 +78,7 @@ export function BurnRateReport({ budgetId }: Props) {
               points.map((p) => ({
                 date: p.date,
                 rolling_30: p.rolling_30,
-                rolling_90: p.rolling_90,
+                prior_60: p.prior_60,
               }))
             }
             captureRef={captureRef}
@@ -87,8 +89,16 @@ export function BurnRateReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {latest && (
           <MetricRow>
-            <MetricCard label="Current 30-Day Burn" value={formatMoney(latest.rolling_30)} />
-            <MetricCard label="Current 90-Day Avg" value={formatMoney(latest.rolling_90)} />
+            <MetricCard
+              label="Current 30-Day Burn"
+              value={formatMoney(latest.rolling_30)}
+              sub={burnChangeLine(latest.rolling_30, latest.prior_60)}
+            />
+            <MetricCard
+              label="Prior 60 Days"
+              value={formatMoney(latest.prior_60)}
+              sub="Averaged per 30 days"
+            />
           </MetricRow>
         )}
 
@@ -120,7 +130,7 @@ export function BurnRateReport({ budgetId }: Props) {
               />
               <Line
                 type="monotone"
-                dataKey="90-Day Avg"
+                dataKey={PRIOR_SERIES}
                 stroke={COLOR_NEUTRAL}
                 strokeWidth={2}
                 strokeDasharray="6 3"

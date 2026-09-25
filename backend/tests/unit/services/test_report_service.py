@@ -691,52 +691,69 @@ class TestBurnRate:
         with report_today(request.param) as today:
             yield today
 
-    async def _newest(self, rows) -> dict:
+    async def _newest(self, rows, **kwargs) -> dict:
         svc = ReportService(make_session(mock_result(rows)))
-        return (await svc.burn_rate(BUDGET, months=1))[-1]
+        return (await svc.burn_rate(BUDGET, months=1, **kwargs))[-1]
+
+    @staticmethod
+    def _spend(day: date, amount: str, cls: str = "spending"):
+        """One (date, class, signed total) row, as the grouped query returns it."""
+        return row(date=day, cls=cls, amount=D(amount))
 
     async def test_rolling_30_sums_the_last_30_days(self, today):
         rows = [
-            row(date=today - timedelta(days=25), amount=D("-200.00")),
-            row(date=today - timedelta(days=3), amount=D("-300.00")),
+            self._spend(today - timedelta(days=25), "-200.00"),
+            self._spend(today - timedelta(days=3), "-300.00"),
         ]
-        assert (await self._newest(rows))["rolling_30"] == D("500.0")
+        assert (await self._newest(rows))["rolling_30"] == D("500.00")
 
     async def test_the_30_day_window_is_today_and_the_29_days_before(self, today):
-        """Day 30 counting today as day 1 is in; day 31 is out."""
+        """Day 30 counting today as day 1 is in; day 31 is the prior window's."""
         rows = [
-            row(date=today - timedelta(days=30), amount=D("-700.00")),
-            row(date=today - timedelta(days=29), amount=D("-200.00")),
-            row(date=today, amount=D("-300.00")),
+            self._spend(today - timedelta(days=30), "-700.00"),
+            self._spend(today - timedelta(days=29), "-200.00"),
+            self._spend(today, "-300.00"),
         ]
-        assert (await self._newest(rows))["rolling_30"] == D("500.0")
+        newest = await self._newest(rows)
+        assert newest["rolling_30"] == D("500.00")
+        assert newest["prior_60"] == D("350.00")
 
     async def test_the_newest_window_does_not_reach_past_today(self, today):
         """A row dated tomorrow is not money that has been burned."""
         rows = [
-            row(date=today - timedelta(days=2), amount=D("-300.00")),
-            row(date=today + timedelta(days=1), amount=D("-900.00")),
+            self._spend(today - timedelta(days=2), "-300.00"),
+            self._spend(today + timedelta(days=1), "-900.00"),
         ]
         newest = await self._newest(rows)
-        assert newest["rolling_30"] == D("300.0")
-        assert newest["rolling_90"] == D("100.0")
+        assert newest["rolling_30"] == D("300.00")
+        assert newest["prior_60"] == D("0.00")
 
-    async def test_rolling_90_is_divided_by_3(self, today):
-        # 900 total inside the 90-day window → monthly equivalent = 300
+    async def test_prior_60_is_the_sixty_days_before_the_thirty_halved(self, today):
+        # 1,200 in days 31–90 is 600 per thirty; the 300 inside the last
+        # thirty is not part of it, as it was of the old ninety-day average.
         rows = [
-            row(date=today - timedelta(days=85), amount=D("-300.00")),
-            row(date=today - timedelta(days=50), amount=D("-300.00")),
-            row(date=today - timedelta(days=10), amount=D("-300.00")),
+            self._spend(today - timedelta(days=85), "-600.00"),
+            self._spend(today - timedelta(days=50), "-600.00"),
+            self._spend(today - timedelta(days=10), "-300.00"),
         ]
         cur = await self._newest(rows)
-        assert cur["rolling_90"] == pytest.approx(D("300.0"), rel=D("0.01"))
+        assert cur["prior_60"] == D("600.00")
+        assert cur["rolling_30"] == D("300.00")
 
-    async def test_the_90_day_window_is_today_and_the_89_days_before(self, today):
+    async def test_the_prior_window_ends_on_day_90(self, today):
         rows = [
-            row(date=today - timedelta(days=90), amount=D("-300.00")),
-            row(date=today - timedelta(days=89), amount=D("-900.00")),
+            self._spend(today - timedelta(days=90), "-300.00"),
+            self._spend(today - timedelta(days=89), "-900.00"),
         ]
-        assert (await self._newest(rows))["rolling_90"] == D("300.0")
+        assert (await self._newest(rows))["prior_60"] == D("450.00")
+
+    async def test_the_readers_today_overrides_the_server_clock(self, today):
+        """`client_today` a day ahead: tomorrow's row is the reader's today."""
+        ahead = today + timedelta(days=1)
+        rows = [self._spend(ahead, "-250.00")]
+        newest = await self._newest(rows, today=ahead)
+        assert newest["rolling_30"] == D("250.00")
+        assert newest["date"] == ahead.replace(day=1)
 
 
 # ─── net_worth_history ────────────────────────────────────────────────────────

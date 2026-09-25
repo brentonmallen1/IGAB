@@ -122,8 +122,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'burn-rate': {
     scope: 'on-budget',
-    summary: 'Average monthly spending over rolling 30- and 90-day windows.',
-    counts: 'Spending only.',
+    summary: 'Spending over the last 30 days against the 60 days before them, month by month.',
+    counts: 'Spending only, net of refunds; the prior 60 days are averaged per 30.',
     leavesOut: 'Savings, debt payments and transfers.',
   },
   'cash-flow': {

@@ -42,6 +42,7 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
+from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
     clamped_month_end,
@@ -50,7 +51,6 @@ from igab.domain.dates import (
     months_spanned,
     previous_window,
     report_months,
-    trailing_start,
 )
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
@@ -367,8 +367,12 @@ class ReportService:
         budget_id: uuid.UUID,
         start_date: date,
         end_date: date,
+        today: date | None = None,
     ) -> dict:
-        today = date.today()
+        # The reader's day (`client_today`) when the browser sent one: every
+        # figure below is "as of today", and near midnight the server's clock
+        # answers for a different day than the one the household is living in.
+        today = today or date.today()
         # "vs prior period" is the equal-length window before this one — the
         # month before `start`, as this was, held a twelve-day month-to-date
         # against a whole prior month. `prev_end` is also the net-worth "before".
@@ -394,13 +398,7 @@ class ReportService:
         # this card announce "Savings Rate 0% / Expenses $5,000" beside a
         # Savings Rate tab reading 40% and an Income vs Expenses tab reading
         # $3,000, for the same window and the same budget.
-        # `trailing_start`, not `today - 30`: both bounds below are inclusive,
-        # so that spans THIRTY-ONE days — and `days_until_zero` divides
-        # burn_30 by 30 while burn_90 is divided by 3, so the card overstated
-        # daily burn by about 3.3% and understated runway by the same.
-        thirty_ago = trailing_start(today, 30)
-        ninety_ago = trailing_start(today, 90)
-        cdf = await self._class_frame(budget_id, min(prev_start, ninety_ago), today)
+        cdf = await self._class_frame(budget_id, prev_start, today)
 
         def _buckets(start: date, end: date) -> dict[str, Decimal]:
             """class -> signed total over a window: the shape the month-bucketed
@@ -433,27 +431,12 @@ class ReportService:
         this = figures(_buckets(start_date, end_date), held)
         expenses_prev = flows(_buckets(prev_start, prev_end)).spending
 
-        # Burn rate is how fast money is consumed, so savings and debt principal
-        # are out. This claimed to match the Burn Rate chart "exactly" and did
-        # not: the chart also filters `amount < 0`, so a refund posted to a
-        # spending category lowered the card and not the chart.
-        #
-        # The chart's other extra clause, CASH_FLOW_ROW, is implied here rather
-        # than missing: a row is outside cash flow only when it is a transfer
-        # leg, uncategorized, and pointed at another on-budget account, and
-        # ACTIVITY_CLASS never calls that SPENDING. Asserted in
-        # test_dashboard_matches_charts.py rather than assumed.
-        def _burn(start: date, end: date) -> Decimal:
-            window = cdf.filter(
-                (pl.col("date") >= start)
-                & (pl.col("date") <= end)
-                & pl.col("cls").is_in(list(counted_classes()))
-                & (pl.col("amount") < 0)
-            )
-            return -Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
-
-        burn_30 = _burn(thirty_ago, today)
-        burn_90 = _burn(ninety_ago, today) / 3
+        # The burn and what it is compared with: the Burn Rate chart's newest
+        # point, through the same service path and the same domain rule
+        # (`domain.burn_rate`), so the card and the chart agree by construction
+        # rather than by a comment claiming they do: one such comment already
+        # sat over a card and a chart that disagreed about refunds.
+        (now_burn,) = await self._burns(budget_id, [today])
 
         # What a lean month costs — the Guide's figure, from the Guide's window,
         # so this card and the roadmap's emergency-fund target never disagree.
@@ -469,9 +452,9 @@ class ReportService:
         # neither is money that can be spent next week. Same figure, one
         # home — do not respell the account set here.
         cash_on_hand = await self.accounts.sum_on_budget_balance(budget_id, today)
-        daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
+        daily_burn = now_burn.per_day
         days_until_zero: float | None = (
-            float(cash_on_hand) / daily_burn if daily_burn > 0 and cash_on_hand > 0 else None
+            float(cash_on_hand / daily_burn) if daily_burn > 0 and cash_on_hand > 0 else None
         )
 
         # Top Spending is the Breakdown's first three rows, not a second query
@@ -489,8 +472,8 @@ class ReportService:
         return {
             "net_worth": net_worth,
             "net_worth_prev": net_worth_prev,
-            "burn_rate_30": burn_30,
-            "burn_rate_90": burn_90,
+            "burn_rate_30": now_burn.recent,
+            "burn_rate_prior_60": now_burn.prior,
             "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
             "savings_rate": this.savings_rate,
@@ -701,61 +684,65 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        today: date | None = None,
     ) -> list[dict]:
-        today = date.today()
+        """Per month: the trailing thirty days ending on the month's last day
+        (today, for this month) and the sixty days before them, per thirty
+        days — `domain.burn_rate`, the rule the Overview's card reads.
+
+        Clamped to today: the newest point is a genuine trailing thirty days,
+        the Overview's "30-Day Burn Rate", not month-to-date under its label.
+        A rolling window deliberately does not tile the calendar — over a
+        31-day month one day falls in no window, over a 28-day month one
+        falls in two. That is what "rolling" means, and `rolling_30` says so;
+        a per-calendar-month figure is what Spending Trends is for.
+        """
+        today = today or date.today()
         grid = report_months(today, months)
-        # Back far enough for the oldest point's ninety days, and no further.
-        start = trailing_start(clamped_month_end(grid[0], today), 90)
+        burns = await self._burns(budget_id, [clamped_month_end(m, today) for m in grid])
+        return [
+            {"date": month_start, "rolling_30": b.recent, "prior_60": b.prior}
+            for month_start, b in zip(grid, burns, strict=True)
+        ]
 
-        q = select(Transaction.date, Transaction.amount).where(
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.amount < 0,
-            Transaction.date >= start,
-            Transaction.date <= today,
-            # LEAF, not PARENT_ROW. The two sum to the same figure, but only
-            # leaves carry categories and therefore classes: a split parent has
-            # none, so it classified as plain spending and dragged any
-            # savings-tagged leg in with it — burn rate reported $300 for a
-            # split whose real spending was $100.
-            LEAF,
-            CASH_FLOW_ROW,
-            ON_BUDGET_ACCOUNT,
-            # A burn rate is how fast money is consumed. Money moved into
-            # savings has not been burned.
-            counted_class_filter(),
-        )
-        q = apply_class_joins(q)
-        txns = (await self.session.execute(q)).all()
+    async def _burns(self, budget_id: uuid.UUID, as_ofs: Sequence[date]) -> list[Burn]:
+        """The burn as of each date, from one read of every day any of them
+        looks back over — the one path the Overview's card and the Burn Rate
+        chart share.
 
-        results = []
-        for month_start in grid:
-            # Clamped: the newest point is a genuine trailing thirty days, the
-            # Overview's "30-Day Burn Rate", not month-to-date under its label.
-            month_end = clamped_month_end(month_start, today)
+        CLASS_TOTAL_ROW, the rows Spent This Period and Essentials sum, with
+        no sign filter: a refund to a spending category is a positive SPENDING
+        row and lowers the burn, as it lowers them. The chart used to add
+        `amount < 0` and CASH_FLOW_ROW. The first ignored refunds; the second
+        is implied by the class — a row is outside cash flow only when it is
+        an uncategorized transfer leg pointed at another on-budget account,
+        and ACTIVITY_CLASS never calls that SPENDING (asserted in
+        test_dashboard_matches_charts.py, not assumed).
 
-            # Thirty days INCLUSIVE of month_end (`trailing_start`). A rolling
-            # window deliberately does not tile the calendar: over a 31-day
-            # month one day falls in no window, and
-            # over a 28-day month one falls in two. That is what "rolling"
-            # means, and `rolling_30` says so — a per-calendar-month figure is
-            # what Spending Trends is for.
-            d30 = trailing_start(month_end, 30)
-            d90 = trailing_start(month_end, 90)
-
-            r30 = sum(abs(float(r.amount)) for r in txns if d30 <= r.date <= month_end)
-            r90 = sum(abs(float(r.amount)) for r in txns if d90 <= r.date <= month_end) / 3
-
-            results.append(
-                {
-                    "date": month_start,
-                    "rolling_30": Decimal(str(round(r30, 4))),
-                    "rolling_90": Decimal(str(round(r90, 4))),
-                }
+        LEAF (inside CLASS_TOTAL_ROW), not PARENT_ROW: only leaves carry a
+        category and so a class. A split parent classified as plain spending
+        and dragged a savings-tagged leg in with it — burn read $300 for a
+        split whose real spending was $100.
+        """
+        start = burn_windows(min(as_ofs)).prior_start
+        end = max(as_ofs)
+        q = (
+            select(
+                Transaction.date,
+                ACTIVITY_CLASS.label("cls"),
+                func.sum(Transaction.amount).label("amount"),
             )
-
-        return results
+            .where(
+                Transaction.budget_id == budget_id,
+                CLASS_TOTAL_ROW,
+                Transaction.date >= start,
+                Transaction.date <= end,
+            )
+            .group_by(Transaction.date, ACTIVITY_CLASS)
+        )
+        rows = (await self.session.execute(apply_class_joins(q))).all()
+        days = [DayClassTotal(r.date, r.cls, Decimal(r.amount)) for r in rows]
+        return [burn(days, as_of) for as_of in as_ofs]
 
     # ─── Cash Flow Sankey ─────────────────────────────────────────────────────
 

@@ -31,8 +31,9 @@ class ToolContext:
     """The budget, the clock, and the services a handler may delegate to."""
 
     budget_id: uuid.UUID
-    #: The browser's date. Report methods use the server clock internally, but
-    #: anything this layer resolves itself ("last month") must use the user's.
+    #: The browser's date. Most report methods use the server clock internally
+    #: (pass this to one that takes `today`, as `burn_rate` does), but anything
+    #: this layer resolves itself ("last month") must use the user's.
     today: date
     session: "AsyncSession"
     reports: "ReportService"
