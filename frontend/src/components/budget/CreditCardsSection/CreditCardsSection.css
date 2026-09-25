@@ -473,7 +473,7 @@
   flex-shrink: 0;
 }
 
-/* A dot only where the card needs you this month. */
+/* A dot only where the card needs you; the header carries the most urgent. */
 .credit-cards__mark {
   width: 7px;
   height: 7px;
@@ -485,7 +485,8 @@
   background: var(--color-negative);
 }
 
-.credit-cards__mark--to-file {
+.credit-cards__mark--to-file,
+.credit-cards__mark--not-covered {
   background: var(--color-warning);
 }
 
@@ -503,7 +504,8 @@
   font-weight: var(--font-weight-medium);
 }
 
-.credit-cards__word--to-file {
+.credit-cards__word--to-file,
+.credit-cards__word--not-covered {
   color: var(--color-warning);
 }
 
@@ -568,6 +570,11 @@
   margin: 0;
   color: var(--text-primary);
   font-weight: var(--font-weight-medium);
+}
+
+/* The same warning the line's word carries (`notCoveredWarns`). */
+.credit-cards__stats dd.credit-cards__stat--not-covered {
+  color: var(--color-warning);
 }
 
 /* At most one per card, and only when something is off: a headline a

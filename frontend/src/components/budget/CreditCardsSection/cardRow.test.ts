@@ -11,6 +11,8 @@ import {
   pendingNote,
   cardLine,
   cardCallout,
+  sectionMark,
+  type LineMark,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
 import { cardStatus } from '../../../test-utils/cardFixture'
@@ -45,10 +47,23 @@ describe("what a card's line says", () => {
     expect(line({}, 1).word).toBe('1 to categorize')
   })
 
-  it('names what is not covered, without a mark', () => {
+  it('marks what is not covered as a warning', () => {
+    // It was calm grey. A funded charge refilling the hole a payment dug took
+    // a card from red "overspent" to grey "$100 not covered" — the problem
+    // had only moved, and the grey said it was settled. A payment past Set
+    // aside turns a card red, so not covered is the step before red.
     const got = line({ set_aside: 300, balance: -1200 })
-    expect(got).toMatchObject({ word: '$900.00 not covered', mark: null, tone: 'positive' })
+    expect(got).toMatchObject({
+      word: '$900.00 not covered',
+      mark: 'not-covered',
+      tone: 'positive',
+    })
     expect(got.covered).toBeCloseTo(0.25)
+  })
+
+  it('marks a card with nothing set aside that owes, not only a part-funded one', () => {
+    const got = line({ set_aside: 0, reserved: 0, balance: -100 })
+    expect(got).toMatchObject({ word: '$100.00 not covered', mark: 'not-covered', tone: 'zero' })
   })
 
   it('names the spare, and a card paid off', () => {
@@ -62,6 +77,46 @@ describe("what a card's line says", () => {
     const got = line({ set_aside: 100, balance: -100 })
     expect(got).toMatchObject({ word: 'covered', mark: null })
     expect(got.covered).toBe(1)
+  })
+})
+
+describe("the section header's dot", () => {
+  // Folded, the header is all there is: one dot, the most urgent any line
+  // carries, so there is a reason to open it.
+  const marks = (...ms: (LineMark | null)[]) => sectionMark(ms.map((mark) => ({ mark })))
+
+  it('draws nothing when no card has a dot', () => {
+    expect(marks(null, null)).toBeNull()
+    expect(marks()).toBeNull()
+  })
+
+  it('takes overspent over everything else', () => {
+    expect(marks('not-covered', 'to-file', 'overspent')?.mark).toBe('overspent')
+  })
+
+  it('takes rows to categorize over debt not covered', () => {
+    expect(marks('not-covered', null, 'to-file')?.mark).toBe('to-file')
+  })
+
+  it('warns about debt not covered when that is all there is', () => {
+    expect(marks(null, 'not-covered')?.mark).toBe('not-covered')
+  })
+
+  it('says in words what the colour says', () => {
+    expect(marks('overspent')?.label).toBe('A card is overspent')
+    expect(marks('to-file')?.label).toBe('A card has transactions to categorize')
+    expect(marks('not-covered')?.label).toBe('A card owes more than is set aside')
+  })
+
+  it('agrees with the lines it summarises', () => {
+    // Built from real lines, not hand-written marks: the header and the list
+    // read one computation.
+    const lines = [
+      cardLine(card({ set_aside: 100, balance: -100 }), 0, money),
+      cardLine(card({ set_aside: 300, balance: -1200 }), 0, money),
+    ]
+    expect(lines.map((l) => l.mark)).toEqual([null, 'not-covered'])
+    expect(sectionMark(lines)?.mark).toBe('not-covered')
   })
 })
 

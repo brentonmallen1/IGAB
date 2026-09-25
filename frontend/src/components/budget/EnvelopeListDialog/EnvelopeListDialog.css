@@ -1,19 +1,19 @@
 /* The overlay, panel and buttons come from common/Dialog and DialogForm.css;
    only the list is this dialog's own. */
-.last-month__lede {
+.envelope-list__lede {
   margin: 0 0 var(--spacing-md);
   font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--text-secondary);
 }
 
-.last-month__list {
+.envelope-list__list {
   margin: 0;
   display: flex;
   flex-direction: column;
 }
 
-.last-month__row {
+.envelope-list__row {
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-md);
@@ -22,16 +22,40 @@
   font-size: var(--font-size-sm);
 }
 
-.last-month__row dt {
+.envelope-list__row dt {
+  min-width: 0;
   color: var(--text-primary);
 }
 
-.last-month__row dd {
+.envelope-list__row dd {
   margin: 0;
+}
+
+.envelope-list--negative .envelope-list__row dd {
   color: var(--color-negative);
 }
 
-.last-month__row--total {
+.envelope-list--warning .envelope-list__row dd {
+  color: var(--color-warning);
+}
+
+.envelope-list__row--total {
   border-bottom: none;
   font-weight: 600;
+}
+
+.envelope-list__open {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.envelope-list__open:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 1px;
 }
