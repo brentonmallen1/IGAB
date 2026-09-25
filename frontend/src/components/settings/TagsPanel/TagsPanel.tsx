@@ -209,12 +209,9 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                     </button>
                     {tag.system_key ? (
                       <Tooltip content="System tag — changes how money is counted (see the ⓘ beside the section title). Colour can be changed; the name cannot.">
-                        <span
-                          className="tags-panel__system-icon"
-                          role="img"
-                          aria-label="System tag"
-                        >
-                          <Lock size={14} />
+                        <span className="tags-panel__system">
+                          <Lock size={12} aria-hidden />
+                          System
                         </span>
                       </Tooltip>
                     ) : (

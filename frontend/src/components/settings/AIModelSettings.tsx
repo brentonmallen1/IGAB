@@ -6,6 +6,7 @@ import { useSettings, useUpdateSetting } from '../../api/settings'
 import { ModelSelect } from './ModelSelect'
 import { formatTokens, type Capability } from './modelChoice'
 import './AISettings.css'
+import { SettingsToggle } from './SettingsToggle/SettingsToggle'
 
 /**
  * Which model does which job.
@@ -172,21 +173,12 @@ function OverrideRow({
   const selectId = `${settingKey}-select`
   return (
     <>
-      <div className="settings-row">
-        <div>
-          <div className="settings-row__label">{label}</div>
-          <div className="settings-row__desc">{desc}</div>
-        </div>
-        <label className="ai-settings__toggle">
-          <input
-            type="checkbox"
-            checked={on}
-            onChange={(e) => void toggle(e.target.checked)}
-            aria-label={label}
-          />
-          <span />
-        </label>
-      </div>
+      <SettingsToggle
+        label={label}
+        desc={desc}
+        checked={on}
+        onChange={(enabled) => void toggle(enabled)}
+      />
       {on && (
         <div className="settings-row ai-settings__override-pick">
           <label className="settings-row__label" htmlFor={selectId}>

@@ -8,6 +8,14 @@
   display: flex;
   flex-direction: column;
   background-color: var(--surface-canvas);
+  /* The page scrolls itself. On a phone the shell hands scrolling to its
+     container (SettingsShell.css: the columns stop scrolling on their own),
+     which inside the budget is MainLayout's main — but System sits outside
+     MainLayout, so a long section ran past this box and the body clipped
+     it: Server Backups could not be scrolled at all. On a desktop the
+     shell's columns scroll and this never has anything to do. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .system-page .settings-page {

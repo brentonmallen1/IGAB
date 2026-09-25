@@ -38,6 +38,7 @@ import {
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
 import { ViewportPanel } from '../../components/settings/ViewportPanel/ViewportPanel'
+import { SettingsToggle } from '../../components/settings/SettingsToggle/SettingsToggle'
 import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/ImportReviewButton'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
@@ -407,19 +408,12 @@ export function SettingsPage() {
 
           <div className="settings-subsection">
             <div className="settings-subsection__title">Opening</div>
-            <div className="settings-row">
-              <div>
-                <div className="settings-row__label">Auto-open last budget</div>
-                <div className="settings-row__desc">
-                  Skip the budget selector when opening the app
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={autoOpenLastBudget}
-                onChange={(e) => setAutoOpenLastBudget(e.target.checked)}
-              />
-            </div>
+            <SettingsToggle
+              label="Auto-open last budget"
+              desc="Skip the budget selector when opening the app"
+              checked={autoOpenLastBudget}
+              onChange={setAutoOpenLastBudget}
+            />
           </div>
         </>
       ),
@@ -430,56 +424,33 @@ export function SettingsPage() {
           guide: {
             body: (
               <>
-                <div className="settings-row">
-                  <div>
-                    <div className="settings-row__label">Personalise the roadmap</div>
-                    <div className="settings-row__desc">
-                      Use your budget to show where you are on the roadmap. Every figure it works
-                      out is explained, and you can correct or switch off any of them. Turn this off
-                      and the roadmap becomes plain reading — nothing is calculated at all.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={guidePrefs.personalization}
-                    disabled={setGuidePrefs.isPending}
-                    onChange={(e) => setGuidePrefs.mutate({ personalization: e.target.checked })}
-                  />
-                </div>
+                <SettingsToggle
+                  label="Personalise the roadmap"
+                  desc="Use your budget to show where you are on the roadmap. Every figure it works out is explained, and you can correct or switch off any of them. Turn this off and the roadmap becomes plain reading — nothing is calculated at all."
+                  checked={guidePrefs.personalization}
+                  disabled={setGuidePrefs.isPending}
+                  onChange={(on) => setGuidePrefs.mutate({ personalization: on })}
+                />
 
-                <div className="settings-row">
-                  <div>
-                    <div className="settings-row__label">Financial health reviews</div>
-                    <div className="settings-row__desc">
-                      {guidePrefs.personalization
-                        ? 'Show a quiet marker on any roadmap step worth a look, and offer a health report you can run when you want it. IGAB never sends you a notification about your money.'
-                        : 'Unavailable while the roadmap is not personalised — health reviews are built from the same figures.'}
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={guidePrefs.checkup}
-                    disabled={!guidePrefs.personalization || setGuidePrefs.isPending}
-                    onChange={(e) => setGuidePrefs.mutate({ checkup: e.target.checked })}
-                  />
-                </div>
+                <SettingsToggle
+                  label="Financial health reviews"
+                  desc={
+                    guidePrefs.personalization
+                      ? 'Show a quiet marker on any roadmap step worth a look, and offer a health report you can run when you want it. IGAB never sends you a notification about your money.'
+                      : 'Unavailable while the roadmap is not personalised — health reviews are built from the same figures.'
+                  }
+                  checked={guidePrefs.checkup}
+                  disabled={!guidePrefs.personalization || setGuidePrefs.isPending}
+                  onChange={(on) => setGuidePrefs.mutate({ checkup: on })}
+                />
 
-                <div className="settings-row">
-                  <div>
-                    <div className="settings-row__label">Wishlist</div>
-                    <div className="settings-row__desc">
-                      Keep a wishlist — a Wishlist group in your budget and its own Wishlist page.
-                      Turning it off archives those envelopes and returns anything saved in them to
-                      Ready to Assign; it asks first, and says how much.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={guidePrefs.wishlist}
-                    disabled={setGuidePrefs.isPending}
-                    onChange={(e) => void handleWishlistToggle(e.target.checked)}
-                  />
-                </div>
+                <SettingsToggle
+                  label="Wishlist"
+                  desc="Keep a wishlist — a Wishlist group in your budget and its own Wishlist page. Turning it off archives those envelopes and returns anything saved in them to Ready to Assign; it asks first, and says how much."
+                  checked={guidePrefs.wishlist}
+                  disabled={setGuidePrefs.isPending}
+                  onChange={(on) => void handleWishlistToggle(on)}
+                />
               </>
             ),
           },
@@ -595,20 +566,12 @@ export function SettingsPage() {
     mobile: {
       body: (
         <>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row__label">Suggest payees near me</div>
-              <div className="settings-row__desc">
-                Uses your location only while adding a transaction; coordinates are stored with the
-                transaction on your server. Applies to this device and requires HTTPS.
-              </div>
-            </div>
-            <input
-              type="checkbox"
-              checked={locationEnabled}
-              onChange={(e) => setLocationEnabled(e.target.checked)}
-            />
-          </div>
+          <SettingsToggle
+            label="Suggest payees near me"
+            desc="Uses your location only while adding a transaction; coordinates are stored with the transaction on your server. Applies to this device and requires HTTPS."
+            checked={locationEnabled}
+            onChange={setLocationEnabled}
+          />
           <ViewportPanel />
         </>
       ),

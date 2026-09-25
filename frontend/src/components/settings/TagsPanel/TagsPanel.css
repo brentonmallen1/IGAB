@@ -1,16 +1,22 @@
 .tags-panel__list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
 }
 
+/* A ruled list, not a stack of cards. Each row painted --bg-secondary, which
+   is the section card's own colour in every theme — so the "cards" were
+   invisible and each tag floated alone in a gap, unrelated to its buttons. */
 .tags-panel__item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background: var(--bg-secondary);
-  border-radius: var(--border-radius-sm);
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--edge);
+}
+
+.tags-panel__item:last-child {
+  border-bottom: none;
 }
 
 .tags-panel__item--editing {
@@ -37,7 +43,7 @@
   padding: var(--spacing-xs) 0;
   background: none;
   border: 0;
-  color: var(--text-secondary);
+  color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
@@ -60,15 +66,19 @@
 
 .tags-panel__actions {
   display: flex;
+  align-items: center;
   gap: var(--spacing-xs);
+  margin-left: auto;
 }
 
+/* A bordered button, so it reads as one. It was a --bg-tertiary fill a
+   shade off the card, with secondary text: grey on grey. */
 .tags-panel__btn {
   padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--bg-tertiary);
-  border: none;
+  background: transparent;
+  border: 1px solid var(--edge-strong);
   border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: var(--font-size-xs);
   cursor: pointer;
   transition:
@@ -83,6 +93,7 @@
 
 .tags-panel__btn--primary {
   background: var(--color-accent);
+  border-color: var(--color-accent);
   color: var(--text-inverse);
 }
 
@@ -91,14 +102,29 @@
 }
 
 .tags-panel__btn--danger {
+  border-color: var(--color-negative);
   color: var(--color-negative);
+}
+
+@media (max-width: 768px) {
+  .tags-panel__btn {
+    min-height: var(--tap-min);
+    padding: var(--spacing-xs) var(--spacing-md);
+  }
 }
 
 .tags-panel__btn--danger:hover {
   background: color-mix(in srgb, var(--color-negative) 15%, transparent);
 }
 
-.tags-panel__system-icon {
+/* Where a user tag has Delete, a system tag says why it has none — in
+   words: a lone lock icon explained itself only on hover, which a phone
+   never has. */
+.tags-panel__system {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   flex-shrink: 0;
 }

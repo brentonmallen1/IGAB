@@ -47,11 +47,11 @@ function makeSettings(visionModel: string, chatModel = '') {
 }
 
 function visionToggle() {
-  return screen.getByRole('checkbox', { name: /different model for receipts/ }) as HTMLInputElement
+  return screen.getByRole('switch', { name: /different model for receipts/ }) as HTMLInputElement
 }
 
 function assistantToggle() {
-  return screen.getByRole('checkbox', {
+  return screen.getByRole('switch', {
     name: /different model for the assistant/,
   }) as HTMLInputElement
 }

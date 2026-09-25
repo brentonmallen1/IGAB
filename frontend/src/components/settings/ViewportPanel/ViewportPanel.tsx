@@ -6,6 +6,7 @@ import {
   useViewportDiagnostics,
 } from '../../../hooks/useViewportDiagnostics'
 import './ViewportPanel.css'
+import { SettingsToggle } from '../SettingsToggle/SettingsToggle'
 
 /**
  * The raw viewport numbers and what they say, for reading off a phone.
@@ -90,21 +91,12 @@ export function ViewportPanel() {
         ))}
       </dl>
 
-      <div className="settings-row">
-        <div>
-          <div className="settings-row__label">Show ruler</div>
-          <div className="settings-row__desc">
-            Draws labelled lines at every edge the layout is computed from, on every page, until
-            switched off.
-          </div>
-        </div>
-        <input
-          type="checkbox"
-          checked={rulerOn}
-          onChange={(e) => setViewportRuler(e.target.checked)}
-          aria-label="Show viewport ruler"
-        />
-      </div>
+      <SettingsToggle
+        label="Show ruler"
+        desc="Draws labelled lines at every edge the layout is computed from, on every page, until switched off."
+        checked={rulerOn}
+        onChange={setViewportRuler}
+      />
 
       <div className="settings-row">
         <div>
