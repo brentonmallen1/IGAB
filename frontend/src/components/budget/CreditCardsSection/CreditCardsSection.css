@@ -165,12 +165,17 @@
 
 .credit-cards__assign-btn {
   background: none;
-  border: 1px solid transparent;
+  /* A field, so it reads as one: a hairline at rest, stronger on hover. It
+     sat borderless in a table cell once, where the column said "editable". */
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   color: inherit;
   font: inherit;
   padding: 2px var(--spacing-xs);
-  width: 100%;
+  /* The same width as the input it turns into, so editing never reflows the
+     row. It was 100% of a table cell; in this flex row that took a line of
+     its own and put the figure at the far edge, away from its label. */
+  width: 8em;
   text-align: right;
   cursor: pointer;
 }
@@ -185,7 +190,7 @@
 }
 
 .credit-cards__assign {
-  width: 100%;
+  width: 8em;
   text-align: right;
   font: inherit;
   color: var(--text-primary);
@@ -668,11 +673,6 @@
   .credit-cards__hint,
   .credit-cards__movement {
     white-space: normal;
-  }
-
-  .credit-cards__assign-btn {
-    text-align: left;
-    padding-left: 0;
   }
 
   /* A phone gives the line a tap target and a narrower bar; the name and
