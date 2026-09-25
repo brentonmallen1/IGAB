@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { CalendarRange, ChevronDown, History, Wand2, X } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories } from '../../../api/categories'
@@ -12,7 +12,6 @@ import { AssignDropdown, AssignDropdownContent } from '../AssignDropdown/AssignD
 import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
 import { overspending, overspentLastMonth } from '../budgetTotals'
 import { CoverOverspentModal } from './CoverOverspentModal'
-import { OnCardsModal } from './OnCardsModal'
 import { TbaDrawer } from './TbaDrawer'
 import type { AssignStrategy } from '../../../types'
 import './TbaHero.css'
@@ -46,13 +45,14 @@ export function TbaHero({ budgetId, month }: Props) {
   const setShowCover = useUIStore((s) => s.setCoverOverspentOpen)
   const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const assignRef = useRef<HTMLDivElement>(null)
-  const [showOnCards, setShowOnCards] = useState(false)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
   // One implementation of "how much is overspent" (budgetTotals), shared with
   // the Assign dropdown's Cover row: the two answered it differently until
-  // 2026-09-05 and drifted apart exactly as two copies do.
-  const { total: overspent, onCards: overspentOnCards } = overspending(budgetMonth)
+  // 2026-09-05 and drifted apart exactly as two copies do. The part that rode
+  // onto a card is not the header's to say: it is card debt, and it shows
+  // where it is acted on — the cards band and each card's detail.
+  const { total: overspent } = overspending(budgetMonth)
   const assignedInFuture = Number(budgetMonth?.assigned_in_future ?? 0)
   const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
 
@@ -94,17 +94,17 @@ export function TbaHero({ budgetId, month }: Props) {
         <div className="tba-hero__info">
           <span className="tba-hero__label">Ready to Assign</span>
           <span className={`tba-hero__amount ${tbaClass}`}>{formatMoney(tba)}</span>
-          {assignedInFuture !== 0 && (
-            <span className="tba-hero__future" title="Already deducted from Ready to Assign">
-              {formatMoney(assignedInFuture)} assigned in future months
-            </span>
-          )}
           {lastMonth && (
             <span className="tba-hero__last-month">
               <span className="tba-hero__last-month-amount">{formatMoney(-lastMonth.total)}</span>{' '}
               overspent in {formatMonth(addMonths(month, -1))}:{' '}
               {lastMonth.sources.map((s) => `${s.name} ${formatMoney(s.amount)}`).join(', ')}
               {lastMonth.more > 0 && ` and ${lastMonth.more} more`}
+            </span>
+          )}
+          {assignedInFuture !== 0 && (
+            <span className="tba-hero__future" title="Already deducted from Ready to Assign">
+              {formatMoney(assignedInFuture)} assigned in future months
             </span>
           )}
         </div>
@@ -139,42 +139,10 @@ export function TbaHero({ budgetId, month }: Props) {
             <button
               className="tba-hero__overspent-chip"
               onClick={() => setShowCover(true)}
-              title={
-                overspentOnCards > 0
-                  ? `${formatMoney(-overspent)} overspent, of which ${formatMoney(overspentOnCards)} ` +
-                    `was swiped on a card. Covering funds all of it: the card part retires that ` +
-                    `card's debt instead of leaving spendable money in the envelope.`
-                  : 'Cover overspending'
-              }
+              title="Cover overspending"
             >
               {formatMoney(-overspent)}
               <span className="tba-hero__chip-word">overspent</span>
-            </button>
-          )}
-
-          {/* A PART of the chip beside it, not a second total — "of which",
-              which is why it reads as an annotation and not an alarm. It says
-              which portion of the red is card debt, because covering that
-              portion spends the money differently: into the card's set-aside
-              to retire the debt, rather than into the envelope to spend.
-
-              It opens the breakdown: which envelopes rode onto which card is
-              a real question once a card carries debt, and until this opened,
-              nothing on the page could answer it. */}
-          {overspentOnCards > 0 && (
-            <button
-              className="tba-hero__on-cards"
-              onClick={() => setShowOnCards(true)}
-              aria-haspopup="dialog"
-              title={
-                `${formatMoney(overspentOnCards)} of the overspending beside this was swiped on ` +
-                `a card, so it is riding there as debt. Covering it assigns the money into that ` +
-                `card's set-aside and retires the debt. Open to see which envelopes rode onto ` +
-                `which card.`
-              }
-            >
-              {formatMoney(-overspentOnCards)}
-              <span className="tba-hero__chip-word">of it on cards</span>
             </button>
           )}
 
@@ -273,9 +241,6 @@ export function TbaHero({ budgetId, month }: Props) {
           month={month}
           onClose={() => setShowCover(false)}
         />
-      )}
-      {showOnCards && (
-        <OnCardsModal budgetId={budgetId} month={month} onClose={() => setShowOnCards(false)} />
       )}
     </div>
   )

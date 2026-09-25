@@ -65,7 +65,8 @@ export interface Overspending {
   /** The figure every call to action shows. Matches the grid's red. */
   total: number
   /** The part of `total` that rode onto a card. A subset, never a second
-   *  number beside it — the chip that names it reads "of it on cards". */
+   *  number beside it — so the header does not show it at all; the cards
+   *  band says it, as card debt, where assigning to the card retires it. */
   onCards: number
 }
 

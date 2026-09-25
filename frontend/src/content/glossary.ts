@@ -582,7 +582,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Overspending a category on a credit card — it becomes card debt, not a budget charge.',
     body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as uncovered debt instead of coming out of Ready to Assign. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from Ready to Assign.',
     inIgab:
-      "A red category funded by card swipes turns into the card's Uncovered at month end. Cover Overspending funds it like any other red — the money lands in the card's set-aside and retires that debt rather than staying in the envelope to spend. The hero's \u201cof it on cards\u201d chip opens the breakdown of which envelope rode onto which card.",
+      "A red category funded by card swipes turns into the card's Uncovered at month end. Cover Overspending funds it like any other red — the money lands in the card's set-aside and retires that debt rather than staying in the envelope to spend. The Credit cards band says how much rode on this month; opening a card lists which envelopes rode onto it.",
     related: ['uncovered', 'set-aside', 'to-be-assigned'],
   },
   {

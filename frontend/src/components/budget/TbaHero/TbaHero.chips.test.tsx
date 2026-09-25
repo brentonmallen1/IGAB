@@ -1,8 +1,8 @@
 /**
- * The two overspending chips read as "$120.00 overspent", not
- * "$120.00overspent" — and say the right two numbers.
+ * The overspending chip reads as "$120.00 overspent", not
+ * "$120.00overspent" — and says the whole red, cards included.
  *
- * Both chips are `display: inline-flex`, so the amount and the word are
+ * The chip is `display: inline-flex`, so the amount and the word are
  * separate flex items — and leading whitespace inside a flex item is
  * stripped. The separator was written as a literal space in the JSX, where it
  * had no effect; it now lives once, as `gap`, in TbaHero.css.
@@ -11,7 +11,7 @@
  * not lay out `gap`, and a space reappearing in the JSX is exactly the
  * regression this pins. The CSS is where the space is allowed to come from.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { BudgetMonth } from '../../../types'
 
@@ -38,13 +38,6 @@ vi.mock('../AssignPreviewModal/AssignPreviewModal', () => ({
   AssignPreviewModal: () => null,
 }))
 vi.mock('./CoverOverspentModal', () => ({ CoverOverspentModal: () => null }))
-vi.mock('./OnCardsModal', () => ({
-  OnCardsModal: ({ onClose }: { onClose: () => void }) => (
-    <div role="dialog" aria-label="Overspending on cards">
-      <button onClick={onClose}>Close</button>
-    </div>
-  ),
-}))
 vi.mock('./TbaDrawer', () => ({ TbaDrawer: () => null }))
 
 import { TbaHero } from './TbaHero'
@@ -63,33 +56,24 @@ beforeEach(() => {
   } as unknown as BudgetMonth
 })
 
-describe('TbaHero overspending chips', () => {
+describe('TbaHero overspending chip', () => {
   it('puts no separator in the markup — the space is the flex gap', () => {
     render(<TbaHero budgetId="b1" month="2026-08-01" />)
 
-    for (const word of ['overspent', 'of it on cards']) {
-      const span = screen.getByText(word)
-      expect(span.textContent).toBe(word)
-      expect(span.className).toContain('tba-hero__chip-word')
-    }
+    const span = screen.getByText('overspent')
+    expect(span.textContent).toBe('overspent')
+    expect(span.className).toContain('tba-hero__chip-word')
+    expect(span.parentElement?.textContent).toBe('-$120.00overspent')
   })
 
-  it('still renders both amounts beside their words', () => {
+  it('leaves the card part to the cards', () => {
+    // A second "of it on cards" chip and its dialog sat here, beside a
+    // figure it was a part of. That part is card debt, not money out of
+    // Ready to Assign, so it moved to the cards band and each card's detail,
+    // where assigning to the card is one tap away. One chip covers it all.
     render(<TbaHero budgetId="b1" month="2026-08-01" />)
-
-    expect(screen.getByText('overspent').parentElement?.textContent).toBe('-$120.00overspent')
-    expect(screen.getByText('of it on cards').parentElement?.textContent).toBe(
-      '-$45.00of it on cards'
-    )
-  })
-
-  it('opens the card breakdown from the on-cards chip', async () => {
-    // The chip used to be a dead span. It is the only way into the figure
-    // Cover Overspending deliberately will not touch.
-    render(<TbaHero budgetId="b1" month="2026-08-01" />)
-
-    fireEvent.click(screen.getByText('of it on cards').closest('button')!)
-    expect(screen.getByRole('dialog', { name: 'Overspending on cards' })).toBeInTheDocument()
+    expect(screen.queryByText(/on cards/)).toBeNull()
+    expect(screen.getAllByRole('button', { name: /overspent/ })).toHaveLength(1)
   })
 
   it('counts the whole red, not the cash part', () => {
@@ -105,8 +89,6 @@ describe('TbaHero overspending chips', () => {
     render(<TbaHero budgetId="b1" month="2026-08-01" />)
 
     expect(screen.queryByText('overspent')).toBeNull()
-    expect(screen.queryByText('of it on cards')).toBeNull()
-    expect(screen.queryByText('paid ahead on cards')).toBeNull()
   })
 })
 

@@ -154,41 +154,6 @@
   background-color: color-mix(in srgb, var(--color-negative) 20%, transparent);
 }
 
-/* Overspending that rode onto a card. Deliberately NOT the negative colour and
-   deliberately not a button: it costs nothing and there is no action attached.
-   Same reading as `.credit-cards__uncovered`, which is the same money seen from
-   the card's side — if one of these ever starts shouting, so should the other. */
-.tba-hero__on-cards {
-  display: inline-flex;
-  align-items: center;
-  /* The separator between the amount and the word. These chips are flex
-     containers, so the amount and the word are separate flex items and a
-     literal space in the JSX is stripped — it rendered "$120.00overspent".
-     `em` so it tracks .tba-hero__chip-word shrinking at the mobile
-     breakpoint. One home for the spacing, and it is this one. */
-  gap: 0.25em;
-  padding: 4px 10px;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-  background-color: var(--surface-sunken);
-  border: none;
-  border-radius: 999px;
-  white-space: nowrap;
-  /* It opens the breakdown now. Still the calm chip — a pointer and a quiet
-     hover, not the accent fill the overspent chip uses for its action. */
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    background-color var(--transition-fast);
-}
-
-.tba-hero__on-cards:hover {
-  color: var(--text-primary);
-  background-color: var(--row-hover-bg);
-}
-
 /* History button — opens the month's move log in a modal */
 .tba-hero__history-btn {
   display: inline-flex;
@@ -385,7 +350,7 @@
   }
 
   /* Two rows, not one. As a single flex row the actions group (Assign,
-     overspent, of-it-on-cards, history) refused to shrink and the figure —
+     overspent, history) refused to shrink and the figure —
      `.tba-hero__info`, flex: 1 with min-width: 0 — was crushed to ~40pt: the
      label wrapped, the amount showed only its "$", and the Assign button
      painted over it. The figure is what this band exists to show, so it gets
@@ -435,7 +400,6 @@
 
   /* The chips are actions here: hold them to the tap floor. */
   .tba-hero__overspent-chip,
-  .tba-hero__on-cards,
   .tba-hero__history-btn {
     min-height: var(--tap-min);
   }

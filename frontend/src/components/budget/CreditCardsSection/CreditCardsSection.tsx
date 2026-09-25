@@ -41,6 +41,8 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
+import type { PeekScope } from '../TransactionsPeekModal/TransactionsPeekModal'
+import { overspending } from '../budgetTotals'
 import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
@@ -586,6 +588,7 @@ function CardDetail({
   legsOpen,
   onLegs,
   onPeek,
+  onPeekCategory,
   onTarget,
   formatMoney,
   formatMonth,
@@ -608,6 +611,7 @@ function CardDetail({
   legsOpen: boolean
   onLegs: () => void
   onPeek: () => void
+  onPeekCategory: (categoryId: string, categoryName: string) => void
   onTarget: () => void
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
@@ -635,6 +639,38 @@ function CardDetail({
         {state?.action && <strong className="credit-cards__status-action"> {state.action}</strong>}
       </p>
       {drift && <p className="credit-cards__status credit-cards__status--note">{drift}</p>}
+      {/* What rode on this month, and from which envelopes. This lived in a
+        dialog behind a second header chip ("of it on cards"); it is card
+        debt, so it is said on the card, beside the assigned box that retires
+        it. The ride is a month's net, not a set of rows, so each envelope
+        opens its ordinary transactions rather than blaming particular ones. */}
+      {card.overspent_this_month > 0 && (
+        <p className="credit-cards__status credit-cards__status--note">
+          {formatMoney(card.overspent_this_month)} of this month&rsquo;s overspending rode onto this
+          card:{' '}
+          {card.overspent_by_category.map((rode, i) => (
+            <Fragment key={rode.category_id}>
+              {i > 0 && ', '}
+              <button
+                type="button"
+                className="credit-cards__inline-link"
+                onClick={() => onPeekCategory(rode.category_id, rode.category_name)}
+              >
+                {rode.category_name}
+              </button>{' '}
+              <span className="tabular">{formatMoney(rode.amount)}</span>
+            </Fragment>
+          ))}
+          .{' '}
+          {/* The remedy, keyed on whether it works HERE: a shortfall shared
+            across cards is handed out in a fixed order, so funding the
+            envelope may shrink another card's ride first (F8). The server
+            says which; this only reads it. */}
+          {card.ride_reaches_this_card
+            ? 'Cover Overspending retires it, or assign to this card below.'
+            : 'Some of it rode onto another card too, and covering these envelopes reaches that card first. Assigning to this card below is certain to retire it.'}
+        </p>
+      )}
       {toCategorize > 0 && (
         <p className="credit-cards__status credit-cards__status--to-file">
           {toCategorize === 1
@@ -744,7 +780,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const toggleCollapsed = useUIStore((s) => s.toggleCreditCardsCollapsed)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
+  const [peek, setPeek] = useState<PeekScope | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
   // Which card is open, by account — one at a time. Its detail is drawn in
@@ -768,6 +804,11 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
   const totalUncovered = cards.reduce((sum, c) => sum + c.uncovered, 0)
+  // This month's overspending that rode onto a card, read the way the
+  // overspent chip reads its total (served, not re-added from the rows). It
+  // sat in the header as an "of it on cards" chip with its own dialog; it is
+  // card debt, so the cards band says it and each card names its envelopes.
+  const rodeOn = overspending(budgetMonth).onCards
   // The payoff projection already exists on the Liability page — baseline
   // against the minimum payment versus the pace you are actually paying. The
   // strip never linked to it, so the one place that says "you are ahead" was
@@ -851,7 +892,8 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
           </button>
           <span className="credit-cards__summary">
             {cards.length === 1 ? '1 card' : `${cards.length} cards`}
-            {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} uncovered</>}
+            {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} not covered</>}
+            {rodeOn > 0 && <> · {formatMoney(rodeOn)} rode on this month</>}
           </span>
           {/* Last, so it is the rightmost thing in the band: when the strip
             is collapsed this header is all there is, and a bill you cannot
@@ -957,7 +999,16 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       onLegs={() =>
                         setLegsFor(legsFor === card.account_id ? null : card.account_id)
                       }
-                      onPeek={() => setPeek({ accountId: card.account_id, accountName: card.name })}
+                      onPeek={() =>
+                        setPeek({
+                          kind: 'account',
+                          accountId: card.account_id,
+                          accountName: card.name,
+                        })
+                      }
+                      onPeekCategory={(categoryId, categoryName) =>
+                        setPeek({ kind: 'category', categoryId, categoryName })
+                      }
                       onTarget={() =>
                         setTargetFor({ categoryId: card.category_id as string, name: card.name })
                       }
@@ -979,11 +1030,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
         />
       )}
       {peek && (
-        <TransactionsPeekModal
-          budgetId={budgetId}
-          scope={{ kind: 'account', accountId: peek.accountId, accountName: peek.accountName }}
-          onClose={() => setPeek(null)}
-        />
+        <TransactionsPeekModal budgetId={budgetId} scope={peek} onClose={() => setPeek(null)} />
       )}
     </Surface>
   )
