@@ -146,7 +146,7 @@ class TestEveryPathCarriesTheFlags:
                 c for c, _ in await repo.get_all_with_group_names(budget.id)
             ],
             "get_taggable_with_group_names": [
-                c for c, _ in await repo.get_taggable_with_group_names(budget.id)
+                c for c, _ in await repo.get_taggable_with_group_names(budget.id, None)
             ],
         }
         for path, rows in paths.items():

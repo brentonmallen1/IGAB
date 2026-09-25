@@ -1,29 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import type { MembershipCategory } from '../../api/tags'
+import { makeMembershipRow as row } from '../../test-utils/factories'
 import {
   chooseMode,
   draftMode,
+  drawsChecked,
   groupRows,
   initialDraft,
   isEmptyChange,
+  isImplied,
   membershipDiff,
   servedDefault,
   toggleChecked,
 } from './membershipList'
-
-function row(over: Partial<MembershipCategory>): MembershipCategory {
-  return {
-    id: 'c1',
-    name: 'Groceries',
-    group_id: 'g-everyday',
-    group_name: 'Everyday',
-    is_archived: false,
-    member: false,
-    savings_role: 'none',
-    savings_mode: null,
-    ...over,
-  }
-}
 
 const ROWS = [
   row({
@@ -104,6 +92,55 @@ describe('membershipDiff', () => {
     ]
     const draft = chooseMode(initialDraft(rows), 'x', null)
     expect(membershipDiff(rows, draft).savings_modes).toEqual({ x: null })
+  })
+})
+
+describe('a row counted through another tag', () => {
+  // The Cost of living checklist: Rent is tagged Essential, Water both,
+  // Gym only Cost of living. Served `implied_by` — the client cannot see a
+  // row's other tags, which is why this checklist drew Rent unticked.
+  const COL = [
+    row({ id: 'rent', name: 'Rent', implied_by: 'Essential' }),
+    row({ id: 'water', name: 'Water', member: true, implied_by: 'Essential' }),
+    row({ id: 'gym', name: 'Gym', member: true }),
+  ]
+
+  it('is drawn ticked whether or not it carries the tag', () => {
+    const draft = initialDraft(COL)
+    expect(COL.map((r) => [r.id, isImplied(r), drawsChecked(draft, r)])).toEqual([
+      ['rent', true, true],
+      ['water', true, true],
+      ['gym', false, true],
+    ])
+    expect(drawsChecked(toggleChecked(draft, 'gym'), COL[2])).toBe(false)
+  })
+
+  it('never enters the diff, however the draft was touched', () => {
+    let draft = initialDraft(COL)
+    draft = toggleChecked(draft, 'water') // would have been a remove
+    draft = toggleChecked(draft, 'rent') // would have been an add
+    draft = chooseMode(draft, 'rent', 'kept_here')
+    expect(isEmptyChange(membershipDiff(COL, draft))).toBe(true)
+
+    draft = toggleChecked(draft, 'gym')
+    expect(membershipDiff(COL, draft)).toEqual({ add: [], remove: ['gym'], savings_modes: {} })
+  })
+
+  it('never sends a mode for an Emergency fund row on the Savings checklist', () => {
+    const savings = [
+      row({ id: 'fund', savings_role: 'kept_here', implied_by: 'Emergency fund' }),
+      row({ id: 'general', member: true, savings_role: 'sent_out' }),
+    ]
+    const draft = chooseMode(
+      chooseMode(initialDraft(savings), 'fund', 'sent_out'),
+      'general',
+      'kept_here'
+    )
+    expect(membershipDiff(savings, draft)).toEqual({
+      add: [],
+      remove: [],
+      savings_modes: { general: 'kept_here' },
+    })
   })
 })
 

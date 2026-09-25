@@ -3,7 +3,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MembershipCategory, TagMembership } from '../../api/tags'
+import type { TagMembership } from '../../api/tags'
 
 const state = vi.hoisted(() => ({
   membership: null as TagMembership | null,
@@ -15,21 +15,8 @@ vi.mock('../../api/tags', () => ({
   useSetTagMembership: () => ({ mutateAsync: state.mutateAsync, isPending: false }),
 }))
 
+import { makeMembershipRow as row } from '../../test-utils/factories'
 import { TagMembershipDialog } from './TagMembershipDialog'
-
-function row(over: Partial<MembershipCategory>): MembershipCategory {
-  return {
-    id: 'c1',
-    name: 'Groceries',
-    group_id: 'g-everyday',
-    group_name: 'Everyday',
-    is_archived: false,
-    member: false,
-    savings_role: 'none',
-    savings_mode: null,
-    ...over,
-  }
-}
 
 function membership(savingsTag: boolean, name = 'Emergency fund'): TagMembership {
   return {
@@ -139,6 +126,46 @@ describe('TagMembershipDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(state.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('keeps the archived note beside a listed archived row', () => {
+    show()
+    const old = screen.getByRole('checkbox', { name: /Old Buffer/ })
+    expect(old).toHaveAccessibleName(/archived/)
+    expect(old).not.toBeDisabled()
+  })
+
+  it('Save never names a row counted through another tag', async () => {
+    state.membership = {
+      tag: { id: 't1', name: 'Cost of living', system_key: 'cost_of_living', savings_tag: false },
+      categories: [
+        row({ id: 'rent', name: 'Rent', group_name: 'Bills', implied_by: 'Essential' }),
+        row({
+          id: 'water',
+          name: 'Water',
+          group_name: 'Bills',
+          member: true,
+          implied_by: 'Essential',
+        }),
+        row({ id: 'gym', name: 'Gym', group_name: 'Bills', member: true }),
+      ],
+    }
+    const onClose = show()
+    const rent = screen.getByRole('checkbox', { name: /Rent.*counted through Essential/ })
+    expect(rent).toBeChecked()
+    expect(rent).toBeDisabled()
+    // A disabled box fires nothing; the diff skips it regardless.
+    fireEvent.click(rent)
+    fireEvent.click(screen.getByRole('checkbox', { name: /Gym/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(state.mutateAsync).toHaveBeenCalledTimes(1))
+    expect(state.mutateAsync.mock.calls[0][0]).toEqual({
+      add: [],
+      remove: ['gym'],
+      savings_modes: {},
+    })
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
   it('says why a refused save failed and stays open', async () => {

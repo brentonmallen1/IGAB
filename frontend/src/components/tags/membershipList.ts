@@ -59,6 +59,19 @@ export function groupRows(rows: readonly MembershipCategory[], filter = ''): Mem
   return groups
 }
 
+/** Counted through another tag that implies this one (served `implied_by`),
+ *  so it is not the household's to untick here: the checkbox is drawn ticked
+ *  and disabled, with no mode control, and no save names it. */
+export function isImplied(row: MembershipCategory): boolean {
+  return row.implied_by !== null
+}
+
+/** Whether a row's checkbox is drawn ticked: implied rows always are,
+ *  whatever the draft holds. */
+export function drawsChecked(draft: MembershipDraft, row: MembershipCategory): boolean {
+  return isImplied(row) || draft.checked.has(row.id)
+}
+
 /** The mode a checked row's control shows: what was touched, else the stored
  *  choice (null = the tags' default). */
 export function draftMode(draft: MembershipDraft, row: MembershipCategory): SavingsMode | null {
@@ -77,13 +90,16 @@ export function servedDefault(draft: MembershipDraft, row: MembershipCategory): 
 
 /** The change a Save sends: ids to add and remove against the loaded
  *  membership, and modes that differ from what is stored — for rows that are
- *  checked once saved (a removed row's mode is not this tag's to set). */
+ *  checked once saved (a removed row's mode is not this tag's to set). Never
+ *  an implied row: adding the tag would change nothing but its tag list, and
+ *  removing it could not take the row out — the server refuses both. */
 export function membershipDiff(
   rows: readonly MembershipCategory[],
   draft: MembershipDraft
 ): MembershipChange {
   const change: MembershipChange = { add: [], remove: [], savings_modes: {} }
   for (const row of rows) {
+    if (isImplied(row)) continue
     const checked = draft.checked.has(row.id)
     if (checked && !row.member) change.add.push(row.id)
     if (!checked && row.member) change.remove.push(row.id)

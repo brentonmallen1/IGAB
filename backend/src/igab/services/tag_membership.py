@@ -9,7 +9,15 @@ cannot tell which screen made the change.
 **The taggable set is the listing's.** Every id is checked against
 `CategoryRepository.get_taggable_with_group_names` — the rows the checklist is
 built from — so a request cannot tag a category the checklist would never have
-offered (an income category, another budget's, a deleted one).
+offered (an income category, another budget's, a deleted one, an archived one
+not already carrying the tag).
+
+**Implied rows are served, never written.** A category tagged Essential counts
+as Cost of living (`domain.tag_implication`), so the Cost of living checklist
+draws it ticked and locked — `implied_by` names the tag it is counted through.
+A save that names one is refused: adding the implied tag would change nothing
+but the tag list, and removing it cannot take the category out, because the
+implying tag still puts it in.
 
 **One save, one undo.** Memberships and savings modes land inside one
 `recorder.batch()`, so Cmd+Z puts back the whole checklist as it was, modes
@@ -29,7 +37,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Category, Tag, category_tags
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.tag_hints import DERIVED_KEYS
-from igab.repositories.category_filters import SAVINGS_ROLE, SAVINGS_ROLE_NONE, SavingsMode
+from igab.repositories.category_filters import (
+    SAVINGS_ROLE,
+    SAVINGS_ROLE_NONE,
+    SavingsMode,
+    carries_tag,
+    implying_tag_name,
+)
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
@@ -73,21 +87,29 @@ async def record_membership(
 class MembershipRow:
     category: Category
     group_name: str
+    #: Carries the tag itself — the half a person can untick.
     member: bool
+    #: The name of a tag on this category that implies this one ("Essential"
+    #: on the Cost of living checklist), else None.
+    implied_by: str | None
 
 
 async def membership(session: AsyncSession, budget_id: uuid.UUID, tag: Tag) -> list[MembershipRow]:
-    """Every taggable category, in Budget-page order, and whether it carries
-    `tag`. The categories carry `savings_role` (the taggable loader serves it)."""
-    rows = await CategoryRepository(session).get_taggable_with_group_names(budget_id)
-    members = set(
-        (
+    """Every category on `tag`'s checklist, in Budget-page order, whether it
+    carries `tag`, and the tag it is counted through, if any. The categories
+    carry `savings_role` (the taggable loader serves it)."""
+    rows = await CategoryRepository(session).get_taggable_with_group_names(budget_id, tag.id)
+    facts = {
+        category_id: (bool(member), implied)
+        for category_id, member, implied in (
             await session.execute(
-                select(category_tags.c.category_id).where(category_tags.c.tag_id == tag.id)
+                select(Category.id, carries_tag(tag.id), implying_tag_name(tag.system_key)).where(
+                    Category.id.in_([c.id for c, _ in rows])
+                )
             )
-        ).scalars()
-    )
-    return [MembershipRow(c, group_name, c.id in members) for c, group_name in rows]
+        ).all()
+    }
+    return [MembershipRow(c, group_name, *facts[c.id]) for c, group_name in rows]
 
 
 def refuse_derived(tag: Tag) -> None:
@@ -116,23 +138,29 @@ async def set_membership(
     (`SAVINGS_ROLE` serves 'none' for it) and the checklist would look saved.
 
     Raises `InvariantViolation` for a derived tag, a category outside the
-    taggable set, an id both added and removed, or a mode for a category that
-    is not a savings category. The writes sit in a savepoint that rolls back
-    on it: the mode check runs after the membership writes, because whether a
-    category is a savings category is `SAVINGS_ROLE`'s to say, not a second
-    spelling here.
+    checklist, an implied row added or removed, an id both added and removed,
+    or a mode for a category that is not a savings category. The writes sit in
+    a savepoint that rolls back on it: the mode check runs after the
+    membership writes, because whether a category is a savings category is
+    `SAVINGS_ROLE`'s to say, not a second spelling here.
     """
     refuse_derived(tag)
     both = add & remove
     if both:
         raise InvariantViolation("A category cannot be both added to and removed from a tag.")
-    taggable = {
-        c.id for c, _ in await CategoryRepository(session).get_taggable_with_group_names(budget_id)
-    }
+    listed = {r.category.id: r for r in await membership(session, budget_id, tag)}
     named = add | remove | set(savings_modes)
-    if named - taggable:
+    if named - listed.keys():
         raise InvariantViolation(
-            "Only this budget's own categories outside the income group can be tagged."
+            "Only this budget's own categories outside the income group, and not archived, "
+            "can be tagged."
+        )
+    implied = [listed[cid] for cid in sorted(add | remove) if listed[cid].implied_by is not None]
+    if implied:
+        r = implied[0]
+        raise InvariantViolation(
+            f"{r.category.name} is counted as {tag.name} through {r.implied_by}. "
+            f"Change its {r.implied_by} tag instead."
         )
 
     tags = TagRepository(session)

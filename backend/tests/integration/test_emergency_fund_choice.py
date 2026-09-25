@@ -21,6 +21,7 @@ from .factories import (
     create_category_group,
     create_transaction,
     money,
+    tag_with_system_tags,
 )
 
 D = Decimal
@@ -323,3 +324,29 @@ async def test_a_declared_amount_undoes_from_the_guide_sheet_too(db_session, api
     await _undo(api_client, budget)
     rows = await GuideRepository(db_session).bindings(budget.id)
     assert [b for b in rows if b.concept_key == "hsa"] == []
+
+
+async def test_an_archived_envelope_is_offered_only_while_it_is_in_the_fund(db_session, api_client):
+    """The picker's Envelopes are the Emergency fund tag's checklist, archived
+    rule included: an archived envelope outside the fund is not offered, and
+    one still in it stays listed until the picker takes it out — its Available
+    still counts toward the fund (`IN_EMERGENCY_FUND` keeps archived)."""
+    w = await _world(db_session, api_client)
+    budget = w["budget"]
+    later = await create_category_group(db_session, budget, "Later")
+    old = await create_category(db_session, budget, later, "Old Buffer")
+    kept = await create_category(db_session, budget, later, "Old Rainy Day")
+    await tag_with_system_tags(db_session, kept, "emergency_fund")
+    old.is_archived = True
+    kept.is_archived = True
+    await db_session.commit()
+
+    rows = await _membership(api_client, budget)
+    assert "Old Buffer" not in rows
+    assert rows["Old Rainy Day"]["member"] is True
+
+    r = await api_client.put(_url(budget), json=_body(add_categories=[str(old.id)]))
+    assert r.status_code == 422, r.text
+    r = await api_client.put(_url(budget), json=_body(remove_categories=[str(kept.id)]))
+    assert r.status_code == 200, r.text
+    assert "Old Rainy Day" not in await _membership(api_client, budget)

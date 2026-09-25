@@ -42,6 +42,7 @@ from igab.db.models import (
     Payee,
     Transaction,
 )
+from igab.domain.tag_implication import COST_OF_LIVING_KEY, ESSENTIAL_KEY, keys_counting_as
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
     IS_SAVINGS_CATEGORY,
@@ -963,8 +964,13 @@ class NecessityTier(StrEnum):
 #: (literal key lists here, and an `ESSENTIAL_TAGGED`/`COST_OF_LIVING_TAGGED`
 #: pair in txn_filters) with a docstring as the only thing keeping them in step.
 #:
-#: The wide tier's keys are the lean tier's plus its own, by construction, so
-#: Essentials ⊆ Cost of Living holds for the tag arms without a test saying so.
+#: Each tier reads its own tag and every tag that implies it
+#: (`domain.tag_implication.keys_counting_as`). Essential implies Cost of
+#: living there — the one place that is written — so the wide tier's keys
+#: include the lean tier's by construction, and Essentials ⊆ Cost of Living
+#: holds for the tag arms without a test saying so. The same relation is what
+#: ticks an Essential category on the Cost of living checklist and keeps the
+#: import review from offering it Cost of living.
 #:
 #: Categories only. The Essential arm was `or_(category_tagged, payee_tagged)`,
 #: and the payee arm was the last thing reading a payee tag for meaning. Tags
@@ -975,13 +981,12 @@ class NecessityTier(StrEnum):
 #: What that drops: an uncategorized row at a payee tagged Essential no longer
 #: counts as essential spending. It needs a category, which is the thing the
 #: app can act on.
-_ESSENTIAL_KEYS = ("essential",)
 TIER_TAG_KEYS: dict[NecessityTier, tuple[str, ...]] = {
-    NecessityTier.ESSENTIAL: _ESSENTIAL_KEYS,
+    NecessityTier.ESSENTIAL: keys_counting_as(ESSENTIAL_KEY),
     # Non-discretionary but not strictly necessary: subscriptions, a
     # home-maintenance sinking fund, a gym membership you would cancel in a
-    # genuine emergency but pay every month otherwise.
-    NecessityTier.COST_OF_LIVING: (*_ESSENTIAL_KEYS, "cost_of_living"),
+    # genuine emergency but pay every month otherwise — and every Essential.
+    NecessityTier.COST_OF_LIVING: keys_counting_as(COST_OF_LIVING_KEY),
 }
 
 

@@ -18,6 +18,7 @@ from igab.repositories.category_filters import (
     IS_FUNDABLE,
     SAVINGS_ROLE,
     SPENDABLE,
+    on_tag_checklist,
 )
 
 #: Groups the app seeds and protects by key. Kept the way SYSTEM_TAGS is —
@@ -364,15 +365,19 @@ class CategoryRepository(BaseRepository[Category]):
         return [(row[0], row[1]) for row in result.all()]
 
     async def get_taggable_with_group_names(
-        self, budget_id: uuid.UUID
+        self, budget_id: uuid.UUID, tag_id: uuid.UUID | None
     ) -> list[tuple[Category, str]]:
-        """Every category a tag may be reviewed on, paired with its group name.
+        """Every category on `tag_id`'s checklist, paired with its group name
+        (`category_filters.on_tag_checklist`).
 
-        Hidden categories are IN. A tag overrides how spending is classified
-        (`domain.activity_class`), so a hidden category carrying a wrong
-        Savings tag still moves the savings report — and hiding it is exactly
-        how it stays wrong. A real import put "Harborstone Savings" in YNAB's
-        Hidden Categories group and tagged it.
+        Archived categories — archived themselves or in an archived group — are
+        OUT, unless one still carries the tag. That one stays IN: a tag
+        overrides how spending is classified (`domain.activity_class`), so an
+        archived category carrying a wrong Savings tag still moves the savings
+        report, and archiving it is exactly how it stays wrong. A real import
+        put "Harborstone Savings" in YNAB's Hidden Categories group and tagged
+        it. `tag_id=None` (the import review's proposals) has no such
+        exception.
 
         System groups are OUT: income does not hold envelope money, so
         classifying its spending is meaningless.
@@ -380,12 +385,7 @@ class CategoryRepository(BaseRepository[Category]):
         q = (
             self.with_eligibility(select(Category, CategoryGroup.name))
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Category.budget_id == budget_id,
-                Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == False,  # noqa: E712
-                not_(IN_SYSTEM_GROUP),
-            )
+            .where(Category.budget_id == budget_id, on_tag_checklist(tag_id))
             .order_by(
                 CategoryGroup.sort_order, CategoryGroup.name, Category.sort_order, Category.name
             )

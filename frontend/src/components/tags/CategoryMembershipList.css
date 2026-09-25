@@ -6,7 +6,9 @@
 }
 
 /* A fixed height, not a max: the dialog keeps one footprint whether the
-   budget has six categories or sixty, and the filter never scrolls away. */
+   budget has six categories or sixty, and the filter never scrolls away. On a
+   phone a checklist that is its sheet's whole body fills the sheet instead
+   (`--fill`, below). */
 .membership-list__scroll {
   height: min(20rem, calc(var(--app-h) * 0.45));
   overflow-y: auto;
@@ -72,7 +74,15 @@
   white-space: nowrap;
 }
 
-.membership-list__archived {
+/* Counted through another tag: drawn ticked and disabled, so it reads as a
+   fact rather than a control. */
+.membership-list__choice--implied {
+  cursor: default;
+}
+
+/* "archived", "counted through Essential" — beside the name, which is what
+   truncates when the row runs out of room. */
+.membership-list__note {
   flex-shrink: 0;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
@@ -89,6 +99,21 @@
 }
 
 @media (max-width: 768px) {
+  /* The sheet is already full height, so a fixed 45% of it was a list in half
+     a screen with empty sheet below. The caller's panel hands its height
+     down; the list takes what the filter leaves — Dialog.css's flex: 1 /
+     min-height: 0 shape — and stays the one scroll region. */
+  .membership-list--fill {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .membership-list--fill .membership-list__scroll {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+
   .membership-list__choice {
     min-height: var(--tap-min);
   }

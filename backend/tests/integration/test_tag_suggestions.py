@@ -84,6 +84,32 @@ async def test_emergency_fund_category_is_not_offered_savings(db_session, api_cl
 
 
 @pytest.mark.asyncio
+async def test_an_essential_category_is_not_offered_cost_of_living(db_session, api_client):
+    """Essential implies Cost of living (`domain.tag_implication`). The
+    suggestion table's own statement of implications knew only the fund's, so
+    a category already tagged Essential was offered the wide tier too — a tag
+    that would change nothing but its tag list."""
+    budget, _, made = await _budget_with(
+        db_session, api_client, ["Gym Membership", "Streaming"], group="Monthly"
+    )
+    repo = TagRepository(db_session)
+    essential = await repo.get_system_tag(budget.id, "essential")
+    await repo.set_category_tags(made["Gym Membership"].id, [essential.id])
+    await db_session.flush()
+
+    offered = {
+        (s["category_id"], s["system_key"]) for s in await _suggestions(api_client, budget.id)
+    }
+
+    assert (str(made["Gym Membership"].id), "cost_of_living") not in offered
+    # Neither held nor implied: still offered both.
+    assert {
+        (str(made["Streaming"].id), "subscription"),
+        (str(made["Streaming"].id), "cost_of_living"),
+    } <= offered
+
+
+@pytest.mark.asyncio
 async def test_hidden_categories_are_not_offered(db_session, api_client):
     """The user put them away; asking how to classify them is noise.
 

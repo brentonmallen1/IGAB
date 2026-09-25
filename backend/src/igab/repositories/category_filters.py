@@ -52,9 +52,17 @@ comment for why archived categories stay in it.
 
 from typing import Literal, get_args
 
-from sqlalchemy import and_, case, func, literal, not_, or_, select
+from sqlalchemy import and_, case, func, literal, not_, or_, select, tuple_
+from sqlalchemy.orm import aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Category, CategoryGroup, Tag, category_tags
+from igab.domain.tag_implication import (
+    EMERGENCY_FUND_KEY,
+    IMPLICATION_PAIRS,
+    SAVINGS_KEY,
+    keys_counting_as,
+)
 
 NOT_ARCHIVED = Category.is_archived == False  # noqa: E712
 #: A category the arithmetic may still see. Soft-delete only: an *archived*
@@ -305,6 +313,87 @@ def tagged_category_ids(*system_keys: str):
     return select(category_tags.c.category_id).where(category_tags.c.tag_id.in_(tag_ids))
 
 
+# ─── A tag's checklist ───────────────────────────────────────────────────────
+#
+# Settings → Tags → "N categories", and the emergency-fund picker's Envelopes:
+# every category one tag could be on (`services/tag_membership.py`). The
+# listing, the save's "may this be tagged" check and the count beside the tag
+# all read these, so the number a person clicks is the number of ticks they
+# then see.
+
+#: A category a tag may be reviewed on, archived or not: live, in a live group,
+#: and not income — income does not hold envelope money, so classifying its
+#: spending is meaningless. Whether an archived one is listed is
+#: `on_tag_checklist`'s to say.
+TAGGABLE = and_(LIVE_CATEGORY, not_(UNDER_DELETED_GROUP), not_(IN_SYSTEM_GROUP))
+
+
+def carries_tag(tag_id) -> ColumnElement[bool]:
+    """Carries this tag itself — not through another tag that implies it.
+
+    `tag_id` is a value, or `Tag.id` inside a query over tags — correlated
+    explicitly, because the count nests this a level below the tag row and
+    auto-correlation stops at the nearest enclosing SELECT."""
+    return Category.id.in_(
+        select(category_tags.c.category_id)
+        .where(category_tags.c.tag_id == tag_id)
+        .correlate_except(category_tags)
+    )
+
+
+def on_tag_checklist(tag_id) -> ColumnElement[bool]:
+    """On this tag's checklist: taggable, and on the budget — archived in
+    neither sense (`NOT_ARCHIVED_ANYWHERE`) — unless it carries the tag.
+
+    The listing was the one category source that skipped the archived rule, so
+    every envelope the household had put away was offered for tagging. The
+    exception is `IS_FUNDABLE`'s shape: an archived category still carrying
+    the tag stays listed, because a tag still moves reports from an archived
+    envelope (its money is live), and the checklist is where it gets taken
+    off.
+
+    `tag_id=None` asks for no tag's exception: what the import review may
+    propose a new tag on."""
+    if tag_id is None:
+        return and_(TAGGABLE, NOT_ARCHIVED_ANYWHERE)
+    return and_(TAGGABLE, or_(NOT_ARCHIVED_ANYWHERE, carries_tag(tag_id)))
+
+
+_IMPLIER = aliased(Tag, name="implier")
+
+
+def implying_tag_name(system_key):
+    """The name of a live tag on this category that implies `system_key`
+    (`domain.tag_implication`), or NULL when it carries none — "counted through
+    Essential" on the Cost of living checklist.
+
+    A scalar subquery over the category row. `system_key` is a value, or
+    `Tag.system_key` inside a query over tags; a user tag (no key) is implied
+    by nothing. The first such tag by name, should a key ever gain two
+    impliers."""
+    return (
+        select(_IMPLIER.name)
+        .join(category_tags, category_tags.c.tag_id == _IMPLIER.id)
+        .where(
+            category_tags.c.category_id == Category.id,
+            _IMPLIER.is_deleted == False,  # noqa: E712
+            tuple_(_IMPLIER.system_key, system_key).in_(IMPLICATION_PAIRS),
+        )
+        .order_by(_IMPLIER.name)
+        .limit(1)
+        .correlate(Category, Tag)
+        .scalar_subquery()
+    )
+
+
+def ticked_on_checklist(tag_id, system_key) -> ColumnElement[bool]:
+    """Drawn ticked on the tag's checklist: carries it, or carries a tag that
+    implies it. What the "N categories" count counts, over `on_tag_checklist`
+    rows; the checklist serves the two halves apart (`member`, `implied_by`)
+    because only the first is the household's to untick."""
+    return or_(carries_tag(tag_id), implying_tag_name(system_key).isnot(None))
+
+
 # ─── Savings categories ──────────────────────────────────────────────────────
 #
 # How a category's money counts as saved, stated once. The classifier's rule 1
@@ -313,13 +402,10 @@ def tagged_category_ids(*system_keys: str):
 # second spelling of "which envelopes are savings, and how" is exactly how a
 # savings rate and the report beside it come to disagree.
 
-#: The system tag that makes a category a savings category.
-SAVINGS_KEY = "savings"
-#: The emergency-fund tag. It implies Savings: an emergency fund is money set
-#: aside, and asking the household to apply both tags would let the two drift.
-EMERGENCY_FUND_KEY = "emergency_fund"
-#: Either tag makes a category a savings category.
-SAVINGS_CATEGORY_KEYS: tuple[str, ...] = (SAVINGS_KEY, EMERGENCY_FUND_KEY)
+#: Either tag makes a category a savings category: Savings, and Emergency fund,
+#: which implies it (`domain.tag_implication` — the keys live there, with the
+#: relation). Asking the household to apply both would let the two drift.
+SAVINGS_CATEGORY_KEYS: tuple[str, ...] = keys_counting_as(SAVINGS_KEY)
 
 #: The two stored choices (`Category.savings_mode`), spelled once: the schema
 #: types, the constants below and the model's check constraint read this.

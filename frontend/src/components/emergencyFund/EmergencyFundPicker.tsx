@@ -158,6 +158,8 @@ export function EmergencyFundPicker({ budgetId, from, onClose }: Props) {
               onChange={setEnvelopes}
               savingsTag={membership.data!.tag.savings_tag}
               label="Envelopes tagged Emergency fund"
+              // Accounts and kept-elsewhere share the sheet below it.
+              fillsSheet={false}
             />
           </section>
           <PickerAccounts

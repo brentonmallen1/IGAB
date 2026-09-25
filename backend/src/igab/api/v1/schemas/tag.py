@@ -22,6 +22,9 @@ class TagOut(ApiModel):
     name: str
     system_key: str | None
     color_slot: str | None
+    #: The rows its checklist draws ticked — carrying it, or a tag that implies
+    #: it (`category_filters.ticked_on_checklist`) — so the number a person
+    #: clicks is the number of ticks they then see.
     category_count: int = 0
     #: False for a tag the app sets itself (`tag_hints.DERIVED_KEYS` — the
     #: wishlist's), which the membership endpoints refuse. The Tags panel offers
@@ -88,8 +91,15 @@ class MembershipCategoryOut(ApiModel):
     group_id: uuid.UUID
     group_name: str
     is_archived: bool
-    #: Carries this tag now.
+    #: Carries this tag itself — the half a person can untick.
     member: bool
+    #: The name of a tag on this category that implies this one
+    #: (`domain.tag_implication`): "Essential" on the Cost of living checklist,
+    #: "Emergency fund" on the Savings one. The row counts as tagged whatever
+    #: `member` says, so the checklist draws it ticked and locked, and a save
+    #: naming it is refused. Required: a path that forgets it must fail, not
+    #: draw an implied row as an unticked one.
+    implied_by: str | None
     #: `category_filters.SAVINGS_ROLE` as it stands — 'none' for a category
     #: that is not a savings category.
     savings_role: SavingsRole
