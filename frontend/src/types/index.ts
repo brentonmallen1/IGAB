@@ -53,10 +53,29 @@ export interface Account {
   first_sync_complete: boolean
   last_simplefin_sync_at: string | null
   simplefin_balance: number | null
+  /** When the bank computed `simplefin_balance` — the bridge's own
+   *  `balance-date`, not when we fetched it. Null before the column existed
+   *  or when the bridge omitted it. */
+  simplefin_balance_date: string | null
   /** `simplefin_balance - cleared_balance`, signed; null when the bank has
    *  reported nothing. Served (backend: domain/bank_balance.py) — the sync
    *  decides on the same rule whether a run is degraded. */
   bank_drift: number | null
+  /** Why the two figures differ: 'agree' | 'unposted' | 'stale' |
+   *  'unexplained'. Only 'unexplained' means rows may be missing; the page
+   *  used to tell the user to refetch 90 days for all three.
+   *  (backend: domain/bank_balance.py) */
+  bank_drift_reason: 'agree' | 'unposted' | 'stale' | 'unexplained' | null
+  /** The part of `bank_drift` that `bank_unposted_cleared` does not account
+   *  for, signed. (backend: domain/bank_balance.py) */
+  bank_drift_unexplained: number | null
+  /** Cleared money the bank has not posted against — the ledger running
+   *  ahead of the feed. (backend: txn_filters.CLEARED_AHEAD_OF_BANK) */
+  bank_unposted_cleared: number | null
+  /** Whether the sync calls this gap a fault. Served, not re-derived here:
+   *  the sync decides it and the page must not be free to disagree with the
+   *  sync badge. (backend: domain/bank_balance.drift_is_a_fault) */
+  bank_drift_is_fault: boolean
   balance: number
   cleared_balance: number
   uncleared_balance: number

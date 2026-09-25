@@ -41,6 +41,12 @@ class SimpleFINFeed:
 
     transactions: list[dict]
     balances: dict[str, Decimal] = field(default_factory=dict)
+    #: SimpleFIN account id -> when the bank computed that balance
+    #: (the bridge's `balance-date`). Not the time we fetched it: a bridge
+    #: answers from its own last refresh, and the difference is what tells a
+    #: stale comparison apart from a missing row (domain/bank_balance.py).
+    #: Absent for an account whose payload omitted or mangled the field.
+    balance_dates: dict[str, datetime] = field(default_factory=dict)
     #: SimpleFIN account id -> the name the bank reports for it. What an
     #: orphaned link is matched against when suggesting a replacement.
     account_names: dict[str, str] = field(default_factory=dict)
@@ -169,6 +175,7 @@ class SimpleFINClient:
 
         transactions = []
         balances: dict[str, Decimal] = {}
+        balance_dates: dict[str, datetime] = {}
         account_names: dict[str, str] = {}
         for account in data.get("accounts", []):
             acct_id = account.get("id")
@@ -183,11 +190,25 @@ class SimpleFINClient:
                     balances[acct_id] = Decimal(str(raw_balance))
                 except (InvalidOperation, ValueError):
                     logger.warning("Unparseable SimpleFIN balance %r for %s", raw_balance, acct_id)
+            raw_balance_date = account.get("balance-date")
+            if acct_id and raw_balance_date is not None:
+                try:
+                    # Epoch seconds, per the protocol. A zero or negative
+                    # stamp is "no date", not 1970 — which would read as a
+                    # balance fifty years stale and suppress every fault.
+                    stamp = int(raw_balance_date)
+                    if stamp > 0:
+                        balance_dates[acct_id] = datetime.fromtimestamp(stamp, tz=UTC)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Unparseable SimpleFIN balance-date %r for %s", raw_balance_date, acct_id
+                    )
             for txn in account.get("transactions", []):
                 transactions.append({**txn, "account_id": acct_id})
         return SimpleFINFeed(
             transactions=transactions,
             balances=balances,
+            balance_dates=balance_dates,
             account_names=account_names,
             errors=errors,
         )

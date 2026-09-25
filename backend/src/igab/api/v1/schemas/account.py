@@ -86,6 +86,9 @@ class AccountResponse(ApiModel):
     first_sync_complete: bool = False
     last_simplefin_sync_at: datetime | None = None
     simplefin_balance: Decimal | None = None
+    #: When the bank computed `simplefin_balance`. Null on an account synced
+    #: before the column existed, or whose bridge omitted `balance-date`.
+    simplefin_balance_date: datetime | None = None
     # Computed
     balance: Decimal = Decimal("0")
     #: `simplefin_balance - cleared_balance`, signed, or null when the bank
@@ -93,6 +96,23 @@ class AccountResponse(ApiModel):
     #: the sync decides on the same rule whether a run is degraded
     #: (domain.bank_balance).
     bank_drift: Decimal | None = None
+    #: Why the two figures differ: "agree" | "unposted" | "stale" |
+    #: "unexplained", or null when the bank has reported nothing. The whole
+    #: point of the banner — only "unexplained" means rows may be missing,
+    #: and the other two used to be reported as if they did.
+    bank_drift_reason: str | None = None
+    #: The part of `bank_drift` that `bank_unposted_cleared` does not account
+    #: for. Signed, same frame as `bank_drift`.
+    bank_drift_unexplained: Decimal | None = None
+    #: Cleared money the bank has not posted against — the ledger running
+    #: ahead of the feed, which is the ordinary result of ticking a hold the
+    #: bank's own site already shows as posted.
+    bank_unposted_cleared: Decimal | None = None
+    #: Whether the sync would call this gap a fault. Served rather than
+    #: re-derived from `bank_drift_reason` and `last_reconciled_at` on the
+    #: client, because the sync decides it (domain.bank_balance) and a page
+    #: that reached its own verdict would be free to disagree with the badge.
+    bank_drift_is_fault: bool = False
     cleared_balance: Decimal = Decimal("0")
     uncleared_balance: Decimal = Decimal("0")
     #: Authorised by the bank, not yet posted. NOT a term in

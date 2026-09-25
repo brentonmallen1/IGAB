@@ -109,12 +109,37 @@ NOT_RECONCILED = Transaction.cleared != "reconciled"
 #:
 #: The `cleared` guard is load-bearing. Rows linked before `bank_posted_date`
 #: existed are `cleared` with a NULL posted date; without the guard every one
-#: of them could absorb a foreign same-amount bank id.
+#: of them could absorb a foreign same-amount bank id — on the WIDE date
+#: window this set is offered under. A row the user cleared ahead of the bank
+#: (CLEARED_AHEAD_OF_BANK below) is excluded for the same reason and loses
+#: nothing by it: when the bank retires its id at posting, `orphaned_link`
+#: offers the row on the tight window, which is where a re-identified posting
+#: belongs anyway.
 BANK_UNLINKED = Transaction.sync_id.is_(None)
 PROVISIONALLY_LINKED = and_(
     Transaction.sync_id.isnot(None),
     Transaction.bank_posted_date.is_(None),
     Transaction.cleared.in_(("pending", "uncleared")),
+)
+
+
+#: Rows carrying a bank id the bank has NOT posted against, which are
+#: nonetheless counted as confirmed money (`cleared` or `reconciled`).
+#:
+#: This is what "I can see it on the bank's website, the feed is behind"
+#: looks like in the table, and it is the whole of the gap it opens between
+#: the ledger's cleared balance and the bank's reported one — the bank
+#: excludes these, the ledger includes them. `domain.bank_balance` subtracts
+#: the sum so that gap stops being reported as missing rows.
+#:
+#: `sync_id IS NOT NULL` is what keeps this honest. A hand-typed cleared row
+#: is also money the bank may not have posted, but it is indistinguishable
+#: from any other old cleared row; only a row the feed itself linked can be
+#: said, on the bank's own evidence, to be unposted.
+CLEARED_AHEAD_OF_BANK = and_(
+    Transaction.sync_id.isnot(None),
+    Transaction.bank_posted_date.is_(None),
+    Transaction.cleared.in_(("cleared", "reconciled")),
 )
 
 

@@ -342,6 +342,16 @@ class Account(Base):
     first_sync_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_simplefin_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     simplefin_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    #: When the bank computed `simplefin_balance` — the bridge's own
+    #: `balance-date`, not the time we fetched it.
+    #:
+    #: Without it the balance reads as live, and a bridge running a day
+    #: behind turns every hour of ordinary spending into "rows are missing".
+    #: The gap between this and `last_simplefin_sync_at` is the bridge's lag,
+    #: and it is the difference between a stale comparison and a real fault
+    #: (`domain/bank_balance.py`). Null when the bridge did not say, which
+    #: every account was before this column existed.
+    simplefin_balance_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: Which way round this institution reports a debt — 'ledger' (IGAB's own
     #: frame, a debt is negative) or 'lender' (a debt is positive, a payment
     #: negative). See `domain/bank_frame.py`.
