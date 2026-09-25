@@ -17,6 +17,9 @@ export interface AIJobDraft {
    *  here (`AIDraft.category_unresolved`). Absent on jobs recorded before it
    *  existed. */
   category_unresolved?: string | null
+  /** The last four digits of the card that paid, when the receipt printed
+   *  them. Absent on jobs recorded before it existed. */
+  card_last4?: string | null
   memo: string | null
   confidence: number
 }
@@ -80,6 +83,10 @@ export interface AIJob {
    *  because `payload.account_id` is only where the scan was submitted.
    *  Null when there is no transaction (still queued, or deleted since). */
   transaction_account_id: string | null
+  /** The account that owns `result.draft.card_last4`, as of now — served
+   *  (`AIJob.card_ending_account_id`), because which account an ending is on
+   *  is the server's question: the worker asks it to place a scan. */
+  card_ending_account_id: string | null
   attachment_id: string | null
   created_at: string
   started_at: string | null

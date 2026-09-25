@@ -365,3 +365,27 @@ class TestSuggestedSplit:
             category_names=CATEGORIES,
         )
         assert draft.suggested_split is None
+
+
+class TestCardEnding:
+    def test_the_card_that_paid_is_read_off_the_receipt(self):
+        draft = parse_extraction(
+            receipt(card_last4="VISA ****4417"), kind="receipt", client_today=TODAY
+        )
+        assert draft.card_last4 == "4417"
+
+    def test_cash_or_no_number_is_no_card(self):
+        for value in (None, "", "cash", "**17"):
+            draft = parse_extraction(receipt(card_last4=value), kind="receipt", client_today=TODAY)
+            assert draft.card_last4 is None, value
+
+    def test_a_prompt_that_never_asks_leaves_it_empty(self):
+        # A customized prompt from before the field existed returns no key.
+        draft = parse_extraction(receipt(), kind="receipt", client_today=TODAY)
+        assert draft.card_last4 is None
+
+    def test_the_recorded_result_carries_it(self):
+        from igab.services.ai_draft_service import draft_result_json
+
+        draft = parse_extraction(receipt(card_last4="4417"), kind="receipt", client_today=TODAY)
+        assert draft_result_json(draft)["draft"]["card_last4"] == "4417"

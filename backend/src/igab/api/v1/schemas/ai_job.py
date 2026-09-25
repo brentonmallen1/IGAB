@@ -38,6 +38,11 @@ class AIJobResponse(ApiModel):
     #: whose required-ness is what makes a forgotten loader fail loudly: None
     #: here is a real answer and cannot be told apart from an unloaded one.
     transaction_account_id: uuid.UUID | None
+    #: Which account owns the card ending printed on the receipt, as of now
+    #: (`AIJob.card_ending_account_id`). None: no ending on the receipt, or
+    #: none on file. Beside `transaction_account_id` it says whether the scan
+    #: sits in the account whose card paid.
+    card_ending_account_id: uuid.UUID | None
     attachment_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
@@ -67,6 +72,7 @@ class AIJobResponse(ApiModel):
             transaction_removed=transaction_removed,
             needs_review=job.needs_review,
             transaction_account_id=job.transaction_account_id,
+            card_ending_account_id=job.card_ending_account_id,
             attachment_id=job.attachment_id,
             created_at=job.created_at,
             started_at=job.started_at,

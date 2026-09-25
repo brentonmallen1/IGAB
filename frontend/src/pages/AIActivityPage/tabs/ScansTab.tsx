@@ -34,6 +34,7 @@ import '../AIActivityPage.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { scanFailureReason } from '../../../components/transactions/TransactionEditor/scanFailure'
 import { unresolvedCategoryNote } from '../../../components/ai/draftNotes'
+import { CardEndingNotice } from '../../../components/ai/CardEndingNotice'
 
 const PAGE_SIZE = 50
 
@@ -239,6 +240,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           </div>
         )}
         {unresolved && <div className="ai-activity__unresolved">{unresolved}</div>}
+        <CardEndingNotice job={job} budgetId={budgetId} canMove />
         {job.error && (
           <div className="ai-activity__error">
             <button className="ai-activity__error-toggle" onClick={() => setErrorOpen((v) => !v)}>

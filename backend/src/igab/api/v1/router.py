@@ -17,6 +17,7 @@ from igab.api.v1 import (
     budget_snapshots,
     budget_views,
     budgets,
+    card_endings,
     categories,
     category_plans,
     changes,
@@ -72,3 +73,4 @@ api_router.include_router(attachments.router, tags=["attachments"])
 api_router.include_router(tags.router, tags=["tags"])
 api_router.include_router(liabilities.router, tags=["liabilities"])
 api_router.include_router(credit_scores.router, tags=["credit-scores"])
+api_router.include_router(card_endings.router, tags=["card-endings"])

@@ -22,6 +22,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
+    AccountCardEnding,
     AccountType,
     AICall,
     AICallPayload,
@@ -250,6 +251,12 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     saved_filter = BudgetFilter(budget_id=budget.id, name="Filter")
     session.add(
         CreditScore(budget_id=budget.id, recorded_on=date(2026, 8, 1), score=742, bureau="experian")
+    )
+    # A debit card on the checking account, as a receipt scan would read it.
+    session.add(
+        AccountCardEnding(
+            budget_id=budget.id, account_id=checking.id, last4="4417", label="Debit card"
+        )
     )
     session.add(saved_filter)
     view = BudgetView(budget_id=budget.id, name="View")

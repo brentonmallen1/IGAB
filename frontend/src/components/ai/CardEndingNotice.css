@@ -1,0 +1,40 @@
+/* One line under a scan: the card that paid. Quiet when it only offers to
+   remember; warning-toned when the card is another account's. */
+.card-ending-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--spacing-sm);
+  margin-top: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.card-ending-notice--elsewhere {
+  color: var(--color-warning);
+}
+
+.card-ending-notice__action {
+  padding: 2px 8px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.card-ending-notice__action:hover {
+  background-color: var(--bg-hover);
+}
+
+.card-ending-notice__action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 768px) {
+  .card-ending-notice__action {
+    min-height: var(--tap-min);
+  }
+}

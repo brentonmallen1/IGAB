@@ -13,6 +13,7 @@ import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 import { invalidateAfterReportSettings } from './reports'
 import { ROOT } from './queryKeys'
+import { invalidateAfterCardEndingChange } from './cardEndings'
 
 export interface Change {
   id: string
@@ -51,6 +52,7 @@ export interface Change {
     | 'guide_binding'
     | 'budget_member'
     | 'attachment'
+    | 'card_ending'
   entity_id: string
   action:
     | 'create'
@@ -345,6 +347,9 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.reconcileHistory] })
   qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
   qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
+
+  // Card endings, and the AI jobs that serve which account's card paid.
+  invalidateAfterCardEndingChange(qc, budgetId)
 
   // Category planner documents.
   qc.invalidateQueries({ queryKey: [ROOT.categoryPlans] })

@@ -6,6 +6,7 @@ from sqlalchemy.orm import with_expression
 
 from igab.db.models import AIJob, Transaction
 from igab.repositories.base import BaseRepository
+from igab.repositories.card_ending_repo import card_ending_owner
 from igab.repositories.txn_filters import AI_NEEDS_REVIEW
 
 ACTIVE_STATUSES = ("queued", "processing")
@@ -37,6 +38,14 @@ TRANSACTION_ACCOUNT_EXPR = (
     .where(Transaction.id == AIJob.transaction_id, Transaction.is_deleted == False)  # noqa: E712
     .scalar_subquery()
 )
+
+
+#: The account whose card paid for this job's receipt — see the model's
+#: comment. The lookup is `card_ending_owner`, the same select the worker runs
+#: to place a scan, embedded here as a correlated subquery.
+CARD_ENDING_ACCOUNT_EXPR = card_ending_owner(
+    AIJob.budget_id, AIJob.result["draft"]["card_last4"].astext
+).scalar_subquery()
 
 
 class AIJobRepository(BaseRepository[AIJob]):
@@ -73,6 +82,7 @@ class AIJobRepository(BaseRepository[AIJob]):
         return stmt.options(
             with_expression(AIJob.needs_review, NEEDS_REVIEW_EXPR),
             with_expression(AIJob.transaction_account_id, TRANSACTION_ACCOUNT_EXPR),
+            with_expression(AIJob.card_ending_account_id, CARD_ENDING_ACCOUNT_EXPR),
         )
 
     async def get_with_review(self, job_id: uuid.UUID) -> AIJob | None:

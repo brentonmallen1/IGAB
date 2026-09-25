@@ -17,6 +17,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, cast
 
 from igab.db.models import Transaction
+from igab.domain.card_endings import card_last4
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.splits import split_balances
 from igab.services.category_matching import Candidate, canonical_label, match_category
@@ -57,6 +58,9 @@ class AIDraft:
     #: this must not — history filed a garden receipt in an unrelated
     #: envelope while the model's reason, shown beside it, named Garden.
     category_unresolved: str | None = None
+    #: The last four digits of the card that paid, when the receipt prints
+    #: them — which account owns them is `card_ending_owner`'s question.
+    card_last4: str | None = None
 
 
 def _parse_amount(value: object) -> Decimal:
@@ -222,6 +226,7 @@ def parse_extraction(
         suggested_split=suggested_split,
         raw=raw,
         category_unresolved=named if named and category_name is None else None,
+        card_last4=card_last4(raw.get("card_last4")) if kind == "receipt" else None,
     )
 
 
@@ -236,6 +241,7 @@ def draft_result_json(draft: AIDraft) -> dict:
             "date": draft.date.isoformat(),
             "category": draft.category_name,
             "category_unresolved": draft.category_unresolved,
+            "card_last4": draft.card_last4,
             "memo": draft.memo,
             "confidence": draft.confidence,
         },

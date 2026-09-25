@@ -54,6 +54,7 @@ HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "category_target": ("category_id",),
     "liability_snapshot": ("liability_id", "date"),
     "credit_score": ("budget_id", "recorded_on", "bureau"),
+    "card_ending": ("budget_id", "last4"),
     "asset_value": ("asset_id", "date"),
     "account_type": ("budget_id", "key"),
     "reconciliation": ("account_id", "reconciled_at"),
@@ -66,6 +67,7 @@ HARD_ROW_PARENT: dict[str, tuple[type, str]] = {
     "category_target": (Category, "category_id"),
     "liability_snapshot": (Liability, "liability_id"),
     "asset_value": (Asset, "asset_id"),
+    "card_ending": (Account, "account_id"),
 }
 
 # Rows that may point AT a hard row (no ondelete on the FK). Checked before a

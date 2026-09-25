@@ -80,7 +80,11 @@ class TestEveryTableIsClassified:
         # for the same reason `budget_members` is: it is authorization, and
         # carrying it would point the exporter's keys at the importer's
         # budget.
-        assert counted[Scope.OWNED] == 31
+        # 32: `account_card_endings` joined (2026-09-24) — the last four
+        # digits of each card that pays from an account, for receipt scans.
+        # Cascades on budget delete; carried by snapshots, like the account's
+        # own `account_number_last4`.
+        assert counted[Scope.OWNED] == 32
         # 12: `asset_value_snapshots` rides in as its child, and
         # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
         # scoped through its filter like `budget_filter_categories`.

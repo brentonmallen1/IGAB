@@ -76,6 +76,7 @@ import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 import { unresolvedCategoryNote } from '../../ai/draftNotes'
+import { CardEndingNotice } from '../../ai/CardEndingNotice'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
@@ -751,6 +752,9 @@ export function TransactionEditor({
                     {unresolvedCategoryNote(aiJob!.result?.draft)}
                   </span>
                 )}
+                <span className="txn-editor__ai-banner-note">
+                  <CardEndingNotice job={aiJob!} budgetId={budgetId} canMove={false} />
+                </span>
               </>
             )}
             {aiJob!.status === 'error' && (

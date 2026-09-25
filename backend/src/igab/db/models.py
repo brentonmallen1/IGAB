@@ -1647,6 +1647,45 @@ class CreditScore(Base):
     )
 
 
+# ─── Card endings ────────────────────────────────────────────────────────────
+
+
+class AccountCardEnding(Base):
+    """The last four digits of a card that pays from an account.
+
+    A list, not a column on the account: one card account routinely has
+    several numbers — a second cardholder's card, a replacement after fraud,
+    and the device number Apple Pay and Google Pay print on receipts, whose
+    last four differ from the plastic's. A receipt scan reads the ending off
+    the receipt and asks which account owns it (`card_ending_owner`).
+
+    Unique per budget: an ending that pointed at two accounts would answer
+    that question with a guess, so the second one is refused instead.
+    Not a secret — the account's own `account_number_last4` is kept in the
+    clear for the same reason — and never more than four digits.
+    """
+
+    __tablename__ = "account_card_endings"
+    __table_args__ = (UniqueConstraint("budget_id", "last4", name="uq_card_ending_budget_last4"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    #: Whose card, or which wallet: "Jane's card", "Apple Pay". Optional.
+    label: Mapped[str | None] = mapped_column(String(60))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 # ─── App Settings ────────────────────────────────────────────────────────────
 
 
@@ -1921,6 +1960,16 @@ class AIJob(Base):
     #: `needs_review` is not. Populated by the same loader, so a query that
     #: has one has both.
     transaction_account_id: Mapped[uuid.UUID | None] = query_expression()
+
+    #: Which account owns the card that paid, read off the receipt
+    #: (`result.draft.card_last4`) and looked up in `account_card_endings`.
+    #: None when the receipt showed no card, or its ending is not on file.
+    #:
+    #: Not a column: an ending added or removed after the scan changes the
+    #: answer, and the review list must show the answer as of now — that is
+    #: what "Remember this card?" and "paid with another account's card"
+    #: are drawn from. Populated by the same loader as `needs_review`.
+    card_ending_account_id: Mapped[uuid.UUID | None] = query_expression()
 
     transaction: Mapped["Transaction | None"] = relationship(foreign_keys=[transaction_id])
     attachment: Mapped["TransactionAttachment | None"] = relationship(foreign_keys=[attachment_id])

@@ -26,6 +26,7 @@ import { CountsTowardEmergencyFundField } from './CountsTowardEmergencyFundField
 import { savingsFlagsPayload, useSavingsFlags } from './useSavingsFlags'
 import './AccountSettingsModal.css'
 import { AccountNumbersSection } from './AccountNumbersSection'
+import { CardEndingsSection } from './CardEndingsSection'
 import { confirmAsync } from '../../stores/confirmStore'
 import { closeAccountMessage } from './closeAccountMessage'
 
@@ -279,6 +280,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
             account={account}
             onSave={(patch) => updateAccount.mutateAsync({ id: accountId, ...patch })}
           />
+          {budgetId && <CardEndingsSection budgetId={budgetId} accountId={accountId} />}
           {/* The answer to "my card came in with three months of history
               and now everything is red". That spending predates the
               budget: it is opening debt, not overspending to cover. The
