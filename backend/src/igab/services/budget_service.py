@@ -12,6 +12,7 @@ from igab.domain.cards import (
     card_funding,
     card_position,
     card_reserve,
+    cash_written_off,
     receivable_ledgers,
     reserve_discrepancy,
     residual_from,
@@ -31,7 +32,7 @@ from igab.domain.carryover import (
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
 # is how the shadowing bug in report_service started.
-from igab.domain.dates import complete_month_window, month_starts
+from igab.domain.dates import add_months, complete_month_window, month_starts
 from igab.domain.dates import month_end as _month_end
 from igab.domain.dates import month_start as _month_start
 from igab.domain.exceptions import InvariantViolation
@@ -373,6 +374,11 @@ class BudgetSummary:
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
+    #: What this month's Ready to Assign absorbed on the 1st: last month's
+    #: overspending, less what rode onto cards, per envelope (card envelopes
+    #: included). Largest first. Ready to Assign always dropped by this on the
+    #: 1st; the header now says so.
+    overspent_last_month: list[tuple[uuid.UUID, Decimal]] = field(default_factory=list)
     #: The budget's cards, each with balance / set aside / uncovered —
     #: computed here because their card envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
@@ -1036,28 +1042,7 @@ class BudgetService:
         categories = await self.category_repo.get_all(budget_id, include_archived=True)
         system_group_ids = await self._system_group_ids(budget_id)
 
-        if self.snapshot_repo is not None:
-            balance_map = await self._snapshot_balances(budget_id, categories, month_start)
-        else:
-            # Live path: batch per-month activity in one query, then simulate
-            # each category. Kept as the no-snapshot fallback and the test
-            # oracle the snapshot path is verified against.
-            all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
-                [cat.id for cat in categories], end_date=last_of_month(month_start)
-            )
-            # One anchor load for the whole loop (memoized on the repo), and
-            # none at all on an unanchored budget — the per-category lookup
-            # would otherwise be a query per envelope on every summary.
-            summary_anchor = await self._budget_anchor(budget_id)
-            balance_map = {
-                cat.id: await self.get_category_balance(
-                    cat.id,
-                    month_start,
-                    activity_by_month=all_activity_by_month.get(cat.id, {}),
-                    opening=category_opening(summary_anchor, cat.id),
-                )
-                for cat in categories
-            }
+        balance_map = await self._raw_balances(budget_id, categories, month_start)
 
         # ── Cards (domain/cards.py). Each card's set-aside is an envelope
         # simulated over synthetic activity: funded credit spending flows in,
@@ -1382,8 +1367,13 @@ class BudgetService:
             total_account_balance - total_category_balance - assigned_in_future - uncovered_current
         )
 
+        overspent_last_month = await self._overspent_last_month(
+            budget_id, categories, system_group_ids, funding, cards, month_start
+        )
+
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
+            overspent_last_month=overspent_last_month,
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,
@@ -1396,6 +1386,78 @@ class BudgetService:
             cards=cards,
             anchor_month=walk.anchor.month if walk.anchor is not None else None,
         )
+
+    async def _raw_balances(
+        self, budget_id: uuid.UUID, categories: list[Category], month_start: date
+    ) -> dict[uuid.UUID, CategoryBalance]:
+        """Every category's balance for one month, before the card
+        corrections — the snapshot cache when there is one, else the live
+        simulation. One home, because the summary asks it for two months: the
+        viewed one, and the one before (what was written off on the 1st)."""
+        if self.snapshot_repo is not None:
+            return await self._snapshot_balances(budget_id, categories, month_start)
+        # Live path: batch per-month activity in one query, then simulate
+        # each category. Kept as the no-snapshot fallback and the test
+        # oracle the snapshot path is verified against.
+        all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
+            [cat.id for cat in categories], end_date=last_of_month(month_start)
+        )
+        # One anchor load for the whole loop (memoized on the repo), and
+        # none at all on an unanchored budget — the per-category lookup
+        # would otherwise be a query per envelope on every summary.
+        summary_anchor = await self._budget_anchor(budget_id)
+        return {
+            cat.id: await self.get_category_balance(
+                cat.id,
+                month_start,
+                activity_by_month=all_activity_by_month.get(cat.id, {}),
+                opening=category_opening(summary_anchor, cat.id),
+            )
+            for cat in categories
+        }
+
+    async def _overspent_last_month(
+        self,
+        budget_id: uuid.UUID,
+        categories: list[Category],
+        system_group_ids: set[uuid.UUID],
+        funding: CardFunding,
+        cards: list["CardStatus"],
+        month_start: date,
+    ) -> list[tuple[uuid.UUID, Decimal]]:
+        """What this month's Ready to Assign absorbed on the 1st, per envelope:
+        last month's overspending, less what rode onto cards.
+
+        Ready to Assign has always dropped by this on the 1st and nothing on
+        the page said why; the header says it now, for every envelope. A card
+        envelope's part is its `written_off_this_month` — the leg the walk
+        booked. Every other envelope's is `cash_written_off` of its previous
+        month's end, the same `next_carryover` rule seen from the other side,
+        so the list and the drop in Ready to Assign are one arithmetic.
+        """
+        zero = Decimal("0")
+        prev = add_months(month_start, -1)
+        prev_balances = await self._raw_balances(budget_id, categories, prev)
+        items: list[tuple[uuid.UUID, Decimal]] = []
+        for cat in categories:
+            if cat.category_group_id in system_group_ids or cat.linked_account_id is not None:
+                continue
+            bal = prev_balances.get(cat.id)
+            if bal is None:
+                continue
+            # A month with no data of its own carries in floored and absorbs
+            # nothing, so no special case: its figure is already >= 0.
+            end = _corrected_available(cat, system_group_ids, funding, bal.available, prev)
+            amount = cash_written_off(
+                end, funding.floored_by_category.get(cat.id, {}).get(prev, zero)
+            )
+            if amount > zero:
+                items.append((cat.id, amount))
+        for card in cards:
+            if card.category_id is not None and card.written_off_this_month > zero:
+                items.append((card.category_id, card.written_off_this_month))
+        items.sort(key=lambda item: (-item[1], str(item[0])))
+        return items
 
     async def _snapshot_balances(
         self,

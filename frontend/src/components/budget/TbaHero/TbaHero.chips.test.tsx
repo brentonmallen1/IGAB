@@ -20,6 +20,15 @@ const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
 }))
+vi.mock('../../../api/categories', () => ({
+  useCategories: () => ({
+    data: [
+      { id: 'dining', name: 'Dining' },
+      { id: 'groc', name: 'Groceries' },
+      { id: 'visa-env', name: 'Visa Payment' },
+    ],
+  }),
+}))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
 vi.mock('../AssignDropdown/AssignDropdown', () => ({
   AssignDropdown: () => null,
@@ -98,5 +107,40 @@ describe('TbaHero overspending chips', () => {
     expect(screen.queryByText('overspent')).toBeNull()
     expect(screen.queryByText('of it on cards')).toBeNull()
     expect(screen.queryByText('paid ahead on cards')).toBeNull()
+  })
+})
+
+describe('what the 1st took out of Ready to Assign', () => {
+  // Ready to Assign always dropped by last month's overspending on the 1st,
+  // and nothing on the page said why. The header says it, in words, with the
+  // envelopes it came from — no tooltip, no dialog.
+  it('names the month, the total and where it came from', () => {
+    month.current = {
+      to_be_assigned: 800,
+      total_overspent: 0,
+      total_overspent_credit: 0,
+      overspent_last_month: [
+        { category_id: 'visa-env', amount: 100 },
+        { category_id: 'dining', amount: 50 },
+      ],
+      cards: [{ category_id: 'visa-env', name: 'Sapphire Visa' }],
+    } as unknown as BudgetMonth
+    render(<TbaHero budgetId="b1" month="2026-08-01" />)
+    const line = screen.getByText(/overspent in July/)
+    // A card's envelope is named for its card.
+    expect(line.textContent).toBe(
+      '-$150.00 overspent in July 2026: Sapphire Visa $100.00, Dining $50.00'
+    )
+  })
+
+  it('says nothing when nothing was absorbed', () => {
+    month.current = {
+      to_be_assigned: 800,
+      total_overspent: 0,
+      total_overspent_credit: 0,
+      overspent_last_month: [],
+    } as unknown as BudgetMonth
+    render(<TbaHero budgetId="b1" month="2026-08-01" />)
+    expect(screen.queryByText(/overspent in/)).toBeNull()
   })
 })

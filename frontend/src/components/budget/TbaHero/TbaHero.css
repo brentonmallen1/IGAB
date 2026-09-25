@@ -63,6 +63,22 @@
   white-space: nowrap;
 }
 
+/* What the 1st took out of Ready to Assign — the drop, explained where it
+   happened. Muted like the future-assigned note; only the amount carries
+   the negative colour, as the overspent chip's does. Wraps rather than
+   truncating: the names are the point. */
+.tba-hero__last-month {
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.tba-hero__last-month-amount {
+  color: var(--color-negative);
+  font-weight: var(--font-weight-medium);
+}
+
 .tba-hero__actions {
   display: flex;
   align-items: center;
@@ -406,7 +422,8 @@
     line-height: 1.2;
   }
 
-  .tba-hero__future {
+  .tba-hero__future,
+  .tba-hero__last-month {
     flex-basis: 100%;
     white-space: normal;
   }

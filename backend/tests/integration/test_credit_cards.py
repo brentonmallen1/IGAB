@@ -366,6 +366,78 @@ class TestANegativeSetAsideIsOverspending:
         assert grocery_row.available == D("80.00")
 
 
+class TestOverspentLastMonth:
+    """What the 1st took out of Ready to Assign, per envelope — the drop that
+    always happened and that the page never explained. Only the cash side:
+    what rode onto a card is card debt, not a write-off."""
+
+    async def _dining(self, db_session, budget):
+        everyday = await create_category_group(db_session, budget, "Out")
+        return await create_category(db_session, budget, everyday, "Dining")
+
+    async def test_each_kind_of_red_is_listed_for_what_the_first_absorbed(self, db_session):
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        dining = await self._dining(db_session, budget)
+        # Dining: 50 overspent from checking — all cash, all written off.
+        await create_transaction(
+            db_session, budget, checking, "-50.00", date(2026, 7, 5), category=dining
+        )
+        # Groceries: 80 overspent, 30 of it on the card (rides) and 50 cash.
+        await create_transaction(
+            db_session, budget, checking, "-50.00", date(2026, 7, 6), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "-30.00", date(2026, 7, 7), category=groceries
+        )
+        # The card: paid 100 against the nothing it held — 100 red.
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-100.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        july = await _summary(services, budget, JUL)
+        august = await _summary(services, budget, AUG)
+        listed = dict(august.overspent_last_month)
+        assert listed == {
+            linked.id: D("100.00"),
+            dining.id: D("50.00"),
+            groceries.id: D("50.00"),
+        }
+        # The list is the drop: nothing else moved between the two months.
+        assert july.to_be_assigned - august.to_be_assigned == sum(listed.values())
+        # Largest first, for the header to read top-down.
+        assert august.overspent_last_month[0] == (linked.id, D("100.00"))
+
+    async def test_a_month_with_nothing_red_lists_nothing(self, db_session):
+        services, budget, checking, _visa, _linked, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, checking, "-60.00", date(2026, 7, 5), category=groceries
+        )
+        await db_session.flush()
+        assert (await _summary(services, budget, AUG)).overspent_last_month == []
+
+    async def test_a_ride_alone_is_not_written_off(self, db_session):
+        """Spent on the card with nothing funded: it rides as the card's
+        Uncovered and charges Ready to Assign nothing, now or on the 1st."""
+        services, budget, _checking, visa, _linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-70.00", date(2026, 7, 5), category=groceries
+        )
+        await db_session.flush()
+        august = await _summary(services, budget, AUG)
+        assert august.overspent_last_month == []
+        assert august.to_be_assigned == D("1000.00")
+
+
 class TestTheIdentity:
     async def test_a_funded_swipe_moves_nothing(self, db_session):
         services, budget, _, visa, _, groceries = await _setup(db_session)

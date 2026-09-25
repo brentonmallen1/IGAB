@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { overspending, sumBalances } from './budgetTotals'
+import { overspending, overspentLastMonth, sumBalances } from './budgetTotals'
 import { makeCategoryBalance } from '../../test-utils/factories'
 import type { CategoryBalance } from '../../types'
 
@@ -77,5 +77,36 @@ describe('overspending', () => {
   it('reads zero from a month that has not loaded yet', () => {
     expect(overspending(undefined)).toEqual({ total: 0, onCards: 0 })
     expect(overspending(null)).toEqual({ total: 0, onCards: 0 })
+  })
+})
+
+describe('overspentLastMonth', () => {
+  const names: Record<string, string> = { a: 'Dining', b: 'Groceries', c: 'Fuel', d: 'Gifts' }
+  const nameOf = (id: string) => names[id]
+
+  it('is null when the 1st absorbed nothing', () => {
+    expect(overspentLastMonth([], nameOf)).toBeNull()
+    expect(overspentLastMonth(undefined, nameOf)).toBeNull()
+  })
+
+  it('totals everything but names only the first few, keeping the served order', () => {
+    const got = overspentLastMonth(
+      [
+        { category_id: 'a', amount: 40 },
+        { category_id: 'b', amount: 30 },
+        { category_id: 'c', amount: 20 },
+        { category_id: 'd', amount: 10 },
+      ],
+      nameOf
+    )
+    expect(got).toEqual({
+      total: 100,
+      sources: [
+        { name: 'Dining', amount: 40 },
+        { name: 'Groceries', amount: 30 },
+        { name: 'Fuel', amount: 20 },
+      ],
+      more: 1,
+    })
   })
 })

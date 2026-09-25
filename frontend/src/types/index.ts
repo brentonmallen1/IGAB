@@ -472,6 +472,11 @@ export interface RodeCategory {
 export interface BudgetMonth {
   month: string
   to_be_assigned: number
+  /** What this month's Ready to Assign absorbed on the 1st: last month's
+   *  overspending, less what rode onto cards, per envelope (card envelopes
+   *  included), largest first. Served (BudgetMonthResponse) — the header
+   *  names it and never computes it. */
+  overspent_last_month: { category_id: string; amount: number }[]
   total_assigned: number
   total_activity: number
   total_overspent: number

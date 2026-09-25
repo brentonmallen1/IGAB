@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { CalendarRange, ChevronDown, History, Wand2, X } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
+import { useCategories } from '../../../api/categories'
+import { addMonths } from '../../../utils/dates'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -8,7 +10,7 @@ import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { Modal } from '../../common/Modal/Modal'
 import { AssignDropdown, AssignDropdownContent } from '../AssignDropdown/AssignDropdown'
 import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
-import { overspending } from '../budgetTotals'
+import { overspending, overspentLastMonth } from '../budgetTotals'
 import { CoverOverspentModal } from './CoverOverspentModal'
 import { OnCardsModal } from './OnCardsModal'
 import { TbaDrawer } from './TbaDrawer'
@@ -30,7 +32,9 @@ interface Props {
 export function TbaHero({ budgetId, month }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const isMobile = useIsMobile()
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonth } = useFormatters()
+  // Archived included: an envelope archived since can still have been red.
+  const { data: categories = [] } = useCategories(budgetId, true)
 
   const drawerOpen = useUIStore((s) => s.tbaDrawerOpen)
   const setDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
@@ -78,6 +82,12 @@ export function TbaHero({ budgetId, month }: Props) {
     />
   )
 
+  // A card's envelope is named for its card; everything else by its own name.
+  const lastMonth = overspentLastMonth(budgetMonth?.overspent_last_month, (categoryId) => {
+    const card = budgetMonth?.cards?.find((c) => c.category_id === categoryId)
+    return card?.name ?? categories.find((c) => c.id === categoryId)?.name ?? 'An envelope'
+  })
+
   return (
     <div className="tba-hero">
       <div className="tba-hero__pill">
@@ -87,6 +97,14 @@ export function TbaHero({ budgetId, month }: Props) {
           {assignedInFuture !== 0 && (
             <span className="tba-hero__future" title="Already deducted from Ready to Assign">
               {formatMoney(assignedInFuture)} assigned in future months
+            </span>
+          )}
+          {lastMonth && (
+            <span className="tba-hero__last-month">
+              <span className="tba-hero__last-month-amount">{formatMoney(-lastMonth.total)}</span>{' '}
+              overspent in {formatMonth(addMonths(month, -1))}:{' '}
+              {lastMonth.sources.map((s) => `${s.name} ${formatMoney(s.amount)}`).join(', ')}
+              {lastMonth.more > 0 && ` and ${lastMonth.more} more`}
             </span>
           )}
         </div>

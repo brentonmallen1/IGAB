@@ -75,3 +75,38 @@ export function overspending(source: OverspendingSource | undefined | null): Ove
     onCards: Number(source?.total_overspent_credit ?? 0),
   }
 }
+
+export interface LastMonthSource {
+  name: string
+  amount: number
+}
+
+export interface OverspentLastMonth {
+  total: number
+  /** The largest few, named — the header reads top-down. */
+  sources: LastMonthSource[]
+  /** How many more envelopes contributed beyond `sources`. */
+  more: number
+}
+
+/**
+ * What the 1st took out of Ready to Assign, for the header's one line.
+ *
+ * Composition of served facts only: the server decides each amount
+ * (`overspent_last_month`); this names them and keeps the line short. Ready
+ * to Assign always dropped by this total on the 1st, and until this line
+ * existed nothing on the page said why. Null when nothing was absorbed.
+ */
+export function overspentLastMonth(
+  items: { category_id: string; amount: number }[] | undefined,
+  nameOf: (categoryId: string) => string,
+  shown = 3
+): OverspentLastMonth | null {
+  if (!items || items.length === 0) return null
+  const sources = items.map((i) => ({ name: nameOf(i.category_id), amount: Number(i.amount) }))
+  return {
+    total: sources.reduce((sum, s) => sum + s.amount, 0),
+    sources: sources.slice(0, shown),
+    more: Math.max(0, sources.length - shown),
+  }
+}

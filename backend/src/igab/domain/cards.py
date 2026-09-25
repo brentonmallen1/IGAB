@@ -440,6 +440,18 @@ class CardFunding[C, K]:
         return out
 
 
+def cash_written_off(end_of_month: Decimal, credit_part: Decimal) -> Decimal:
+    """What Ready to Assign absorbs from one envelope when a month ends at
+    `end_of_month`, of which `credit_part` rode onto a card.
+
+    The ride is card debt, not a write-off — it waits on the card, calm, as
+    Uncovered — so only the rest of the shortfall comes out of the next
+    month's Ready to Assign. A card's own envelope has no ride of its own:
+    all of its red is written off (`credit_part` zero).
+    """
+    return max(ZERO, write_off(end_of_month) - credit_part)
+
+
 def _cover[C, K](
     out: CardFunding[C, K],
     ridden: dict[tuple[C, K], Decimal],

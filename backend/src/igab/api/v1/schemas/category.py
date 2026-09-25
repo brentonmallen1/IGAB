@@ -708,9 +708,22 @@ class CardTimelineResponse(ApiModel):
     anchor_month: datetime.date | None
 
 
+class OverspentLastMonthItem(ApiModel):
+    #: The envelope — a card's own envelope included.
+    category_id: uuid.UUID
+    #: What this month's Ready to Assign absorbed from it on the 1st.
+    amount: Decimal
+
+
 class BudgetMonthResponse(ApiModel):
     month: datetime.date
     to_be_assigned: Decimal
+    #: What this month's Ready to Assign absorbed on the 1st: last month's
+    #: overspending, less what rode onto cards, per envelope, largest first.
+    #: Ready to Assign always dropped by this and the page never said why;
+    #: the header lists it. Required: a path that forgets must raise rather
+    #: than show a drop with no reason beside it.
+    overspent_last_month: list[OverspentLastMonthItem]
     #: Envelope categories only — income appears in `to_be_assigned` and in
     #: its own rows' `activity`, never here.
     total_assigned: Decimal

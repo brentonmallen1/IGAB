@@ -55,6 +55,7 @@ from igab.api.v1.schemas.category import (
     FutureOverspendPreviewResponse,
     FutureOverspendWarningOut,
     MoveMoneyRequest,
+    OverspentLastMonthItem,
     RecentPayeeResponse,
     RepairOrphansResponse,
 )
@@ -748,6 +749,10 @@ async def get_budget_month(
     return BudgetMonthResponse(
         month=month,
         to_be_assigned=summary.to_be_assigned,
+        overspent_last_month=[
+            OverspentLastMonthItem(category_id=category_id, amount=amount)
+            for category_id, amount in summary.overspent_last_month
+        ],
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
         total_overspent=summary.total_overspent,
