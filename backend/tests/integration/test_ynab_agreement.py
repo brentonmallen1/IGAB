@@ -280,3 +280,92 @@ async def test_an_export_with_a_row_after_today_still_reaches_parity(db_session,
     # The header no longer shows September's rent leaving in August.
     accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
     assert await services.account_repo.get_balance(accounts["Checking"].id) == cents("8880")
+
+
+# ── A card paid past its payment category ─────────────────────────────────────
+#
+# "Overpaid Card": June, 3000 into Ready to Assign; Groceries is given 200 and
+# spends 500 on the Visa, so 200 moves into the Visa's payment category and 300
+# rides as debt nobody funded. July: checking pays the Visa 400, and the payment
+# category goes to 200 − 400 = −200 — red, overspending. August: YNAB starts
+# the category at zero and takes the 200 from Ready to Assign. IGAB does the
+# same now; until it did, this card read −200 forever (or, briefly, lowered
+# Ready to Assign the day it was paid).
+OVERPAID_TYPES = {"Checking": ("checking", True), "Visa": ("credit_card", True)}
+
+
+async def _overpaid(db_session, tmp_path):
+    return await import_export(
+        db_session, fixture_zip(tmp_path, "Overpaid Card"), account_types=OVERPAID_TYPES
+    )
+
+
+async def test_the_oracle_writes_off_an_overpaid_card_category(db_session, tmp_path):
+    """July: 3000 − 200 assigned = 2800; the −200 is this month's red, not yet
+    absorbed. August: 2800 − 200 written off = 2600. The Visa owes 500 − 400
+    = 100, none of it set aside."""
+    _, _, ynab_budget = await _overpaid(db_session, tmp_path)
+    july = oracle_for(ynab_budget, JUL, accounts=OVERPAID_TYPES, credit_card_accounts=CARDS)
+    august = oracle_for(ynab_budget, AUG, accounts=OVERPAID_TYPES, credit_card_accounts=CARDS)
+    assert july.rta == Decimal("2800.00")
+    assert august.cash_overspending_written_off == Decimal("200.00")
+    assert august.rta == Decimal("2600.00")
+
+
+async def test_an_overpaid_card_agrees_with_ynab_from_the_anchor_on(db_session, tmp_path):
+    """Anchored at August, so the walk opens on July's −200 payment category —
+    YNAB's own red — and writes it off at B, retiring 200 of the 300 the
+    import says rode unfunded."""
+    services, budget_id, ynab_budget = await _overpaid(db_session, tmp_path)
+    await assert_ynab_agreement(
+        services,
+        budget_id,
+        ynab_budget,
+        months=(JUL, AUG),
+        accounts=OVERPAID_TYPES,
+        credit_card_accounts=CARDS,
+    )
+    report = await parity(
+        services,
+        budget_id,
+        ynab_budget,
+        AUG,
+        accounts=OVERPAID_TYPES,
+        credit_card_accounts=CARDS,
+        anchor=AUG,
+    )
+    assert report.matches
+    assert report.card_history == [], report.card_history
+    assert report.igab_ready_to_assign == report.ynab_ready_to_assign == cents("2600")
+
+
+async def test_an_overpaid_card_agrees_with_ynab_when_walked_from_scratch(db_session, tmp_path):
+    """No anchor: IGAB re-derives all three months. July the Visa's Set aside
+    is −200 and Ready to Assign 2800; August it is 0, the 200 was written off,
+    Ready to Assign is 2600, and the 100 still owed is Uncovered."""
+    from sqlalchemy import delete
+
+    from igab.db.models import ImportAnchor
+
+    services, budget_id, ynab_budget = await _overpaid(db_session, tmp_path)
+    await db_session.execute(delete(ImportAnchor).where(ImportAnchor.budget_id == budget_id))
+    await db_session.flush()
+    await assert_ynab_agreement(
+        services,
+        budget_id,
+        ynab_budget,
+        months=(JUN, JUL, AUG),
+        accounts=OVERPAID_TYPES,
+        credit_card_accounts=CARDS,
+    )
+    july = await services.budgets.get_budget_summary(budget_id, JUL)
+    august = await services.budgets.get_budget_summary(budget_id, AUG)
+    assert july.to_be_assigned == Decimal("2800.00")
+    assert july.cards[0].set_aside == Decimal("-200.00")
+    assert august.to_be_assigned == Decimal("2600.00")
+    visa = august.cards[0]
+    assert (visa.set_aside, visa.written_off, visa.uncovered) == (
+        Decimal("0"),
+        Decimal("200.00"),
+        Decimal("100.00"),
+    )

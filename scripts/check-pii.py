@@ -79,6 +79,8 @@ NUMBERS = {
 REVIEWED_FIXTURES = {
     "backend/tests/fixtures/ynab/Parity Budget - Plan.csv",
     "backend/tests/fixtures/ynab/Parity Budget - Register.csv",
+    "backend/tests/fixtures/ynab/Overpaid Card - Plan.csv",
+    "backend/tests/fixtures/ynab/Overpaid Card - Register.csv",
 }
 
 #: A saved bank feed, by shape rather than by name.
