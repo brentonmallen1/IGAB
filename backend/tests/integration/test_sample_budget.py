@@ -241,11 +241,19 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
     assert all(c.card_credit == Decimal("0") for c in summary.cards)
     # And Uncovered decomposes exactly: the 420 the card arrived with, plus
     # the 45 of this month's deliberate overspend, which was swiped on the
-    # card and so rides there instead of charging Ready to Assign. Nothing
-    # else — every other charge came out of a funded envelope and reserved its
-    # own cash. That sum is the whole credit model in one assertion.
+    # card and so rides there instead of charging Ready to Assign, less what
+    # Ready to Assign has already covered — a month whose flat payment ran
+    # past what that month had reserved ended overspent and was written off
+    # on the 1st, and that money now stands against the debt. Nothing else —
+    # every other charge came out of a funded envelope and reserved its own
+    # cash. That sum is the whole credit model in one assertion.
     everyday = next(c for c in summary.cards if c.name == "Sapphire Visa")
-    assert everyday.uncovered == Decimal("420.00") + summary.total_overspent
+    assert everyday.uncovered == (
+        Decimal("420.00") + summary.total_overspent - everyday.written_off
+    )
+    # The demo card is not overspent now: whatever was written off is
+    # history, and the month a new user opens on reads normally.
+    assert everyday.set_aside >= 0
     # The demo cards say what they were built to say, from one definition.
     shown = {c.name: c for c in summary.cards}
     for scenario in scenarios_for("starter"):
@@ -259,6 +267,7 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
                 short_reserved=row.short_reserved,
                 card_credit=row.card_credit,
                 riding=row.riding,
+                written_off=row.written_off,
                 charged_this_month=row.charged_this_month,
                 inflows_this_month=row.inflows_this_month,
                 paid_this_month=row.paid_this_month,

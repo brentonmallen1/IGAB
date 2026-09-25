@@ -8,6 +8,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { currentMonthStart, today } from '../../utils/dates'
 import { isCashAccount } from '../../utils/accountKinds'
 import { parseAmountInput } from '../../utils/money'
+import { overspentAfterPayment, thisMonthOrNext } from '../../utils/cardOverspending'
 import { AmountInput } from '../common/AmountInput/AmountInput'
 import { Dialog } from '../common/Dialog/Dialog'
 import './CardPaymentModal.css'
@@ -86,6 +87,16 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   })
   const [extra, setExtra] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  // Said before the payment is recorded, not after: paying past Set aside is
+  // the move that turns a card red, and the budget page is too late to learn
+  // it. Only for a readable amount — unparseable input says nothing here and
+  // is refused on submit.
+  const typed = parseAmountInput(amount)
+  const overspends =
+    !isLoan && cardStatus && !isNaN(typed) && typed > 0
+      ? overspentAfterPayment(cardStatus.set_aside, typed)
+      : null
 
   const presets = [
     setAside !== null && { label: 'Set aside', value: setAside },
@@ -216,10 +227,18 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
             , so everything above it — the extra included — reduces principal.
           </p>
         ) : (
-          <p className="dialog-form__hint">
-            Recorded as a transfer, so it spends this card&apos;s Set aside — a plain deposit would
-            lower the balance while Set aside stood still.
-          </p>
+          <>
+            <p className="dialog-form__hint">
+              Recorded as a transfer, so it spends this card&apos;s Set aside — a plain deposit
+              would lower the balance while Set aside stood still.
+            </p>
+            {overspends !== null && (
+              <p className="dialog-form__hint card-payment__overspends">
+                This pays more than is set aside, so {card.name} goes red.{' '}
+                {thisMonthOrNext(formatMoney(overspends))}
+              </p>
+            )}
+          </>
         )}
       </form>
     </Dialog>

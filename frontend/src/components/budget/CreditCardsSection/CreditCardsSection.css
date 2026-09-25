@@ -1,5 +1,7 @@
-/* The cards strip: liability-truthful columns, deliberately calm.
-   Uncovered is information, not an alarm — no state colors here.
+/* The cards strip: one line per card, deliberately calm. Colour is the
+   Set aside pill's alone, read like any envelope's Available — red when
+   overspent, green when money waits. Debt not covered is information, not
+   an alarm, and carries no colour.
 
    The strip is CHROME in the table's stack — filter bar, cards bar, column
    headers are all full-bleed bands, and a rounded card wedged between two
@@ -19,21 +21,6 @@
   margin-bottom: var(--spacing-sm);
 }
 
-/* Header row: the same density as the filter bar above it. flex-start, not
-   the header slot's space-between — the info button hugs the title and the
-   summary's own margin pushes it right. */
-.credit-cards__header-row {
-  padding: var(--spacing-xs) var(--spacing-md);
-  border-bottom: none; /* the surface's own bottom edge is the divider */
-  justify-content: flex-start;
-  /* Pinned under the filter bar, never beneath it. Same measured height the
-     column header below uses (--budget-filter-bar-h, published by
-     BudgetTable); the bar wraps, so no constant is right. The two hand over
-     cleanly: this band is pushed up by its own section's bottom edge at the
-     moment the column header reaches the same line. */
-  --surface-sticky-top: var(--budget-filter-bar-h, 0px);
-}
-
 /* The whole band IS the fold control — title, count, bill note and the space
    between them. It was only ever the caret and the words beside it, which
    meant a header that reads as one object behaved as two. `user-select` off
@@ -47,6 +34,21 @@
   min-width: 0;
   cursor: pointer;
   user-select: none;
+}
+
+/* Header row: the same density as the filter bar above it. flex-start, not
+   the header slot's space-between — the info button hugs the title and the
+   summary's own margin pushes it right. */
+.credit-cards__header-row {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-bottom: none; /* the surface's own bottom edge is the divider */
+  justify-content: flex-start;
+  /* Pinned under the filter bar, never beneath it. Same measured height the
+     column header below uses (--budget-filter-bar-h, published by
+     BudgetTable); the bar wraps, so no constant is right. The two hand over
+     cleanly: this band is pushed up by its own section's bottom edge at the
+     moment the column header reaches the same line. */
+  --surface-sticky-top: var(--budget-filter-bar-h, 0px);
 }
 
 /* The keyboard's way in, and where `aria-expanded` lives. It carries no
@@ -64,22 +66,6 @@
   font: inherit;
   cursor: pointer;
   text-align: left;
-}
-
-.credit-cards__info-btn {
-  display: inline-flex;
-  align-items: center;
-  background: none;
-  border: none;
-  padding: 2px;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.credit-cards__info-btn:hover {
-  color: var(--text-primary);
-  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .credit-cards__header svg {
@@ -104,139 +90,6 @@
   background: color-mix(in srgb, var(--color-accent) 5%, var(--surface-chrome));
 }
 
-/* The well: a hole cut into the band, the way the import review's blocks
-   and the grid body sit against their containers. overflow keeps the chrome
-   header and row hovers inside the radius. */
-.credit-cards__table {
-  background-color: var(--surface-sunken);
-  border: 1px solid var(--edge);
-  border-radius: var(--border-radius-sm);
-  overflow: hidden auto;
-}
-
-.credit-cards__head,
-.credit-cards__row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(84px, 110px));
-  gap: var(--spacing-sm);
-  align-items: center;
-  padding: var(--spacing-xs) var(--spacing-md);
-}
-
-/* Chrome, like the grid's group headers — the two-tone step is what makes
-   the body rows read as rows. */
-.credit-cards__head {
-  background-color: var(--surface-chrome);
-  border-bottom: 1px solid var(--edge);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.credit-cards__row {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);
-  transition: background-color var(--transition-fast);
-}
-
-.credit-cards__row:hover {
-  background-color: var(--row-hover-bg);
-}
-
-/* The last thing in the last group carries no rule, whatever it happens to
-   be. This used to name the one sibling a row could have — `:has(+ .legs)` —
-   and the moment a second one existed (the state sentence) the last row drew
-   a border into the panel's own edge. Asking "are you last" is the rule;
-   listing what may follow you is a copy of it that goes stale. */
-.credit-cards__group:last-child > :last-child {
-  border-bottom: none;
-}
-
-/* The door to a card's explanation, on the name line beside the card it is
-   about. Always visible, unlike the paydown/release doors beside it: those
-   are actions and stay quiet until wanted, this is a piece of information
-   announcing that there IS one. Its presence is the signal — a funded card
-   draws no icon at all — so hiding it until hover would hide the signal. */
-.credit-cards__why-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.credit-cards__why-btn:hover {
-  color: var(--text-primary);
-  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
-}
-
-/* The explanation itself, in a dialog headed by the card's name. It rendered
-   as a paragraph row under the row once: it ballooned the table, and a block
-   of prose between two rows belongs at a glance to neither. */
-.credit-cards__why-line {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
-  color: var(--text-secondary);
-}
-
-.credit-cards__why-line + .credit-cards__why-line {
-  margin-top: var(--spacing-sm);
-}
-
-/* What to do, where there IS something — a shade stronger than the fact it
-   follows, and deliberately the same text color as the row's figures so it
-   never reads as a warning. Several of these states are entirely normal. */
-.credit-cards__why-action {
-  color: var(--text-primary);
-}
-
-.credit-cards__col--name {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.credit-cards__col--name svg {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.credit-cards__col--num {
-  text-align: right;
-}
-
-/* The paydown-target and release doors: quiet until hovered, like the grid's
-   row affordances — a target is a choice, and so is taking money back off a
-   card. Neither is a nag. */
-.credit-cards__target-btn,
-.credit-cards__release-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  opacity: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.credit-cards__row:hover .credit-cards__target-btn,
-.credit-cards__row:hover .credit-cards__release-btn,
-.credit-cards__target-btn:focus-visible,
-.credit-cards__release-btn:focus-visible {
-  opacity: 1;
-}
-
 /* A closed card only keeps a row while something is left on it — the tag
    says why it is still here. Same vocabulary as the accounts overview. */
 .credit-cards__closed-tag {
@@ -254,51 +107,11 @@
   flex-shrink: 0;
 }
 
-.credit-cards__uncovered {
-  color: var(--text-secondary);
-}
-
-/* One class used to carry two unrelated meanings, and two more were coming.
-   Each note under a number gets its own name instead:
-     __hint      what the paydown target still wants (Assigned)
-     __note      which way this card is unusual (Set aside)
-     __movement  how far the debt moved this month (Balance)
-     __drift     a Set aside that does not add up
-     __state     the sentence under the row saying what happened
-   All quiet by design — the numbers carry the meaning, and Uncovered's
-   deliberately un-alarmed treatment sets the register for the whole row. */
+/* A quiet caption in the open card: what the paydown target still wants
+   this month. The figures and the callout carry the meaning. */
 .credit-cards__hint {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-}
-
-.credit-cards__note,
-.credit-cards__movement {
-  display: block;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  /* A note under a figure is a caption, not a paragraph — wrapping it mid
-     phrase reads as a layout accident, which is what it was. */
-  white-space: nowrap;
-}
-
-/* The one caption allowed to take two lines: "debt increased $412.00" does
-   not fit the Balance column, and the phrase carries a non-breaking space
-   (see debtMovement) so the only place it can break is before the figure. */
-.credit-cards__movement {
-  white-space: normal;
-}
-
-/* The one place colour is earned on this row: a reserve the model itself
-   cannot account for is not a normal state, unlike everything else here. */
-.credit-cards__drift {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  font-size: var(--font-size-xs);
-  color: var(--color-warning);
 }
 
 /* The month block under the lifetime legs — separated, not merged: one is a
@@ -332,62 +145,19 @@
   font-style: italic;
 }
 
-/* The payoff projection lives on the Liability page; this is the door. Quiet
-   until hovered, like the target button beside it. */
-.credit-cards__payoff-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  color: var(--text-muted);
-  opacity: 0;
-  flex-shrink: 0;
-}
-
-.credit-cards__row:hover .credit-cards__payoff-btn,
-.credit-cards__payoff-btn:focus-visible {
-  opacity: 1;
-}
-
-/* The worked example: a sunken well, per the Dialog's own rule that inset
-   regions inside the overlay panel step down a surface. */
-.credit-cards__example {
-  background-color: var(--surface-sunken);
-  border: 1px solid var(--edge);
-  border-radius: var(--border-radius-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-/* Set aside is a door, not a field: underline on hover, exactly the
-   grid's Activity cell. The border-on-hover treatment next door is this
-   app's "editable" signal and belongs to the Assigned cell alone. */
-.credit-cards__peek-btn {
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  padding: 2px 0;
-  width: auto;
-  text-align: right;
-  cursor: pointer;
-}
-
-.credit-cards__peek-btn:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .credit-cards__assign-btn {
   background: none;
-  border: 1px solid transparent;
+  /* A field, so it reads as one: a hairline at rest, stronger on hover. It
+     sat borderless in a table cell once, where the column said "editable". */
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   color: inherit;
   font: inherit;
   padding: 2px var(--spacing-xs);
-  width: 100%;
+  /* The same width as the input it turns into, so editing never reflows the
+     row. It was 100% of a table cell; in this flex row that took a line of
+     its own and put the figure at the far edge, away from its label. */
+  width: 8em;
   text-align: right;
   cursor: pointer;
 }
@@ -402,7 +172,7 @@
 }
 
 .credit-cards__assign {
-  width: 100%;
+  width: 8em;
   text-align: right;
   font: inherit;
   color: var(--text-primary);
@@ -410,60 +180,6 @@
   border: 1px solid var(--input-focus-ring);
   border-radius: var(--border-radius-sm);
   padding: 2px var(--spacing-xs);
-}
-
-/* The info dialog's body: prose plus a term list, the dialog's own tokens. */
-.credit-cards__info {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.55;
-}
-
-.credit-cards__info p {
-  margin: 0 0 var(--spacing-sm);
-}
-
-.credit-cards__info dl {
-  margin: 0;
-  display: grid;
-  gap: var(--spacing-xs) var(--spacing-md);
-}
-
-.credit-cards__info dt {
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-top: var(--spacing-xs);
-}
-
-.credit-cards__info dd {
-  margin: 0;
-}
-
-/* ── What Set aside is made of ────────────────────────────────────────────
-   A card's reserve is a running total of five flows and the surface showed
-   only the total, so every question the model raised needed a developer to
-   answer. Disclosure, not a permanent column: the total is the affordance and
-   this is the "why". Restrained on purpose — no colour, tabular numerals, the
-   hint type scale; the numbers carry the meaning. */
-.credit-cards__legs-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: var(--spacing-xs);
-  padding: 2px;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    background-color var(--transition-fast);
-}
-
-.credit-cards__legs-btn:hover {
-  color: var(--text-primary);
-  background-color: var(--row-hover-bg);
 }
 
 .credit-cards__legs {
@@ -697,68 +413,307 @@
    captions on the second. Cells are addressed by position because the four
    numeric cells share one class; the head row is hidden and each cell
    captions itself instead. */
+/* ─── One line per card, opened in place ────────────────────────────────
+   A card reads like any envelope: its Set aside in the same colours a
+   spending envelope's Available uses, red and bold when overspent. The line
+   is the whole door — a word, a bar and the figure say where the card
+   stands, and tapping opens the rest under it. */
+.credit-cards__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.credit-cards__card + .credit-cards__card {
+  border-top: 1px solid var(--edge);
+}
+
+.credit-cards__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(48px, 110px) auto;
+  gap: var(--spacing-md);
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px var(--spacing-md);
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.credit-cards__line:hover,
+.credit-cards__line--open {
+  background: var(--row-hover-bg);
+}
+
+.credit-cards__line:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: -2px;
+}
+
+/* The overspent envelope's own mark, the same left edge the grid gives one. */
+.credit-cards__card:has(.credit-cards__pill--negative) .credit-cards__line {
+  border-left-color: var(--color-negative);
+}
+
+.credit-cards__line-name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.credit-cards__line-name svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* A dot only where the card needs you this month. */
+.credit-cards__mark {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.credit-cards__mark--overspent {
+  background: var(--color-negative);
+}
+
+.credit-cards__mark--to-file {
+  background: var(--color-warning);
+}
+
+.credit-cards__word {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.credit-cards__word--overspent {
+  color: var(--color-negative);
+  font-weight: var(--font-weight-medium);
+}
+
+.credit-cards__word--to-file {
+  color: var(--color-warning);
+}
+
+/* How much of what the card owes is set aside. Muted on purpose: the bar is
+   a shape to glance at, not a second alarm. */
+.credit-cards__bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  overflow: hidden;
+}
+
+.credit-cards__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--text-muted);
+}
+
+.credit-cards__pill {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 6.5em;
+}
+
+.credit-cards__pill--negative {
+  color: var(--color-negative);
+  font-weight: 600;
+}
+
+.credit-cards__pill--positive {
+  color: var(--color-positive);
+}
+
+.credit-cards__pill--zero {
+  color: var(--text-muted);
+}
+
+/* ─── The opened card ─────────────────────────────────────────────────── */
+.credit-cards__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md) var(--spacing-md) calc(var(--spacing-md) + 20px);
+  font-size: var(--font-size-sm);
+}
+
+.credit-cards__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  gap: var(--spacing-xs) var(--spacing-xl);
+  margin: 0;
+}
+
+.credit-cards__stats dt {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.credit-cards__stats dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* At most one per card, and only when something is off: a headline a
+   glance can take, one line of cause, and the fix as a button. */
+.credit-cards__callout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 60ch;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-left: 3px solid var(--edge-strong);
+  border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+  background: var(--surface-raised);
+}
+
+.credit-cards__callout--overspent {
+  border-left-color: var(--color-negative);
+}
+
+.credit-cards__callout p {
+  margin: 0;
+}
+
+.credit-cards__callout-head {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.credit-cards__callout--overspent .credit-cards__callout-head {
+  color: var(--color-negative);
+}
+
+.credit-cards__callout-why {
+  color: var(--text-secondary);
+}
+
+.credit-cards__callout-fix {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.credit-cards__callout-otherwise {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* The one filled button in an opened card: the fix. Accent, as the hero's
+   Assign is — it does the same thing. */
+.credit-cards__fix {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 12px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--text-inverse);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.credit-cards__fix:hover {
+  background: var(--color-accent-hover);
+}
+
+.credit-cards__fix:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+}
+
+/* One-line notes: rows to categorize, what rode on this month. */
+.credit-cards__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--spacing-xs);
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.credit-cards__assigned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.credit-cards__assigned-label {
+  color: var(--text-secondary);
+}
+
+.credit-cards__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--spacing-xs);
+  /* Aligned with the text above, not with the buttons' padding. */
+  margin-left: -8px;
+}
+
+/* Every door has words on it. Icon-only buttons with a title were what the
+   row used to offer, and a title is unreachable on an installed PWA. */
+.credit-cards__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* Quiet until pointed at: the fix is the one filled button, and five
+   bordered buttons beside it drowned it out. */
+.credit-cards__action:hover {
+  color: var(--text-primary);
+  background: var(--row-hover-bg);
+}
+
+.credit-cards__action:focus-visible,
+.credit-cards__inline-link:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 1px;
+}
+
+.credit-cards__inline-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
-  .credit-cards__head {
-    display: none;
-  }
-
-  .credit-cards__row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-areas:
-      "name name uncovered"
-      "balance assigned ready";
-    row-gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-  }
-
-  .credit-cards__row > :nth-child(1) {
-    grid-area: name;
-  }
-  .credit-cards__row > :nth-child(2) {
-    grid-area: balance;
-  }
-  .credit-cards__row > :nth-child(3) {
-    grid-area: assigned;
-  }
-  .credit-cards__row > :nth-child(4) {
-    grid-area: ready;
-  }
-  .credit-cards__row > :nth-child(5) {
-    grid-area: uncovered;
-  }
-
-  /* The three working figures read left-aligned under their captions; the
-     amounts are no longer in a column with a header to align to. */
-  .credit-cards__row > :nth-child(2),
-  .credit-cards__row > :nth-child(3),
-  .credit-cards__row > :nth-child(4) {
-    text-align: left;
-    min-width: 0;
-  }
-
-  .credit-cards__row > :nth-child(2)::before,
-  .credit-cards__row > :nth-child(3)::before,
-  .credit-cards__row > :nth-child(4)::before,
-  .credit-cards__row > :nth-child(5)::before {
-    display: block;
-    font-size: var(--font-size-2xs);
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-  .credit-cards__row > :nth-child(2)::before {
-    content: "Balance";
-  }
-  .credit-cards__row > :nth-child(3)::before {
-    content: "Assigned";
-  }
-  .credit-cards__row > :nth-child(4)::before {
-    content: "Set aside";
-  }
-  .credit-cards__row > :nth-child(5)::before {
-    content: "Uncovered";
-  }
-
   /* Title, count and the bill note do not fit one phone line together, and
      the summary is nowrap by design — so the band wraps instead of the
      strip scrolling sideways. */
@@ -769,42 +724,41 @@
   /* Captions were nowrap so a desktop column never broke mid-phrase; in a
      third of a phone's width they overflowed the well by 10px and dragged the
      whole strip sideways. */
-  .credit-cards__note,
-  .credit-cards__hint,
-  .credit-cards__movement,
-  .credit-cards__drift {
+  .credit-cards__hint {
     white-space: normal;
   }
 
-  .credit-cards__assign-btn {
-    text-align: left;
-    padding-left: 0;
+  /* A phone gives the line a tap target and a narrower bar; the name and
+     its word keep the space, and the figure never wraps. */
+  .credit-cards__line {
+    grid-template-columns: minmax(0, 1fr) 44px auto;
+    gap: var(--spacing-sm);
+    min-height: var(--tap-min);
+    padding: 6px var(--spacing-sm);
   }
 
-  .credit-cards__peek-btn {
-    text-align: left;
+  .credit-cards__pill {
+    min-width: 0;
   }
 
-  /* The doors on the name line (paydown target, payoff projection, release)
-     — the hover reveal cannot fire, and a 12px icon is not a target. Real
-     size rather than .tap-expand: they sit side by side, and expanded hit
-     areas would eat each other. */
-  .credit-cards__target-btn,
-  .credit-cards__payoff-btn,
-  .credit-cards__release-btn,
-  .credit-cards__why-btn {
-    opacity: 1;
-    justify-content: center;
-    min-width: var(--tap-min);
+  .credit-cards__detail {
+    padding-left: var(--spacing-md);
+  }
+
+  .credit-cards__action,
+  .credit-cards__fix {
     min-height: var(--tap-min);
   }
-}
 
-@media (hover: none) {
-  .credit-cards__target-btn,
-  .credit-cards__payoff-btn,
-  .credit-cards__release-btn {
-    opacity: 1;
+  .credit-cards__stats {
+    column-gap: var(--spacing-md);
+  }
+
+  /* Two columns of tap-height links. Wrapped freely, a 44pt row stranded
+     one link on a line of its own and read as a layout accident. */
+  .credit-cards__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -836,8 +790,7 @@
   white-space: nowrap;
 }
 
-/* The chip's own icon keeps the chip's colour: __col--name paints every svg
-   inside it muted, which would leave the clock grey on warning-coloured text. */
+/* The chip's own icon keeps the chip's colour, not the line's muted svg. */
 .credit-cards__due svg {
   color: inherit;
 }
@@ -846,6 +799,7 @@
    line, so a long card name ellipses instead of clipping the chip and the
    doors that follow it. */
 .credit-cards__card-name {
+  font-weight: var(--font-weight-medium);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

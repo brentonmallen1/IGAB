@@ -38,19 +38,19 @@ INTENTS: dict[str, tuple[str, str]] = {
         "I pay it off every month",
         "The card is a convenience, not a loan. Every charge comes out of an "
         "envelope that had the money, so Set aside should track what the card "
-        "owes and Uncovered should sit at nothing.",
+        "owes and nothing should read as not covered.",
     ),
     "paying-down": (
         "I'm paying a balance down",
-        "There is old debt the budget never funded. It shows as Uncovered and "
+        "There is old debt the budget never funded. It reads as not covered and "
         "charges nothing; it comes down because you assign to the card each "
         "month and then pay. Set aside will sit far below the balance, and "
         "that is right.",
     ),
     "carrying": (
         "I'm carrying a balance for now",
-        "New spending is funded normally and the old balance waits. Uncovered "
-        "stands still, which is information rather than an alarm — nothing "
+        "New spending is funded normally and the old balance waits. What is not "
+        "covered stands still, which is information rather than an alarm — nothing "
         "leaves your budget until you choose to assign money to the card.",
     ),
 }
@@ -63,9 +63,13 @@ SCENARIO_INTENTS: dict[str, tuple[str, ...]] = {
     "month-ended-short": ("in-full", "paying-down", "carrying"),
     "over-reserved": ("in-full",),
     "reimbursed": ("in-full", "paying-down", "carrying"),
+    "refund-written-off": ("in-full", "paying-down", "carrying"),
     "unfiled-spending": ("in-full", "paying-down", "carrying"),
     "unlinked-payment": ("in-full", "paying-down", "carrying"),
-    "paid-ahead-then-caught-up": ("paying-down", "carrying"),
+    "paid-ahead-written-off": ("paying-down", "carrying"),
+    # Paying old debt past the reserve is what a paydown is; covering the
+    # difference the same month is how to do it without touching next month.
+    "paid-ahead-covered": ("paying-down",),
     "credit-balance": ("in-full",),
     "settled-by-others": ("in-full", "paying-down", "carrying"),
     "ride-unfunded": ("in-full", "paying-down", "carrying"),
@@ -90,6 +94,14 @@ _EVENT_PHRASES: dict[str, str] = {
     "assign": "Assign {amount} to the card",
     "release": "Move {amount} back out of the card's envelope",
 }
+
+#: What the 1st did, when last month ended with this card below zero. Not a
+#: scenario event — nobody does it; the month turning does — so it is read
+#: off the walk's own `written_off` leg rather than phrased from an event.
+_COVERED_PHRASE = (
+    "The 1st: last month's {amount} of overspending comes out of Ready to "
+    "Assign, and Set aside starts again at $0.00"
+)
 
 
 def _money(amount: Decimal) -> str:
@@ -181,26 +193,45 @@ def card_examples(today: date) -> list[CardExample]:
 
 def _example(scenario: CardScenario, today: date) -> CardExample:
     months = []
+    covered_before = ZERO
     for ago, month in _months_of(scenario, today):
         position = walk(scenario, today, through=month)
         events = sorted(
             (e for e in scenario.events if e.month(today) == month),
             key=lambda e: e.when.day or 1,
         )
+        steps = [
+            CardExampleStep(
+                kind=e.kind,
+                amount=e.amount,
+                category=e.category,
+                day=e.when.day or 1,
+                says=_phrase(e),
+            )
+            for e in events
+        ]
+        # The walk's lifetime leg, differenced: what THIS month's 1st covered.
+        # First in the month, because it happens before anybody does anything —
+        # without it a card read −$150 one month and $0.00 the next with no
+        # step saying why.
+        covered = position.written_off - covered_before
+        covered_before = position.written_off
+        if covered > 0:
+            steps.insert(
+                0,
+                CardExampleStep(
+                    kind="covered",
+                    amount=covered,
+                    category=None,
+                    day=1,
+                    says=_COVERED_PHRASE.format(amount=_money(covered)),
+                ),
+            )
         months.append(
             CardExampleMonth(
                 month=month,
                 label=_month_label(ago),
-                steps=[
-                    CardExampleStep(
-                        kind=e.kind,
-                        amount=e.amount,
-                        category=e.category,
-                        day=e.when.day or 1,
-                        says=_phrase(e),
-                    )
-                    for e in events
-                ],
+                steps=steps,
                 # `walk` leaves a figure None only where a scenario declines to
                 # claim it; the walk itself always produces one.
                 set_aside=position.set_aside if position.set_aside is not None else ZERO,

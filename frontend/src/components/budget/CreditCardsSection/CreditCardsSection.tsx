@@ -1,18 +1,16 @@
 import { Fragment, useId, useRef, useState } from 'react'
 import {
-  AlertCircle,
   ArrowRightLeft,
   CalendarClock,
   ChevronDown,
   ChevronRight,
-  CreditCard,
   Crosshair,
-  Info,
   TrendingDown,
 } from 'lucide-react'
 import { useBudgetMonth, useCardTimeline, useSetAssignment } from '../../../api/budgets'
 import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
+import { useAccounts } from '../../../api/accounts'
 import { currentMonthStart, today } from '../../../utils/dates'
 import { dueSoonNotice, type DueNotice } from '../../../utils/paymentDue'
 import { useTarget } from '../../../api/targets'
@@ -21,7 +19,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import {
-  debtMovementLabel,
+  cardCallout,
   debtMovementWord,
   driftSentence,
   dueHeaderNote,
@@ -31,11 +29,8 @@ import {
   releaseAnchors,
   rideMonths,
   otherCredits,
-  setAsideLabel,
-  setAsideShown,
-  stateSentence,
+  cardLine,
 } from './cardRow'
-import { Dialog } from '../../common/Dialog/Dialog'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
@@ -44,19 +39,24 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
+import type { PeekScope } from '../TransactionsPeekModal/TransactionsPeekModal'
+import { overspending } from '../budgetTotals'
 import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import './CreditCardsSection.css'
 
 /**
- * The budget's cards — Balance / Set aside / Uncovered, served whole by the
- * month endpoint (`cards` on BudgetMonth; the model is domain/cards.py).
+ * The budget's cards, served whole by the month endpoint (`cards` on
+ * BudgetMonth; the model is domain/cards.py).
  *
- * A card is not an envelope: its set-aside category never renders in the
- * grid, and Uncovered is deliberately calm — a bill unpaid because the due
- * date is the 8th, or a partner's share still pending, is a normal state,
- * not overspending. Color marks nothing here; the numbers carry it.
+ * Each card is one line: a word, a covered/owed bar, and its Set aside drawn
+ * like any envelope's Available — red when overspent (it is covered from
+ * Ready to Assign on the 1st), green when money is waiting. The card's
+ * envelope never renders in the grid; this strip is where it is read. Debt
+ * not covered is deliberately calm — a bill unpaid because the due date is
+ * the 8th, or a partner's share still pending, is a normal state, not
+ * overspending.
  *
  * Sits above the category grid (below the filter bar) and folds shut; the
  * fold is a standing choice, persisted like a collapsed sidebar section.
@@ -68,8 +68,8 @@ import './CreditCardsSection.css'
  * undo included.
  */
 /**
- * The five legs a card's Set aside is the running total of, plus what is
- * still riding on the card uncovered.
+ * The legs a card's Set aside is the running total of, plus what is still
+ * riding on the card not covered.
  *
  * Served, never summed here: `set_aside` already comes from the server, and a
  * client-side second opinion about what a reserve is made of is the exact
@@ -462,9 +462,9 @@ function breachSentence(
   }
   const [leg] = breach.legs
   const cause = leg ? ` — ${legPhrases[leg.leg] ?? leg.leg} (${formatMoney(leg.amount)})` : ''
-  return `Set aside first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
+  return `First overspent in ${formatMonth(breach.month)}: Set aside went from ${formatMoney(
     breach.set_aside_before
-  )} → ${formatMoney(breach.set_aside_after)}${cause}.`
+  )} to ${formatMoney(breach.set_aside_after)}${cause}.`
 }
 
 /**
@@ -480,8 +480,8 @@ function breachSentence(
  * Offered on ANY card holding money, not only one with a surplus. The money
  * is committed to a bill, but committing it was a decision and so is taking
  * it back — needing that cash elsewhere this month is a real situation. Past
- * the spare it raises this card's Uncovered dollar for dollar, so the form
- * says that instead of refusing.
+ * the spare every dollar out is a dollar of this card's debt not covered, so
+ * the form says that instead of refusing.
  */
 function ReleaseButton({
   budgetId,
@@ -519,12 +519,12 @@ function ReleaseButton({
       <button
         type="button"
         ref={anchorRef}
-        className="credit-cards__release-btn"
-        title={label}
+        className="credit-cards__action"
         aria-label={label}
         onClick={() => setOpen(true)}
       >
         <ArrowRightLeft size={12} aria-hidden />
+        Release
       </button>
       {open && !isMobile && (
         <MoveMoneyPopover
@@ -564,6 +564,237 @@ function ReleaseButton({
   )
 }
 
+/**
+ * One card, opened — read at a glance, top to bottom:
+ *
+ * 1. Three figures: what it owes, how much of that is covered, how much not.
+ * 2. At most one callout, only when something is off: a headline, one line
+ *    of cause, and the fix as a button ("Assign $100.00").
+ * 3. One-line notes for rows to categorize and what rode on this month.
+ * 4. The assigned field, then every other door as a quiet link.
+ *
+ * It was paragraphs — the state, its cause and every remedy, then more
+ * paragraphs for each note — and too much to read to be read at all.
+ * Nothing here is a tooltip or a dialog.
+ */
+function CardDetail({
+  id,
+  budgetId,
+  month,
+  card,
+  toCategorize,
+  assigned,
+  needed,
+  liabilityId,
+  envelope,
+  editing,
+  draft,
+  onDraft,
+  onEdit,
+  onCommit,
+  onCancel,
+  onAssignMore,
+  legsOpen,
+  onLegs,
+  onPeek,
+  onPeekCategory,
+  onTarget,
+  formatMoney,
+  formatMonth,
+}: {
+  id: string
+  budgetId: string
+  month: string
+  card: CardStatus
+  toCategorize: number
+  assigned: number
+  needed: number | null
+  liabilityId: string | null
+  envelope: Category | null
+  editing: boolean
+  draft: string
+  onDraft: (value: string) => void
+  onEdit: (value: string) => void
+  onCommit: () => void
+  onCancel: () => void
+  /** Raise this month's assignment by `amount` — the callout's fix. */
+  onAssignMore: (amount: number) => void
+  legsOpen: boolean
+  onLegs: () => void
+  onPeek: () => void
+  onPeekCategory: (categoryId: string, categoryName: string) => void
+  onTarget: () => void
+  formatMoney: (n: number) => string
+  formatMonth: (m: string) => string
+}) {
+  const callout = cardCallout(card, formatMoney)
+  const drift = driftSentence(card, formatMoney)
+  const owed = Math.max(0, -card.balance)
+  const covered = Math.min(owed, Math.max(0, card.set_aside))
+  return (
+    <div id={id} className="credit-cards__detail">
+      <dl className="credit-cards__stats">
+        <div>
+          <dt>Owes</dt>
+          <dd className="tabular">{formatMoney(owed)}</dd>
+        </div>
+        <div>
+          <dt>Covered</dt>
+          <dd className="tabular">{formatMoney(covered)}</dd>
+        </div>
+        <div>
+          <dt>Not covered</dt>
+          <dd className="tabular">{formatMoney(card.uncovered)}</dd>
+        </div>
+      </dl>
+
+      {callout && (
+        <div className={`credit-cards__callout credit-cards__callout--${callout.tone}`}>
+          <p className="credit-cards__callout-head">{callout.headline}</p>
+          <p className="credit-cards__callout-why">{callout.reason}</p>
+          {(callout.assign !== null || callout.otherwise) && (
+            <div className="credit-cards__callout-fix">
+              {/* Only with an envelope to assign into (a fresh migration can
+                leave a card without one for a moment). */}
+              {callout.assign !== null && card.category_id && (
+                <button
+                  type="button"
+                  className="credit-cards__fix"
+                  onClick={() => onAssignMore(callout.assign as number)}
+                >
+                  Assign {formatMoney(callout.assign)}
+                </button>
+              )}
+              {callout.otherwise && (
+                <span className="credit-cards__callout-otherwise">{callout.otherwise}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {drift && <p className="credit-cards__note">{drift}</p>}
+      {toCategorize > 0 && (
+        <p className="credit-cards__note">
+          <span className="credit-cards__mark credit-cards__mark--to-file" aria-hidden />
+          {toCategorize === 1 ? '1 transaction' : `${toCategorize} transactions`} to categorize
+          <button type="button" className="credit-cards__inline-link" onClick={onPeek}>
+            Show
+          </button>
+        </p>
+      )}
+      {/* What rode on this month, and from which envelopes — card debt, so
+        it is said on the card. The ride is a month's net, not a set of rows,
+        so each envelope opens its ordinary transactions. */}
+      {card.overspent_this_month > 0 && (
+        <p className="credit-cards__note">
+          Rode on this month:{' '}
+          {card.overspent_by_category.map((rode, i) => (
+            <Fragment key={rode.category_id}>
+              {i > 0 && ', '}
+              <button
+                type="button"
+                className="credit-cards__inline-link"
+                onClick={() => onPeekCategory(rode.category_id, rode.category_name)}
+              >
+                {rode.category_name}
+              </button>{' '}
+              <span className="tabular">{formatMoney(rode.amount)}</span>
+            </Fragment>
+          ))}
+        </p>
+      )}
+
+      <div className="credit-cards__assigned">
+        <span className="credit-cards__assigned-label">Assigned this month</span>
+        {card.category_id && editing ? (
+          <input
+            {...CELL_EDITOR_PROPS}
+            className="credit-cards__assign"
+            autoFocus
+            inputMode="decimal"
+            value={draft}
+            aria-label={`Assigned to ${card.name} this month`}
+            onChange={(e) => onDraft(e.target.value)}
+            onBlur={onCommit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCommit()
+              if (e.key === 'Escape') onCancel()
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="credit-cards__assign-btn tabular"
+            disabled={!card.category_id}
+            aria-label={`Assigned to ${card.name} this month: ${formatMoney(assigned)}. Change it`}
+            onClick={() => onEdit(assigned ? String(assigned) : '')}
+          >
+            {formatMoney(assigned)}
+          </button>
+        )}
+        {needed !== null && needed > 0 && (
+          <span className="credit-cards__hint">
+            {formatMoney(needed)} more to reach the paydown target
+          </span>
+        )}
+      </div>
+
+      <div className="credit-cards__actions">
+        <button type="button" className="credit-cards__action" onClick={onPeek}>
+          Transactions
+        </button>
+        {/* Only where there is money to take: releasing from an empty
+          envelope is a form with nothing to offer. */}
+        {envelope && card.set_aside > 0 && (
+          <ReleaseButton
+            budgetId={budgetId}
+            month={month}
+            card={card}
+            envelope={envelope}
+            formatMoney={formatMoney}
+          />
+        )}
+        {card.category_id && (
+          <button type="button" className="credit-cards__action" onClick={onTarget}>
+            <Crosshair size={12} aria-hidden />
+            Paydown target
+          </button>
+        )}
+        {liabilityId && (
+          <Link to={`/liabilities/${liabilityId}`} className="credit-cards__action">
+            <TrendingDown size={12} aria-hidden />
+            Payoff projection
+          </Link>
+        )}
+        <button
+          type="button"
+          className="credit-cards__action"
+          aria-expanded={legsOpen}
+          aria-label={`What makes up Set aside for ${card.name}`}
+          onClick={onLegs}
+        >
+          {legsOpen ? (
+            <ChevronDown size={12} aria-hidden />
+          ) : (
+            <ChevronRight size={12} aria-hidden />
+          )}
+          Breakdown
+        </button>
+      </div>
+      {legsOpen && (
+        <ReserveLegs
+          budgetId={budgetId}
+          month={month}
+          card={card}
+          formatMoney={formatMoney}
+          formatMonth={formatMonth}
+        />
+      )}
+    </div>
+  )
+}
+
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
@@ -572,15 +803,18 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const toggleCollapsed = useUIStore((s) => s.toggleCreditCardsCollapsed)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [infoOpen, setInfoOpen] = useState(false)
-  const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
+  const [peek, setPeek] = useState<PeekScope | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
-  // Which card's explanation is open, by account. The card itself is looked
-  // up on render rather than held here, so a refetch behind an open dialog
-  // updates the sentence instead of freezing the figures it quotes.
-  const [whyFor, setWhyFor] = useState<string | null>(null)
+  // Which card is open, by account — one at a time. Its detail is drawn in
+  // place under its line, never in a dialog: the explanation used to live
+  // behind an ⓘ button, and a reason you have to go looking for is one
+  // nobody reads.
+  const [openFor, setOpenFor] = useState<string | null>(null)
   const { data: liabilities = [] } = useLiabilities(budgetId)
+  // Rows waiting for a category decide what a card's Set aside even is, so
+  // the line says so. Served per account (`uncategorized_count`).
+  const { data: accounts = [] } = useAccounts(budgetId)
   // For Release: the card's envelope is an ordinary category to the server,
   // and the move endpoint wants the category, not the account.
   const { data: categories = [] } = useCategories(budgetId)
@@ -593,6 +827,11 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
   const totalUncovered = cards.reduce((sum, c) => sum + c.uncovered, 0)
+  // This month's overspending that rode onto a card, read the way the
+  // overspent chip reads its total (served, not re-added from the rows). It
+  // sat in the header as an "of it on cards" chip with its own dialog; it is
+  // card debt, so the cards band says it and each card names its envelopes.
+  const rodeOn = overspending(budgetMonth).onCards
   // The payoff projection already exists on the Liability page — baseline
   // against the minimum payment versus the pace you are actually paying. The
   // strip never linked to it, so the one place that says "you are ahead" was
@@ -624,9 +863,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       .map((c) => ({ name: c.name, notice: dueByAccount.get(c.account_id) as DueNotice }))
   )
 
-  const whyCard = cards.find((c) => c.account_id === whyFor) ?? null
-  const whyState = whyCard ? stateSentence(whyCard, formatMoney) : null
-  const whyDrift = whyCard ? driftSentence(whyCard, formatMoney) : null
+  const toCategorize = new Map(accounts.map((a) => [a.id, a.uncategorized_count ?? 0]))
 
   function commit(categoryId: string) {
     // The same rule the grid's cell uses: the box is the whole equation,
@@ -676,24 +913,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             )}
             <span className="section-label surface__title">Credit cards</span>
           </button>
-          {/* A sibling, not a child: a button cannot nest in the fold control.
-            It stops the click here — the band folds the section, and opening
-            the explainer is not that. */}
-          <button
-            type="button"
-            className="credit-cards__info-btn"
-            aria-label="How credit cards work here"
-            title="How credit cards work here"
-            onClick={(e) => {
-              e.stopPropagation()
-              setInfoOpen(true)
-            }}
-          >
-            <Info size={13} aria-hidden />
-          </button>
           <span className="credit-cards__summary">
             {cards.length === 1 ? '1 card' : `${cards.length} cards`}
-            {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} uncovered</>}
+            {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} not covered</>}
+            {rodeOn > 0 && <> · {formatMoney(rodeOn)} rode on this month</>}
           </span>
           {/* Last, so it is the rightmost thing in the band: when the strip
             is collapsed this header is all there is, and a bill you cannot
@@ -709,237 +932,124 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
     >
       {!collapsed && (
         <div id="credit-cards-body" className="credit-cards__body">
-          <div className="credit-cards__table" role="table" aria-label="Credit cards">
-            <div className="credit-cards__head" role="row">
-              <span role="columnheader" className="credit-cards__col--name">
-                Card
-              </span>
-              <span role="columnheader" className="credit-cards__col--num">
-                Balance
-              </span>
-              <span role="columnheader" className="credit-cards__col--num">
-                Assigned
-              </span>
-              <span role="columnheader" className="credit-cards__col--num">
-                Set aside
-              </span>
-              <span role="columnheader" className="credit-cards__col--num">
-                Uncovered
-              </span>
-            </div>
+          <ul className="credit-cards__list" aria-label="Credit cards">
             {cards.map((card) => {
-              const assigned = card.category_id
-                ? Number(balances.get(card.category_id)?.assigned ?? 0)
-                : 0
-              const needed = card.category_id
-                ? (balances.get(card.category_id)?.needed_this_month ?? null)
-                : null
-              const legsOpen = legsFor === card.account_id
-              const label = setAsideLabel(card, formatMoney)
-              const state = stateSentence(card, formatMoney)
-              const drift = driftSentence(card, formatMoney)
-              const movement = debtMovementLabel(card, formatMoney)
-              const liability = liabilityByAccount.get(card.account_id)
+              const open = openFor === card.account_id
+              const line = cardLine(card, toCategorize.get(card.account_id) ?? 0, formatMoney)
+              const detailId = `credit-card-detail-${card.account_id}`
               const due = dueByAccount.get(card.account_id) ?? null
-              const envelope = categories.find((c) => c.id === card.category_id)
               return (
-                <div className="credit-cards__group" key={card.account_id}>
-                  <div className="credit-cards__row" role="row">
-                    <span className="credit-cards__col--name" role="cell">
-                      <CreditCard size={13} aria-hidden />
-                      {/* The name is the one thing on this line allowed to
-                        truncate. Everything beside it — the tag, the chip,
-                        the doors — is fixed-width, so without a shrinkable
-                        box of its own a long card name pushes them past the
-                        cell's `overflow: hidden` and clips the indicators
-                        instead of itself. */}
-                      <span className="credit-cards__card-name">{card.name}</span>
-                      {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
-                      {/* The explanation, one tap from the card it is about.
-                        It used to render as a paragraph row under the row,
-                        which ballooned the table and left the reader working
-                        out which card a block of prose belonged to. It is
-                        NOT a `title` tooltip: on the installed iOS PWA a
-                        tooltip is unreachable, which is the defect the row
-                        was rescued from in the first place. A real button
-                        and a dialog headed by the card's name answer both.
-
-                        Only where there is something to say — a funded card
-                        has no icon at all, so the icon's presence is itself
-                        the signal. */}
-                      {(state || drift) && (
-                        <button
-                          type="button"
-                          className="credit-cards__why-btn"
-                          title={`What is happening with ${card.name}`}
-                          aria-label={`What is happening with ${card.name}`}
-                          onClick={() => setWhyFor(card.account_id)}
-                        >
-                          <Info size={12} aria-hidden />
-                        </button>
+                <li className="credit-cards__card" key={card.account_id}>
+                  {/* The whole line is the door: a word, a bar and the Set
+                    aside pill say where the card stands, and tapping opens
+                    the rest right here. Nothing interactive nests inside
+                    it — the due chip is a label, not a control. */}
+                  <button
+                    type="button"
+                    className={`credit-cards__line ${open ? 'credit-cards__line--open' : ''}`}
+                    aria-expanded={open}
+                    aria-controls={detailId}
+                    onClick={() => setOpenFor(open ? null : card.account_id)}
+                  >
+                    <span className="credit-cards__line-name">
+                      {open ? (
+                        <ChevronDown size={12} aria-hidden />
+                      ) : (
+                        <ChevronRight size={12} aria-hidden />
                       )}
+                      {line.mark && (
+                        <span
+                          className={`credit-cards__mark credit-cards__mark--${line.mark}`}
+                          aria-hidden
+                        />
+                      )}
+                      <span className="credit-cards__card-name">{card.name}</span>
+                      <span
+                        className={`credit-cards__word ${line.mark ? `credit-cards__word--${line.mark}` : ''}`}
+                      >
+                        {line.word}
+                      </span>
+                      {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
                       {/* The bill is close and this card still owes something
                         — the one moment a due date is news rather than a
                         calendar fact. Never "overdue": the app cannot see
-                        whether a statement was paid, and saying so when it
-                        was is exactly the kind of confident wrong claim this
-                        strip has been taught not to make. */}
+                        whether a statement was paid. */}
                       {due && (
                         <span className="credit-cards__due">
                           <CalendarClock size={11} aria-hidden />
                           Due {due.phrase}
                         </span>
                       )}
-                      {liability && (
-                        <Link
-                          to={`/liabilities/${liability.id}`}
-                          className="credit-cards__payoff-btn"
-                          title={`Payoff projection for ${card.name}`}
-                          aria-label={`Payoff projection for ${card.name}`}
-                        >
-                          <TrendingDown size={12} aria-hidden />
-                        </Link>
-                      )}
-                      {card.category_id && (
-                        <button
-                          type="button"
-                          className="credit-cards__target-btn"
-                          title={`Paydown target for ${card.name}`}
-                          aria-label={`Paydown target for ${card.name}`}
-                          onClick={() =>
-                            setTargetFor({
-                              categoryId: card.category_id as string,
-                              name: card.name,
-                            })
-                          }
-                        >
-                          <Crosshair size={12} aria-hidden />
-                        </button>
-                      )}
-                      {/* The third door, and only where there is money to
-                        take: releasing from an empty envelope is a form with
-                        nothing to offer. */}
-                      {envelope && card.set_aside > 0 && (
-                        <ReleaseButton
-                          budgetId={budgetId}
-                          month={month}
-                          card={card}
-                          envelope={envelope}
-                          formatMoney={formatMoney}
-                        />
-                      )}
-                    </span>
-                    <span className="credit-cards__col--num tabular" role="cell">
-                      {formatMoney(card.balance)}
-                      {movement && <span className="credit-cards__movement">{movement}</span>}
-                    </span>
-                    <span className="credit-cards__col--num" role="cell">
-                      {card.category_id && editing === card.account_id ? (
-                        <input
-                          {...CELL_EDITOR_PROPS}
-                          className="credit-cards__assign"
-                          autoFocus
-                          inputMode="decimal"
-                          value={draft}
-                          aria-label={`Assigned to ${card.name} this month`}
-                          onChange={(e) => setDraft(e.target.value)}
-                          onBlur={() => commit(card.category_id as string)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') commit(card.category_id as string)
-                            if (e.key === 'Escape') setEditing(null)
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="credit-cards__assign-btn tabular"
-                          disabled={!card.category_id}
-                          title={
-                            card.category_id
-                              ? 'Assign to this card for the viewed month'
-                              : 'This card has no envelope yet'
-                          }
-                          onClick={() => {
-                            setDraft(assigned ? String(assigned) : '')
-                            setEditing(card.account_id)
-                          }}
-                        >
-                          {formatMoney(assigned)}
-                        </button>
-                      )}
-                      {needed !== null && needed > 0 && (
-                        <span
-                          className="credit-cards__hint"
-                          title="What the paydown target still wants assigned this month"
-                        >
-                          {formatMoney(needed)} to go
-                        </span>
-                      )}
-                    </span>
-                    <span className="credit-cards__col--num" role="cell">
-                      {/* The drill-in, like the grid's Activity cell: the
-                        number is the door to the rows behind it. */}
-                      <button
-                        type="button"
-                        className="credit-cards__peek-btn tabular"
-                        title={`Transactions on ${card.name}`}
-                        onClick={() =>
-                          setPeek({ accountId: card.account_id, accountName: card.name })
-                        }
-                      >
-                        {/* Never the signed figure. A negative here has four
-                          unrelated causes wanting opposite responses, and
-                          printing it under a one-word heading is what made
-                          this column unreadable. The distance is in the label
-                          below and the cause in the sentence under the row —
-                          both visible, neither hidden in a tooltip. */}
-                        {formatMoney(setAsideShown(card))}
-                      </button>
-                      {/* Every question this model raised was answered by
-                        decomposing this number into the flows behind it, and
-                        the surface showed only the total. */}
-                      <button
-                        type="button"
-                        className="credit-cards__legs-btn"
-                        aria-expanded={legsOpen}
-                        title={legsOpen ? 'Hide what makes this up' : 'What makes this up'}
-                        aria-label={`What makes up Set aside for ${card.name}`}
-                        onClick={() => setLegsFor(legsOpen ? null : card.account_id)}
-                      >
-                        {legsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                      </button>
-                      {/* Which way this card is unusual, from the served
-                        state — never from the sign of the number above.
-                        A zero `reserve_discrepancy` says the identity's
-                        bounds hold, not that the figure is sensible. */}
-                      {label && <span className="credit-cards__note">{label}</span>}
-                      {drift && (
-                        <span className="credit-cards__drift">
-                          <AlertCircle size={11} aria-hidden />
-                          does not add up
-                        </span>
-                      )}
                     </span>
                     <span
-                      className="credit-cards__col--num tabular credit-cards__uncovered"
-                      role="cell"
+                      className="credit-cards__bar"
+                      role="img"
+                      aria-label={`${Math.round(line.covered * 100)}% of what ${card.name} owes is set aside`}
                     >
-                      {card.uncovered !== 0 ? formatMoney(card.uncovered) : '—'}
+                      <span style={{ width: `${line.covered * 100}%` }} />
                     </span>
-                  </div>
-                  {legsOpen && (
-                    <ReserveLegs
+                    <span className={`credit-cards__pill credit-cards__pill--${line.tone}`}>
+                      {formatMoney(card.set_aside)}
+                    </span>
+                  </button>
+                  {open && (
+                    <CardDetail
+                      id={detailId}
                       budgetId={budgetId}
                       month={month}
                       card={card}
+                      toCategorize={toCategorize.get(card.account_id) ?? 0}
+                      assigned={
+                        card.category_id ? Number(balances.get(card.category_id)?.assigned ?? 0) : 0
+                      }
+                      needed={
+                        card.category_id
+                          ? (balances.get(card.category_id)?.needed_this_month ?? null)
+                          : null
+                      }
+                      liabilityId={liabilityByAccount.get(card.account_id)?.id ?? null}
+                      envelope={categories.find((c) => c.id === card.category_id) ?? null}
+                      editing={editing === card.account_id}
+                      draft={draft}
+                      onDraft={setDraft}
+                      onEdit={(value) => {
+                        setDraft(value)
+                        setEditing(card.account_id)
+                      }}
+                      onCommit={() => commit(card.category_id as string)}
+                      onCancel={() => setEditing(null)}
+                      onAssignMore={(amount) => {
+                        const categoryId = card.category_id as string
+                        const now = Number(balances.get(categoryId)?.assigned ?? 0)
+                        // Cents, so float residue never books $99.99999.
+                        const next = Math.round((now + amount) * 100) / 100
+                        setAssignment.mutate({ categoryId, month, amount: next })
+                      }}
+                      legsOpen={legsFor === card.account_id}
+                      onLegs={() =>
+                        setLegsFor(legsFor === card.account_id ? null : card.account_id)
+                      }
+                      onPeek={() =>
+                        setPeek({
+                          kind: 'account',
+                          accountId: card.account_id,
+                          accountName: card.name,
+                        })
+                      }
+                      onPeekCategory={(categoryId, categoryName) =>
+                        setPeek({ kind: 'category', categoryId, categoryName })
+                      }
+                      onTarget={() =>
+                        setTargetFor({ categoryId: card.category_id as string, name: card.name })
+                      }
                       formatMoney={formatMoney}
                       formatMonth={formatMonth}
                     />
                   )}
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         </div>
       )}
       {targetFor && (
@@ -950,150 +1060,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
         />
       )}
       {peek && (
-        <TransactionsPeekModal
-          budgetId={budgetId}
-          scope={{ kind: 'account', accountId: peek.accountId, accountName: peek.accountName }}
-          onClose={() => setPeek(null)}
-        />
-      )}
-      {whyCard && (
-        <Dialog
-          title={`What is happening with ${whyCard.name}`}
-          onClose={() => setWhyFor(null)}
-          historyKey="credit-card-state"
-        >
-          <div className="credit-cards__why">
-            {whyState && (
-              <p className="credit-cards__why-line">
-                {whyState.sentence}
-                {/* Absent wherever no action is honestly available, which is
-                  the whole point: a row that must end in a suggestion will
-                  invent one, and the one it invented told people to fund an
-                  envelope that moves a different card. */}
-                {whyState.action && (
-                  <span className="credit-cards__why-action"> {whyState.action}</span>
-                )}
-              </p>
-            )}
-            {whyDrift && <p className="credit-cards__why-line">{whyDrift}</p>}
-          </div>
-        </Dialog>
-      )}
-      {infoOpen && (
-        <Dialog
-          title="How credit cards work here"
-          onClose={() => setInfoOpen(false)}
-          historyKey="credit-cards-info"
-        >
-          <div className="credit-cards__info">
-            <p>
-              A card purchase and a cash purchase both spend from an envelope. The difference is
-              what happens to your cash: pay cash and the money leaves your account with the
-              purchase; pay by card and the envelope is still charged, but the cash it gave up is
-              still sitting in your account — the card fronted the purchase. That cash cannot go
-              back to Ready to Assign (the bill is coming), so it moves to the card's{' '}
-              <strong>Set aside</strong> and waits.
-            </p>
-            <div className="credit-cards__example">
-              Swipe $60 of groceries on the card → Groceries −$60 · Set aside +$60 · your cash and
-              Ready to Assign unchanged. Pay the bill → cash −$60 · Set aside −$60.
-            </div>
-            <dl>
-              <dt>Balance</dt>
-              <dd>What the card's ledger says through the viewed month — negative is owed.</dd>
-              <dt>Assigned</dt>
-              <dd>
-                The hand-fed side of Set aside: money you moved to the card this month, for what no
-                envelope gave up — covering an overspend, or paying down old debt. An ordinary
-                assignment: it comes out of Ready to Assign, and undo works.
-              </dd>
-              <dt>Set aside</dt>
-              <dd>
-                Cash waiting to pay this card, from both sources: what funded envelopes gave up when
-                you swiped, plus what you assigned. Payments drain it. It is this card's envelope,
-                not a measurement of the card — so it can sit above what the card owes, or below
-                zero, and the row says which.
-              </dd>
-              <dd>
-                <em>Below zero</em> is a real position and the column shows it as $0.00, with the
-                distance named beside it and a sentence under the row saying what happened. The
-                reasons want opposite responses: somebody settled up for spending you never budgeted
-                for (nothing to do); money came back onto the card beyond anything an envelope
-                charged here (an envelope is holding money that only exists as a credit on this
-                card); a month ended short and the whole shortfall rode onto this card (back-fund
-                that month) or onto several (assign to this card); or you simply paid more than any
-                envelope had set aside (assign that much to the card). When more than one of these
-                is true at once the row names each and does not guess how much of the figure is
-                which — the breakdown has the legs.
-              </dd>
-              <dd>
-                <em>Above what the card owes</em> means money is set aside that no debt needed.
-                Assignments stay in a card's envelope until riding debt turns up to retire, so on a
-                card you always pay from funded envelopes they simply accumulate. Release it with
-                the arrows on the card's name and it goes back to Ready to Assign, or into another
-                envelope. You can release more than the spare — the money is committed to a bill,
-                not locked to one — and the box says what that does: Uncovered rises by every dollar
-                past the spare, which is a choice to carry more of the balance.
-              </dd>
-              <dt>Uncovered</dt>
-              <dd>
-                Owed beyond Set aside — overspending that rode onto the card, old debt, or a
-                partner's share not yet paid back. Information, not an alarm: a bill that is simply
-                not due yet is a normal state. Cover it by assigning to the card whenever suits.
-              </dd>
-            </dl>
-            <p>
-              <strong>Carrying a balance?</strong> Old debt — including the balance a newly linked
-              card arrives with — shows as Uncovered. It charges nothing and nags nobody. Paying it
-              down is the Assigned cell: each month, assign what you can afford to the card, then
-              pay by transfer from a cash account. Categorize the card's new transactions freely — a
-              category only ever gives up money it actually has; any shortfall becomes Uncovered,
-              never a charge to Ready to Assign.
-            </p>
-            <p>
-              <strong>A due date that misses the month end</strong> is fine, and the totals are
-              built so it stays fine. Charges reserve in the month they post, payments drain in the
-              month they post, and both run from the beginning of your budget — so a statement paid
-              the following month nets out exactly. Nothing is lost across the boundary.
-            </p>
-            <p>
-              One thing does change at a month end: an envelope that finishes the month short sends
-              that shortfall onto the card as Uncovered, and funding it the following month does not
-              reach back. Funding it <em>in that month</em> does, where the whole shortfall rode
-              onto one card — a backdated assignment is re-walked and the ride disappears. Where a
-              month ended short across two cards, the envelope funds one of them first; the
-              breakdown says which remedy reaches the card you are reading.
-            </p>
-            <p>
-              <strong>An expense you cannot cover</strong> still belongs in its real category. Let
-              that category go red: at month end the part it could not fund rides onto the card as
-              Uncovered, Ready to Assign is never charged, and your reports still know where the
-              money went. Leaving it uncategorized works too, but the row keeps asking for a
-              category and the spending shows up nowhere.
-            </p>
-            <p>
-              <strong>Uncategorized card rows</strong> move only the card's balance, so they sit in
-              Uncovered until filed. Filing them takes nothing you don't have — it just tells your
-              reports where the money went. The Guide's roadmap walks the whole paydown loop under
-              "Clear high-interest debt."
-            </p>
-            <p>
-              <strong>Paying the card</strong> is a transfer, not a category. When both accounts are
-              connected, the two sides of a payment are paired for you as soon as they are
-              unmistakable — same amount, a few days apart, nothing else it could be. Anything less
-              certain waits on the Accounts page rather than being guessed at, because linking the
-              wrong two rows is worse than linking neither. Until a payment is paired it has not
-              spent the card's reserve.
-            </p>
-            <p>
-              <strong>Money coming back</strong> to a card only returns to an envelope that put it
-              there. A refund of something bought before you started budgeting reduces what you owe
-              without releasing any reserved cash, so it pays down Uncovered instead — and the
-              envelope shows the amount under its Available, so the figure is never lower than you
-              can account for.
-            </p>
-          </div>
-        </Dialog>
+        <TransactionsPeekModal budgetId={budgetId} scope={peek} onClose={() => setPeek(null)} />
       )}
     </Surface>
   )

@@ -11,6 +11,7 @@
  * no longer something the app proposed.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const accounts = vi.hoisted(() => ({ current: [] as unknown[] }))
@@ -107,5 +108,27 @@ describe('the amount the card payment dialog opens at', () => {
     render(<CardPaymentModal budgetId="b1" accountId="card" onClose={() => {}} />)
     expect(amountBox().value).toBe('')
     expect(screen.queryByText(/1,250/)).toBeNull()
+  })
+})
+
+describe('a payment past Set aside', () => {
+  // Paying more than was set aside is what turns a card red, and the budget
+  // page is too late to learn it. The dialog says so while the amount is
+  // still a number in a box.
+  it('says the card goes red, and what to assign', async () => {
+    setup(-900, 500)
+    render(<CardPaymentModal budgetId="b1" accountId="card" onClose={() => {}} />)
+    await userEvent.clear(amountBox())
+    await userEvent.type(amountBox(), '650')
+    expect(screen.getByText(/so Summit Rewards goes red/).textContent).toContain(
+      'Assign $150.00 to the card this month, or it comes out of next month’s Ready to Assign.'
+    )
+  })
+
+  it('says nothing for a payment Set aside covers', () => {
+    setup(-900, 500)
+    render(<CardPaymentModal budgetId="b1" accountId="card" onClose={() => {}} />)
+    expect(amountBox().value).toBe('500.00')
+    expect(screen.queryByText(/goes red/)).toBeNull()
   })
 })

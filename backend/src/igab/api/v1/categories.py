@@ -55,6 +55,7 @@ from igab.api.v1.schemas.category import (
     FutureOverspendPreviewResponse,
     FutureOverspendWarningOut,
     MoveMoneyRequest,
+    OverspentLastMonthItem,
     RecentPayeeResponse,
     RepairOrphansResponse,
 )
@@ -693,6 +694,7 @@ async def get_card_timeline(
                 released=cm.legs["released"],
                 residual=cm.legs["residual"],
                 payments=cm.legs["payments"],
+                written_off=cm.legs["written_off"],
                 reserve_delta=cm.reserve_delta,
                 set_aside=cm.set_aside,
                 balance=cm.balance,
@@ -748,12 +750,15 @@ async def get_budget_month(
     return BudgetMonthResponse(
         month=month,
         to_be_assigned=summary.to_be_assigned,
+        overspent_last_month=[
+            OverspentLastMonthItem(category_id=category_id, amount=amount)
+            for category_id, amount in summary.overspent_last_month
+        ],
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
         total_overspent=summary.total_overspent,
         total_overspent_cash=summary.total_overspent_cash,
         total_overspent_credit=summary.total_overspent_credit,
-        paid_ahead_on_cards=summary.paid_ahead_on_cards,
         overspent_count_cash=summary.overspent_count_cash,
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,

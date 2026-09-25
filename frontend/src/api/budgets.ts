@@ -45,6 +45,9 @@ export interface CardTimelineMonth {
   released: number
   residual: number
   payments: number
+  /** Last month's overspending, covered from Ready to Assign on this month's
+   * 1st (server: CardTimelineMonthOut.written_off). */
+  written_off: number
   /** What this month did to the reserve, signed. Served so the client ranks
    * rather than re-deriving the legs' arithmetic. */
   reserve_delta: number

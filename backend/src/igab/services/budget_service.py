@@ -12,26 +12,27 @@ from igab.domain.cards import (
     card_funding,
     card_position,
     card_reserve,
+    cash_written_off,
     receivable_ledgers,
     reserve_discrepancy,
     residual_from,
     ride_is_exclusive,
     riding_series,
     set_aside_state,
-    unmirrored_shortfall,
 )
 from igab.domain.carryover import (
     available_at,
     available_through,
     back_derived_balances,
     monthly_end_balances,
+    next_carryover,
     sum_through,
 )
 
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
 # is how the shadowing bug in report_service started.
-from igab.domain.dates import complete_month_window, month_starts
+from igab.domain.dates import add_months, complete_month_window, month_starts
 from igab.domain.dates import month_end as _month_end
 from igab.domain.dates import month_start as _month_start
 from igab.domain.exceptions import InvariantViolation
@@ -100,10 +101,11 @@ class CategoryBalance:
     #: A card's envelope (Category.linked_account_id set). Its
     #: available is cash reserved for the card — in the envelope total, but
     #: not spending: excluded from total_activity (its synthetic inflows
-    #: mirror spending already counted in the spending categories) and from
-    #: the overspent totals (a shortfall on a card is Uncovered in the card
-    #: section, not something Cover Overspent offers to fix). Decided once,
-    #: here, like `in_system_group`.
+    #: mirror spending already counted in the spending categories). Below
+    #: zero it IS overspent, like any envelope — a payment or a refund ran
+    #: past what it held — so it counts in the overspent totals and Cover
+    #: Overspent covers it, by assigning to the card. Decided once, here,
+    #: like `in_system_group`.
     is_card_payment: bool = False
     #: The part of this month's shortfall that was spent on a card, straight
     #: out of `card_funding`'s `floored_by_category` — the same dict
@@ -163,10 +165,11 @@ class CardStatus:
     #: invariant that would have caught them was excused for exactly the
     #: histories that produce them.
     reserve_discrepancy: Decimal = Decimal("0")
-    #: The five legs `set_aside` is the running total of, each summed through
-    #: the viewed month, plus what is still riding uncovered on the card.
+    #: The legs `set_aside` is the running total of, each summed through the
+    #: viewed month, plus what is still riding uncovered on the card.
     #:
-    #:     assigned + reserved − released − residual − payments == set_aside
+    #:     opening + written_off + assigned + reserved − released − residual
+    #:         − payments == set_aside
     #:
     #: Served because every question this model has raised was answered by
     #: decomposing one number into the flows that produced it, and the surface
@@ -178,11 +181,17 @@ class CardStatus:
     released: Decimal = Decimal("0")
     residual: Decimal = Decimal("0")
     payments: Decimal = Decimal("0")
-    #: The sixth leg, first in time: YNAB's own CCP Available at an import
-    #: anchor's B−1. Zero everywhere but anchored budgets. With it the legs
-    #: still sum to `set_aside` — `opening + assigned + reserved − released −
-    #: residual − payments` — and the other five stay post-anchor sums.
+    #: YNAB's own CCP Available at an import anchor's B−1. Zero everywhere but
+    #: anchored budgets; the other legs stay post-anchor sums.
     opening: Decimal = Decimal("0")
+    #: What Ready to Assign has absorbed, lifetime, each time a month ended with
+    #: this card's Set aside below zero — the leg that brings it back to zero
+    #: on the 1st. Overspending on a card, handled as on any envelope.
+    written_off: Decimal = Decimal("0")
+    #: This month's part of `written_off`: last month's overspending on this
+    #: card that the viewed month's Ready to Assign absorbed. The card's share
+    #: of `BudgetSummary.overspent_last_month`.
+    written_off_this_month: Decimal = Decimal("0")
     #: What is riding uncovered on this card, lifetime — what went on, less
     #: what an inflow discharged, less what an assignment covered. Distinct
     #: from `uncovered`, which is what the card OWES beyond its reserve.
@@ -197,20 +206,14 @@ class CardStatus:
     #: served leg the breakdown used to reconstruct as `gross rides − riding`,
     #: which went negative and clamped to zero on any imported budget.
     covered: Decimal = Decimal("0")
-    #: The part of `residual` that came back through a receivable ledger —
-    #: somebody settling up. The figure `set_aside_state` decides
-    #: SETTLED_BY_OTHERS on, served so the sentence quotes the same one:
-    #: it quoted lifetime `residual` across every envelope, so a card with
-    #: years of ordinary refunds read "$4,000 came back — somebody settled
-    #: up" about a $150 settle-up.
-    residual_from_ledgers: Decimal = Decimal("0")
-    #: The part of a negative Set aside that a PAYMENT produced — cash that
-    #: left the household with nothing on the page to mirror it. Ready to
-    #: Assign is reduced by the sum of these (`paid_ahead_on_cards`), because
-    #: a card envelope's signed Set aside would otherwise raise it: the
-    #: household paid $100 down and the page read as if it still had the $100.
-    #: `domain/cards.py` `unmirrored_shortfall` — a lower bound, never more.
-    paid_ahead_unmirrored: Decimal = Decimal("0")
+    #: This month's residual: inflows beyond anything their envelope had
+    #: riding on this card. The figure `set_aside_state` reads — a shortfall
+    #: is this month's, since last month's was written off — served so the
+    #: sentence quotes the figure the state was decided on.
+    residual_this_month: Decimal = Decimal("0")
+    #: The part of this month's residual that came back through a receivable
+    #: ledger — somebody settling up. SETTLED_BY_OTHERS is decided on it.
+    residual_from_ledgers_this_month: Decimal = Decimal("0")
     #: Whether funding the month an envelope ended short retires THIS card's
     #: ride. True when every envelope that rode here rode ONLY here. False
     #: when a shortfall is shared across cards: `allocate_capped` hands it
@@ -231,9 +234,9 @@ class CardStatus:
     #: The card owes nothing and holds your money — the only state the word
     #: "overpaid" was ever true of. `short_reserved` alone is not it.
     card_credit: Decimal = Decimal("0")
-    #: Which of the eight situations this card's Set aside is in
-    #: (domain/cards.py `SetAsideState`). Served because the client CANNOT
-    #: decide it: two of the eight are told apart only by `residual_by_pair`
+    #: Which situation this card's Set aside is in (domain/cards.py
+    #: `SetAsideState`). Served because the client CANNOT decide it: two of
+    #: them are told apart only by `residual_by_pair`
     #: and by whether an envelope was ever assigned to, and neither crosses
     #: the wire — so the row spent one label on three causes with different
     #: remedies, and on a fourth it offered advice that does nothing.
@@ -371,10 +374,11 @@ class BudgetSummary:
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
-    #: Ready to Assign was reduced by this: the sum over cards of what was
-    #: paid past the reserve with nothing to mirror it. Served so the hero can
-    #: say where the money went in one line. See `CardStatus.paid_ahead_unmirrored`.
-    paid_ahead_on_cards: Decimal = Decimal("0")
+    #: What this month's Ready to Assign absorbed on the 1st: last month's
+    #: overspending, less what rode onto cards, per envelope (card envelopes
+    #: included). Largest first. Ready to Assign always dropped by this on the
+    #: 1st; the header now says so.
+    overspent_last_month: list[tuple[uuid.UUID, Decimal]] = field(default_factory=list)
     #: The budget's cards, each with balance / set aside / uncovered —
     #: computed here because their card envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
@@ -471,7 +475,6 @@ class CardWalk:
     card_accounts: list = field(default_factory=list)
     linked_by_account: dict[uuid.UUID, Category] = field(default_factory=dict)
     funding: CardFunding[uuid.UUID, uuid.UUID] = field(default_factory=CardFunding)
-    payments: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
     unclaimed: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
     #: {category: {card: {month: SIGNED net}}} — the walk's own input, kept.
     credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = field(
@@ -509,17 +512,6 @@ class _Unset:
 
 
 _UNSET = _Unset()
-
-
-def _opening_leg(anchor: BudgetAnchor | None, account_id: uuid.UUID) -> dict[date, Decimal] | None:
-    """One card's `CardReserve.opening` leg — `{B−1: CCP Available}` on an
-    anchored budget, None (an empty leg) everywhere else. The one spelling;
-    the summary, `card_reserves` and the timeline all read it."""
-    if anchor is None:
-        return None
-    return {
-        anchor.openings.opening_month: anchor.openings.reserve_by_card.get(account_id, Decimal("0"))
-    }
 
 
 def _card_envelope_balance(
@@ -795,12 +787,7 @@ class BudgetService:
         by_id = {c.id: c for c in categories}
         walk = await self.card_walk(budget_id, through, categories=categories)
         reserves = {
-            linked.id: card_reserve(
-                walk.funding,
-                account.id,
-                walk.payments.get(account.id, {}),
-                opening=_opening_leg(walk.anchor, account.id),
-            )
+            linked.id: card_reserve(walk.funding, account.id)
             for account in walk.card_accounts
             if (linked := walk.linked_by_account.get(account.id)) is not None
             and linked.id in wanted
@@ -930,28 +917,28 @@ class BudgetService:
             for account in card_accounts
             if (linked := linked_by_account.get(account.id)) is not None
         }
+        # Payments go INTO the walk: it owns every leg of a reserve, and
+        # truncates them at an import anchor itself.
+        payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
         funding = card_funding(
             assignments_by_cat,
             spending_activity,
             credit_outflows,
             card_categories,
             openings=anchor.openings if anchor is not None else None,
+            payments_by_card=payments,
         )
-        payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
         unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(budget_id, month_end_date)
         if anchor is not None:
-            # The two reserve legs the domain walk never sees are repository
-            # sums, so the anchor's truncation is applied here — the seed at
-            # B−1 already accounts for everything earlier. Correctness lives
-            # at this seam; bounding the queries themselves would be an
-            # optimization, not a second rule.
-            payments = _from_month(payments, anchor.month)
+            # Unclaimed card rows are not a reserve leg — they feed the
+            # identity's allowance only — so the walk never sees them, and
+            # the anchor's truncation is applied to them here. The seed at
+            # B−1 already accounts for everything earlier.
             unclaimed = _from_month(unclaimed, anchor.month)
         return CardWalk(
             card_accounts=card_accounts,
             linked_by_account=linked_by_account,
             funding=funding,
-            payments=payments,
             unclaimed=unclaimed,
             credit_outflows=credit_outflows,
             anchor=anchor,
@@ -974,12 +961,7 @@ class BudgetService:
         return {
             a.id: (
                 a.name,
-                card_reserve(
-                    walk.funding,
-                    a.id,
-                    walk.payments.get(a.id, {}),
-                    opening=_opening_leg(walk.anchor, a.id),
-                ),
+                card_reserve(walk.funding, a.id),
             )
             for a in walk.card_accounts
         }
@@ -1008,12 +990,7 @@ class BudgetService:
         balances = await self.account_repo.card_balances_by_month(
             budget_id, last_of_month(month_start)
         )
-        reserve = card_reserve(
-            walk.funding,
-            account_id,
-            walk.payments.get(account_id, {}),
-            opening=_opening_leg(walk.anchor, account_id),
-        )
+        reserve = card_reserve(walk.funding, account_id)
         timeline = build_timeline(
             reserve,
             balances.get(account_id, {}),
@@ -1065,28 +1042,7 @@ class BudgetService:
         categories = await self.category_repo.get_all(budget_id, include_archived=True)
         system_group_ids = await self._system_group_ids(budget_id)
 
-        if self.snapshot_repo is not None:
-            balance_map = await self._snapshot_balances(budget_id, categories, month_start)
-        else:
-            # Live path: batch per-month activity in one query, then simulate
-            # each category. Kept as the no-snapshot fallback and the test
-            # oracle the snapshot path is verified against.
-            all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
-                [cat.id for cat in categories], end_date=last_of_month(month_start)
-            )
-            # One anchor load for the whole loop (memoized on the repo), and
-            # none at all on an unanchored budget — the per-category lookup
-            # would otherwise be a query per envelope on every summary.
-            summary_anchor = await self._budget_anchor(budget_id)
-            balance_map = {
-                cat.id: await self.get_category_balance(
-                    cat.id,
-                    month_start,
-                    activity_by_month=all_activity_by_month.get(cat.id, {}),
-                    opening=category_opening(summary_anchor, cat.id),
-                )
-                for cat in categories
-            }
+        balance_map = await self._raw_balances(budget_id, categories, month_start)
 
         # ── Cards (domain/cards.py). Each card's set-aside is an envelope
         # simulated over synthetic activity: funded credit spending flows in,
@@ -1098,10 +1054,9 @@ class BudgetService:
         zero = Decimal("0")
         cards: list[CardStatus] = []
         uncovered_current = zero
-        paid_ahead_on_cards = zero
         walk = await self.card_walk(budget_id, month_start, categories=categories)
         card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
-        funding, payments, unclaimed = walk.funding, walk.payments, walk.unclaimed
+        funding, unclaimed = walk.funding, walk.unclaimed
         if card_accounts:
             # Named from `categories` above — the full list, archived and
             # hidden included — because a ride from a hidden envelope is
@@ -1163,12 +1118,7 @@ class BudgetService:
                 linked = linked_by_account.get(account.id)
                 # One assembler for all six legs. Composing a reserve at the
                 # call site is what let the assignment leg skip the walk.
-                reserve = card_reserve(
-                    funding,
-                    account.id,
-                    payments.get(account.id, {}),
-                    opening=_opening_leg(walk.anchor, account.id),
-                )
+                reserve = card_reserve(funding, account.id)
                 set_aside = reserve.set_aside(month_start)
                 card_assignments = reserve.assignments
                 opening_total = sum_through(reserve.opening, month_start)
@@ -1184,17 +1134,18 @@ class BudgetService:
                 from_ledgers = residual_from(
                     funding.residual_by_pair, account.id, ledgers, month_start
                 )
-                # The same `assigned` T2 reads (opening folded in), so the
-                # state and the bound agree on what "moved out" means: the
-                # net lifetime assignment where it has gone negative.
-                assigned_lifetime = opening_total + sum_through(card_assignments, month_start)
-                released_out = max(zero, -assigned_lifetime)
-                paid_ahead = unmirrored_shortfall(
-                    position,
-                    residual=sum_through(reserve.residual, month_start),
-                    released_out=released_out,
+                residual_this_month = reserve.residual.get(month_start, zero)
+                # This month's, like every input the state reads: a shortfall
+                # is always this month's, since last month's was written off.
+                released_out = max(zero, -card_assignments.get(month_start, zero))
+                written_off = sum_through(reserve.written_off, month_start)
+                # What T1 and T2 read as money put into the envelope: the
+                # opening reserve (a pre-anchor net assignment), every real
+                # assignment, and every write-off — Ready to Assign covering
+                # the card's overspending is an assignment in all but name.
+                assigned_lifetime = (
+                    opening_total + sum_through(card_assignments, month_start) + written_off
                 )
-                paid_ahead_on_cards += paid_ahead
                 own_ride = sum_through(funding.riding_by_card.get(account.id, {}), month_start)
                 # Nothing riding: the promise is vacuous, and the row will not
                 # make it. `ride_is_exclusive` says False for an empty ride.
@@ -1231,7 +1182,7 @@ class BudgetService:
                         over_reserved=position.over_reserved,
                         short_reserved=position.short_reserved,
                         card_credit=position.card_credit,
-                        # Which of the eight, decided in the domain from the
+                        # Which situation, decided in the domain from the
                         # terms above plus the two the client cannot see: how
                         # much of this card's residual came from a ledger, and
                         # whether the envelopes that rode here rode ONLY here.
@@ -1240,7 +1191,7 @@ class BudgetService:
                         # moves a different card.
                         set_aside_state=set_aside_state(
                             position,
-                            residual=sum_through(reserve.residual, month_start),
+                            residual=residual_this_month,
                             riding=sum_through(
                                 funding.riding_by_card.get(account.id, {}), month_start
                             ),
@@ -1266,8 +1217,10 @@ class BudgetService:
                         covered=sum_through(
                             funding.covered_by_card.get(account.id, {}), month_start
                         ),
-                        residual_from_ledgers=from_ledgers,
-                        paid_ahead_unmirrored=paid_ahead,
+                        written_off=written_off,
+                        written_off_this_month=reserve.written_off.get(month_start, zero),
+                        residual_this_month=residual_this_month,
+                        residual_from_ledgers_this_month=from_ledgers,
                         charged_this_month=-charged,
                         inflows_this_month=received,
                         paid_this_month=reserve.payments.get(month_start, zero),
@@ -1314,6 +1267,7 @@ class BudgetService:
                             sum_through(reserve.residual, month_start),
                             sum_through(unclaimed.get(account.id, {}), month_start),
                             opening_credit=max(zero, balance_at_anchor.get(account.id, zero)),
+                            written_off=written_off,
                         ),
                     )
                 )
@@ -1372,11 +1326,6 @@ class BudgetService:
                 continue
             total_category_balance += bal.available
             total_assigned += bal.assigned
-            if bal.is_card_payment:
-                # In the envelope total (reserved cash is not assignable) and
-                # in assigned (a real allocation), but not spending and not
-                # overspending — see the flag's comment.
-                continue
             if bal.available < 0:
                 # Straight out of the dict `uncovered_current` is summed from,
                 # so the row and the Ready to Assign arithmetic cannot tell
@@ -1399,26 +1348,32 @@ class BudgetService:
                 overspent_count += 1
                 if -bal.available > bal.credit_overspent:
                     overspent_count_cash += 1
+            if bal.is_card_payment:
+                # In the envelope total (reserved cash is not assignable), in
+                # assigned (a real allocation) and, below zero, overspent —
+                # but not spending: its activity mirrors spending already
+                # counted in the categories that made it.
+                continue
             total_activity += bal.activity
 
         assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
-        # `paid_ahead_on_cards`: a card envelope's Set aside enters the
-        # envelope total SIGNED, so paying a card past its reserve LOWERED the
-        # total and RAISED this figure by the payment — the household had $100
-        # less and the page said it had the same. Subtracting the unmirrored
-        # part corrects that and only that: a refund's negative is mirrored by
-        # the envelope it landed in and is left alone (`unmirrored_shortfall`).
+        # A card envelope's Set aside enters the envelope total signed, like
+        # any envelope's available. Paying a card past its reserve leaves Ready
+        # to Assign where it was for the rest of that month — the envelope is
+        # overspent and shows red — and on the 1st the write-off brings the
+        # envelope back to zero, so Ready to Assign absorbs it then. The same
+        # rule, and the same timing, as every other overspent envelope.
         to_be_assigned = (
-            total_account_balance
-            - total_category_balance
-            - assigned_in_future
-            - uncovered_current
-            - paid_ahead_on_cards
+            total_account_balance - total_category_balance - assigned_in_future - uncovered_current
+        )
+
+        overspent_last_month = await self._overspent_last_month(
+            budget_id, categories, system_group_ids, funding, cards, month_start
         )
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
-            paid_ahead_on_cards=paid_ahead_on_cards,
+            overspent_last_month=overspent_last_month,
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,
@@ -1431,6 +1386,78 @@ class BudgetService:
             cards=cards,
             anchor_month=walk.anchor.month if walk.anchor is not None else None,
         )
+
+    async def _raw_balances(
+        self, budget_id: uuid.UUID, categories: list[Category], month_start: date
+    ) -> dict[uuid.UUID, CategoryBalance]:
+        """Every category's balance for one month, before the card
+        corrections — the snapshot cache when there is one, else the live
+        simulation. One home, because the summary asks it for two months: the
+        viewed one, and the one before (what was written off on the 1st)."""
+        if self.snapshot_repo is not None:
+            return await self._snapshot_balances(budget_id, categories, month_start)
+        # Live path: batch per-month activity in one query, then simulate
+        # each category. Kept as the no-snapshot fallback and the test
+        # oracle the snapshot path is verified against.
+        all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
+            [cat.id for cat in categories], end_date=last_of_month(month_start)
+        )
+        # One anchor load for the whole loop (memoized on the repo), and
+        # none at all on an unanchored budget — the per-category lookup
+        # would otherwise be a query per envelope on every summary.
+        summary_anchor = await self._budget_anchor(budget_id)
+        return {
+            cat.id: await self.get_category_balance(
+                cat.id,
+                month_start,
+                activity_by_month=all_activity_by_month.get(cat.id, {}),
+                opening=category_opening(summary_anchor, cat.id),
+            )
+            for cat in categories
+        }
+
+    async def _overspent_last_month(
+        self,
+        budget_id: uuid.UUID,
+        categories: list[Category],
+        system_group_ids: set[uuid.UUID],
+        funding: CardFunding,
+        cards: list["CardStatus"],
+        month_start: date,
+    ) -> list[tuple[uuid.UUID, Decimal]]:
+        """What this month's Ready to Assign absorbed on the 1st, per envelope:
+        last month's overspending, less what rode onto cards.
+
+        Ready to Assign has always dropped by this on the 1st and nothing on
+        the page said why; the header says it now, for every envelope. A card
+        envelope's part is its `written_off_this_month` — the leg the walk
+        booked. Every other envelope's is `cash_written_off` of its previous
+        month's end, the same `next_carryover` rule seen from the other side,
+        so the list and the drop in Ready to Assign are one arithmetic.
+        """
+        zero = Decimal("0")
+        prev = add_months(month_start, -1)
+        prev_balances = await self._raw_balances(budget_id, categories, prev)
+        items: list[tuple[uuid.UUID, Decimal]] = []
+        for cat in categories:
+            if cat.category_group_id in system_group_ids or cat.linked_account_id is not None:
+                continue
+            bal = prev_balances.get(cat.id)
+            if bal is None:
+                continue
+            # A month with no data of its own carries in floored and absorbs
+            # nothing, so no special case: its figure is already >= 0.
+            end = _corrected_available(cat, system_group_ids, funding, bal.available, prev)
+            amount = cash_written_off(
+                end, funding.floored_by_category.get(cat.id, {}).get(prev, zero)
+            )
+            if amount > zero:
+                items.append((cat.id, amount))
+        for card in cards:
+            if card.category_id is not None and card.written_off_this_month > zero:
+                items.append((card.category_id, card.written_off_this_month))
+        items.sort(key=lambda item: (-item[1], str(item[0])))
+        return items
 
     async def _snapshot_balances(
         self,
@@ -1457,7 +1484,7 @@ class BudgetService:
             else:
                 # No data in the viewed month: available is the floored
                 # carryover — overspending was already absorbed by TBA.
-                assigned, activity, available = zero, zero, max(zero, row.available)
+                assigned, activity, available = zero, zero, next_carryover(row.available)
             out[cat.id] = CategoryBalance(
                 category_id=cat.id,
                 month=month_start,
@@ -1759,14 +1786,17 @@ class BudgetService:
         this is card debt you are about to retire" is worth saying — it is a
         label on the money, not a reason to withhold it.
 
-        Card envelopes stay out: a negative there is the card's own
-        Uncovered, not an overspent envelope, and it is retired by assigning to
-        the card in the cards strip."""
+        **Card envelopes are in.** A card's Set aside below zero is
+        overspending on its envelope — a payment or a refund ran past what it
+        held — and covering it is assigning to the card, which is exactly what
+        this does. Left uncovered, the 1st writes it off from Ready to Assign
+        like any other red envelope; covering it now is the same money, spent
+        now instead of next month."""
         summary = await self.get_budget_summary(budget_id, month)
         shortfalls = {
             b.category_id: -b.available
             for b in summary.category_balances
-            if b.available < 0 and not b.in_system_group and not b.is_card_payment
+            if b.available < 0 and not b.in_system_group
         }
         return summary, {k: v for k, v in shortfalls.items() if v > 0}
 

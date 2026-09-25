@@ -73,7 +73,7 @@ export interface Account {
    * uncategorized one is not flagged as needing a category.
    *
    * A card carried in with three months of bank history is the case — that
-   * spending predates the budget, so it belongs in the card's Uncovered and is
+   * spending predates the budget, so it belongs in the card's debt not covered and is
    * retired by assigning to the card, not by filling envelopes after the fact.
    *
    * Null on every account that has never been asked, which behaves exactly as
@@ -255,8 +255,9 @@ export interface CategoryBalance {
    * exactly what Fill Underfunded would move. `null` when there is no target.
    */
   needed_this_month: number | null
-  /** A card's envelope — the cards section owns it; the grid never
-   *  draws it and its negative is not overspending. Served, not derived:
+  /** A card's envelope — the cards section owns it and the grid never
+   *  draws it. Below zero it is overspent like any envelope, and Cover
+   *  Overspent covers it by assigning to the card. Served, not derived:
    *  see `CategoryBalance` in api/v1/schemas/category.py. */
   is_card_payment: boolean
   /**
@@ -288,7 +289,7 @@ export interface CategoryBalance {
    *
    * It answers whether this red costs anything, and it does not: filing a card
    * charge moves Ready to Assign by exactly zero, and at the month boundary
-   * this part rides onto the card as Uncovered instead of being written off.
+   * this part rides onto the card as debt not covered instead of being written off.
    * Only `available + credit_overspent` — the cash part — is ever charged.
    * So a row where this equals the whole shortfall gets the calm treatment,
    * and Cover Overspent does not offer to fund it.
@@ -298,9 +299,9 @@ export interface CategoryBalance {
 
 /** One card in the budget's cards section — see `CardStatusOut` on the
  *  server (api/v1/schemas/category.py) and domain/cards.py for the model. */
-/** The eight situations a card's Set aside can be in (backend
- *  `domain/cards.py` `SetAsideState`). Deliberately no single word for "below
- *  zero": four of these produce that, and they want opposite responses. */
+/** The situation a card's Set aside is in (backend `domain/cards.py`
+ *  `SetAsideState`). Below zero is always "overspent" on the card's line;
+ *  these name the cause, because the causes want different remedies. */
 export type SetAsideState =
   | 'funded'
   | 'surplus'
@@ -326,7 +327,8 @@ export interface CardStatus {
   category_id: string | null
   /** Ledger through the viewed month; negative = owed. */
   balance: number
-  /** Cash reserved for this card; negative when payments outran the reserve. */
+  /** Cash reserved for this card. Negative is overspent: covered from Ready to
+   *  Assign on the 1st unless assigned before then. */
   set_aside: number
   /** Owed beyond the reserve. Calm and informational — a due date crossing
    *  the month boundary is a normal state, not overspending. */
@@ -359,10 +361,17 @@ export interface CardStatus {
   released: number
   residual: number
   payments: number
-  /** The sixth leg, first in time: YNAB's own CCP Available at an import
-   *  anchor's B−1 (server home: CardStatusOut → db.models.ImportAnchor).
-   *  Zero everywhere but budgets anchored at import; never derived here. */
+  /** YNAB's own CCP Available at an import anchor's B−1 (server home:
+   *  CardStatusOut → db.models.ImportAnchor). Zero everywhere but budgets
+   *  anchored at import; never derived here. */
   opening: number
+  /** What Ready to Assign absorbed, lifetime, each time a month ended with
+   *  this card's Set aside below zero — overspending on the card, written off
+   *  on the 1st like any envelope's. Served (CardStatusOut); never derived. */
+  written_off: number
+  /** This month's part of `written_off`: last month's overspending on this
+   *  card, absorbed by this month's Ready to Assign. */
+  written_off_this_month: number
   /** What is riding uncovered on this card, lifetime — distinct from
    *  `uncovered`, which is what the card OWES beyond its reserve. */
   riding: number
@@ -374,13 +383,13 @@ export interface CardStatus {
   /** What assignments to this card have retired of its ride, lifetime.
    *  Served; never reconstruct it as `gross rides − riding`. */
   covered: number
-  /** The part of `residual` that came back through a receivable ledger —
-   *  somebody settling up. Quote this for a settle-up, never lifetime
-   *  `residual`, which is every envelope's refunds for the card's whole life. */
-  residual_from_ledgers: number
-  /** This card's share of `paid_ahead_on_cards`: paid past its reserve with
-   *  nothing to mirror it. Ready to Assign already reflects it. */
-  paid_ahead_unmirrored: number
+  /** This month's residual — the figure `set_aside_state` was decided on. A
+   *  negative Set aside is always this month's (last month's was written
+   *  off), so quote this, never lifetime `residual`. */
+  residual_this_month: number
+  /** The part of this month's residual that came back through a receivable
+   *  ledger — somebody settling up. Quote this for a settle-up. */
+  residual_from_ledgers_this_month: number
   /** Does funding the month an envelope ended short retire THIS card's ride?
    *  False when the shortfall is shared with another card, which funds
    *  first. Key every "fund the month and it disappears" sentence on this. */
@@ -399,7 +408,7 @@ export interface CardStatus {
    *  true of — a negative `set_aside` alone is not it, and printing the word
    *  on the sign alone is the defect these fields exist to end. */
   card_credit: number
-  /** Which of the eight situations this card's Set aside is in. Served, and
+  /** Which situation this card's Set aside is in. Served, and
    *  NOT derivable here: `settled_by_others` and `refund_outran_envelope`
    *  are told apart only by `residual_by_pair` and by whether an envelope was
    *  ever assigned to, and `settled_elsewhere` needs `floored_by_pair` —
@@ -464,6 +473,11 @@ export interface RodeCategory {
 export interface BudgetMonth {
   month: string
   to_be_assigned: number
+  /** What this month's Ready to Assign absorbed on the 1st: last month's
+   *  overspending, less what rode onto cards, per envelope (card envelopes
+   *  included), largest first. Served (BudgetMonthResponse) — the header
+   *  names it and never computes it. */
+  overspent_last_month: { category_id: string; amount: number }[]
   total_assigned: number
   total_activity: number
   total_overspent: number
@@ -478,10 +492,6 @@ export interface BudgetMonth {
    *  needs no action at all. See `domain/cards.py`. */
   total_overspent_cash: number
   total_overspent_credit: number
-  /** Ready to Assign was reduced by this: money paid toward cards past what
-   *  their envelopes held, with nothing on the page to mirror it. Served
-   *  beside `to_be_assigned` so the hero can say where the money went. */
-  paid_ahead_on_cards: number
   /** How many categories carry a cash shortfall — what Cover Overspent lists.
    *  At most `overspent_count`. */
   overspent_count_cash: number

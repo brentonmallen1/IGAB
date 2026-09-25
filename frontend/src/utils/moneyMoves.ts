@@ -29,7 +29,7 @@ export const BUDGET_TERM_LABEL: Record<BudgetTerm, string> = {
   ready_to_assign: 'Ready to Assign',
   envelope: 'The category',
   card_set_aside: "The card's Set aside",
-  card_uncovered: "The card's Uncovered",
+  card_uncovered: "The card's debt not covered",
 }
 
 /** "Ready to Assign goes down by $1,000." */

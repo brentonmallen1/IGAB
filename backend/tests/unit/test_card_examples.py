@@ -9,11 +9,12 @@ generator are all held to.
 
 import re
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
 from igab.guide.card_examples import INTENTS, SCENARIO_INTENTS, card_examples
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS
+from igab.sample_budget.card_scenarios import ALL_SCENARIOS, walk
 
 TODAY = date(2026, 9, 22)
 EXAMPLES = {e.slug: e for e in card_examples(TODAY)}
@@ -63,26 +64,55 @@ def test_months_run_forward_with_no_gaps(scenario):
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=lambda s: s.slug)
 def test_every_event_reaches_the_reader_exactly_once(scenario):
-    steps = [s for m in EXAMPLES[scenario.slug].months for s in m.steps]
+    # The 1st's cover is the month turning, not an event anybody made.
+    steps = [s for m in EXAMPLES[scenario.slug].months for s in m.steps if s.kind != "covered"]
     assert len(steps) == len(scenario.events)
     assert all(s.says.strip() for s in steps)
 
 
-def test_a_card_that_dips_and_recovers_shows_the_dip():
-    # `paid-ahead-then-caught-up` ends at zero and its whole lesson is the
-    # month in the middle. A walkthrough that only showed the final position
-    # would teach the opposite of what the scenario is for.
-    months = EXAMPLES["paid-ahead-then-caught-up"].months
-    assert any(m.set_aside < 0 for m in months), [m.set_aside for m in months]
-    assert months[-1].set_aside == 0
+def test_a_card_that_went_overspent_shows_the_month_it_did():
+    # `paid-ahead-written-off` ends well above zero, and its lesson is the
+    # month it was overspent and the 1st that covered it. A walkthrough that
+    # only showed the final position would hide both.
+    months = EXAMPLES["paid-ahead-written-off"].months
+    assert [m.set_aside for m in months] == [-150, 200, 150]
 
 
 def test_the_reimbursement_crosses_zero_in_the_month_the_money_came_back():
     # The reported confusion: the figure lands at -100 but 500 came back. Both
     # have to be visible, in the right months, or the story does not parse.
     months = {m.label: m for m in EXAMPLES["reimbursed"].months}
-    assert months["Last month"].set_aside == -300
+    assert months["Last month"].set_aside == 200
     assert months["This month"].set_aside == -100
+
+
+def test_last_months_overspending_is_covered_on_the_first():
+    # The same settle-up a month earlier: -300 at that month's end, zero on
+    # the 1st, and this month's funded spending on top.
+    months = {m.label: m for m in EXAMPLES["refund-written-off"].months}
+    assert months["Last month"].set_aside == -300
+    assert months["This month"].set_aside == 200
+
+
+def test_the_1st_that_covered_it_is_a_step_of_its_own():
+    """Without it the card read −$300 one month and $200 the next, and no
+    step said where the $300 went. It leads the month: it happens before
+    anybody does anything."""
+    first = next(m for m in EXAMPLES["refund-written-off"].months if m.label == "This month")
+    assert first.steps[0].kind == "covered"
+    assert first.steps[0].amount == Decimal("300")
+    assert "$300.00 of overspending comes out of Ready to Assign" in first.steps[0].says
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=lambda s: s.slug)
+def test_the_covered_steps_add_up_to_the_written_off_leg(scenario):
+    """Differenced from the walk's lifetime leg, so the steps can neither
+    miss a 1st nor count one twice."""
+    covered = sum(
+        (s.amount for m in EXAMPLES[scenario.slug].months for s in m.steps if s.kind == "covered"),
+        Decimal("0"),
+    )
+    assert covered == walk(scenario, TODAY).written_off
 
 
 def test_every_event_kind_has_a_phrase():
@@ -134,7 +164,15 @@ def test_a_situation_with_nothing_to_do_says_so_in_as_many_words(scenario):
     A page that ends every situation with a suggestion teaches that all of
     them are problems, which is the reading this whole tab exists to undo.
     """
-    quiet = {"paid-in-full", "credit-balance", "settled-by-others", "paid-ahead-then-caught-up"}
+    quiet = {
+        "paid-in-full",
+        "credit-balance",
+        "settled-by-others",
+        "paid-ahead-written-off",
+        "paid-ahead-covered",
+        "refund-written-off",
+        "anchored-negative-opening",
+    }
     says_nothing = scenario.lesson.todo.startswith("Nothing")
     assert says_nothing == (scenario.slug in quiet), (
         f"{scenario.slug}: todo starts with 'Nothing' = {says_nothing}, "

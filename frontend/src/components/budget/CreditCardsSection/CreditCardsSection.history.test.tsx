@@ -15,12 +15,16 @@ import type { BudgetMonth, CardStatus } from '../../../types'
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 const timeline = vi.hoisted(() => ({ current: null as unknown }))
 
+const accounts = vi.hoisted(() => ({
+  current: [] as { id: string; uncategorized_count: number }[],
+}))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
   useCardTimeline: () => ({ data: timeline.current, isPending: false, isError: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
@@ -29,49 +33,28 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 }))
 
 import { CreditCardsSection } from './CreditCardsSection'
-import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
+import { cardStatus } from '../../../test-utils/cardFixture'
+
+/** Open the card's line, then its breakdown — both in place, no dialog. */
+async function openLegs(name = 'Sapphire Visa') {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }))
+  await userEvent.click(screen.getByRole('button', { name: `What makes up Set aside for ${name}` }))
+}
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return assertServerProducible(
-    withPosition({
-      account_id: 'a1',
-      name: 'Sapphire Visa',
-      category_id: 'c1',
-      balance: -60,
-      set_aside: 115,
-      uncovered: 0,
-      is_closed: false,
-      overspent_this_month: 0,
-      reserve_discrepancy: 0,
-      assigned: 40,
-      reserved: 100,
-      released: 20,
-      residual: 0,
-      payments: 5,
-      riding: 0,
-      imported_riding: 0,
-      covered: 0,
-      residual_from_ledgers: 0,
-      paid_ahead_unmirrored: 0,
-      ride_reaches_this_card: true,
-      opening: 0,
-      over_reserved: 55,
-      short_reserved: 0,
-      card_credit: 0,
-      // 115 set aside against 60 owed: the position IS a 55 surplus, and the
-      // server would label it so. It said `funded` here for months and every
-      // test passed, because nothing compared the label to the figures.
-      set_aside_state: 'surplus',
-      charged_this_month: 0,
-      inflows_this_month: 0,
-      paid_this_month: 0,
-      debt_change_this_month: 0,
-      pending_this_month: 0,
-      rode_by_month: [],
-      overspent_by_category: [],
-      ...over,
-    })
-  )
+  return cardStatus({
+    balance: -60,
+    set_aside: 115,
+    assigned: 40,
+    reserved: 100,
+    released: 20,
+    payments: 5,
+    // 115 set aside against 60 owed: the position IS a 55 surplus, and the
+    // server would label it so. It said `funded` here for months and every
+    // test passed, because nothing compared the label to the figures.
+    set_aside_state: 'surplus',
+    ...over,
+  })
 }
 
 function tlMonth(m: string, over: Record<string, number> = {}) {
@@ -88,10 +71,9 @@ function tlMonth(m: string, over: Record<string, number> = {}) {
     riding: 0,
     imported_riding: 0,
     covered: 0,
-    residual_from_ledgers: 0,
-    paid_ahead_unmirrored: 0,
     ride_reaches_this_card: true,
     opening: 0,
+    written_off: 0,
     uncovered: 0,
     over_reserved: 0,
     short_reserved: 0,
@@ -122,7 +104,7 @@ beforeEach(() => {
 
 async function openHistory() {
   render(<CreditCardsSection budgetId="b1" month="2026-02-01" />)
-  await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+  await openLegs()
   await userEvent.click(screen.getByRole('button', { name: /month by month/i }))
 }
 
@@ -212,7 +194,7 @@ describe('the month-by-month history', () => {
     for (const row of dataRows()) expect(row.getAttribute('title')).toBeNull()
   })
 
-  it('marks the month the reserve first went below zero', async () => {
+  it('marks the month the card was first overspent', async () => {
     timeline.current = {
       account_id: 'a1',
       name: 'Sapphire Visa',
@@ -225,7 +207,7 @@ describe('the month-by-month history', () => {
       },
     }
     await openHistory()
-    expect(screen.getByText(/first went below zero in January 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/First overspent in January 2026/)).toBeInTheDocument()
     const marked = dataRows().filter((r) => r.className.includes('--breach'))
     expect(marked).toHaveLength(1)
     expect(marked[0].textContent).toContain('January 2026')

@@ -65,7 +65,8 @@ export interface Overspending {
   /** The figure every call to action shows. Matches the grid's red. */
   total: number
   /** The part of `total` that rode onto a card. A subset, never a second
-   *  number beside it — the chip that names it reads "of it on cards". */
+   *  number beside it — so the header does not show it at all; the cards
+   *  band says it, as card debt, where assigning to the card retires it. */
   onCards: number
 }
 
@@ -74,4 +75,33 @@ export function overspending(source: OverspendingSource | undefined | null): Ove
     total: Number(source?.total_overspent ?? 0),
     onCards: Number(source?.total_overspent_credit ?? 0),
   }
+}
+
+export interface LastMonthSource {
+  name: string
+  amount: number
+}
+
+export interface OverspentLastMonth {
+  total: number
+  /** Every envelope, named, in the served order (largest first). */
+  sources: LastMonthSource[]
+}
+
+/**
+ * What the 1st took out of Ready to Assign: the header pill's total and the
+ * list its dialog shows.
+ *
+ * Composition of served facts only: the server decides each amount
+ * (`overspent_last_month`); this names them. Ready to Assign always dropped
+ * by this total on the 1st, and until the header said so nothing on the page
+ * did. Null when nothing was absorbed.
+ */
+export function overspentLastMonth(
+  items: { category_id: string; amount: number }[] | undefined,
+  nameOf: (categoryId: string) => string
+): OverspentLastMonth | null {
+  if (!items || items.length === 0) return null
+  const sources = items.map((i) => ({ name: nameOf(i.category_id), amount: Number(i.amount) }))
+  return { total: sources.reduce((sum, s) => sum + s.amount, 0), sources }
 }

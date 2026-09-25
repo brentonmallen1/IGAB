@@ -107,11 +107,6 @@ button.hygiene__row-label:hover {
 
 /* An item's own fix: a full line under it, so "what to do" is never inside
    a sentence about something else. */
-.hygiene__row-fix {
-  flex-basis: 100%;
-  color: var(--text-secondary);
-}
-
 .hygiene__row-amount {
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);

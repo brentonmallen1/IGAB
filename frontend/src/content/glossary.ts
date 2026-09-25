@@ -535,9 +535,9 @@ export const GLOSSARY: GlossaryEntry[] = [
     // learned that word should still find the term.
     aliases: ['ready to pay', 'card payment reserve', 'card reserve'],
     short: "Money committed to a credit card's bill — the card's own envelope.",
-    body: "Spend on a card from a funded envelope and the cash does not leave your bank: the card fronted it. That money is spoken for, so it moves out of the envelope and into the card's envelope, where it waits for the bill. Assigning to the card adds to it. Paying the card spends it; so does a refund the envelope had nothing reserved for, or moving money back out, either of which can take it below zero. Spending an envelope could not cover adds nothing — that becomes the card's Uncovered instead.",
+    body: "Spend on a card from a funded envelope and the cash does not leave your bank: the card fronted it. That money is spoken for, so it moves out of the envelope and into the card's envelope, where it waits for the bill. Assigning to the card adds to it. Paying the card spends it; so does a refund the envelope had nothing reserved for, or moving money back out. Below zero the card is overspent, like any envelope: assign to it that month, or the 1st covers it from Ready to Assign. Spending an envelope could not cover adds nothing — that becomes debt not covered instead.",
     inIgab:
-      'The Set aside column of the Credit cards section on the budget page. It is a running total, not a target and not a measure of the card, so on a card you carry it sits far below the balance every month and that is the normal reading. You can take money back out, down to what it holds — the card is then that much less covered. Below zero there is no money, only a deficit, and the row says which of several things put it there.',
+      'The figure at the end of each card\u2019s line in the Credit cards section on the budget page, red when the card is overspent. It is a running total, not a target, so on a card you carry it sits far below the balance and that is the normal reading. Open the card to see what put it where it is.',
     related: ['card-envelope', 'uncovered', 'spare', 'card-payment', 'to-be-assigned'],
     guideLinks: [{ tab: 'cards' }],
   },
@@ -551,7 +551,7 @@ export const GLOSSARY: GlossaryEntry[] = [
       'An ordinary envelope with a credit card\u2019s name on it, holding that card\u2019s Set aside.',
     body: 'Each credit card gets one envelope of its own. It is where Set aside lives, and it behaves like any other envelope: you can assign money to it, and you can move money back out of it. What makes it different is where the money goes — paying the card spends it, and nothing else does. You never file a transaction to it; card spending reaches it through the envelope that paid for the spending.',
     inIgab:
-      'You do not see it in the category grid — it shows as a row in the Credit cards section instead, because a card has a balance and an envelope does not. Its Assigned cell is that envelope\u2019s assignment, and Release moves money back out of it.',
+      'You do not see it in the category grid — each card is a line in the Credit cards section instead, because a card has a balance and an envelope does not. Open the card to change what is assigned to it; Release moves money back out.',
     related: ['set-aside', 'uncovered', 'card-payment'],
     guideLinks: [{ tab: 'cards' }],
   },
@@ -560,29 +560,30 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Spare',
     aliases: ['over-reserved', 'surplus on a card'],
     short: 'Set aside above what the card owes.',
-    body: 'A card always paid from funded envelopes never has unfunded debt for an assignment to retire, so money assigned to it accumulates rather than going anywhere. The amount beyond what the card owes is spare: no debt is relying on it, and releasing it costs the card nothing. Releasing more than the spare part is a different decision — that money was covering real debt, so Uncovered rises by whatever you take past it.',
+    body: 'A card always paid from funded envelopes never has unfunded debt for an assignment to retire, so money assigned to it accumulates rather than going anywhere. The amount beyond what the card owes is spare: no debt is relying on it, and releasing it costs the card nothing. Releasing more than the spare part is a different decision — that money was covering real debt, so the debt not covered rises by whatever you take past it.',
     inIgab:
-      'Shown beside Set aside in the Credit cards section when there is any. Release hands it back to Ready to Assign, which is where it came from when you assigned it.',
+      'A card\u2019s line in the Credit cards section says \u201c$X spare\u201d when there is any. Release, in the opened card, hands it back to Ready to Assign, which is where it came from.',
     related: ['set-aside', 'uncovered', 'to-be-assigned'],
     guideLinks: [{ tab: 'cards' }],
   },
   {
     id: 'uncovered',
-    term: 'Uncovered',
-    aliases: ['uncovered debt'],
-    short: 'What a card is owed beyond the cash reserved to pay it.',
-    body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — while it sits there nothing leaves your budget. Paying it down from checking does, and Ready to Assign says so; assigning to the card lowers Uncovered dollar for dollar.',
+    term: 'Not covered',
+    // The column's old name, so anyone who learned it still finds the term.
+    aliases: ['uncovered', 'uncovered debt'],
+    short: 'What a card owes beyond the money set aside to pay it.',
+    body: 'Card debt with nothing set aside behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — while it sits there nothing leaves your budget. Assigning to the card covers it dollar for dollar; paying it off without assigning first overspends the card.',
     inIgab:
-      "The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card's transactions.",
+      'A card\u2019s line says \u201c$X not covered\u201d, and the Credit cards band shows the total even when folded. Open the card to see what it owes and how much of that is covered.',
     related: ['set-aside', 'carried-balance', 'credit-overspending', 'refused-card-inflow'],
   },
   {
     id: 'credit-overspending',
     term: 'Credit overspending',
     short: 'Overspending a category on a credit card — it becomes card debt, not a budget charge.',
-    body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as uncovered debt instead of coming out of Ready to Assign. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from Ready to Assign.',
+    body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as debt not covered instead of coming out of Ready to Assign. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from Ready to Assign.',
     inIgab:
-      "A red category funded by card swipes turns into the card's Uncovered at month end. Cover Overspending funds it like any other red — the money lands in the card's set-aside and retires that debt rather than staying in the envelope to spend. The hero's \u201cof it on cards\u201d chip opens the breakdown of which envelope rode onto which card.",
+      "A red category funded by card swipes becomes debt on the card, not covered, at month end. Cover Overspending funds it like any other red — the money lands in the card's set-aside and retires that debt rather than staying in the envelope to spend. The Credit cards band says how much rode on this month; opening a card lists which envelopes rode onto it.",
     related: ['uncovered', 'set-aside', 'to-be-assigned'],
   },
   {
@@ -590,9 +591,9 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Carried balance',
     aliases: ['revolving balance', 'carrying a balance'],
     short: 'Card debt rolled from month to month instead of paid in full.',
-    body: "A balance you carry accrues interest at the card's APR, which is what makes card debt expensive. In envelope terms it is spending that was never backed by budgeted cash, so it shows beside the card as uncovered debt rather than inside any category. Paying it down is a budget line like any other: assign what you can afford to the card each month.",
+    body: "A balance you carry accrues interest at the card's APR, which is what makes card debt expensive. In envelope terms it is spending that was never backed by budgeted cash, so it shows on the card as debt not covered rather than inside any category. Paying it down is a budget line like any other: assign what you can afford to the card each month.",
     inIgab:
-      "Shows as the card's Uncovered — including the balance a newly linked card arrives with. Set the card's APR and minimum payment on its liability page and the payoff planner includes it. If the card's minimum is a percentage of the balance, enter it that way rather than as this month's figure; see Minimum payment.",
+      "Shows as the card's debt not covered — including the balance a newly linked card arrives with. Set the card's APR and minimum payment on its liability page and the payoff planner includes it. If the card's minimum is a percentage of the balance, enter it that way rather than as this month's figure; see Minimum payment.",
     related: ['uncovered', 'high-interest-debt', 'minimum-payment', 'apr'],
   },
   {
@@ -600,7 +601,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Card payment',
     short:
       "A transfer from a cash account to a card — the only move that spends the card's reserve.",
-    body: 'Record a payment as a transfer from checking or savings to the card. That drains Set aside and lowers the balance together, and Ready to Assign never moves. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
+    body: 'Record a payment as a transfer from checking or savings to the card. That drains Set aside and lowers the balance together. Pay more than is set aside and the card is overspent: assign the difference that month, or the 1st takes it from Ready to Assign. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
     inIgab:
       "Enter it as a transfer between the two accounts. A synced payment is paired for you when both accounts are connected and the two sides are unmistakable — same amount, a few days apart, nothing else it could be. When they are not, the Accounts page lists the pair so you can confirm it; until then the payment is not counted against the card's reserve.",
     related: ['set-aside', 'uncovered', 'cleared', 'refused-card-inflow'],
@@ -610,7 +611,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Refused card inflow',
     aliases: ['card inflow that paid down debt'],
     short: 'Money that arrived on a card and paid down debt instead of returning to an envelope.',
-    body: 'An envelope only gets a card refund back if it put that money on the card in the first place. A refund of something bought before you started budgeting — or of spending that overspent and rode onto the card — reduces what you owe without releasing any reserved cash, so it pays down Uncovered rather than landing in an envelope you could spend from. Without this the same dollars would count twice: once as debt paid down, once as spendable money, with Ready to Assign quietly making up the difference.',
+    body: 'An envelope only gets a card refund back if it put that money on the card in the first place. A refund of something bought before you started budgeting — or of spending that overspent and rode onto the card — reduces what you owe without releasing any reserved cash, so it pays down debt not covered rather than landing in an envelope you could spend from. Without this the same dollars would count twice: once as debt paid down, once as spendable money, with Ready to Assign quietly making up the difference.',
     inIgab:
       'Almost always zero. When it is not, the envelope shows the amount under its Available, so the figure is never lower than you can account for. A large one usually means a card payment was filed to a category instead of being recorded as a transfer.',
     related: ['uncovered', 'set-aside', 'card-payment'],

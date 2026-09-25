@@ -295,7 +295,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
               {budgetStart
                 ? 'Anything before this is opening balance — kept in the register, left ' +
                   'uncategorized, and not counted as needing a category. On a card it shows ' +
-                  'as Uncovered and is paid down by assigning to the card.'
+                  'as debt not covered and is paid down by assigning to the card.'
                 : 'Leave empty to treat this account’s whole history as part of your budget. ' +
                   'Set a date when an account arrives with history from before you tracked it.'}
             </p>

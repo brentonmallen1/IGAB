@@ -142,7 +142,19 @@ export function useSpreadExample(budgetId: string | null) {
  *  reason it would matter: the Guide would be free to teach arithmetic the
  *  app does not do. */
 export interface CardExampleStep {
-  kind: 'spend' | 'charge' | 'refund' | 'pay' | 'deposit' | 'fund' | 'assign'
+  /** A scenario event (`EventKind`), or `covered`: the 1st covering last
+   *  month's overspending from Ready to Assign, which nobody does. */
+  kind:
+    | 'fund'
+    | 'spend'
+    | 'cash_spend'
+    | 'charge'
+    | 'refund'
+    | 'pay'
+    | 'deposit'
+    | 'assign'
+    | 'release'
+    | 'covered'
   amount: number
   category: string | null
   day: number

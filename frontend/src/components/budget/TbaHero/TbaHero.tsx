@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { CalendarRange, ChevronDown, History, Wand2, X } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
+import { useCategories } from '../../../api/categories'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -8,10 +9,9 @@ import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { Modal } from '../../common/Modal/Modal'
 import { AssignDropdown, AssignDropdownContent } from '../AssignDropdown/AssignDropdown'
 import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
-import { overspending } from '../budgetTotals'
+import { overspending, overspentLastMonth } from '../budgetTotals'
 import { CoverOverspentModal } from './CoverOverspentModal'
-import { OnCardsModal } from './OnCardsModal'
-import { PaidAheadModal } from './PaidAheadModal'
+import { LastMonthModal } from './LastMonthModal'
 import { TbaDrawer } from './TbaDrawer'
 import type { AssignStrategy } from '../../../types'
 import './TbaHero.css'
@@ -32,6 +32,8 @@ export function TbaHero({ budgetId, month }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const isMobile = useIsMobile()
   const { formatMoney } = useFormatters()
+  // Archived included: an envelope archived since can still have been red.
+  const { data: categories = [] } = useCategories(budgetId, true)
 
   const drawerOpen = useUIStore((s) => s.tbaDrawerOpen)
   const setDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
@@ -43,17 +45,15 @@ export function TbaHero({ budgetId, month }: Props) {
   const setShowCover = useUIStore((s) => s.setCoverOverspentOpen)
   const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const assignRef = useRef<HTMLDivElement>(null)
-  const [showOnCards, setShowOnCards] = useState(false)
-  const [showPaidAhead, setShowPaidAhead] = useState(false)
-  // Served beside to_be_assigned. Ready to Assign was reduced by this, and a
-  // number that moved needs its reason next to it — the chip is the reason.
-  const paidAheadOnCards = Number(budgetMonth?.paid_ahead_on_cards ?? 0)
+  const [showLastMonth, setShowLastMonth] = useState(false)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
   // One implementation of "how much is overspent" (budgetTotals), shared with
   // the Assign dropdown's Cover row: the two answered it differently until
-  // 2026-09-05 and drifted apart exactly as two copies do.
-  const { total: overspent, onCards: overspentOnCards } = overspending(budgetMonth)
+  // 2026-09-05 and drifted apart exactly as two copies do. The part that rode
+  // onto a card is not the header's to say: it is card debt, and it shows
+  // where it is acted on — the cards band and each card's detail.
+  const { total: overspent } = overspending(budgetMonth)
   const assignedInFuture = Number(budgetMonth?.assigned_in_future ?? 0)
   const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
 
@@ -82,6 +82,12 @@ export function TbaHero({ budgetId, month }: Props) {
       assignedInFuture={assignedInFuture}
     />
   )
+
+  // A card's envelope is named for its card; everything else by its own name.
+  const lastMonth = overspentLastMonth(budgetMonth?.overspent_last_month, (categoryId) => {
+    const card = budgetMonth?.cards?.find((c) => c.category_id === categoryId)
+    return card?.name ?? categories.find((c) => c.id === categoryId)?.name ?? 'An envelope'
+  })
 
   return (
     <div className="tba-hero">
@@ -126,53 +132,25 @@ export function TbaHero({ budgetId, month }: Props) {
             <button
               className="tba-hero__overspent-chip"
               onClick={() => setShowCover(true)}
-              title={
-                overspentOnCards > 0
-                  ? `${formatMoney(-overspent)} overspent, of which ${formatMoney(overspentOnCards)} ` +
-                    `was swiped on a card. Covering funds all of it: the card part retires that ` +
-                    `card's debt instead of leaving spendable money in the envelope.`
-                  : 'Cover overspending'
-              }
+              title="Cover overspending"
             >
               {formatMoney(-overspent)}
               <span className="tba-hero__chip-word">overspent</span>
             </button>
           )}
 
-          {/* A PART of the chip beside it, not a second total — "of which",
-              which is why it reads as an annotation and not an alarm. It says
-              which portion of the red is card debt, because covering that
-              portion spends the money differently: into the card's set-aside
-              to retire the debt, rather than into the envelope to spend.
-
-              It opens the breakdown: which envelopes rode onto which card is
-              a real question once a card carries debt, and until this opened,
-              nothing on the page could answer it. */}
-          {overspentOnCards > 0 && (
+          {/* What the 1st took, as a pill like the one beside it. It was a
+              sentence listing every envelope, which wrapped into two ragged
+              lines under the number; the list is one tap away instead. */}
+          {lastMonth && (
             <button
-              className="tba-hero__on-cards"
-              onClick={() => setShowOnCards(true)}
-              aria-haspopup="dialog"
-              title={
-                `${formatMoney(overspentOnCards)} of the overspending beside this was swiped on ` +
-                `a card, so it is riding there as debt. Covering it assigns the money into that ` +
-                `card's set-aside and retires the debt. Open to see which envelopes rode onto ` +
-                `which card.`
-              }
-            >
-              {formatMoney(-overspentOnCards)}
-              <span className="tba-hero__chip-word">of it on cards</span>
-            </button>
-          )}
-
-          {paidAheadOnCards > 0 && (
-            <button
-              className="tba-hero__on-cards"
-              onClick={() => setShowPaidAhead(true)}
+              type="button"
+              className="tba-hero__last-month"
+              onClick={() => setShowLastMonth(true)}
               aria-haspopup="dialog"
             >
-              {formatMoney(-paidAheadOnCards)}
-              <span className="tba-hero__chip-word">paid ahead on cards</span>
+              {formatMoney(-lastMonth.total)}
+              <span className="tba-hero__chip-word">overspent last month</span>
             </button>
           )}
 
@@ -265,18 +243,19 @@ export function TbaHero({ budgetId, month }: Props) {
           onClose={() => setPreviewStrategy(null)}
         />
       )}
+      {showLastMonth && lastMonth && (
+        <LastMonthModal
+          month={month}
+          lastMonth={lastMonth}
+          onClose={() => setShowLastMonth(false)}
+        />
+      )}
       {showCover && (
         <CoverOverspentModal
           budgetId={budgetId}
           month={month}
           onClose={() => setShowCover(false)}
         />
-      )}
-      {showPaidAhead && (
-        <PaidAheadModal budgetId={budgetId} month={month} onClose={() => setShowPaidAhead(false)} />
-      )}
-      {showOnCards && (
-        <OnCardsModal budgetId={budgetId} month={month} onClose={() => setShowOnCards(false)} />
       )}
     </div>
   )

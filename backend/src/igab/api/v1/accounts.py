@@ -120,7 +120,6 @@ class FindingItemResponse(BaseModel):
     month: date | None = None
     day: date | None = None
     note: str | None = None
-    fix: str | None = None
     account_id: uuid.UUID | None = None
     transaction_id: uuid.UUID | None = None
     transaction_ids: list[uuid.UUID] = []

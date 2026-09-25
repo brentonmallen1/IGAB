@@ -80,7 +80,7 @@ const EXAMPLES: CardExamples = {
       slug: 'carrying-debt',
       title: 'Old debt, paid down by assigning to the card',
       happens: 'The card arrived carrying old debt.',
-      reads: 'Uncovered falls by exactly what you assign.',
+      reads: 'What is not covered falls by exactly what you assign.',
       todo: 'Keep assigning what you can afford, then pay by transfer.',
       card: 'Harborstone Card',
       intents: ['paying-down'],

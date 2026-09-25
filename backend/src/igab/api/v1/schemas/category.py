@@ -332,8 +332,9 @@ class CategoryBalance(ApiModel):
     #: exactly what Fill Underfunded would move. None when there is no target.
     needed_this_month: Decimal | None = None
     #: A card's envelope (linked to the card account). Not drawn in
-    #: the category grid — the cards section owns it — and never counted as
-    #: overspending; its state reads as the card's Set aside / Uncovered.
+    #: the category grid — the cards section owns it. Below zero it is
+    #: overspent like any envelope and counts in the overspent totals; Cover
+    #: Overspent covers it by assigning to the card.
     #: Required, not optional: a path that forgets it must raise, not draw
     #: every card's envelope as an ordinary row.
     is_card_payment: bool
@@ -491,25 +492,33 @@ class CardStatusOut(ApiModel):
     #: The legs `set_aside` is the running total of, each through the
     #: viewed month, plus what is still riding uncovered on the card:
     #:
-    #:     opening + assigned + reserved − released − residual − payments
-    #:         == set_aside
+    #:     opening + written_off + assigned + reserved − released − residual
+    #:         − payments == set_aside
     #:
     #: The surface used to show only the total, and every question this model
     #: raised was answered by decomposing it. The client renders these; it
     #: must not sum them into a set-aside of its own.
     #:
-    #: Required, not optional, all seven — a path that forgets must raise
+    #: Required, not optional, every one — a path that forgets must raise
     #: rather than show a reserve made of zeros.
     assigned: Decimal
     reserved: Decimal
     released: Decimal
     residual: Decimal
     payments: Decimal
-    #: The sixth leg, first in time: YNAB's own CCP Available at an import
-    #: anchor's B−1 (db.models.ImportAnchor). Zero everywhere but anchored
-    #: budgets; with it the legs still sum to `set_aside`, and the other five
-    #: stay post-anchor sums.
+    #: YNAB's own CCP Available at an import anchor's B−1
+    #: (db.models.ImportAnchor). Zero everywhere but anchored budgets; the
+    #: other legs stay post-anchor sums.
     opening: Decimal
+    #: What Ready to Assign absorbed, lifetime, each time a month ended with
+    #: this card's Set aside below zero — overspending on the card, handled
+    #: as on any envelope. The leg that brings Set aside back to zero on the
+    #: 1st, so the legs still sum to it.
+    written_off: Decimal
+    #: This month's part of `written_off`: last month's overspending on this
+    #: card, absorbed by the viewed month's Ready to Assign. The card's share
+    #: of `BudgetMonthResponse.overspent_last_month`.
+    written_off_this_month: Decimal
     #: What months ending short put on this card and is still uncovered,
     #: lifetime. Distinct from `uncovered`, which is what the card OWES beyond
     #: its reserve: a card can carry a ride while owing less than it has
@@ -526,15 +535,14 @@ class CardStatusOut(ApiModel):
     #: Served so the breakdown reads it rather than reconstructing it from
     #: `gross rides − riding`, which was wrong on every imported budget.
     covered: Decimal
-    #: The part of `residual` that came back through a receivable ledger —
-    #: somebody settling up. The settle-up sentence quotes THIS, never the
-    #: lifetime `residual` across every envelope. Required: a row that
-    #: forgot it would quote the wrong figure, not a blank.
-    residual_from_ledgers: Decimal
-    #: This card's share of `paid_ahead_on_cards`: what was paid past its
-    #: reserve with nothing to mirror it. The row's action says Ready to
-    #: Assign already reflects it, and quotes this.
-    paid_ahead_unmirrored: Decimal
+    #: This month's residual — the figure `set_aside_state` was decided on.
+    #: A negative Set aside is always this month's (last month's was written
+    #: off), so the sentence quotes this, never lifetime `residual`.
+    residual_this_month: Decimal
+    #: The part of this month's residual that came back through a receivable
+    #: ledger — somebody settling up. The settle-up sentence quotes THIS.
+    #: Required: a row that forgot it would quote the wrong figure.
+    residual_from_ledgers_this_month: Decimal
     #: Does funding the month an envelope ended short retire THIS card's ride?
     #: False when the shortfall is shared with another card, which funds first.
     #: Served so no surface promises the remedy where it does nothing.
@@ -552,9 +560,9 @@ class CardStatusOut(ApiModel):
     #: was ever true of. A negative `set_aside` alone is NOT it, and printing
     #: the word on the sign alone is the defect this field exists to end.
     card_credit: Decimal
-    #: Which of the eight situations this card's Set aside is in
-    #: (domain/cards.py `SetAsideState`). **Required, not optional.** The
-    #: client cannot compute it — two of the eight are told apart only by
+    #: Which situation this card's Set aside is in (domain/cards.py
+    #: `SetAsideState`). **Required, not optional.** The client cannot
+    #: compute it — two of them are told apart only by
     #: `residual_by_pair` and by whether an envelope was ever assigned to,
     #: and neither crosses the wire — so a path that forgot this field would
     #: have the row fall back to the very guess this replaces rather than
@@ -617,8 +625,10 @@ class CardStatusOut(ApiModel):
             riding=card.riding,
             imported_riding=card.imported_riding,
             covered=card.covered,
-            residual_from_ledgers=card.residual_from_ledgers,
-            paid_ahead_unmirrored=card.paid_ahead_unmirrored,
+            written_off=card.written_off,
+            written_off_this_month=card.written_off_this_month,
+            residual_this_month=card.residual_this_month,
+            residual_from_ledgers_this_month=card.residual_from_ledgers_this_month,
             ride_reaches_this_card=card.ride_reaches_this_card,
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
@@ -653,10 +663,14 @@ class CardTimelineMonthOut(ApiModel):
     released: Decimal
     residual: Decimal
     payments: Decimal
+    #: Last month's overspending on the card, covered from Ready to Assign on
+    #: this month's 1st. Brings a Set aside that ended below zero back to it.
+    written_off: Decimal
     #: What this month did to the reserve, signed — served so the client
     #: ranks rather than re-deriving the legs' arithmetic.
     reserve_delta: Decimal
-    #: Cumulative through this month, unfloored.
+    #: Cumulative through this month, signed: below zero at a month's end is
+    #: overspending, brought back to zero by the next month's `written_off`.
     set_aside: Decimal
     #: The card's ledger through this month. Negative is owed.
     balance: Decimal
@@ -698,9 +712,22 @@ class CardTimelineResponse(ApiModel):
     anchor_month: datetime.date | None
 
 
+class OverspentLastMonthItem(ApiModel):
+    #: The envelope — a card's own envelope included.
+    category_id: uuid.UUID
+    #: What this month's Ready to Assign absorbed from it on the 1st.
+    amount: Decimal
+
+
 class BudgetMonthResponse(ApiModel):
     month: datetime.date
     to_be_assigned: Decimal
+    #: What this month's Ready to Assign absorbed on the 1st: last month's
+    #: overspending, less what rode onto cards, per envelope, largest first.
+    #: Ready to Assign always dropped by this and the page never said why;
+    #: the header lists it. Required: a path that forgets must raise rather
+    #: than show a drop with no reason beside it.
+    overspent_last_month: list[OverspentLastMonthItem]
     #: Envelope categories only — income appears in `to_be_assigned` and in
     #: its own rows' `activity`, never here.
     total_assigned: Decimal
@@ -726,14 +753,6 @@ class BudgetMonthResponse(ApiModel):
     #: path that forgets report half the story as the whole one.
     total_overspent_cash: Decimal
     total_overspent_credit: Decimal
-    #: Ready to Assign was reduced by this: money paid toward cards past what
-    #: their envelopes held, with nothing on the page to mirror it. A card's
-    #: Set aside enters the envelope total signed, so without this the figure
-    #: read as if the payments had never happened. Served beside
-    #: `to_be_assigned` so the hero can say where the money went in one line.
-    #: Required: a path that forgets would show a number that moved with no
-    #: explanation, which is the failure this exists to end.
-    paid_ahead_on_cards: Decimal
     #: How many of `overspent_count` carry a cash shortfall. A breakdown, not
     #: a workload: Cover Overspending lists every red envelope.
     overspent_count_cash: int

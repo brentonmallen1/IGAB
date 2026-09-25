@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { dueInPhrase } from '../../../utils/paymentDue'
 import {
   reserveLegs,
-  debtMovementLabel,
   debtMovementWord,
   driftSentence,
   dueHeaderNote,
@@ -10,291 +9,194 @@ import {
   otherCredits,
   emptyLegsNote,
   pendingNote,
-  setAsideLabel,
-  setAsideShown,
-  stateSentence,
+  cardLine,
+  cardCallout,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
-import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
+import { cardStatus } from '../../../test-utils/cardFixture'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
 /** Amounts are invented and rescaled from the budget that raised these cases —
  *  the ratios carry the lesson, the digits are nobody's. */
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return assertServerProducible(
-    withPosition({
-      account_id: 'a1',
-      name: 'Sapphire Visa',
-      category_id: 'c1',
-      balance: -100,
-      set_aside: 100,
-      uncovered: 0,
-      is_closed: false,
-      overspent_this_month: 0,
-      reserve_discrepancy: 0,
-      assigned: 0,
-      reserved: 100,
-      released: 0,
-      residual: 0,
-      payments: 0,
-      riding: 0,
-      imported_riding: 0,
-      covered: 0,
-      residual_from_ledgers: 0,
-      paid_ahead_unmirrored: 0,
-      ride_reaches_this_card: true,
-      opening: 0,
-      over_reserved: 0,
-      short_reserved: 0,
-      card_credit: 0,
-      set_aside_state: 'funded',
-      charged_this_month: 0,
-      inflows_this_month: 0,
-      paid_this_month: 0,
-      debt_change_this_month: 0,
-      pending_this_month: 0,
-      rode_by_month: [],
-      overspent_by_category: [],
-      ...over,
-    })
-  )
+  return cardStatus({ balance: -100, set_aside: 100, reserved: 100, ...over })
 }
 
-describe('what the Set aside column prints', () => {
-  it('prints the figure on a card that is holding money', () => {
-    // 240 against 100 owed is a surplus, and says so.
-    expect(setAsideShown(card({ set_aside: 240, set_aside_state: 'surplus' }))).toBe(240)
+describe("what a card's line says", () => {
+  // The line is read, not studied: one word, a bar and the signed Set aside.
+  // A dot only where the card needs you this month.
+  const line = (over: Partial<CardStatus>, toCategorize = 0) =>
+    cardLine(card(over), toCategorize, money)
+
+  it('calls a card below zero overspent, and marks it', () => {
+    const got = line({ set_aside: -300, balance: -1700, set_aside_state: 'paid_ahead' })
+    expect(got).toMatchObject({ word: 'overspent', mark: 'overspent', tone: 'negative' })
   })
 
-  it('never prints a negative, whichever of the four causes produced it', () => {
-    for (const state of [
-      'settled_by_others',
-      'refund_outran_envelope',
-      'settled_elsewhere',
-      'ride_unfunded',
-      'paid_ahead',
-    ] as const) {
-      expect(setAsideShown(card({ set_aside: -300, set_aside_state: state })), state).toBe(0)
-    }
+  it('leads with overspent even on a card holding a credit', () => {
+    // Paid past the balance: the envelope is what reaches Ready to Assign.
+    const got = line({ set_aside: -50, balance: 50, set_aside_state: 'card_holds_it' })
+    expect(got.word).toBe('overspent')
   })
 
-  it('moves the magnitude to a named line instead of dropping it', () => {
-    // Showing $0.00 and saying nothing else would hide a real figure. The
-    // distance is a fact and stays on screen; what it MEANS is the sentence.
-    const label = setAsideLabel(
-      card({ set_aside: -300, short_reserved: 300, set_aside_state: 'paid_ahead' }),
-      money
+  it('asks for categories before describing a calm position', () => {
+    expect(line({}, 2)).toMatchObject({ word: '2 to categorize', mark: 'to-file' })
+    expect(line({}, 1).word).toBe('1 to categorize')
+  })
+
+  it('names what is not covered, without a mark', () => {
+    const got = line({ set_aside: 300, balance: -1200 })
+    expect(got).toMatchObject({ word: '$900.00 not covered', mark: null, tone: 'positive' })
+    expect(got.covered).toBeCloseTo(0.25)
+  })
+
+  it('names the spare, and a card paid off', () => {
+    expect(line({ set_aside: 350, balance: -200, set_aside_state: 'surplus' }).word).toBe(
+      '$150.00 spare'
     )
-    expect(label).toBe('$300.00 below zero')
+    expect(line({ set_aside: 0, balance: 0 })).toMatchObject({ word: 'paid off', tone: 'zero' })
   })
 
-  it('gives the four negatives no noun of their own', () => {
-    // They want opposite responses — nothing to do, re-file an inflow,
-    // back-fund a month, assign to the card — and one word for all four is
-    // what made this column unreadable.
-    const labels = (
-      ['settled_by_others', 'refund_outran_envelope', 'settled_elsewhere', 'paid_ahead'] as const
-    ).map((s) =>
-      setAsideLabel(card({ set_aside: -300, short_reserved: 300, set_aside_state: s }), money)
-    )
-    expect(new Set(labels).size).toBe(1)
-  })
-
-  it('says nothing beside a card with nothing to say', () => {
-    expect(setAsideLabel(card(), money)).toBeNull()
-    expect(stateSentence(card(), money)).toBeNull()
+  it('says covered when everything owed is set aside', () => {
+    const got = line({ set_aside: 100, balance: -100 })
+    expect(got).toMatchObject({ word: 'covered', mark: null })
+    expect(got.covered).toBe(1)
   })
 })
 
-describe('the sentence under the row', () => {
-  it('calls it a credit balance only when the card owes nothing', () => {
-    const card_ = card({
-      set_aside: -50,
-      balance: 50,
-      card_credit: 50,
-      set_aside_state: 'card_holds_it',
-    })
-    expect(setAsideLabel(card_, money)).toBe('credit balance')
-    expect(stateSentence(card_, money)?.sentence).toContain('owes nothing')
+describe('the callout in an opened card', () => {
+  // One headline, one line of cause, the fix as a button. It was a paragraph
+  // per state and nobody read it — so the tests hold the shape as well as
+  // the facts: short, and no remedy smuggled into the reason.
+  const callout = (over: Partial<CardStatus>) => cardCallout(card(over), money)
+
+  it('says nothing on a card that is simply funded', () => {
+    expect(callout({ set_aside_state: 'funded' })).toBeNull()
+  })
+
+  it('heads every red card the same way, and offers exactly the shortfall', () => {
+    const said = callout({ set_aside: -300, short_reserved: 300, set_aside_state: 'paid_ahead' })
+    expect(said?.tone).toBe('overspent')
+    expect(said?.headline).toBe('Overspent by $300.00')
+    expect(said?.assign).toBe(300)
+    expect(said?.otherwise).toMatch(/next month.s Ready to Assign/)
   })
 
   it('names what came back, not what was left of it', () => {
-    // The bug this test exists for: the row read "$100 came back" beside an
-    // envelope plainly showing $500. $100 was the residue after the month's
-    // reservations and payments; $500 is what actually arrived.
-    const said = stateSentence(
-      card({
-        set_aside: -100,
-        short_reserved: 100,
-        residual: 500,
-        set_aside_state: 'refund_outran_envelope',
-      }),
-      money
-    )
-    expect(said?.sentence).toContain('$500.00')
-    expect(said?.sentence).not.toContain('$100.00')
+    // The row once read "$100 came back" beside an envelope plainly showing
+    // $500: $100 was the residue after the month's reservations and
+    // payments; $500 is what actually arrived.
+    const said = callout({
+      set_aside: -100,
+      short_reserved: 100,
+      residual_this_month: 500,
+      set_aside_state: 'refund_outran_envelope',
+    })
+    expect(said?.reason).toContain('$500.00')
+    expect(said?.reason).toMatch(/envelope that never charged this card/)
+    expect(said?.assign).toBe(100)
   })
 
-  it('says a refund the envelope kept is spendable money that never arrived', () => {
-    const said = stateSentence(
-      card({
-        set_aside: -100,
-        short_reserved: 100,
-        residual: 500,
-        set_aside_state: 'refund_outran_envelope',
-      }),
-      money
-    )
-    expect(said?.sentence).toMatch(/credit on this card/)
-    // Describe, don't prescribe: nobody knows which envelope should give it
-    // back, or whether it should.
-    expect(said?.action).toBeUndefined()
-  })
-
-  it('tells a settle-up that nothing is wrong, in as many words', () => {
-    const said = stateSentence(
-      card({
-        set_aside: -200,
-        short_reserved: 200,
-        residual: 400,
-        residual_from_ledgers: 400,
-        set_aside_state: 'settled_by_others',
-      }),
-      money
-    )
-    expect(said?.sentence).toContain('$400.00')
-    expect(said?.action).toBe('Nothing to do.')
+  it('tells a settle-up there is nothing to do, and offers no button', () => {
+    const said = callout({
+      set_aside: -200,
+      short_reserved: 200,
+      residual_this_month: 400,
+      residual_from_ledgers_this_month: 400,
+      set_aside_state: 'settled_by_others',
+    })
+    expect(said?.reason).toContain('$400.00')
+    expect(said?.assign).toBeNull()
+    expect(said?.otherwise).toMatch(/^Nothing to do\./)
   })
 
   it('quotes the settle-up figure, not every refund the card ever saw', () => {
-    // The state was decided on `residual_from_ledgers`; the sentence used to
-    // print lifetime `residual` — years of ordinary refunds across every
-    // envelope — as "came back … somebody settled up".
-    const said = stateSentence(
-      card({
-        set_aside: -100,
-        short_reserved: 100,
-        residual: 4000,
-        residual_from_ledgers: 150,
-        set_aside_state: 'settled_by_others',
-      }),
-      money
-    )
-    expect(said?.sentence).toContain('$150.00')
-    expect(said?.sentence).not.toContain('$4,000.00')
+    const said = callout({
+      set_aside: -100,
+      short_reserved: 100,
+      residual: 4000,
+      residual_this_month: 150,
+      residual_from_ledgers_this_month: 150,
+      set_aside_state: 'settled_by_others',
+    })
+    expect(said?.reason).toContain('$150.00')
+    expect(said?.reason).not.toContain('$4,000.00')
   })
 
-  it('names every cause of a mixed shortfall and splits nothing', () => {
-    // The reported card: a settle-up that explains part, a paydown that explains
-    // the rest. It read "you have paid $300 more … than any envelope set
-    // aside" — $200 of which was somebody else's money.
-    const said = stateSentence(
-      card({
-        set_aside: -300,
-        short_reserved: 300,
-        residual: 200,
-        residual_from_ledgers: 200,
-        riding: 0,
-        set_aside_state: 'mixed',
-      }),
-      money
-    )
-    expect(said?.sentence).toContain('$200.00 came back from somebody settling up')
-    expect(said?.sentence).toContain('payments ran past what was set aside')
-    expect(said?.sentence).toContain('will not guess the split')
-    // The one number it may quote as a total is the served shortfall …
-    expect(said?.sentence).toContain('$300.00')
-    // … and it never presents it as what was paid ahead.
-    expect(said?.sentence).not.toMatch(/You have paid/)
+  it('splits nothing on a mixed shortfall', () => {
+    // It read "you have paid $300 more" when $200 of that was somebody
+    // else's settle-up. The reserve identity is bounds, not parts.
+    const said = callout({
+      set_aside: -300,
+      short_reserved: 300,
+      residual_this_month: 200,
+      residual_from_ledgers_this_month: 200,
+      set_aside_state: 'mixed',
+    })
+    expect(said?.headline).toBe('Overspent by $300.00')
+    expect(said?.reason).not.toMatch(/\$/)
+    expect(said?.reason).toMatch(/breakdown/)
   })
 
-  it('a mixed card with a partial ride names the ride and its month remedy stays honest', () => {
-    const said = stateSentence(
-      card({
-        set_aside: -805,
-        short_reserved: 805,
-        residual: 0,
-        residual_from_ledgers: 0,
-        riding: 5,
-        set_aside_state: 'mixed',
-      }),
-      money
-    )
-    expect(said?.sentence).toContain('$5.00 rode here when a month ended short')
-    expect(said?.sentence).toContain('$805.00')
+  it('offers back-funding the month only where the ride is this card alone', () => {
+    // F8: on a shortfall shared across cards, funding the envelope moves a
+    // DIFFERENT card first.
+    const alone = callout({
+      set_aside: -300,
+      short_reserved: 300,
+      riding: 200,
+      set_aside_state: 'ride_unfunded',
+    })
+    expect(alone?.otherwise).toMatch(/raise that month.s envelope/)
+
+    const shared = callout({
+      set_aside: -60,
+      short_reserved: 60,
+      riding: 300,
+      set_aside_state: 'settled_elsewhere',
+    })
+    expect(shared?.reason).toMatch(/another/)
+    expect(shared?.otherwise).not.toMatch(/envelope/)
   })
 
-  it('promises that funding a month works only where the ride is this card alone', () => {
-    // F8. The old copy offered this on every riding card, and on a shared
-    // shortfall funding the envelope moves a DIFFERENT card.
-    const alone = stateSentence(
-      card({ set_aside: -300, short_reserved: 300, riding: 200, set_aside_state: 'ride_unfunded' }),
-      money
-    )
-    expect(alone?.action).toMatch(/Raise that month's assignment/)
-
-    const shared = stateSentence(
-      card({
-        set_aside: -60,
-        short_reserved: 60,
-        riding: 300,
-        set_aside_state: 'settled_elsewhere',
-      }),
-      money
-    )
-    expect(shared?.action).not.toMatch(/envelope/)
-    expect(shared?.sentence).toMatch(/another card/)
+  it('calls a credit balance calm, and only when the card owes nothing', () => {
+    const said = callout({ set_aside: 0, balance: 50, set_aside_state: 'card_holds_it' })
+    expect(said?.tone).toBe('calm')
+    expect(said?.headline).toBe('Holds $50.00 of yours')
+    expect(said?.assign).toBeNull()
   })
 
-  it('offers the assignment on a plain overpayment, and quotes the amount', () => {
-    const said = stateSentence(
-      card({ set_aside: -300, short_reserved: 300, set_aside_state: 'paid_ahead' }),
-      money
-    )
-    expect(said?.sentence).toContain('$300.00')
-    expect(said?.action).toContain('Ready to Assign')
+  it('reads a card paid past its balance as overspent, credit and all', () => {
+    const said = callout({ set_aside: -50, balance: 50, set_aside_state: 'card_holds_it' })
+    expect(said?.tone).toBe('overspent')
+    expect(said?.reason).toContain('$50.00 of yours')
   })
 
   it('calls a surplus spare and says where releasing it goes', () => {
-    const card_ = card({
-      set_aside: 1250,
-      balance: -50,
-      over_reserved: 1200,
-      set_aside_state: 'surplus',
-    })
-    expect(setAsideLabel(card_, money)).toBe('$1200.00 spare')
-    expect(stateSentence(card_, money)?.action).toContain('Ready to Assign')
+    const said = callout({ set_aside: 1250, balance: -50, set_aside_state: 'surplus' })
+    expect(said?.headline).toBe('$1200.00 spare')
+    expect(said?.assign).toBeNull()
+    expect(said?.otherwise).toContain('Ready to Assign')
   })
 
-  it('does not branch on a cause the server did not decide', () => {
-    // Every figure in the copy is a served leg. The old note compared a
-    // LIFETIME residual against a CURRENT shortfall to pick its wording,
-    // which is a guess dressed as arithmetic.
-    for (const state of [
-      'surplus',
-      'card_holds_it',
-      'settled_by_others',
-      'refund_outran_envelope',
-      'settled_elsewhere',
-      'ride_unfunded',
-      'paid_ahead',
-    ] as const) {
-      // A position each label can be true of: the guard refuses a fixture
-      // whose figures contradict its label, so each state gets its own.
-      const figures = {
-        surplus: { set_aside: 300, balance: -100 },
-        card_holds_it: { set_aside: -50, balance: 50 },
-        settled_by_others: { set_aside: -200, balance: -600, residual_from_ledgers: 200 },
-        refund_outran_envelope: { set_aside: -80, balance: -420, residual: 80 },
-        settled_elsewhere: { set_aside: -60, balance: -300, riding: 60 },
-        ride_unfunded: { set_aside: -200, balance: -200, riding: 200 },
-        paid_ahead: { set_aside: -300, balance: -1700 },
-      }[state]
-      expect(
-        stateSentence(card({ ...figures, set_aside_state: state }), money),
-        state
-      ).not.toBeNull()
+  it('keeps every line short enough to take in at a glance', () => {
+    const figures: Record<string, Partial<CardStatus>> = {
+      surplus: { set_aside: 300, balance: -100 },
+      card_holds_it: { set_aside: -50, balance: 50 },
+      settled_by_others: { set_aside: -200, balance: -600, residual_from_ledgers_this_month: 200 },
+      refund_outran_envelope: { set_aside: -80, balance: -420, residual_this_month: 80 },
+      settled_elsewhere: { set_aside: -60, balance: -300, riding: 60 },
+      ride_unfunded: { set_aside: -200, balance: -200, riding: 200 },
+      paid_ahead: { set_aside: -300, balance: -1700 },
+      moved_out: { set_aside: -200, balance: -300 },
+      mixed: { set_aside: -500, balance: -300 },
+    }
+    for (const [state, over] of Object.entries(figures)) {
+      const said = callout({ ...over, set_aside_state: state as CardStatus['set_aside_state'] })
+      expect(said, state).not.toBeNull()
+      expect(said!.headline.length, state).toBeLessThanOrEqual(32)
+      expect(said!.reason.length, state).toBeLessThanOrEqual(90)
     }
   })
 })
@@ -307,43 +209,6 @@ describe('driftSentence', () => {
   it('is a sentence, not a tooltip, when it does not', () => {
     // It was a `title`, which an installed iOS PWA never renders.
     expect(driftSentence(card({ reserve_discrepancy: 42 }), money)).toContain('$42.00')
-  })
-})
-
-describe('debtMovementLabel', () => {
-  it('says nothing in a month the balance did not move', () => {
-    expect(debtMovementLabel(card(), money)).toBeNull()
-  })
-
-  it('reads a rising balance as the debt decreasing', () => {
-    // The whole point of the phrasing: a balance moving from -900 to -672 is
-    // going UP while the debt goes DOWN, and only one of those is what a
-    // person means by "the card got better".
-    expect(debtMovementLabel(card({ debt_change_this_month: 228 }), money)).toBe(
-      'debt\u00A0decreased $228.00'
-    )
-  })
-
-  it('reads a falling balance as the debt increasing', () => {
-    expect(debtMovementLabel(card({ debt_change_this_month: -412 }), money)).toBe(
-      'debt\u00A0increased $412.00'
-    )
-  })
-
-  // "down $412" beside a balance that grew is the report this wording came
-  // from: never a bare direction word, on either side of zero.
-  it('never says up or down', () => {
-    for (const moved of [228, -412]) {
-      expect(debtMovementLabel(card({ debt_change_this_month: moved }), money)).not.toMatch(
-        /\b(up|down)\b/
-      )
-    }
-  })
-
-  it('breaks only between the phrase and the figure', () => {
-    const label = debtMovementLabel(card({ debt_change_this_month: -412 }), money)
-    // One breakable space, and it sits before the amount.
-    expect(label?.split(' ')).toHaveLength(2)
   })
 })
 
@@ -473,7 +338,7 @@ describe('pendingNote', () => {
 })
 
 describe('reserveLegs', () => {
-  it('names the five terms, in order, with the sign each carries', () => {
+  it('names the terms, in order, with the sign each carries', () => {
     const legs = reserveLegs({
       assigned: 40,
       reserved: 100,
@@ -481,6 +346,7 @@ describe('reserveLegs', () => {
       residual: 7,
       payments: 5,
       opening: 0,
+      written_off: 30,
     })
     expect(legs.map((l) => [l.label, l.sign])).toEqual([
       ['Assigned to this card', '+'],
@@ -488,7 +354,25 @@ describe('reserveLegs', () => {
       ['Released by refunds', '−'],
       ['Refunds beyond what was reserved', '−'],
       ['Paid to the card', '−'],
+      ['Covered from Ready to Assign on the 1st', '+'],
     ])
+  })
+
+  it('adds up to Set aside once a month has been covered on the 1st', () => {
+    // Paid 100 past the 50 set aside in July; August's 1st covered the 50
+    // below zero. Without the covered leg the list summed to −50 beside a
+    // Set aside of 0, and "what makes up Set aside" did not make it up.
+    const legs = reserveLegs({
+      assigned: 50,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 100,
+      opening: 0,
+      written_off: 50,
+    })
+    const total = legs.reduce((sum, l) => sum + (l.sign === '+' ? l.value : -l.value), 0)
+    expect(total).toBe(0)
   })
 
   it('drops a leg that never moved — a month lists what happened', () => {
@@ -499,6 +383,7 @@ describe('reserveLegs', () => {
       residual: 0,
       payments: 150,
       opening: 0,
+      written_off: 0,
     })
     expect(legs).toHaveLength(1)
     expect(legs[0]).toEqual({ label: 'Paid to the card', value: 150, sign: '−' })
@@ -506,7 +391,15 @@ describe('reserveLegs', () => {
 
   it('returns nothing at all for a month where nothing moved', () => {
     expect(
-      reserveLegs({ assigned: 0, reserved: 0, released: 0, residual: 0, payments: 0, opening: 0 })
+      reserveLegs({
+        assigned: 0,
+        reserved: 0,
+        released: 0,
+        residual: 0,
+        payments: 0,
+        opening: 0,
+        written_off: 0,
+      })
     ).toEqual([])
   })
 
@@ -521,6 +414,7 @@ describe('reserveLegs', () => {
       residual: 0,
       payments: 0,
       opening: 0,
+      written_off: 0,
     })
     const oneMonth = reserveLegs({
       assigned: 5,
@@ -529,6 +423,7 @@ describe('reserveLegs', () => {
       residual: 0,
       payments: 0,
       opening: 0,
+      written_off: 0,
     })
     expect(lifetime.map((l) => l.sign)).toEqual(oneMonth.map((l) => l.sign))
     expect(lifetime.map((l) => l.label)).toEqual(oneMonth.map((l) => l.label))
@@ -539,6 +434,7 @@ describe('the opening leg', () => {
   it('leads the list on an anchored budget', () => {
     const legs = reserveLegs({
       opening: 150,
+      written_off: 0,
       assigned: 250,
       reserved: 100,
       released: 0,
@@ -551,6 +447,7 @@ describe('the opening leg', () => {
   it('is omitted everywhere else, like any zero leg', () => {
     const legs = reserveLegs({
       opening: 0,
+      written_off: 0,
       assigned: 250,
       reserved: 0,
       released: 0,

@@ -148,9 +148,33 @@ class Funding:
     #: keeps this where the domain does not, because "which envelope produced
     #: the residual" is the question this whole report exists to answer.
     residual_by_pair: dict[tuple[str, str], dict[date, Decimal]] = field(default_factory=dict)
+    #: Payments and the anchor's opening reserve, recorded by the walk as in
+    #: domain/cards.py, and the month-end write-off leg.
+    payments_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
+    opening_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
+    written_off_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
 
 
 ANCHOR_OPENING = "anchor-opening"
+
+
+def _add_months(month: date, n: int) -> date:
+    index = month.year * 12 + month.month - 1 + n
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def _cover(
+    out: Funding, ridden: dict[tuple[str, str], Decimal], card: str, month: date, amount: Decimal
+) -> None:
+    """cards._cover — money reaching a card's envelope retires its rides."""
+    pool = {cat: exposure for (cat, k), exposure in ridden.items() if k == card and exposure > ZERO}
+    for cat, take in allocate_capped(amount, pool).items():
+        ridden[(cat, card)] -= take
+        _add(out.covered_by_card, card, month, take)
+        if cat == ANCHOR_OPENING:
+            _add(out.imported_riding_by_card, card, month, -take)
+        else:
+            _add(out.riding_by_card, card, month, -take)
 
 
 @dataclass
@@ -179,8 +203,9 @@ def card_funding(
     credit_outflows: dict[str, dict[str, dict[date, Decimal]]],
     card_categories: dict[str, str],
     openings: Openings | None = None,
+    payments_by_card: dict[str, dict[date, Decimal]] | None = None,
 ) -> Funding:
-    """cards.card_funding — the month-major walk, steps 1..5, copied exactly.
+    """cards.card_funding — the month-major walk, steps 0..6, copied exactly.
 
     The only additions are the `residual_by_pair` attribution and dropping
     output series the probe never reads (per-category months, repaid).
@@ -207,6 +232,31 @@ def card_funding(
     carryover: dict[str, Decimal] = {}
     ridden: dict[tuple[str, str], Decimal] = {}
     reserved: dict[tuple[str, str], Decimal] = {}
+    payments = payments_by_card or {}
+    level: dict[str, Decimal] = {}
+    if openings is not None:
+        for card, reserve in openings.reserve_by_card.items():
+            level[card] = reserve
+
+    def write_off_into(month: date) -> None:
+        for card in sorted(level, key=str):
+            amount = next_carryover(level[card]) - level[card]
+            if amount > ZERO:
+                _add(out.written_off_by_card, card, month, amount)
+                _cover(out, ridden, card, month, amount)
+                level[card] += amount
+
+    if openings is not None:
+        known_cards = (
+            set(card_categories)
+            | set(openings.reserve_by_card)
+            | set(payments)
+            | {card for by_card in credit_outflows.values() for card in by_card}
+        )
+        for card in known_cards:
+            out.opening_by_card[card] = {
+                openings.opening_month: openings.reserve_by_card.get(card, ZERO)
+            }
 
     if openings is not None:
         # cards.card_funding's anchor seeding, verbatim: floored carryover
@@ -219,12 +269,22 @@ def card_funding(
                 ridden[(ANCHOR_OPENING, card)] = uncovered
                 _add(out.imported_riding_by_card, card, openings.opening_month, uncovered)
 
-    all_months = sorted(
-        set(categories_in_month) | {m for series in card_assignments.values() for m in series}
+    data_months = (
+        set(categories_in_month)
+        | {m for series in card_assignments.values() for m in series}
+        | {m for series in payments.values() for m in series}
     )
+    if openings is not None:
+        data_months = {m for m in data_months if m >= openings.month}
+    all_months: list[date] = []
+    if data_months:
+        month, last = min(data_months), max(data_months)
+        while month <= last:
+            all_months.append(month)
+            month = _add_months(month, 1)
     for month in all_months:
-        if openings is not None and month < openings.month:
-            continue
+        # 0. Last month's negative Set aside is written off.
+        write_off_into(month)
         for category in sorted(categories_in_month.get(month, []), key=str):
             nets = {
                 card: series[month]
@@ -246,6 +306,7 @@ def card_funding(
                 repaid += discharged
                 _add(out.released_by_card, card, month, released)
                 _add(out.residual_by_card, card, month, residual)
+                level[card] = level.get(card, ZERO) - released - residual
                 _add(out.riding_by_card, card, month, -discharged)
                 if residual != ZERO:
                     per = out.residual_by_pair.setdefault(pair, {})
@@ -278,6 +339,7 @@ def card_funding(
                 delta = net - floored_share.get(card, ZERO)
                 reserved[(category, card)] = reserved.get((category, card), ZERO) + delta
                 _add(out.reservations_by_card, card, month, delta)
+                level[card] = level.get(card, ZERO) + delta
 
         # 5. The card assignments, against the ride the month just settled.
         for card, series in card_assignments.items():
@@ -285,20 +347,22 @@ def card_funding(
             if amount == ZERO:
                 continue
             _add(out.assignments_by_card, card, month, amount)
+            level[card] = level.get(card, ZERO) + amount
             if amount <= ZERO:
                 continue
-            pool = {
-                cat: exposure
-                for (cat, k), exposure in ridden.items()
-                if k == card and exposure > ZERO
-            }
-            for cat, take in allocate_capped(amount, pool).items():
-                ridden[(cat, card)] -= take
-                _add(out.covered_by_card, card, month, take)
-                if cat == ANCHOR_OPENING:
-                    _add(out.imported_riding_by_card, card, month, -take)
-                else:
-                    _add(out.riding_by_card, card, month, -take)
+            _cover(out, ridden, card, month, amount)
+
+        # 6. The payments.
+        for card, series in payments.items():
+            paid = series.get(month, ZERO)
+            _add(out.payments_by_card, card, month, paid)
+            if paid != ZERO:
+                level[card] = level.get(card, ZERO) - paid
+
+    if all_months:
+        write_off_into(_add_months(all_months[-1], 1))
+    elif openings is not None:
+        write_off_into(openings.month)
 
     return out
 
@@ -326,11 +390,12 @@ def card_position(set_aside: Decimal, balance: Decimal) -> Position:
 
 # ─── Timeline analysis ────────────────────────────────────────────────────────
 
-LEGS = ("opening", "assigned", "reserved", "released", "residual", "payments")
+LEGS = ("opening", "written_off", "assigned", "reserved", "released", "residual", "payments")
 #: Legs that subtract from the reserve, as they appear in set_aside.
 #: `opening` is an import anchor's B−1 seed — zero everywhere else.
 _SIGNS = {
     "opening": 1,
+    "written_off": 1,
     "assigned": 1,
     "reserved": 1,
     "released": -1,
@@ -444,6 +509,8 @@ _REPORT_VOCABULARY = frozenset(
         "all",
         "amount",
         "amounts",
+        "anchor",
+        "anchored",
         "and",
         "another",
         "any",
@@ -546,10 +613,9 @@ _REPORT_VOCABULARY = frozenset(
         "nothing",
         "null",
         "numbers",
-        "ours",
-        "anchor",
-        "anchored",
+        "off",
         "opening",
+        "ours",
         "outside",
         "over",
         "overlay",
@@ -635,6 +701,7 @@ _REPORT_VOCABULARY = frozenset(
         "with",
         "worst",
         "writing",
+        "written",
         "ynab",
         "zero",
         "zip",
@@ -1422,6 +1489,7 @@ def analyze(
         data.outflows,
         data.card_categories,
         openings=data.anchor,
+        payments_by_card=data.payments,
     )
 
     # Envelope availables for shadow detection: the walk's corrected series
@@ -1449,33 +1517,36 @@ def analyze(
         real_name, _ = data.accounts[card]
         label = names.get("card", real_name)
 
-        card_payments = data.payments.get(card, {})
         balances = data.balance_by_card_month.get(card, {})
-        opening_series: dict[date, Decimal] = {}
+        opening_series = funding.opening_by_card.get(card, {})
         if data.anchor is not None:
             om = data.anchor.opening_month
-            opening_series = {om: data.anchor.reserve_by_card.get(card, ZERO)}
-            # The serving side's truncation and folding, verbatim: payments
-            # from B on, pre-anchor balance movement folded into the B−1
-            # seam entry.
-            card_payments = {m: v for m, v in card_payments.items() if m >= data.anchor.month}
+            # The serving side's folding, verbatim: pre-anchor balance
+            # movement folded into the B−1 seam entry. Payments are already
+            # truncated by the walk.
             folded = sum((v for m, v in balances.items() if m <= om), ZERO)
             balances = {m: v for m, v in balances.items() if m > om}
             if folded != ZERO:
                 balances[om] = folded
         legs_by_month = {
             "opening": opening_series,
+            "written_off": funding.written_off_by_card.get(card, {}),
             "assigned": funding.assignments_by_card.get(card, {}),
             "reserved": funding.reservations_by_card.get(card, {}),
             "released": funding.released_by_card.get(card, {}),
             "residual": funding.residual_by_card.get(card, {}),
-            "payments": card_payments,
+            "payments": funding.payments_by_card.get(card, {}),
         }
         timeline = card_timeline(
             legs_by_month,
             balances,
             funding.riding_by_card.get(card, {}),
         )
+        # The walk books the last month's write-off on the 1st of the month
+        # after it — a month that has not happened. The report stops at this
+        # one, as the app's own timeline stops at the viewed month.
+        this_month = date.today().replace(day=1)
+        timeline = [cm for cm in timeline if cm.month <= this_month]
         if not timeline:
             continue
         final = timeline[-1]

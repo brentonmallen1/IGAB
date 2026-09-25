@@ -122,7 +122,7 @@ async def test_full_tier_shape_and_texture(db_session):
     # The household accounts (a sold second car and the two off-budget savings
     # accounts among them) plus the card-shape demos — one per `full`-tier
     # scenario, so this moves by one when a scenario is added, as `mixed` was.
-    assert counts.accounts == 33
+    assert counts.accounts == 35
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -192,7 +192,7 @@ async def test_full_tier_liabilities(db_session):
     # account without one is the dead-end state this model exists to remove.
     # Five household debts plus a companion for each demo card — one per
     # `full`-tier scenario.
-    assert len(liabilities) == 19
+    assert len(liabilities) == 21
     for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -252,7 +252,10 @@ async def test_the_demo_cards_show_both_ways_a_bill_can_fall_due(db_session):
 
 async def test_full_tier_keeps_starter_invariants(db_session):
     """More data, same promises: TBA lands exactly on target, exactly one
-    intentional overspend, every financial invariant green."""
+    intentional overspend among ordinary envelopes, every financial invariant
+    green. The full tier also carries demo cards whose Set aside is below zero
+    this month — the situations they exist to show — and those are overspent
+    on their envelopes, so the total carries them too."""
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     await generate_full(db_session, budget)
@@ -266,13 +269,17 @@ async def test_full_tier_keeps_starter_invariants(db_session):
     )
     summary = await service.get_budget_summary(budget.id, ANCHOR.replace(day=1))
     assert summary.to_be_assigned == Decimal("150.00")
-    assert summary.total_overspent == Decimal("45.00")
+    red_cards = sum(
+        (-b.available for b in summary.category_balances if b.is_card_payment and b.available < 0),
+        Decimal("0"),
+    )
+    assert red_cards > 0, "the full tier demos the below-zero card situations"
+    assert summary.total_overspent == Decimal("45.00") + red_cards
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    # Card envelopes excluded, as in the starter suite: a card whose
-    # reserve is negative is a card-section state, not an overspent envelope,
-    # and one of the demo cards exists precisely to show that.
+    # Among ordinary envelopes, the one intentional overspend. The red card
+    # envelopes are counted above and belong to their demo cards.
     overspent = [
         names[b.category_id]
         for b in summary.category_balances
@@ -308,9 +315,9 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 33
+    assert counts["accounts"] == 35
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 19
+    assert counts["liabilities"] == 21
 
 
 async def test_the_sold_car_demonstrates_a_non_savings_asset(db_session):

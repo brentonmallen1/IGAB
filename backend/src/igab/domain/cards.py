@@ -3,16 +3,21 @@
 The model (decided 2026-08-28, replacing the net-cash rule; releases made
 cumulative 2026-08-29 after "The Unreleased Reservation"; refusals removed
 2026-08-29 after "The Refused Repayment"; assignments brought inside the walk
-2026-08-30 after "Two Ledgers, One Debt"):
+2026-08-30 after "Two Ledgers, One Debt"; a negative Set aside made
+overspending 2026-09-24, matching YNAB):
 
 - A card's balance is not in the budget's cash. The only way a card moves
   Ready to Assign is money deliberately set aside for it.
-- The set-aside is a running total, not a floored envelope: funded credit
-  spending flows in, card inflows release what was reserved, payments flow
-  out, and real assignments on the card's linked category add to it. A month
-  where payments exceed the reserve is an overpayment — a credit balance on
-  the card, carried forward — not an overspend for Ready to Assign to
-  absorb, so no zero floor is applied between months (`CardReserve`).
+- The set-aside is a running total of its legs: funded credit spending
+  flows in, card inflows release what was reserved, payments flow out, and
+  real assignments on the card's linked category add to it. **A month that
+  ends with it below zero is overspending**, exactly as YNAB treats a Credit
+  Card Payments category paid past what it held: red for the rest of that
+  month, then written off — the card's envelope starts the next month at
+  zero and Ready to Assign absorbs the amount, the same `next_carryover`
+  rule every envelope follows. The write-off is booked as its own leg
+  (`written_off`, dated the 1st) rather than applied as a silent floor, so
+  the legs still sum to the figure and the page can say where it went.
 - The part a category could NOT cover — `min(shortfall, credit outflow)` at
   month end — never reaches the set-aside and never charges Ready to Assign.
   It rides on the card as *uncovered debt*: visible beside the card's
@@ -37,9 +42,8 @@ inflow through them in order:
    returning them must hand the envelope its money back. `set_aside` falls,
    the envelope keeps the inflow, no adjustment.
 3. `residual` — beyond everything this category ever had riding here. Also
-   reduces `set_aside`, **uncapped**, so a reserve may go negative. That is a
-   real position, not an error: the card is holding budget money (a credit
-   balance, or a prepayment a later purchase absorbs).
+   reduces `set_aside`, **uncapped**, so a reserve may go negative within the
+   month — overspending, written off at the month's end like any other.
 
 **An assignment is the other way money meets uncovered debt, and it goes
 through the same door.** In YNAB, credit overspending debits the Credit Card
@@ -140,7 +144,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Final, cast
 
-from igab.domain.carryover import next_carryover, sum_through
+from igab.domain.carryover import next_carryover, sum_through, write_off
 from igab.domain.dates import add_months
 
 ZERO = Decimal("0")
@@ -310,10 +314,10 @@ class CardFunding[C, K]:
     tests — which is exactly how the old `truncated` shipped with no coverage
     at all.
 
-    The five reserve legs (`assignments`, `reservations`, `released`,
-    `residual`, and the payments the repository supplies) are kept apart
-    rather than pre-summed. A set-aside used to be assembled at the call site
-    from a net figure plus payments plus assignments, and the assignment leg
+    The reserve legs (`opening`, `assignments`, `reservations`, `released`,
+    `residual`, `payments`) are kept apart rather than pre-summed. A set-aside
+    used to be assembled at the call site from a net figure plus payments plus
+    assignments, and the assignment leg
     was the one that never entered the walk. `CardReserve` is now the only way
     to put them back together.
     """
@@ -392,6 +396,20 @@ class CardFunding[C, K]:
     #: months by anyone — carried per month so a row can say why its activity
     #: differs from the register's.
     repaid_by_category: dict[C, dict[date, Decimal]] = field(default_factory=dict)
+    #: Transfers from the budget's cash that paid each card, per month — the
+    #: repository sum, handed to the walk so the walk owns every leg of a
+    #: reserve and the anchor's truncation is applied once, here. On an
+    #: anchored budget months before B are dropped: the B−1 seed already
+    #: accounts for them.
+    payments_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: What each card's envelope had written off into Ready to Assign, dated
+    #: the 1st of the month that absorbed it: the previous month ended with
+    #: Set aside below zero by exactly this. The seventh leg of a reserve.
+    written_off_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: An import anchor's `{B−1: CCP Available}` per card — signed, since a
+    #: card can be imported with its envelope in the red. Empty everywhere
+    #: but anchored budgets.
+    opening_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
     #: The month-end series each card-touching category's `available` must be
     #: read out of (`carryover.available_at`) — the ordinary simulation with
     #: `repaid_by_category` folded into each month's activity. Categories with
@@ -422,20 +440,66 @@ class CardFunding[C, K]:
         return out
 
 
+def cash_written_off(end_of_month: Decimal, credit_part: Decimal) -> Decimal:
+    """What Ready to Assign absorbs from one envelope when a month ends at
+    `end_of_month`, of which `credit_part` rode onto a card.
+
+    The ride is card debt, not a write-off — it waits on the card, calm, as
+    Uncovered — so only the rest of the shortfall comes out of the next
+    month's Ready to Assign. A card's own envelope has no ride of its own:
+    all of its red is written off (`credit_part` zero).
+    """
+    return max(ZERO, write_off(end_of_month) - credit_part)
+
+
+def _cover[C, K](
+    out: CardFunding[C, K],
+    ridden: dict[tuple[C, K], Decimal],
+    card: K,
+    month: date,
+    amount: Decimal,
+) -> None:
+    """Money reaching a card's envelope from Ready to Assign retires the debt
+    riding on that card first — largest ride first, `ANCHOR_OPENING` included.
+
+    The one routine, because two kinds of money arrive this way: an
+    assignment to the card (step 5), and a month-end write-off, which is
+    Ready to Assign covering the card's overspending. Written twice, the two
+    would retire rides differently — the shape of "Two Ledgers, One Debt".
+    """
+    pool = {cat: exposure for (cat, k), exposure in ridden.items() if k == card and exposure > ZERO}
+    for cat, take in allocate_capped(amount, pool).items():
+        ridden[(cat, card)] -= take
+        _add(out.covered_by_card, card, month, take)
+        _add(out.covered_by_category, cat, month, take)
+        if cat == ANCHOR_OPENING:
+            _add(out.imported_riding_by_card, card, month, -take)
+        else:
+            _add(out.riding_by_card, card, month, -take)
+
+
 def card_funding[C, K](
     assignments_by_category: dict[C, dict[date, Decimal]],
     activity_by_category: dict[C, dict[date, Decimal]],
     credit_outflows: dict[C, dict[K, dict[date, Decimal]]],
     card_categories: dict[K, C],
     openings: AnchorOpenings[C, K] | None = None,
+    payments_by_card: dict[K, dict[date, Decimal]] | None = None,
 ) -> CardFunding[C, K]:
     """The whole budget's card funding, in one forward pass over the months.
 
     Takes each category's raw assignment and activity series,
     `credit_outflows[category][card][month]` (SIGNED net: a month whose card
     activity nets to an inflow is negative), and `card_categories[card]` — the
-    card's envelope linked to each card, whose assignments are the fifth leg
-    of that card's reserve.
+    card's envelope linked to each card, whose assignments are a leg of that
+    card's reserve. `payments_by_card` is the transfers from the budget's cash
+    that paid each card; the walk records them as the payments leg so that
+    every leg of a reserve comes out of this one pass, truncated at an import
+    anchor in one place.
+
+    **Every calendar month is walked**, from the first month with any data (B
+    on an anchored budget) to the last, gaps included — a month with only a
+    payment in it is still a month the card's reserve moves in.
 
     **The pass is month-major, and it has to be.** An assignment is made to a
     card's envelope, which has no spending category of its own: it
@@ -447,10 +511,16 @@ def card_funding[C, K](
     pass one, and a fixpoint over a floored carryover is not guaranteed
     unique.
 
-    Within each month, in this order: (1) inflows split through
-    `release_split`; (2) each category's adjusted end balance; (3) its floored
-    share; (4) the charges; then (5) the card assignments, against the ride
-    step 4 has just finished writing.
+    Within each month, in this order: (0) last month's negative Set aside is
+    written off — Ready to Assign covers it, retiring rides first; (1) inflows
+    split through `release_split`; (2) each category's adjusted end balance;
+    (3) its floored share; (4) the charges; (5) the card assignments, against
+    the ride step 4 has just finished writing; (6) the payments.
+
+    Step 0 comes first so a refund later in the month finds the ride already
+    retired and releases to its envelope, as YNAB hands a refund back to the
+    category. After the last month a final write-off is booked at the month
+    that follows, so any later month reads the card at zero.
 
     Step 5 comes last on purpose. An assignment made in the month a category
     overspends must cover *that month's* ride — the user reads "Uncovered 50"
@@ -510,13 +580,54 @@ def card_funding[C, K](
             if uncovered > ZERO:
                 ridden[(cast(C, ANCHOR_OPENING), card)] = uncovered
                 _add(out.imported_riding_by_card, card, openings.opening_month, uncovered)
+    payments = payments_by_card or {}
+    # Each card's running Set aside, to know what a month ended at. Seeded at
+    # the anchor's signed B−1 reserve, so a card imported with its envelope in
+    # the red is written off at B — the same rule as a category opening.
+    level: dict[K, Decimal] = {}
+    if openings is not None:
+        for card, reserve in openings.reserve_by_card.items():
+            level[card] = reserve
 
-    all_months = sorted(
-        set(categories_in_month) | {m for series in card_assignments.values() for m in series}
+    def write_off_into(month: date) -> None:
+        for card in sorted(level, key=str):
+            amount = write_off(level[card])
+            if amount > ZERO:
+                _add(out.written_off_by_card, card, month, amount)
+                _cover(out, ridden, card, month, amount)
+                level[card] += amount
+
+    if openings is not None:
+        # Every card the walk knows of gets its B−1 entry, a zero included:
+        # the entry is also the timeline's seam row, which an anchored card
+        # opens on whatever YNAB showed.
+        known_cards = (
+            set(card_categories)
+            | set(openings.reserve_by_card)
+            | set(payments)
+            | {card for by_card in credit_outflows.values() for card in by_card}
+        )
+        for card in known_cards:
+            out.opening_by_card[card] = {
+                openings.opening_month: openings.reserve_by_card.get(card, ZERO)
+            }
+
+    data_months = (
+        set(categories_in_month)
+        | {m for series in card_assignments.values() for m in series}
+        | {m for series in payments.values() for m in series}
     )
+    if openings is not None:
+        data_months = {m for m in data_months if m >= openings.month}
+    all_months: list[date] = []
+    if data_months:
+        month, last = min(data_months), max(data_months)
+        while month <= last:
+            all_months.append(month)
+            month = add_months(month, 1)
     for month in all_months:
-        if openings is not None and month < openings.month:
-            continue
+        # 0. Last month's negative is overspending: Ready to Assign covers it.
+        write_off_into(month)
         for category in sorted(categories_in_month.get(month, []), key=str):
             nets = {
                 card: series[month]
@@ -539,6 +650,7 @@ def card_funding[C, K](
                 repaid += discharged
                 _add(out.released_by_card, card, month, released)
                 _add(out.residual_by_card, card, month, residual)
+                level[card] = level.get(card, ZERO) - released - residual
                 _add(out.riding_by_card, card, month, -discharged)
                 if residual != ZERO:
                     per_pair = out.residual_by_pair.setdefault(pair, {})
@@ -584,6 +696,7 @@ def card_funding[C, K](
                 delta = net - floored_share.get(card, ZERO)
                 reserved[(category, card)] = reserved.get((category, card), ZERO) + delta
                 _add(out.reservations_by_card, card, month, delta)
+                level[card] = level.get(card, ZERO) + delta
 
         # 5. The card assignments, against the ride the month has just settled.
         #
@@ -605,25 +718,31 @@ def card_funding[C, K](
             if amount == ZERO:
                 continue
             _add(out.assignments_by_card, card, month, amount)
+            level[card] = level.get(card, ZERO) + amount
             if amount <= ZERO:
                 # Money moved back out of a card's envelope re-rides nothing:
                 # there is no non-arbitrary category to charge, and the
                 # spending it funded was funded. The reserve simply falls,
                 # and `uncovered` rises to meet it.
                 continue
-            pool = {
-                cat: exposure
-                for (cat, k), exposure in ridden.items()
-                if k == card and exposure > ZERO
-            }
-            for cat, take in allocate_capped(amount, pool).items():
-                ridden[(cat, card)] -= take
-                _add(out.covered_by_card, card, month, take)
-                _add(out.covered_by_category, cat, month, take)
-                if cat == ANCHOR_OPENING:
-                    _add(out.imported_riding_by_card, card, month, -take)
-                else:
-                    _add(out.riding_by_card, card, month, -take)
+            _cover(out, ridden, card, month, amount)
+
+        # 6. The payments. A payment does NOT retire riding debt: paying a
+        #    bill the budget never funded drives the reserve negative, and
+        #    what repairs that is covering the difference — or, at the
+        #    month's end, the write-off.
+        for card, series in payments.items():
+            paid = series.get(month, ZERO)
+            _add(out.payments_by_card, card, month, paid)
+            if paid != ZERO:
+                level[card] = level.get(card, ZERO) - paid
+
+    # The last month's own negative, written off where any later month reads
+    # it. Invisible at the last month itself: `sum_through` stops there.
+    if all_months:
+        write_off_into(add_months(all_months[-1], 1))
+    elif openings is not None:
+        write_off_into(openings.month)
 
     return out
 
@@ -653,20 +772,22 @@ class CardReserve:
     residual: dict[date, Decimal] = field(default_factory=dict)
     #: − transfers from the budget's cash that paid the card.
     payments: dict[date, Decimal] = field(default_factory=dict)
+    #: + what Ready to Assign absorbed when a month ended below zero, dated
+    #: the 1st of the month that absorbed it.
+    written_off: dict[date, Decimal] = field(default_factory=dict)
 
     def set_aside(self, month_start: date) -> Decimal:
-        """The reserve at `month_start`: a plain running total of six legs.
+        """The reserve at `month_start`: a plain running total of seven legs.
 
-        Deliberately NOT `carryover.available_through`: the zero floor between
-        months is the write-off rule for spending envelopes, where a negative
-        month is overspending absorbed from Ready to Assign. A set-aside's
-        negative month is an overpayment — a real credit balance on the card —
-        and flooring it discarded the surplus and ratcheted the reserve upward
-        by every overpaid month. The negative carries; if a surface prefers
-        not to show one, it floors at the presentation layer only.
+        Negative only within the month that produced it — the next month's
+        `written_off` entry brings it back to zero. Booked as a leg rather
+        than applied as a floor between months, which is what the earlier
+        clamp did wrong: it discarded the amount silently, so the legs stopped
+        summing to the figure and nothing could say where the money went.
         """
         return (
             sum_through(self.opening, month_start)
+            + sum_through(self.written_off, month_start)
             + sum_through(self.assignments, month_start)
             + sum_through(self.reservations, month_start)
             - sum_through(self.released, month_start)
@@ -675,28 +796,23 @@ class CardReserve:
         )
 
 
-def card_reserve[C, K](
-    funding: CardFunding[C, K],
-    card: K,
-    payments: dict[date, Decimal],
-    opening: dict[date, Decimal] | None = None,
-) -> CardReserve:
-    """One card's six legs, out of the walk plus the two it did not see.
+def card_reserve[C, K](funding: CardFunding[C, K], card: K) -> CardReserve:
+    """One card's legs, out of the walk.
 
-    `payments` stays outside `card_funding` because it is a repository query,
-    and because a payment legitimately does NOT retire riding debt: paying a
-    bill the budget never funded drives the reserve negative, and the
-    assignment that repairs it is what retires the ride. `opening` is an
-    import anchor's `{B−1: CCP Available}` — repository data too, and empty
-    everywhere but anchored budgets.
+    Every leg comes from `card_funding` — the payments and an import anchor's
+    opening included. They used to be passed in beside the walk, which meant
+    three callers each truncated the payments at an anchor and built the
+    opening leg by hand, and a reserve assembled from a walk and a separate
+    payments series could disagree about which months it covered.
     """
     return CardReserve(
-        opening=opening or {},
+        opening=funding.opening_by_card.get(card, {}),
         assignments=funding.assignments_by_card.get(card, {}),
         reservations=funding.reservations_by_card.get(card, {}),
         released=funding.released_by_card.get(card, {}),
         residual=funding.residual_by_card.get(card, {}),
-        payments=payments,
+        payments=funding.payments_by_card.get(card, {}),
+        written_off=funding.written_off_by_card.get(card, {}),
     )
 
 
@@ -826,10 +942,10 @@ def card_position(set_aside: Decimal, balance: Decimal) -> CardPosition:
 
 
 class SetAsideState(StrEnum):
-    """Which of the eight situations a card's Set aside is in.
+    """Which situation a card's Set aside is in.
 
     The surface used to decide this for itself, out of `set_aside` and
-    `balance`, and it could not: two of the eight are told apart only by
+    `balance`, and it could not: two of these are told apart only by
     `residual_by_pair` and by whether an envelope was EVER assigned to, and
     neither crosses the wire. So the row spent one label — "ahead of budget" —
     on three causes whose remedies differ, and on the fourth it offered advice
@@ -837,16 +953,18 @@ class SetAsideState(StrEnum):
 
     Named for the situation rather than for the sign of a number, because the
     sign is what the user already sees and is not what they are asking about.
-    A negative Set aside deliberately gets **no** noun of its own: four of
-    these states produce one, they want opposite responses, and a single word
-    for all four is precisely the flattening that made the column unreadable.
+    A negative Set aside is overspending whatever put it there — that is the
+    card line's word, and the 1st covers it the same way in every case. What
+    differs between the below-zero states is the cause and the cheapest
+    remedy, and that is what these names are for: one word for the cause of
+    all of them is the flattening that made the column unreadable.
 
     `StrEnum` because this crosses the API to the client, like `TargetType`.
     """
 
     #: Set aside is doing its job: money is waiting for a bill, and nothing
     #: about the figure needs explaining. The card may still owe more than it
-    #: holds — that is Uncovered's column to answer, not this one.
+    #: holds — that is `uncovered`'s to answer, not this one.
     FUNDED = "funded"
     #: More set aside than the card owes. Assignments stay in a card's
     #: envelope until riding debt turns up to retire, so on a card always paid
@@ -858,7 +976,8 @@ class SetAsideState(StrEnum):
     #: Somebody else's settle-up drove Set aside below zero. Their spending ran
     #: through a running tab rather than a fund (`residual_is_pass_through`),
     #: so no envelope of yours is holding the money: the repayment paid this
-    #: card down by exactly as much as it took out of Set aside. Nothing to do.
+    #: card down by exactly as much as it took out of Set aside. Nothing to
+    #: do; the 1st covers it, and the card owes that much less.
     SETTLED_BY_OTHERS = "settled_by_others"
     #: Money came back onto the card beyond anything an envelope charged here,
     #: and an envelope IS holding it. The tension is real and worth naming:
@@ -880,14 +999,15 @@ class SetAsideState(StrEnum):
     #: Payment ran past everything reserved, with NOTHING else present: no
     #: residual of any kind and no ride. A deliberate paydown out of money no
     #: envelope had set aside; it went straight to the balance. The only
-    #: state that may quote `short_reserved` as "what you paid ahead" — with
-    #: a second cause present, that figure includes the other cause's money.
+    #: state that may quote `short_reserved` as what the payment ran past Set
+    #: aside by — with a second cause present, that figure includes the other
+    #: cause's money.
     PAID_AHEAD = "paid_ahead"
     #: More than one thing put Set aside below zero, and none of them explains
     #: all of it. The row names what is present and quotes each served leg,
     #: and says nothing about how much of the shortfall is which: the reserve
     #: identity is bounds, not parts (`reserve_discrepancy`'s T2 is `<=`), so
-    #: any split into "this much settle-up, this much paid ahead" would be an
+    #: any split into "this much settle-up, this much paydown" would be an
     #: attribution rule — the same shape of confident wrong answer that
     #: labelled a two-thirds settle-up as overpayment. The legs panel is the
     #: whole picture; this points at it.
@@ -967,26 +1087,25 @@ def residual_from[C, K](
     residual_by_pair: dict[tuple[C, K], dict[date, Decimal]],
     card: K,
     categories: Container[C],
-    through: date,
+    month: date,
 ) -> Decimal:
-    """How much of this card's residual came from the given categories.
+    """How much of this card's residual in `month` came from the given
+    categories.
 
     One spelling of a reduction two callers need: the served state, to tell a
-    settle-up from a refund an envelope kept, and the hygiene check, to stay
-    quiet about the first. They were about to compute it separately, which is
-    how one surface comes to call a household's bookkeeping a defect while the
-    other calls it normal.
+    settle-up from a refund an envelope kept, and the scenario checker that
+    mirrors it. They were about to compute it separately, which is how one
+    surface comes to call a household's bookkeeping a defect while the other
+    calls it normal.
 
-    Bounded by the viewed month like every other leg, so it can be compared
-    against a `short_reserved` read at the same point in time.
+    One month, not a lifetime: a Set aside below zero is written off at the
+    month's end, so the shortfall it is compared with is always this month's.
     """
     return sum(
         (
-            amount
+            series.get(month, ZERO)
             for (category, key), series in residual_by_pair.items()
             if key == card and category in categories
-            for month, amount in series.items()
-            if month <= through
         ),
         ZERO,
     )
@@ -1025,10 +1144,15 @@ def set_aside_state(
     states promise that funding a month's envelope retires the ride; imported
     debt has no such month, and is retired only by assigning to the card.
 
-    `released_out` is the negative half of the card's lifetime assignments —
-    money moved out of its envelope (T2's third term). It is the one cause
-    where no cash left the household and nothing came back onto the card, so
-    the row must not say "you have paid".
+    **`residual`, `residual_from_ledgers` and `released_out` are this month's
+    figures.** A Set aside below zero is written off at the month's end, so a
+    shortfall is always this month's, and a cause from an earlier month —
+    already written off — must not explain it. `riding` stays a level: the
+    write-off retires rides, so what is still riding is current.
+
+    `released_out` is money moved out of the card's envelope this month. It
+    is the one cause where no cash left the household and nothing came back
+    onto the card, so the row must not say "you have paid".
 
     A **full** explanation, never a partial one: `residual_from_ledgers`,
     `residual` and `riding` must each cover the whole shortfall to claim it.
@@ -1069,47 +1193,6 @@ def set_aside_state(
     return SetAsideState.FUNDED
 
 
-def unmirrored_shortfall(
-    position: CardPosition, *, residual: Decimal, released_out: Decimal
-) -> Decimal:
-    """The part of a negative Set aside that cash actually left for.
-
-    A card's envelope goes into the budget's envelope total SIGNED, so a Set
-    aside below zero lowers that total and RAISES Ready to Assign. That is
-    right exactly when the negative is the mirror of something else on the
-    page, and there are three such mirrors: the CARD ITSELF holding a credit
-    (you overpaid it; the money is on the card and is yours — Ready to Assign
-    is right to count it); a refund landing as residual, which puts the same
-    amount into a spending envelope so the two cancel; and money released out
-    of the envelope, which is already sitting in Ready to Assign. It is wrong
-    for a PAYMENT past the reserve on a card that still owes — cash left the
-    household and nothing anywhere mirrors it, so Ready to Assign read as if
-    the payment had never happened, until the person assigned to the card.
-
-    This is that payment part, and only that part. The reserve identity gives
-    bounds (T2 is `<=`), not a decomposition, so this cannot be exact: it
-    subtracts the whole of every mirrored cause and takes what remains. In the
-    pure paid-ahead case that is the whole shortfall; where a mirror is also
-    present it is a LOWER bound on the payment part — it may under-correct
-    Ready to Assign, and can never take away money that is actually there,
-    on the card or in an envelope. That asymmetry is chosen: the failure this
-    exists to end is Ready to Assign reading high, and the one it must never
-    introduce is Ready to Assign reading low about money that exists.
-
-    The credit term was missing in the first draft and a test caught it:
-    linking a $1,000 payment onto a card with no charges put the card $1,000
-    in credit and Ready to Assign $1,000 too low — the card was holding the
-    money, and this said it had left.
-    """
-    return max(
-        ZERO,
-        position.short_reserved
-        - position.card_credit
-        - max(ZERO, residual)
-        - max(ZERO, released_out),
-    )
-
-
 def _allowance(*terms: Decimal) -> Decimal:
     """Capacity to explain a gap, from terms that are each allowed to be zero
     but never negative.
@@ -1135,6 +1218,7 @@ def reserve_discrepancy(
     residual_releases: Decimal,
     unclaimed_rows: Decimal,
     opening_credit: Decimal = ZERO,
+    written_off: Decimal = ZERO,
 ) -> Decimal:
     """0 when a card's reserve identity holds with all three bounds met;
     otherwise the largest amount by which one of them does not.
@@ -1238,6 +1322,16 @@ def reserve_discrepancy(
     `txn_filters.UNCLAIMED_CARD_ROW` — the signed net of card rows no term of
     the model claims, in both directions.
 
+    **The write-off.** A month-end write-off is Ready to Assign putting money
+    into the card's envelope, so callers fold it into `assigned` (T1 and T2
+    read it with an assignment's signs) and its ride retirements are in
+    `covered`. T3 names it separately: a card overpaid past its reserve holds
+    a credit that `short_reserved` explained only until the write-off brought
+    Set aside back to zero, so the written-off amount is what explains it
+    after. Without the leg, a floor would report every overpaid month as
+    drift — the "boundary floor ratchet" `TestReservationInvariant` exists to
+    catch.
+
     **What this does not do.** All three bounds are consequences of the
     identity above, so they check the walk against itself, not against
     reality. What makes T1 bite now is that the identity only closes if
@@ -1251,6 +1345,7 @@ def reserve_discrepancy(
     worst = max(
         pos.over_reserved - _allowance(assigned - covered, unclaimed_rows, opening_credit),
         pos.short_reserved - _allowance(payments, residual_releases, -assigned),
-        pos.card_credit - _allowance(pos.short_reserved, unclaimed_rows, opening_credit),
+        pos.card_credit
+        - _allowance(pos.short_reserved, unclaimed_rows, opening_credit, written_off),
     )
     return worst if worst > ZERO else ZERO

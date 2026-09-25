@@ -36,18 +36,24 @@ D = Decimal
 AMEX, VISA = "amex-partner", "visa"  # sorted: amex first — allocation order
 
 
-def funding(assignments, activity, outflows, category="groceries", card_categories=None):
+def funding(
+    assignments, activity, outflows, category="groceries", card_categories=None, payments=None
+):
     """`card_funding` for one category, spelled the way the scenarios read."""
     return card_funding(
-        {category: assignments}, {category: activity}, {category: outflows}, card_categories or {}
+        {category: assignments},
+        {category: activity},
+        {category: outflows},
+        card_categories or {},
+        payments_by_card=payments,
     )
 
 
-def reserve_of(cf, card, payments=None, assignments=None):
+def reserve_of(cf, card, assignments=None):
     """One card's reserve out of a walk, for tests that only care about the
     total. `assignments` is for the pre-`card_categories` scenarios, where the
     walk never saw them."""
-    reserve = card_reserve(cf, card, payments or {})
+    reserve = card_reserve(cf, card)
     if assignments:
         reserve = replace(reserve, assignments=assignments)
     return reserve
@@ -226,11 +232,14 @@ class TestCardFunding:
         assert cf.funded_by_card == {VISA: {JAN: D("100"), FEB: D("-100")}, AMEX: {JAN: D("40")}}
         assert cf.floored_by_category == {}
 
-    def test_a_refund_posting_before_its_purchase_is_absorbed_when_it_lands(self):
-        # Replaces `test_a_pre_reservation_inflow_is_discarded`, which asserted
-        # the defect: the refund was written off forever and the envelope stayed
-        # 100 short. The reserve now goes negative and February's purchase
-        # absorbs it, with no memory of a refusal to redeem.
+    def test_a_refund_posting_before_its_purchase_is_covered_on_the_first(self):
+        # Replaces `test_a_pre_reservation_inflow_is_discarded` (which asserted
+        # a refusal) and then `..._is_absorbed_when_it_lands` (which let the
+        # negative sit until the purchase landed). The refund arrives first,
+        # so January ends overspent at -100; February 1 writes that off from
+        # Ready to Assign, and February's funded purchase then reserves 100
+        # like any other — spare, against a card that owes nothing, and free
+        # to release. YNAB does the same with a Credit Card Payments category.
         cf = funding(
             {FEB: D("100")},
             {JAN: D("100"), FEB: D("-100")},
@@ -239,9 +248,10 @@ class TestCardFunding:
         assert cf.funded_by_card == {VISA: {JAN: D("-100"), FEB: D("100")}}
         assert cf.residual_by_card == {VISA: {JAN: D("100")}}
         assert cf.floored_by_category == {}
-        # Set-aside back to zero against a zero balance. Before: 100 reserved
-        # against a card that owed nothing.
-        assert reserve_of(cf, VISA).set_aside(FEB) == D("0")
+        assert cf.written_off_by_card == {VISA: {FEB: D("100")}}
+        reserve = reserve_of(cf, VISA)
+        assert reserve.set_aside(JAN) == D("-100")
+        assert reserve.set_aside(FEB) == D("100")
 
     def test_a_repayment_beyond_lifetime_exposure_becomes_a_negative_reserve(self):
         # The second cardholder / reimbursement case: the category spent its
@@ -395,20 +405,39 @@ class TestTheReserveIsFiveLegs:
         assert reserve.set_aside(FEB) == D("0")
 
     def test_the_legs_come_out_of_the_walk_without_being_re_summed(self):
-        cf = funding({JAN: D("100")}, {JAN: D("-150")}, {VISA: {JAN: D("150")}})
-        reserve = card_reserve(cf, VISA, {FEB: D("40")})
+        cf = funding(
+            {JAN: D("100")},
+            {JAN: D("-150")},
+            {VISA: {JAN: D("150")}},
+            payments={VISA: {FEB: D("40")}},
+        )
+        reserve = card_reserve(cf, VISA)
         assert reserve.reservations == {JAN: D("100")}
         assert reserve.payments == {FEB: D("40")}
         assert reserve.set_aside(FEB) == D("60")
 
 
 def discrepancy(
-    set_aside, balance, assigned="0", covered="0", payments="0", residual="0", unclaimed="0"
+    set_aside,
+    balance,
+    assigned="0",
+    covered="0",
+    payments="0",
+    residual="0",
+    unclaimed="0",
+    written_off="0",
 ):
-    """`reserve_discrepancy` with the terms named, so a seven-argument call
+    """`reserve_discrepancy` with the terms named, so a many-argument call
     says which bound it is exercising."""
     return reserve_discrepancy(
-        D(set_aside), D(balance), D(assigned), D(covered), D(payments), D(residual), D(unclaimed)
+        D(set_aside),
+        D(balance),
+        D(assigned),
+        D(covered),
+        D(payments),
+        D(residual),
+        D(unclaimed),
+        written_off=D(written_off),
     )
 
 
@@ -608,14 +637,20 @@ class TestReservationInvariant:
                 activity,
                 outflows,
                 card_categories,
+                payments_by_card=payments,
             )
             for card, balance in balances.items():
-                reserve = card_reserve(cf, card, payments.get(card, {}))
+                reserve = card_reserve(cf, card)
                 set_aside = reserve.set_aside(upto)
+                written_off = sum_through(reserve.written_off, upto)
+                # As the summary serves it: a write-off is Ready to Assign
+                # putting money into the envelope, so it joins `assigned`,
+                # and T3 names it for the credit it explains.
                 discrepancy = reserve_discrepancy(
                     set_aside,
                     balance,
-                    sum((v for m, v in reserve.assignments.items() if m <= upto), D("0")),
+                    sum((v for m, v in reserve.assignments.items() if m <= upto), D("0"))
+                    + written_off,
                     sum(
                         (v for m, v in cf.covered_by_card.get(card, {}).items() if m <= upto),
                         D("0"),
@@ -626,6 +661,7 @@ class TestReservationInvariant:
                         D("0"),
                     ),
                     deposits.get(card, D("0")),
+                    written_off=written_off,
                 )
                 assert discrepancy == D("0"), (
                     f"through {upto} on {card}: set_aside={set_aside} "
@@ -827,7 +863,7 @@ class TestAnAssignmentRetiresRidingDebt:
         # A conversion, not a diversion: the whole assignment still reserves.
         # Reserving only the remainder would make the assignment a visible
         # no-op and stop Ready to Assign falling by money just committed.
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("100")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("100")
 
     def test_a_refund_after_a_covering_assignment_releases_instead_of_discharging(self):
         """The headline. With the ride retired, March's refund hands the money
@@ -841,7 +877,7 @@ class TestAnAssignmentRetiresRidingDebt:
         assert cf.repaid_by_category == {}, "the debt was already covered by cash"
         assert cf.residual_by_card == {VISA: {MAR: D("100")}}
         # Reserve back to zero, and the envelope is 100 up.
-        assert card_reserve(cf, VISA, {}).set_aside(MAR) == D("0")
+        assert card_reserve(cf, VISA).set_aside(MAR) == D("0")
         assert cf.end_balances["groceries"][MAR] == D("100")
 
     def test_a_refund_with_no_covering_assignment_still_discharges(self):
@@ -882,14 +918,14 @@ class TestAnAssignmentRetiresRidingDebt:
         )
         assert cf.repaid_by_category == {"groceries": {FEB: D("100")}}
         assert cf.covered_by_card == {}
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("100")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("100")
 
     def test_an_assignment_beyond_the_ride_covers_only_the_ride(self):
         cf = self.visa(
             {}, {FEB: D("200")}, activity={JAN: D("-50")}, outflows={VISA: {JAN: D("50")}}
         )
         assert cf.covered_by_card == {VISA: {FEB: D("50")}}
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("200")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("200")
 
     def test_an_assignment_only_retires_debt_on_its_own_card(self):
         """The per-card scoping the module docstring refuses to pool."""
@@ -913,7 +949,7 @@ class TestAnAssignmentRetiresRidingDebt:
         )
         assert cf.covered_by_card == {}
         assert cf.floored_by_category == {}
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("60")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("60")
 
     def test_a_partial_cover_retires_the_largest_ride_first(self):
         """`allocate_capped`, the same allocator that places a ride across
@@ -970,11 +1006,11 @@ class TestTheClosedForm:
     converge on what the card owed.
     """
 
-    def check(self, cf, card, payments, spends, unclaimed=D("0")):
-        reserve = card_reserve(cf, card, payments)
+    def check(self, cf, card, spends, unclaimed=D("0")):
+        reserve = card_reserve(cf, card)
         upto = APR
         set_aside = reserve.set_aside(upto)
-        owed = spends - sum(payments.values(), D("0")) - unclaimed
+        owed = spends - sum(reserve.payments.values(), D("0")) - unclaimed
         assignments = sum_through(reserve.assignments, upto)
         covered = sum_through(cf.covered_by_card.get(card, {}), upto)
         riding = sum_through(cf.riding_by_card.get(card, {}), upto)
@@ -990,8 +1026,9 @@ class TestTheClosedForm:
             {"groceries": {JAN: D("-100"), MAR: D("-100")}},
             {"groceries": {VISA: {JAN: D("100"), MAR: D("100")}}},
             {VISA: "card-visa"},
+            payments_by_card={VISA: {FEB: D("100"), APR: D("100")}},
         )
-        self.check(cf, VISA, {FEB: D("100"), APR: D("100")}, spends=D("200"))
+        self.check(cf, VISA, spends=D("200"))
 
     def test_holds_when_an_assignment_covers_a_ride(self):
         cf = card_funding(
@@ -1000,7 +1037,7 @@ class TestTheClosedForm:
             {"groceries": {VISA: {JAN: D("100")}}},
             {VISA: "card-visa"},
         )
-        self.check(cf, VISA, {}, spends=D("100"))
+        self.check(cf, VISA, spends=D("100"))
 
     def test_holds_when_money_is_moved_back_out_of_the_envelope(self):
         cf = card_funding(
@@ -1009,7 +1046,25 @@ class TestTheClosedForm:
             {"groceries": {VISA: {JAN: D("100")}}},
             {VISA: "card-visa"},
         )
-        self.check(cf, VISA, {}, spends=D("100"))
+        self.check(cf, VISA, spends=D("100"))
+
+
+class TestAFloorMustBeBookedToBeExcused:
+    """The boundary-floor ratchet, kept out by construction.
+
+    A card overpaid by 280 across two months and then charged 60, funded:
+    it holds 220 of the household's money, and Set aside reads 60. Booked as
+    a `written_off` leg, the 280 explains the credit (T3) and the spare 60
+    (T1, as an assignment-like term). Applied as a silent floor instead —
+    which is what the per-month clamp once did — nothing names it, and the
+    check must say so rather than accept a reserve that quietly lost money.
+    """
+
+    def test_a_floor_with_no_written_off_leg_is_reported(self):
+        assert discrepancy("60", "220") == D("220")
+
+    def test_the_same_floor_booked_as_a_leg_is_explained(self):
+        assert discrepancy("60", "220", assigned="280", written_off="280") == D("0")
 
 
 class TestT1NoLongerExcusesTheDriftItCaused:
@@ -1062,8 +1117,9 @@ class TestTheStatementCycleTrap:
             {"groceries": {m: -v for m, v in outflows.items()}},
             {"groceries": {VISA: outflows}},
             {},
+            payments_by_card={VISA: payments or {}},
         )
-        return cf, card_reserve(cf, VISA, payments or {})
+        return cf, card_reserve(cf, VISA)
 
     def test_a_late_month_charge_the_envelope_could_not_cover_rides(self):
         # 500 charged in January against 200 funded: 300 rides, 200 reserves.
@@ -1124,7 +1180,10 @@ class TestTheAnchoredWalk:
         cards = {VISA: "visa payment"}
         plain = card_funding(asg, act, out, cards)
         anchored = card_funding(asg, act, out, cards, openings=self._openings(month=JAN))
-        assert plain == anchored
+        # The one difference is the seam: an anchored card always carries its
+        # B−1 opening entry, zero included, because the timeline opens on it.
+        assert anchored.opening_by_card == {VISA: {date(2025, 12, 1): D("0")}}
+        assert plain == replace(anchored, opening_by_card={})
 
     def test_months_before_the_boundary_never_reserve(self):
         cf = card_funding(

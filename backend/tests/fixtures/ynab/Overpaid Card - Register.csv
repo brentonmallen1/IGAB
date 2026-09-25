@@ -1,0 +1,5 @@
+"Account","Flag","Date","Payee","Category Group/Category","Category Group","Category","Memo","Outflow","Inflow","Cleared"
+"Checking","","06/01/2026","Starting Balance","Inflow: Ready to Assign","Inflow","Ready to Assign","",$0.00,$3000.00,"Reconciled"
+"Visa","","06/12/2026","Grocer","Everyday: Groceries","Everyday","Groceries","",$500.00,$0.00,"Reconciled"
+"Checking","","07/25/2026","Transfer : Visa","","","","",$400.00,$0.00,"Reconciled"
+"Visa","","07/25/2026","Transfer : Checking","","","","",$0.00,$400.00,"Reconciled"
