@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { canDo, contextChoices, formatTokens, modelOptions } from './modelChoice'
+import {
+  autoWindowLabel,
+  canDo,
+  contextChoices,
+  formatTokens,
+  modelOptions,
+  sharedContextChoices,
+  windowNote,
+} from './modelChoice'
 import type { OllamaModel } from '../../api/ai'
 
 const withTools: OllamaModel = {
@@ -65,6 +73,51 @@ describe('contextChoices', () => {
 
   it('offers every size when the model does not say', () => {
     expect(contextChoices(null)).toHaveLength(5)
+  })
+})
+
+describe('sharedContextChoices', () => {
+  // One setting serves the receipt model and the assistant's model: a size
+  // one of them cannot take would be clamped on the server, a setting that lies.
+  it('offers only what every model can take', () => {
+    expect(sharedContextChoices([16_384, 131_072])).toEqual([8_192, 16_384])
+  })
+
+  it('ignores a model that does not say', () => {
+    expect(sharedContextChoices([null, 40_960])).toEqual([8_192, 16_384, 32_768])
+  })
+
+  it('offers every size when no model says', () => {
+    expect(sharedContextChoices([null, undefined])).toHaveLength(5)
+  })
+})
+
+describe('autoWindowLabel', () => {
+  it('names the window when every model resolved to it', () => {
+    expect(autoWindowLabel([32_768, 32_768])).toBe('Auto (32k)')
+  })
+
+  it('says it is per model when they differ', () => {
+    expect(autoWindowLabel([16_384, 32_768])).toBe('Auto (sized for each model)')
+  })
+
+  it('names one model when the other is unknown', () => {
+    expect(autoWindowLabel([null, 32_768])).toBe('Auto (32k)')
+  })
+
+  it('says nothing it does not know', () => {
+    expect(autoWindowLabel([null, undefined])).toBe('Auto (sized from the model)')
+  })
+})
+
+describe('windowNote', () => {
+  it('says what a model is given of what it can take', () => {
+    expect(windowNote(32_768, 131_072)).toBe('asks for 32k of its 128k context')
+  })
+
+  it('says nothing without both numbers', () => {
+    expect(windowNote(null, 131_072)).toBeNull()
+    expect(windowNote(32_768, null)).toBeNull()
   })
 })
 

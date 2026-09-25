@@ -239,6 +239,8 @@ class AIService:
             "vision_model": vision_model,
             "receipt_model": receipt_model,
             "receipt_model_vision": None,
+            "receipt_model_context_length": None,
+            "receipt_num_ctx": None,
             "chat_model": chat_model,
             "chat_model_tools": None,
             "chat_model_context_length": None,
@@ -256,6 +258,11 @@ class AIService:
         # report capabilities).
         if available:
             result["receipt_model_vision"], _, _ = await self.check_vision_support()
+            # The window each job's model will be asked for, from the resolver
+            # the calls themselves use: one setting, sized per model.
+            num_ctx, model_max = await self.context_window(await self._vision_client())
+            result["receipt_model_context_length"] = model_max
+            result["receipt_num_ctx"] = num_ctx
             chat_client = await self.gateway.client(model=chat_model)
             caps = await self._capabilities(chat_client)
             result["chat_model_tools"] = None if caps is None else "tools" in caps

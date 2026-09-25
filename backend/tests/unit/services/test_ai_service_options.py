@@ -502,6 +502,39 @@ class TestModelCapabilities:
         assert status["receipt_model_vision"] is True
 
     @respx.mock
+    async def test_status_reports_each_jobs_window_from_one_setting(self):
+        """One setting, sized per model: under auto a 16k receipt model is
+        asked for 16k while a 128k assistant model is asked for 32k."""
+        lengths = {"gemma4:latest": 131_072, "tiny-ocr": 16_384}
+
+        def route(request: httpx.Request) -> httpx.Response:
+            model = json.loads(request.content)["model"]
+            return httpx.Response(
+                200,
+                json={
+                    "capabilities": ["completion", "vision", "tools"],
+                    "model_info": {"x.context_length": lengths[model]},
+                },
+            )
+
+        respx.get(f"{HOST}/").mock(return_value=httpx.Response(200))
+        respx.post(f"{HOST}/api/show").mock(side_effect=route)
+        svc = make_service(
+            {
+                "ai_enabled": "true",
+                "ollama_host": HOST,
+                "ollama_model": "gemma4:latest",
+                "ollama_vision_model": "tiny-ocr",
+            }
+        )
+        status = await svc.check_availability()
+        assert (status["receipt_num_ctx"], status["receipt_model_context_length"]) == (
+            16_384,
+            16_384,
+        )
+        assert (status["chat_num_ctx"], status["chat_model_context_length"]) == (32_768, 131_072)
+
+    @respx.mock
     async def test_status_reports_a_genuine_lack_of_vision(self):
         respx.get(f"{HOST}/").mock(return_value=httpx.Response(200))
         respx.post(f"{HOST}/api/show").mock(side_effect=show_route)
