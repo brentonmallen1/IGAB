@@ -19,7 +19,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import {
-  debtMovementLabel,
+  cardCallout,
   debtMovementWord,
   driftSentence,
   dueHeaderNote,
@@ -29,9 +29,7 @@ import {
   releaseAnchors,
   rideMonths,
   otherCredits,
-  calmSentence,
   cardLine,
-  stateSentence,
 } from './cardRow'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
@@ -567,10 +565,17 @@ function ReleaseButton({
 }
 
 /**
- * One card, opened: what it owes and how much of that is covered, what is
- * going on in one sentence, and every action the card has — all in place,
- * under its line. Nothing here is a tooltip or a dialog; the old ⓘ door and
- * the "How credit cards work here" essay are what this replaces.
+ * One card, opened — read at a glance, top to bottom:
+ *
+ * 1. Three figures: what it owes, how much of that is covered, how much not.
+ * 2. At most one callout, only when something is off: a headline, one line
+ *    of cause, and the fix as a button ("Assign $100.00").
+ * 3. One-line notes for rows to categorize and what rode on this month.
+ * 4. The assigned field, then every other door as a quiet link.
+ *
+ * It was paragraphs — the state, its cause and every remedy, then more
+ * paragraphs for each note — and too much to read to be read at all.
+ * Nothing here is a tooltip or a dialog.
  */
 function CardDetail({
   id,
@@ -588,6 +593,7 @@ function CardDetail({
   onEdit,
   onCommit,
   onCancel,
+  onAssignMore,
   legsOpen,
   onLegs,
   onPeek,
@@ -611,6 +617,8 @@ function CardDetail({
   onEdit: (value: string) => void
   onCommit: () => void
   onCancel: () => void
+  /** Raise this month's assignment by `amount` — the callout's fix. */
+  onAssignMore: (amount: number) => void
   legsOpen: boolean
   onLegs: () => void
   onPeek: () => void
@@ -619,38 +627,68 @@ function CardDetail({
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
 }) {
-  const state = stateSentence(card, formatMoney)
+  const callout = cardCallout(card, formatMoney)
   const drift = driftSentence(card, formatMoney)
-  const movement = debtMovementLabel(card, formatMoney)
   const owed = Math.max(0, -card.balance)
   const covered = Math.min(owed, Math.max(0, card.set_aside))
-  const tone = card.set_aside < 0 ? 'overspent' : state ? 'note' : 'calm'
   return (
     <div id={id} className="credit-cards__detail">
-      <p className="credit-cards__key tabular">
-        <span>
-          Owes <strong>{formatMoney(owed)}</strong>
-        </span>
-        <span>{formatMoney(covered)} covered</span>
-        <span>{formatMoney(card.uncovered)} not covered</span>
-        {movement && <span className="credit-cards__movement">{movement} this month</span>}
-      </p>
-      <p className={`credit-cards__status credit-cards__status--${tone}`}>
-        {state ? state.sentence : calmSentence(card, formatMoney)}
-        {/* Absent wherever no action is honestly available: a row that must
-          end in a suggestion will invent one. */}
-        {state?.action && <strong className="credit-cards__status-action"> {state.action}</strong>}
-      </p>
-      {drift && <p className="credit-cards__status credit-cards__status--note">{drift}</p>}
-      {/* What rode on this month, and from which envelopes. This lived in a
-        dialog behind a second header chip ("of it on cards"); it is card
-        debt, so it is said on the card, beside the assigned box that retires
-        it. The ride is a month's net, not a set of rows, so each envelope
-        opens its ordinary transactions rather than blaming particular ones. */}
+      <dl className="credit-cards__stats">
+        <div>
+          <dt>Owes</dt>
+          <dd className="tabular">{formatMoney(owed)}</dd>
+        </div>
+        <div>
+          <dt>Covered</dt>
+          <dd className="tabular">{formatMoney(covered)}</dd>
+        </div>
+        <div>
+          <dt>Not covered</dt>
+          <dd className="tabular">{formatMoney(card.uncovered)}</dd>
+        </div>
+      </dl>
+
+      {callout && (
+        <div className={`credit-cards__callout credit-cards__callout--${callout.tone}`}>
+          <p className="credit-cards__callout-head">{callout.headline}</p>
+          <p className="credit-cards__callout-why">{callout.reason}</p>
+          {(callout.assign !== null || callout.otherwise) && (
+            <div className="credit-cards__callout-fix">
+              {/* Only with an envelope to assign into (a fresh migration can
+                leave a card without one for a moment). */}
+              {callout.assign !== null && card.category_id && (
+                <button
+                  type="button"
+                  className="credit-cards__fix"
+                  onClick={() => onAssignMore(callout.assign as number)}
+                >
+                  Assign {formatMoney(callout.assign)}
+                </button>
+              )}
+              {callout.otherwise && (
+                <span className="credit-cards__callout-otherwise">{callout.otherwise}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {drift && <p className="credit-cards__note">{drift}</p>}
+      {toCategorize > 0 && (
+        <p className="credit-cards__note">
+          <span className="credit-cards__mark credit-cards__mark--to-file" aria-hidden />
+          {toCategorize === 1 ? '1 transaction' : `${toCategorize} transactions`} to categorize
+          <button type="button" className="credit-cards__inline-link" onClick={onPeek}>
+            Show
+          </button>
+        </p>
+      )}
+      {/* What rode on this month, and from which envelopes — card debt, so
+        it is said on the card. The ride is a month's net, not a set of rows,
+        so each envelope opens its ordinary transactions. */}
       {card.overspent_this_month > 0 && (
-        <p className="credit-cards__status credit-cards__status--note">
-          {formatMoney(card.overspent_this_month)} of this month&rsquo;s overspending rode onto this
-          card:{' '}
+        <p className="credit-cards__note">
+          Rode on this month:{' '}
           {card.overspent_by_category.map((rode, i) => (
             <Fragment key={rode.category_id}>
               {i > 0 && ', '}
@@ -664,28 +702,9 @@ function CardDetail({
               <span className="tabular">{formatMoney(rode.amount)}</span>
             </Fragment>
           ))}
-          .{' '}
-          {/* The remedy, keyed on whether it works HERE: a shortfall shared
-            across cards is handed out in a fixed order, so funding the
-            envelope may shrink another card's ride first (F8). The server
-            says which; this only reads it. */}
-          {card.ride_reaches_this_card
-            ? 'Cover Overspending retires it, or assign to this card below.'
-            : 'Some of it rode onto another card too, and covering these envelopes reaches that card first. Assigning to this card below is certain to retire it.'}
         </p>
       )}
-      {toCategorize > 0 && (
-        <p className="credit-cards__status credit-cards__status--to-file">
-          {toCategorize === 1
-            ? '1 transaction on this card needs a category.'
-            : `${toCategorize} transactions on this card need a category.`}{' '}
-          Until then they only change what you owe. A refund filed to the envelope that made the
-          purchase goes back to it; filed anywhere else, it turns this card red.{' '}
-          <button type="button" className="credit-cards__inline-link" onClick={onPeek}>
-            Show them
-          </button>
-        </p>
-      )}
+
       <div className="credit-cards__assigned">
         <span className="credit-cards__assigned-label">Assigned this month</span>
         {card.category_id && editing ? (
@@ -720,6 +739,7 @@ function CardDetail({
           </span>
         )}
       </div>
+
       <div className="credit-cards__actions">
         <button type="button" className="credit-cards__action" onClick={onPeek}>
           Transactions
@@ -759,7 +779,7 @@ function CardDetail({
           ) : (
             <ChevronRight size={12} aria-hidden />
           )}
-          What makes up Set aside
+          Breakdown
         </button>
       </div>
       {legsOpen && (
@@ -998,6 +1018,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       }}
                       onCommit={() => commit(card.category_id as string)}
                       onCancel={() => setEditing(null)}
+                      onAssignMore={(amount) => {
+                        const categoryId = card.category_id as string
+                        const now = Number(balances.get(categoryId)?.assigned ?? 0)
+                        // Cents, so float residue never books $99.99999.
+                        const next = Math.round((now + amount) * 100) / 100
+                        setAssignment.mutate({ categoryId, month, amount: next })
+                      }}
                       legsOpen={legsFor === card.account_id}
                       onLegs={() =>
                         setLegsFor(legsFor === card.account_id ? null : card.account_id)

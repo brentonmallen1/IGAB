@@ -40,11 +40,16 @@ describe('credit-cards strip on a phone', () => {
   it('gives every action in the opened card a real touch target', () => {
     // Labelled buttons, not 12px icons with a title — a title is unreachable
     // on the installed iOS PWA, which is the app's mobile target.
-    expect(rule('.credit-cards__action')).toMatch(/min-height:\s*var\(--tap-min\)/)
+    const action = phone.find((r) => r.selector.includes('.credit-cards__action'))
+    expect(action?.body).toMatch(/min-height:\s*var\(--tap-min\)/)
   })
 
   it('lets captions wrap instead of pushing the strip sideways', () => {
-    const wrapping = phone.find((r) => r.selector.includes('.credit-cards__movement'))
-    expect(wrapping?.body).toMatch(/white-space:\s*normal/)
+    expect(rule('.credit-cards__hint')).toMatch(/white-space:\s*normal/)
+  })
+
+  it('holds the fix button to the tap floor too', () => {
+    const fix = phone.find((r) => r.selector.includes('.credit-cards__fix'))
+    expect(fix?.body).toMatch(/min-height:\s*var\(--tap-min\)/)
   })
 })

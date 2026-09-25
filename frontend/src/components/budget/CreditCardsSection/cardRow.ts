@@ -1,6 +1,5 @@
 import type { CardStatus } from '../../../types'
 import type { DueNotice } from '../../../utils/paymentDue'
-import { thisMonthOrNext } from '../../../utils/cardOverspending'
 
 /**
  * What a card's row says about itself, decided once and away from the DOM.
@@ -76,163 +75,112 @@ export function cardLine(
 }
 
 /**
- * The detail's one sentence for a card with nothing unusual going on — the
- * calm positions `stateSentence` has no reason to explain. Never an alarm:
- * debt nobody has set aside for yet is information, and it comes down as you
- * assign to the card.
- */
-export function calmSentence(
-  card: Pick<CardStatus, 'balance' | 'uncovered' | 'over_reserved'>,
-  money: Money
-): string {
-  if (card.uncovered > 0) {
-    return (
-      `${money(card.uncovered)} of what you owe isn't set aside yet. It stays here as ` +
-      `debt — assign to the card as you pay it down.`
-    )
-  }
-  if (card.over_reserved > 0) {
-    return `${money(card.over_reserved)} more than the bill is set aside. Keep it for next month, or release it.`
-  }
-  if (card.balance >= 0) return 'Nothing owed on this card.'
-  return 'Everything you owe is set aside. Pay the full balance.'
-}
-
-export interface StateSentence {
-  /** What is true, always. */
-  sentence: string
-  /** What to do about it — ABSENT wherever no action is honestly available.
-   *  The affordance is what forced the old advice: a row that must end in a
-   *  suggestion will invent one, and on a shared shortfall the one it
-   *  invented moved a different card. */
-  action?: string
-}
-
-/**
- * The card's situation in a sentence, and an action only where one is true.
+ * What an opened card says about itself: at most one callout.
  *
- * One entry per served state, no branching on a cause of its own. Every
- * figure quoted is a served leg, and which leg matters: on a settle-up the
- * sentence names `residual` — what actually came back — and never
- * `short_reserved`, which is only what was left of it after the month's
- * reservations and payments. A card whose envelope plainly shows $500 read
- * "$100 came back" for exactly that reason.
+ * It was a paragraph per state — the situation, why, and every remedy, in
+ * two or three sentences — stacked with more paragraphs for rows to file and
+ * rides. Nobody read it. Now: a headline a glance can take ("Overspent by
+ * $100.00"), one short line of cause, and the fix as a button. Calm
+ * positions get no callout at all; the Owes / Covered / Not covered figures
+ * above it already say everything true about them.
+ *
+ * One entry per served state and no cause of its own. Every figure is a
+ * served leg: on a settle-up the line names `residual_from_ledgers_this_month`
+ * — what actually came back — never `short_reserved`, which is only what is
+ * left of it after the month's reservations and payments.
  */
-export function stateSentence(card: CardStatus, money: Money): StateSentence | null {
+export interface Callout {
+  tone: 'overspent' | 'calm'
+  headline: string
+  /** One short line: why. Never a remedy — that is the button. */
+  reason: string
+  /** Assigning this much to the card this month squares it. Absent where
+   *  nothing needs doing: a row that must end in a suggestion invents one. */
+  assign: number | null
+  /** Under the button, or alone when there is none: what happens if nothing
+   *  is done, or the other way out. */
+  otherwise: string | null
+}
+
+/** What a red card turns into if it is left alone. */
+const LEFT_ALONE = 'Otherwise it comes out of next month\u2019s Ready to Assign on the 1st.'
+
+export function cardCallout(card: CardStatus, money: Money): Callout | null {
+  const short = card.short_reserved
+  const overspent = (reason: string, otherwise = LEFT_ALONE): Callout => ({
+    tone: 'overspent',
+    headline: `Overspent by ${money(short)}`,
+    reason,
+    assign: short,
+    otherwise,
+  })
   switch (card.set_aside_state) {
     case 'funded':
       return null
 
     case 'surplus':
       return {
-        sentence:
-          `${money(card.over_reserved)} more is set aside than this card owes: money assigned ` +
-          `to the card that no debt has needed.`,
-        action: 'Keep it for the next bill, or release it back to Ready to Assign.',
+        tone: 'calm',
+        headline: `${money(card.over_reserved)} spare`,
+        reason: 'Assigned to the card, but no debt has needed it.',
+        assign: null,
+        otherwise: 'Keep it for the next bill, or release it to Ready to Assign.',
       }
 
     case 'card_holds_it':
+      // Paid past the balance, the card's envelope went below zero too.
+      if (short > 0) {
+        return overspent(
+          `Paid past the balance: the card holds ${money(card.card_credit)} of yours.`
+        )
+      }
       return {
-        sentence:
-          `This card owes nothing and is holding ${money(card.card_credit)} of yours. Later ` +
-          `spending on it will use the credit up.`,
-        // Paid past the balance, the card's envelope went below zero too:
-        // overspent like any envelope, until the 1st covers it.
-        ...(card.short_reserved > 0 ? { action: thisMonthOrNext(money(card.short_reserved)) } : {}),
+        tone: 'calm',
+        headline: `Holds ${money(card.card_credit)} of yours`,
+        reason: 'You paid it more than it owed. Later spending on it uses that up.',
+        assign: null,
+        otherwise: null,
       }
 
     case 'settled_by_others':
+      // Nothing to fix: somebody else paid the card down by exactly what it
+      // took from Set aside. Red, and no button.
       return {
-        // This month's ledger residual, the figure the state was decided on —
-        // not lifetime `residual`, which read "$4,000 came back … somebody
-        // settled up" about a $150 settle-up.
-        sentence:
-          `${money(card.residual_from_ledgers_this_month)} came back onto this card from ` +
-          `spending nobody budgeted for — somebody settled up. It paid the card down by the ` +
-          `same amount it took out of Set aside.`,
-        action:
-          'Nothing to change. If Set aside is still below zero at the end of the month, next ' +
-          'month\u2019s Ready to Assign covers it.',
+        ...overspent(
+          `Somebody settled up ${money(card.residual_from_ledgers_this_month)} on this card.`,
+          'Nothing to do. The 1st covers it from Ready to Assign, and the card owes that much less.'
+        ),
+        assign: null,
       }
 
     case 'refund_outran_envelope':
-      return {
-        // This month's residual that is NOT a settle-up: what an envelope kept.
-        sentence:
-          `${money(card.residual_this_month - card.residual_from_ledgers_this_month)} came ` +
-          `back onto this card beyond anything an envelope charged here. The envelope it was ` +
-          `filed to is holding that money.`,
-        action: thisMonthOrNext(money(card.short_reserved)),
-      }
+      return overspent(
+        `${money(card.residual_this_month - card.residual_from_ledgers_this_month)} came back ` +
+          'to an envelope that never charged this card.'
+      )
 
     case 'settled_elsewhere':
-      return {
-        sentence:
-          `${money(card.riding)} of spending rode onto this card when a month ended short, ` +
-          `and that month's shortfall rode onto another card as well. Money put into the ` +
-          `envelope is shared out across those cards, so it may not reach this one.`,
-        action:
-          `Assigning to this card is the only move certain to reach it. ` +
-          thisMonthOrNext(money(card.short_reserved)),
-      }
+      return overspent(
+        `A short month\u2019s ${money(card.riding)} rode onto this card and another.`
+      )
 
     case 'ride_unfunded':
-      return {
-        sentence:
-          `${money(card.riding)} of spending rode onto this card when a month ended short, ` +
-          `so your payment ran past what had been set aside.`,
-        action:
-          `Raise that month's assignment on the envelope and the ride is retired — the ` +
-          `breakdown names the months. Or: ` +
-          thisMonthOrNext(money(card.short_reserved)),
-      }
+      return overspent(
+        `A short month put ${money(card.riding)} on this card, and your payment ran past it.`,
+        'Or raise that month\u2019s envelope. ' + LEFT_ALONE
+      )
 
     case 'paid_ahead':
-      return {
-        sentence:
-          `You have paid ${money(card.short_reserved)} more toward this card than any ` +
-          `envelope set aside — it went straight to the balance.`,
-        action: thisMonthOrNext(money(card.short_reserved)),
-      }
+      return overspent('Your payment ran past what was set aside.')
 
     case 'moved_out':
-      return {
-        sentence:
-          `${money(card.short_reserved)} more was moved out of this card's envelope than it ` +
-          `held, so the envelope is overdrawn.`,
-        action: thisMonthOrNext(money(card.short_reserved)),
-      }
+      return overspent('More was moved out of its envelope than it held.')
 
-    case 'mixed': {
-      // Name what is present; quote each served leg; split nothing. The
-      // reserve identity is bounds, not parts, so "how much of the shortfall
-      // is which" is a question this row cannot answer honestly — and the
-      // one-label model answered it anyway, calling a two-thirds settle-up
-      // "you have paid $300 ahead". The legs panel is the whole picture.
-      const parts: string[] = []
-      if (card.residual_from_ledgers_this_month > 0) {
-        parts.push(
-          `${money(card.residual_from_ledgers_this_month)} came back from somebody settling up`
-        )
-      }
-      const kept = card.residual_this_month - card.residual_from_ledgers_this_month
-      if (kept > 0) parts.push(`${money(kept)} came back as a refund an envelope is holding`)
-      if (card.riding > 0) parts.push(`${money(card.riding)} rode here when a month ended short`)
-      parts.push('payments ran past what was set aside')
-      return {
-        sentence:
-          `More than one thing is going on: ${joinList(parts)}. None of them accounts for the ` +
-          `whole ${money(card.short_reserved)}, and this row will not guess the split.`,
-        action: 'The breakdown has each figure. ' + thisMonthOrNext(money(card.short_reserved)),
-      }
-    }
+    case 'mixed':
+      // Name what is present; split nothing. The reserve identity is bounds,
+      // not parts, so "how much is which" has no honest answer here.
+      return overspent('More than one thing took from it. The breakdown has each.')
   }
-}
-
-/** "a, b and c" — the list shape a sentence reads naturally. */
-function joinList(parts: string[]): string {
-  if (parts.length <= 1) return parts.join('')
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
 export interface ReleaseAnchors {
@@ -299,8 +247,7 @@ export function driftSentence(card: CardStatus, money: Money): string | null {
 }
 
 /**
- * Which way the debt moved, in one word. The Balance cell's note and the
- * drawer's month total both say it, so they say it the same way.
+ * Which way the debt moved, in one word — the breakdown's month total.
  *
  * Never "up"/"down": the raw balance rises as the debt falls, so a bare
  * direction word gets read against the sign the reader is looking at — a
@@ -311,27 +258,6 @@ export function driftSentence(card: CardStatus, money: Money): string | null {
  */
 export function debtMovementWord(moved: number): 'increased' | 'decreased' {
   return moved >= 0 ? 'decreased' : 'increased'
-}
-
-/**
- * The Balance cell's note: how far the debt moved this month.
- *
- * Debt-framed on purpose. The raw balance rises as the debt falls, and showing
- * that unlabelled is the confusion this whole row is trying to end.
- *
- * A label and nothing else. It carried a `title` spelling out the month's
- * charges and payments, which the breakdown's "This month" block already
- * renders as rows — visibly, and on a phone at all.
- */
-export function debtMovementLabel(card: CardStatus, money: Money): string | null {
-  const moved = card.debt_change_this_month
-  if (moved === 0) return null
-  // A non-breaking space inside the phrase: the column is narrower than
-  // "debt increased $412.00", so the note wraps — but only ever between the
-  // phrase and the figure, never mid-phrase, which is the wrap that read as
-  // a layout accident. "this month" is not in it: the page is already scoped
-  // to one month and the longer phrasing wrapped mid-sentence.
-  return `debt\u00A0${debtMovementWord(moved)} ${money(Math.abs(moved))}`
 }
 
 /**

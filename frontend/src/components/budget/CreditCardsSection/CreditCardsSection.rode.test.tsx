@@ -4,7 +4,7 @@
  * It sat in the Ready to Assign header as a second chip ("of it on cards")
  * with its own dialog, beside the overspent chip it was a part of. It is card
  * debt, not money out of Ready to Assign, so it moved: the band says how much
- * rode on this month, and an opened card names its envelopes and the remedy,
+ * rode on this month, and an opened card names its envelopes on one line,
  * next to the assigned box that retires it. These are the dialog's tests,
  * ported to where the answer lives now.
  */
@@ -102,9 +102,10 @@ describe('an opened card', () => {
   it('names the envelopes that rode onto it, and how much', async () => {
     show()
     await openCard()
-    const said = screen.getByText(/of this month’s overspending rode onto this card/)
-    expect(said.textContent).toContain('$55.00')
-    expect(said.textContent).toContain('Dining $35.00, Groceries $20.00')
+    // One line, the envelopes and their amounts — no remedy prose: the
+    // assigned field right under it is the remedy.
+    const said = screen.getByText(/^Rode on this month:/)
+    expect(said.textContent).toBe('Rode on this month: Dining $35.00, Groceries $20.00')
   })
 
   it('says nothing about rides on a card that carried none', async () => {
@@ -114,7 +115,7 @@ describe('an opened card', () => {
     } as unknown as BudgetMonth
     show()
     await openCard()
-    expect(screen.queryByText(/rode onto this card/)).toBeNull()
+    expect(screen.queryByText(/Rode on this month/)).toBeNull()
   })
 
   it('opens one envelope rather than blaming particular transactions', async () => {
@@ -129,25 +130,5 @@ describe('an opened card', () => {
       categoryId: 'c-dining',
       categoryName: 'Dining',
     })
-  })
-
-  it('names both remedies where covering the envelopes reaches this card', async () => {
-    show()
-    await openCard()
-    expect(screen.getByText(/Cover Overspending retires it, or assign to this card/)).toBeTruthy()
-  })
-
-  it('does not promise the envelope remedy on a card another card is funded before', async () => {
-    // The F8 case: one envelope's shortfall rode onto two cards, and money
-    // put into the envelope shrinks the FIRST card's ride. The dialog once
-    // promised "funding these envelopes retires this debt" on both.
-    month.current = {
-      ...month.current,
-      cards: [card({ ride_reaches_this_card: false })],
-    }
-    show()
-    await openCard()
-    expect(screen.getByText(/reaches that card first/)).toBeTruthy()
-    expect(screen.queryByText(/Cover Overspending retires it/)).toBeNull()
   })
 })

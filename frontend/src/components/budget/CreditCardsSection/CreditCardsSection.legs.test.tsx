@@ -317,7 +317,7 @@ describe('what the row says about a reserve', () => {
     // the detail says whose money the card is holding.
     expect(screen.getByText('overspent')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
-    expect(screen.getByText(/holding \$50\.00 of yours/)).toBeInTheDocument()
+    expect(screen.getByText(/holds \$50\.00 of yours/)).toBeInTheDocument()
   })
 
   it('reports an over-reserve the discrepancy check is silent about', async () => {
@@ -365,7 +365,7 @@ describe('what the row says about a reserve', () => {
     expect(screen.getByText('-$100.00')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
     // Names the $500 that came back, not the $100 left of it.
-    expect(screen.getByText(/\$500\.00 came back onto this card/)).toBeInTheDocument()
+    expect(screen.getByText(/\$500\.00 came back to an envelope/)).toBeInTheDocument()
     expect(screen.getByText(/\$12\.00 of this Set aside is not explained/)).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
@@ -375,12 +375,18 @@ describe('what the row says about a reserve', () => {
   })
 
   it('shows the debt moving, framed as debt rather than as the balance', async () => {
+    // In the breakdown's month block, beside the charges and payments that
+    // moved it — the opened card keeps to three figures and a callout.
     month.current = {
       cards: [card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 })],
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
-    expect(screen.getByText(/^debt decreased \$228\.00 this month$/)).toBeInTheDocument()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'What makes up Set aside for Sapphire Visa' })
+    )
+    const row = screen.getByText('Debt decreased').closest('.credit-cards__leg') as HTMLElement
+    expect(row.textContent).toContain('$228.00')
   })
 })

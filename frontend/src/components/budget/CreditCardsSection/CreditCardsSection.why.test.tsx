@@ -2,14 +2,11 @@
  * Why a card reads the way it does — one tap from the card it is about.
  *
  * These sentences started life as `title` attributes, which an installed iOS
- * PWA never renders, so nobody on a phone could read them. The fix put them
- * in the document as a paragraph row under each card row, which ballooned the
- * strip and left a block of prose sitting between two rows belonging at a
- * glance to neither.
- *
- * So: a real button beside the card's name, and a dialog headed by that name.
- * Both halves are load-bearing — a tooltip fails the phone, and an unheaded
- * dialog fails the "which card is this about" question that sent it here.
+ * PWA never renders; then a paragraph under every row, which ballooned the
+ * strip; then a dialog; then paragraphs under an opened line, which were too
+ * much to read to be read at all. Now: tap the line and it opens in place to
+ * three figures and, only when something is off, one callout — a headline,
+ * one line of cause, and the fix as a button.
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -21,9 +18,10 @@ const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 const accounts = vi.hoisted(() => ({
   current: [] as { id: string; uncategorized_count: number }[],
 }))
+const mutate = vi.hoisted(() => vi.fn())
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
-  useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
+  useSetAssignment: () => ({ mutate, isPending: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
@@ -69,7 +67,7 @@ describe('a card opens in place', () => {
     // The complaint that moved it behind a dialog: a paragraph under every
     // interesting card, ballooning the table. One line each, until tapped.
     show()
-    expect(screen.queryByText(/more toward this card than any envelope/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Overspent by/)).not.toBeInTheDocument()
     expect(line()).toHaveAttribute('aria-expanded', 'false')
   })
 
@@ -93,36 +91,48 @@ describe('a card opens in place', () => {
     expect(line()).toHaveAttribute('aria-expanded', 'true')
     const detail = document.getElementById(line().getAttribute('aria-controls') as string)
     expect(detail).not.toBeNull()
-    expect(detail?.textContent).toMatch(/more toward this card than any envelope/)
+    expect(detail?.textContent).toMatch(/Overspent by \$300\.00/)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('carries the action where the state has one', async () => {
+  it('makes the fix a button that does it', async () => {
+    // It was a sentence telling you to go and assign $300. The button
+    // assigns it: this month's assignment on the card, raised by exactly
+    // the shortfall — the same mutation the Assigned field uses, undo and all.
+    month.current = {
+      cards: [paidAhead()],
+      category_balances: [{ category_id: 'c1', assigned: 50 }],
+    } as unknown as BudgetMonth
     show()
     await userEvent.click(line())
-
-    // Overspending on the card's envelope: squared this month, or covered by
-    // next month's Ready to Assign — the same as any overspent envelope.
-    expect(
-      screen.getByText(/Assign \$300\.00 to the card this month, or it comes out of next month/)
-    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Assign $300.00' }))
+    expect(mutate).toHaveBeenCalledWith({
+      categoryId: 'c1',
+      month: '2026-08-01',
+      amount: 350,
+    })
+    // And what happens if nobody presses it.
+    expect(screen.getByText(/Otherwise it comes out of next month.s Ready to Assign/)).toBeTruthy()
   })
 
-  it('says something plain about a calm card, too', async () => {
+  it('opens a calm card to its figures, with nothing to read', async () => {
+    // Debt not covered is information: the three figures say it, and a
+    // paragraph restating them was the wall of text people stopped reading.
     month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
     show()
     await userEvent.click(line())
-    expect(screen.getByText(/isn.t set aside yet/)).toBeInTheDocument()
+    const stats = document.querySelector('.credit-cards__stats') as HTMLElement
+    expect(stats.textContent).toBe('Owes$600.00Covered$0.00Not covered$600.00')
+    expect(document.querySelector('.credit-cards__callout')).toBeNull()
   })
 
-  it('never hides the sentence in a title attribute', async () => {
+  it('never hides the headline in a title attribute', async () => {
     // The original defect, by name: a `title` is unreachable on the installed
     // iOS PWA, which is the app's mobile target.
     show()
     await userEvent.click(line())
 
-    const sentence = screen.getByText(/more toward this card than any envelope/)
-    expect(sentence).not.toHaveAttribute('title')
+    expect(screen.getByText('Overspent by $300.00')).not.toHaveAttribute('title')
   })
 
   it('opens the right card, one at a time', async () => {
@@ -143,8 +153,8 @@ describe('a card opens in place', () => {
     await userEvent.click(line())
     await userEvent.click(line('Thistledown Card'))
 
-    expect(screen.getByText(/\$120\.00 more toward this card/)).toBeInTheDocument()
-    expect(screen.queryByText(/\$300\.00 more toward this card/)).not.toBeInTheDocument()
+    expect(screen.getByText('Overspent by $120.00')).toBeInTheDocument()
+    expect(screen.queryByText('Overspent by $300.00')).not.toBeInTheDocument()
     expect(line()).toHaveAttribute('aria-expanded', 'false')
   })
 

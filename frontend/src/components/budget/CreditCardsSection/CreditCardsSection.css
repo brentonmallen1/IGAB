@@ -107,29 +107,11 @@
   flex-shrink: 0;
 }
 
-/* Quiet captions in the open card:
-     __hint      what the paydown target still wants this month
-     __movement  how far the debt moved this month
-   The numbers and the status sentence carry the meaning. */
+/* A quiet caption in the open card: what the paydown target still wants
+   this month. The figures and the callout carry the meaning. */
 .credit-cards__hint {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-}
-
-.credit-cards__movement {
-  display: block;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  /* A note under a figure is a caption, not a paragraph — wrapping it mid
-     phrase reads as a layout accident, which is what it was. */
-  white-space: nowrap;
-}
-
-/* Allowed to wrap: the phrase carries a non-breaking space (see
-   debtMovement), so the only place it can break is before the figure. */
-.credit-cards__movement {
-  white-space: normal;
 }
 
 /* The month block under the lifetime legs — separated, not merged: one is a
@@ -570,38 +552,105 @@
   font-size: var(--font-size-sm);
 }
 
-.credit-cards__key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px var(--spacing-md);
+.credit-cards__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  gap: var(--spacing-xs) var(--spacing-xl);
   margin: 0;
+}
+
+.credit-cards__stats dt {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.credit-cards__stats dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* At most one per card, and only when something is off: a headline a
+   glance can take, one line of cause, and the fix as a button. */
+.credit-cards__callout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 60ch;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-left: 3px solid var(--edge-strong);
+  border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+  background: var(--surface-raised);
+}
+
+.credit-cards__callout--overspent {
+  border-left-color: var(--color-negative);
+}
+
+.credit-cards__callout p {
+  margin: 0;
+}
+
+.credit-cards__callout-head {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.credit-cards__callout--overspent .credit-cards__callout-head {
+  color: var(--color-negative);
+}
+
+.credit-cards__callout-why {
   color: var(--text-secondary);
 }
 
-.credit-cards__key strong {
-  color: var(--text-primary);
-  font-weight: var(--font-weight-medium);
+.credit-cards__callout-fix {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  margin-top: var(--spacing-xs);
 }
 
-.credit-cards__status {
+.credit-cards__callout-otherwise {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* The one filled button in an opened card: the fix. Accent, as the hero's
+   Assign is — it does the same thing. */
+.credit-cards__fix {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 12px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--text-inverse);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.credit-cards__fix:hover {
+  background: var(--color-accent-hover);
+}
+
+.credit-cards__fix:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+}
+
+/* One-line notes: rows to categorize, what rode on this month. */
+.credit-cards__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--spacing-xs);
   margin: 0;
-  max-width: 68ch;
-  line-height: 1.45;
-  color: var(--text-primary);
-}
-
-.credit-cards__status--overspent {
-  padding-left: var(--spacing-sm);
-  border-left: 2px solid var(--color-negative);
-}
-
-.credit-cards__status--to-file {
-  padding-left: var(--spacing-sm);
-  border-left: 2px solid var(--color-warning);
-}
-
-.credit-cards__status-action {
-  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
 }
 
 .credit-cards__assigned {
@@ -618,7 +667,9 @@
 .credit-cards__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-xs);
+  gap: 0 var(--spacing-xs);
+  /* Aligned with the text above, not with the buttons' padding. */
+  margin-left: -8px;
 }
 
 /* Every door has words on it. Icon-only buttons with a title were what the
@@ -628,19 +679,22 @@
   align-items: center;
   gap: 4px;
   min-height: 28px;
-  padding: 3px 10px;
-  border: 1px solid var(--edge-strong);
-  border-radius: var(--border-radius);
-  background: var(--surface-raised);
-  color: var(--text-primary);
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: none;
+  color: var(--text-secondary);
   font: inherit;
   font-size: var(--font-size-xs);
   text-decoration: none;
   cursor: pointer;
 }
 
+/* Quiet until pointed at: the fix is the one filled button, and five
+   bordered buttons beside it drowned it out. */
 .credit-cards__action:hover {
-  border-color: var(--color-accent);
+  color: var(--text-primary);
+  background: var(--row-hover-bg);
 }
 
 .credit-cards__action:focus-visible,
@@ -670,8 +724,7 @@
   /* Captions were nowrap so a desktop column never broke mid-phrase; in a
      third of a phone's width they overflowed the well by 10px and dragged the
      whole strip sideways. */
-  .credit-cards__hint,
-  .credit-cards__movement {
+  .credit-cards__hint {
     white-space: normal;
   }
 
@@ -692,8 +745,20 @@
     padding-left: var(--spacing-md);
   }
 
-  .credit-cards__action {
+  .credit-cards__action,
+  .credit-cards__fix {
     min-height: var(--tap-min);
+  }
+
+  .credit-cards__stats {
+    column-gap: var(--spacing-md);
+  }
+
+  /* Two columns of tap-height links. Wrapped freely, a 44pt row stranded
+     one link on a line of its own and read as a layout accident. */
+  .credit-cards__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
