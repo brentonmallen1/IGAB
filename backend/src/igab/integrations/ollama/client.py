@@ -6,6 +6,25 @@ import httpx
 _META_KEYS = ("thinking", "done_reason", "prompt_eval_count", "eval_count")
 
 
+def _raise_with_detail(resp: httpx.Response) -> None:
+    """raise_for_status, carrying Ollama's own reason. A 500 from Ollama has a
+    body like {"error": "prediction aborted, token repeat limit reached"}; the
+    bare status said only "Server error", which is how a thinking loop read as
+    an unexplained failure. Still an HTTPStatusError, so retry rules hold."""
+    if not resp.is_error:
+        return
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    detail = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(detail, str) or not detail:
+        resp.raise_for_status()
+    raise httpx.HTTPStatusError(
+        f"Ollama returned {resp.status_code}: {detail}", request=resp.request, response=resp
+    )
+
+
 class OllamaClient:
     def __init__(self, host: str, model: str) -> None:
         self.host = host.rstrip("/")
@@ -48,7 +67,7 @@ class OllamaClient:
             payload["options"] = options
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.host}/api/generate", json=payload)
-            resp.raise_for_status()
+            _raise_with_detail(resp)
             body = resp.json()
             self.last_meta = {key: body[key] for key in _META_KEYS if key in body}
             return body["response"]
@@ -82,7 +101,7 @@ class OllamaClient:
             payload["options"] = options
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.host}/api/chat", json=payload)
-            resp.raise_for_status()
+            _raise_with_detail(resp)
             body = resp.json()
             self.last_meta = {key: body[key] for key in _META_KEYS if key in body}
             message = body.get("message") or {}

@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.ai.context import AICallContext
 from igab.ai.context_window import resolve_num_ctx
 from igab.ai.gateway import AIGateway
+from igab.ai.reply_json import parse_json_reply
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
 from igab.integrations.ollama.client import OllamaClient
+from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RECEIPT_REPLY_SCHEMA
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
 from igab.services.settings_service import SettingsService
@@ -78,23 +80,6 @@ def prepare_image_for_model(file_content: bytes) -> str:
     buf = BytesIO()
     img.save(buf, "JPEG", quality=MODEL_IMAGE_JPEG_QUALITY)
     return base64.b64encode(buf.getvalue()).decode("ascii")
-
-
-def _json_from_response(raw: str) -> dict:
-    """Parse a model response that should be a JSON object; tolerates code
-    fences. Raises json.JSONDecodeError / ValueError on junk (retryable —
-    the model may produce valid JSON on the next attempt)."""
-    text = raw.strip()
-    if text.startswith("```"):
-        parts = text.split("```")
-        text = parts[1] if len(parts) > 1 else text
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected a JSON object, got {type(data).__name__}")
-    return data
 
 
 class AIService:
@@ -166,29 +151,63 @@ class AIService:
             return override, True
         return await self.settings.get("ollama_model") or "llama3.2", False
 
-    async def chat_window(self, client: OllamaClient) -> tuple[int, int | None]:
-        """(num_ctx to request, the model's own maximum or None)."""
+    async def context_window(self, client: OllamaClient) -> tuple[int, int | None]:
+        """(num_ctx to request, the model's own maximum or None).
+
+        Every call to a model states this same window. Ollama reloads a model
+        whose num_ctx changes, so a gate, a scan and a chat that each asked for
+        their own would reload it between them — and a call that asked for
+        nothing got the server's default, 4,096 tokens on a GPU under 24 GB. A
+        thinking model reading 180 categories there ran out of room four line
+        items into its answer, on every scan."""
         model_max = await self._context_length(client)
         setting = await self.settings.get("ai_chat_num_ctx")
         return resolve_num_ctx(setting, model_max), model_max
 
+    async def _advertises_thinking(self, client: OllamaClient) -> bool:
+        caps = await self._capabilities(client)
+        return bool(caps and "thinking" in caps)
+
     async def _resolve_think(self, client: OllamaClient) -> bool | None:
         """auto = think only when the model advertises it; on/off force.
-        Returns None (field omitted) rather than False for off — older
-        servers reject the field entirely."""
+
+        Off is `false` for a model that advertises thinking, and the field left
+        out for anything else — older servers reject it. Leaving it out is not
+        off: gemma4 thinks by default, so "off" used to think anyway."""
         mode = await self.settings.get("ai_thinking") or "auto"
         if mode == "on":
             return True
+        thinks = await self._advertises_thinking(client)
         if mode == "off":
-            return None
-        caps = await self._capabilities(client)
-        return True if caps and "thinking" in caps else None
+            return False if thinks else None
+        return True if thinks else None
 
-    async def _merged_options(self, *, vision: bool, task_defaults: dict) -> dict:
-        """options = task defaults < ollama_options < ollama_vision_options.
-        The pass-through JSON settings are the model-agnostic escape hatch
-        for model-specific tuning (image tokens, num_ctx, ...)."""
-        options = dict(task_defaults)
+    async def _never_think(self, client: OllamaClient) -> bool | None:
+        """For a call that must not think whatever the setting says: `false`
+        where the model would otherwise think by default."""
+        return False if await self._advertises_thinking(client) else None
+
+    @staticmethod
+    def _sampling(think: bool | None) -> dict:
+        """Temperature 0 for a call that does not think; the model's own
+        sampling for one that does.
+
+        Greedy decoding sent gemma4:12b's thinking round in a loop until Ollama
+        aborted it ("token repeat limit reached") — every scan, since greedy
+        is deterministic. Its own settings (temperature 1, top_p 0.95, top_k
+        64) finished three runs of three. Without thinking, temperature 0 is
+        safe and keeps the answer repeatable."""
+        return {} if think else {"temperature": 0}
+
+    async def _merged_options(
+        self, client: OllamaClient, *, vision: bool, task_defaults: dict | None = None
+    ) -> dict:
+        """options = context window < task defaults < ollama_options <
+        ollama_vision_options. The pass-through JSON settings are the
+        model-agnostic escape hatch for model-specific tuning (image tokens,
+        num_ctx, ...)."""
+        num_ctx, _ = await self.context_window(client)
+        options = {"num_ctx": num_ctx, **(task_defaults or {})}
         keys = ["ollama_options"] + (["ollama_vision_options"] if vision else [])
         for key in keys:
             raw = await self.settings.get(key) or "{}"
@@ -203,6 +222,16 @@ class AIService:
     async def _prompt(self, key: str, values: dict[str, str]) -> str:
         template = await self.settings.get(key) or DEFAULT_PROMPTS[key]
         return render_prompt(template, values)
+
+    def _reply_object(self, raw: str) -> dict:
+        """The JSON object the call just made answered with — read with its
+        thinking and stop reason, which the gateway recorded beside it."""
+        last = self.gateway.last_result
+        return parse_json_reply(
+            raw,
+            thinking=last.thinking if last else None,
+            done_reason=last.done_reason if last else None,
+        )
 
     async def check_availability(self) -> dict:
         """Check if AI is enabled and Ollama is reachable."""
@@ -222,6 +251,8 @@ class AIService:
             "vision_model": vision_model,
             "receipt_model": receipt_model,
             "receipt_model_vision": None,
+            "receipt_model_context_length": None,
+            "receipt_num_ctx": None,
             "chat_model": chat_model,
             "chat_model_tools": None,
             "chat_model_context_length": None,
@@ -239,10 +270,15 @@ class AIService:
         # report capabilities).
         if available:
             result["receipt_model_vision"], _, _ = await self.check_vision_support()
+            # The window each job's model will be asked for, from the resolver
+            # the calls themselves use: one setting, sized per model.
+            num_ctx, model_max = await self.context_window(await self._vision_client())
+            result["receipt_model_context_length"] = model_max
+            result["receipt_num_ctx"] = num_ctx
             chat_client = await self.gateway.client(model=chat_model)
             caps = await self._capabilities(chat_client)
             result["chat_model_tools"] = None if caps is None else "tools" in caps
-            num_ctx, model_max = await self.chat_window(chat_client)
+            num_ctx, model_max = await self.context_window(chat_client)
             result["chat_model_context_length"] = model_max
             result["chat_num_ctx"] = num_ctx
         return result
@@ -320,6 +356,10 @@ class AIService:
         """Cheap gate before full extraction: is this even a receipt?
 
         Kept deliberately light — tiny output budget, thinking never enabled.
+        Never enabled means `think: false`: gemma4 thinks when the field is
+        left out, spent the whole 64-token budget on it, and the gate came
+        back empty — inconclusive — on every scan.
+
         Returns None when inconclusive (unparseable answer): the gate must
         never block a real receipt, so inconclusive proceeds to extraction.
         Transport errors propagate — they'd fail extraction anyway and the
@@ -334,13 +374,14 @@ class AIService:
             system="You are an image classifier. Return only valid JSON.",
             images=[image_b64],
             format="json",
+            think=await self._never_think(client),
             options=await self._merged_options(
-                vision=True, task_defaults={"temperature": 0, "num_predict": 64}
+                client, vision=True, task_defaults={"temperature": 0, "num_predict": 64}
             ),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
         )
         try:
-            data = _json_from_response(raw)
+            data = self._reply_object(raw)
         except Exception:
             return None
         value = data.get("is_receipt")
@@ -367,15 +408,18 @@ class AIService:
             prompt=prompt,
             system=system,
             images=[image_b64],
-            # The JSON grammar constrains decoding from the first token, which
-            # silently suppresses the thinking phase — never combine the two.
-            # _json_from_response tolerates the fenced output this produces.
-            format=None if think else "json",
+            # The schema is sent whether or not the model thinks: on Ollama 0.34
+            # gemma4 and qwen3-vl think, then answer to it. The rule here used to
+            # be "never combine the two", which left a thinking model free to
+            # answer in any shape at all.
+            format=RECEIPT_REPLY_SCHEMA,
             think=think,
-            options=await self._merged_options(vision=True, task_defaults={"temperature": 0}),
+            options=await self._merged_options(
+                client, vision=True, task_defaults=self._sampling(think)
+            ),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
         )
-        return _json_from_response(raw)
+        return self._reply_object(raw)
 
     async def parse_nl_transaction(
         self, budget_id: uuid.UUID, text: str, client_today: date
@@ -397,12 +441,13 @@ class AIService:
             client=client,
             prompt=prompt,
             system=system,
-            # Same think/format conflict as extract_receipt: grammar kills thinking.
-            format=None if think else "json",
+            format=NL_REPLY_SCHEMA,  # with thinking too, as extract_receipt
             think=think,
-            options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
+            options=await self._merged_options(
+                client, vision=False, task_defaults=self._sampling(think)
+            ),
         )
-        return _json_from_response(raw)
+        return self._reply_object(raw)
 
     async def suggest_category(
         self,
@@ -429,15 +474,19 @@ class AIService:
 
         try:
             client = await self._client()
+            think = await self._resolve_think(client)
             raw = await self.gateway.complete(
                 context=AICallContext(feature="suggest_category", budget_id=budget_id),
                 client=client,
                 prompt=prompt,
                 system=system,
                 format="json",
-                options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
+                think=think,
+                options=await self._merged_options(
+                    client, vision=False, task_defaults=self._sampling(think)
+                ),
             )
-            data = _json_from_response(raw)
+            data = self._reply_object(raw)
             name = data.get("category")
             confidence = float(data.get("confidence", 0.5))
             index = match_category(
@@ -479,14 +528,18 @@ class AIService:
         prompt = await self._prompt("ai_prompt_suggest_regex", {"names": "\n".join(cleaned)})
         try:
             client = await self._client()
+            think = await self._resolve_think(client)
             raw = await self.gateway.complete(
                 context=AICallContext(feature="suggest_regex", budget_id=budget_id),
                 client=client,
                 prompt=prompt,
                 format="json",
-                options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
+                think=think,
+                options=await self._merged_options(
+                    client, vision=False, task_defaults=self._sampling(think)
+                ),
             )
-            data = _json_from_response(raw)
+            data = self._reply_object(raw)
             # A saved override of the older prompt still answers with one
             # "pattern".
             proposed = data.get("patterns")
@@ -566,6 +619,8 @@ class AIService:
                 client=client,
                 prompt=prompt,
                 system=system,
+                think=await self._resolve_think(client),
+                options=await self._merged_options(client, vision=False),
             )
         except Exception:
             return "Unable to generate insights — check Ollama connection in Settings."

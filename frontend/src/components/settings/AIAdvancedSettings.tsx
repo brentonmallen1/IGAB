@@ -76,7 +76,8 @@ export function AIAdvancedSettings() {
                 Thinking
               </label>
               <div className="settings-row__desc">
-                Auto enables thinking only when the model reports supporting it.
+                Auto enables thinking only when the model reports supporting it. Off turns it off
+                even for a model that thinks by default.
               </div>
             </div>
             <select

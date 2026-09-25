@@ -106,7 +106,7 @@ class AIGateway:
                 timeout=timeout,
             )
             result.response = raw
-            self._absorb_meta(result, client)
+            absorb_meta(result, client)
             return raw
         except BaseException as exc:  # noqa: BLE001 — recorded, then re-raised
             self._absorb_failure(result, exc)
@@ -114,19 +114,6 @@ class AIGateway:
         finally:
             result.duration_ms = int((time.monotonic() - started) * 1000)
             call_log.submit(result)
-
-    def _absorb_meta(self, result: AICallResult, client: OllamaClient) -> None:
-        """Pull thinking and token counts off the client's last response."""
-        meta = client.last_meta or {}
-        thinking = meta.get("thinking")
-        if isinstance(thinking, str):
-            result.thinking = thinking
-        prompt_tokens = meta.get(_PROMPT_TOKENS)
-        completion_tokens = meta.get(_COMPLETION_TOKENS)
-        if isinstance(prompt_tokens, int):
-            result.prompt_tokens = prompt_tokens
-        if isinstance(completion_tokens, int):
-            result.completion_tokens = completion_tokens
 
     @staticmethod
     def _absorb_failure(result: AICallResult, exc: BaseException) -> None:
@@ -139,6 +126,23 @@ class AIGateway:
         result.status = STATUS_ERROR
         # Same shape the AI worker records: type plus message, bounded.
         result.error = f"{type(exc).__name__}: {exc}"[:2000]
+
+
+def absorb_meta(result: AICallResult, client: OllamaClient) -> None:
+    """Pull thinking, the stop reason and token counts off the client's last
+    response. The one reader of `last_meta`, for /api/generate here and for
+    each /api/chat round in `ai.chat`."""
+    meta = client.last_meta or {}
+    thinking = meta.get("thinking")
+    result.thinking = thinking if isinstance(thinking, str) else None
+    done_reason = meta.get("done_reason")
+    result.done_reason = done_reason if isinstance(done_reason, str) else None
+    prompt_tokens = meta.get(_PROMPT_TOKENS)
+    completion_tokens = meta.get(_COMPLETION_TOKENS)
+    if isinstance(prompt_tokens, int):
+        result.prompt_tokens = prompt_tokens
+    if isinstance(completion_tokens, int):
+        result.completion_tokens = completion_tokens
 
 
 def json_options(raw: str | None) -> dict:

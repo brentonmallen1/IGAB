@@ -136,8 +136,8 @@ async def chat(
     # The window is stated on every call. Ollama's default is small enough
     # that a month grid plus the tool schema overflowed it, and an overflow
     # is truncated from the front — the system prompt goes first.
-    num_ctx, _ = await ai.chat_window(client)
-    options = await ai._merged_options(vision=False, task_defaults={"num_ctx": num_ctx})
+    num_ctx, _ = await ai.context_window(client)
+    options = await ai._merged_options(client, vision=False)
     result_max_chars = result_char_budget(int(options.get("num_ctx") or num_ctx))
     timeout = float(await settings.get("ai_chat_timeout_s") or "120")
 

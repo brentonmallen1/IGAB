@@ -205,4 +205,72 @@ describe('resolved model lines', () => {
       'asks for 32k of its 128k context'
     )
   })
+
+  it('says how much context a receipt scan asks for', () => {
+    // A scan used to ask for nothing and got the server's default — 4k on a
+    // GPU under 24 GB, which a thinking model spent before it answered.
+    aiStatusState.data = {
+      ...base,
+      receipt_model_vision: true,
+      receipt_num_ctx: 16384,
+      receipt_model_context_length: 16384,
+    }
+    render(<AIModelSettings />)
+    expect(screen.getByTestId('receipt-model-line')).toHaveTextContent(
+      'asks for 16k of its 16k context'
+    )
+  })
+})
+
+describe('the context window', () => {
+  // One setting for every model call, so it sits with the models rather
+  // than under the assistant, where it read as chat-only.
+  beforeEach(() => {
+    settingsState.data = [...makeSettings(''), { key: 'ai_chat_num_ctx', value: 'auto' }]
+    modelsState.data = MODELS
+    updateMutate.mockClear()
+  })
+
+  function windowSelect() {
+    return screen.getByRole('combobox', { name: 'Context window' }) as HTMLSelectElement
+  }
+
+  it('saves the one setting every call reads', () => {
+    aiStatusState.data = { receipt_model: 'gemma4:latest', chat_model: 'gemma4:latest' }
+    render(<AIModelSettings />)
+    fireEvent.change(windowSelect(), { target: { value: '16384' } })
+    expect(updateMutate).toHaveBeenCalledWith({ key: 'ai_chat_num_ctx', value: '16384' })
+  })
+
+  it('offers nothing the receipt model cannot take', () => {
+    aiStatusState.data = {
+      receipt_model: 'tiny-ocr',
+      chat_model: 'gemma4:latest',
+      receipt_model_context_length: 16384,
+      chat_model_context_length: 131072,
+    }
+    render(<AIModelSettings />)
+    const values = within(windowSelect())
+      .getAllByRole('option')
+      .map((o) => (o as HTMLOptionElement).value)
+    expect(values).toEqual(['auto', '8192', '16384'])
+  })
+
+  it('names the auto window only when every model gets the same one', () => {
+    aiStatusState.data = {
+      receipt_model: 'gemma4:latest',
+      chat_model: 'gemma4:latest',
+      receipt_num_ctx: 32768,
+      chat_num_ctx: 32768,
+    }
+    const { unmount } = render(<AIModelSettings />)
+    expect(within(windowSelect()).getByRole('option', { name: 'Auto (32k)' })).toBeInTheDocument()
+    unmount()
+
+    aiStatusState.data = { ...aiStatusState.data, receipt_num_ctx: 16384 }
+    render(<AIModelSettings />)
+    expect(
+      within(windowSelect()).getByRole('option', { name: 'Auto (sized for each model)' })
+    ).toBeInTheDocument()
+  })
 })

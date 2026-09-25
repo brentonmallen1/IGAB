@@ -4,7 +4,8 @@ import toast from 'react-hot-toast'
 import { useAIStatus, useOllamaModels, type OllamaModel } from '../../api/ai'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import { ModelSelect } from './ModelSelect'
-import { formatTokens, type Capability } from './modelChoice'
+import { AIContextWindow } from './AIContextWindow'
+import { windowNote, type Capability } from './modelChoice'
 import './AISettings.css'
 import { SettingsToggle } from './SettingsToggle/SettingsToggle'
 
@@ -12,7 +13,8 @@ import { SettingsToggle } from './SettingsToggle/SettingsToggle'
  * Which model does which job.
  *
  * Three pickers of one shape: the main model, and an override each for
- * receipts (needs vision) and the assistant (needs tools). Under each
+ * receipts (needs vision) and the assistant (needs tools), then the context
+ * window every one of them is asked for. Under each
  * override is the line that matters — which model will *actually* do the
  * job, resolved server-side through the real fallback chain, and whether
  * the server says it can. The controls can be wrong about that; the line
@@ -92,6 +94,7 @@ export function AIModelSettings() {
               model={status.receipt_model}
               capability="vision"
               verdict={status.receipt_model_vision}
+              extra={windowNote(status.receipt_num_ctx, status.receipt_model_context_length)}
             />
           )
         }
@@ -113,15 +116,13 @@ export function AIModelSettings() {
               model={status.chat_model}
               capability="tools"
               verdict={status.chat_model_tools}
-              extra={
-                status.chat_num_ctx && status.chat_model_context_length
-                  ? `asks for ${formatTokens(status.chat_num_ctx)} of its ${formatTokens(status.chat_model_context_length)} context`
-                  : null
-              }
+              extra={windowNote(status.chat_num_ctx, status.chat_model_context_length)}
             />
           )
         }
       />
+
+      <AIContextWindow />
     </div>
   )
 }

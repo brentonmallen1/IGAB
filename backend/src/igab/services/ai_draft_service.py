@@ -33,6 +33,77 @@ _LLM_ROUNDING_SLACK = Decimal("0.01")
 # Tolerant fallbacks for models that ignore the YYYY-MM-DD instruction
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d")
 
+# The replies parse_extraction reads, as JSON schemas for Ollama's `format`.
+# `format: "json"` only promised *some* object: {"merchant": …, "amount": …}
+# parsed, then failed as "no amount". A schema makes the grammar spell the
+# keys this module reads, and every key is required, so a prompt override
+# saved before a field existed still gets it (null when the receipt has none).
+#
+# The prompt describes the same fields in prose — irreducibly, since the
+# model reads the prompt and the grammar reads this. test_ai_reply_schema
+# holds the two together, and holds this to what parse_extraction reads.
+_TEXT_OR_NULL = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+RECEIPT_REPLY_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "payee": _TEXT_OR_NULL,
+        "total": {"type": "number"},
+        "date": _TEXT_OR_NULL,
+        "category": _TEXT_OR_NULL,
+        "reason": _TEXT_OR_NULL,
+        "confidence": {"type": "number"},
+        "memo": _TEXT_OR_NULL,
+        "line_items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "category": _TEXT_OR_NULL,
+                },
+                "required": ["description", "amount", "category"],
+            },
+        },
+        "suggested_split": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"category": {"type": "string"}, "amount": {"type": "number"}},
+                "required": ["category", "amount"],
+            },
+        },
+        "card_last4": _TEXT_OR_NULL,
+    },
+    "required": [
+        "payee",
+        "total",
+        "date",
+        "category",
+        "reason",
+        "confidence",
+        "memo",
+        "line_items",
+        "suggested_split",
+        "card_last4",
+    ],
+}
+
+NL_REPLY_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "payee": _TEXT_OR_NULL,
+        "amount": {"type": "number"},
+        "direction": {"type": "string", "enum": ["outflow", "inflow"]},
+        "date": _TEXT_OR_NULL,
+        "category": _TEXT_OR_NULL,
+        "memo": _TEXT_OR_NULL,
+        "confidence": {"type": "number"},
+    },
+    "required": ["payee", "amount", "direction", "date", "category", "memo", "confidence"],
+}
+
 
 @dataclass
 class SplitLine:
