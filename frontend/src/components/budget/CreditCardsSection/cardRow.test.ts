@@ -10,8 +10,7 @@ import {
   otherCredits,
   emptyLegsNote,
   pendingNote,
-  setAsideLabel,
-  setAsideShown,
+  cardLine,
   stateSentence,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
@@ -25,49 +24,45 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
   return cardStatus({ balance: -100, set_aside: 100, reserved: 100, ...over })
 }
 
-describe('what the Set aside column prints', () => {
-  it('prints the figure on a card that is holding money', () => {
-    // 240 against 100 owed is a surplus, and says so.
-    expect(setAsideShown(card({ set_aside: 240, set_aside_state: 'surplus' }))).toBe(240)
+describe("what a card's line says", () => {
+  // The line is read, not studied: one word, a bar and the signed Set aside.
+  // A dot only where the card needs you this month.
+  const line = (over: Partial<CardStatus>, toCategorize = 0) =>
+    cardLine(card(over), toCategorize, money)
+
+  it('calls a card below zero overspent, and marks it', () => {
+    const got = line({ set_aside: -300, balance: -1700, set_aside_state: 'paid_ahead' })
+    expect(got).toMatchObject({ word: 'overspent', mark: 'overspent', tone: 'negative' })
   })
 
-  it('never prints a negative, whichever of the four causes produced it', () => {
-    for (const state of [
-      'settled_by_others',
-      'refund_outran_envelope',
-      'settled_elsewhere',
-      'ride_unfunded',
-      'paid_ahead',
-    ] as const) {
-      expect(setAsideShown(card({ set_aside: -300, set_aside_state: state })), state).toBe(0)
-    }
+  it('leads with overspent even on a card holding a credit', () => {
+    // Paid past the balance: the envelope is what reaches Ready to Assign.
+    const got = line({ set_aside: -50, balance: 50, set_aside_state: 'card_holds_it' })
+    expect(got.word).toBe('overspent')
   })
 
-  it('moves the magnitude to a named line instead of dropping it', () => {
-    // Showing $0.00 and saying nothing else would hide a real figure. The
-    // distance is a fact and stays on screen; what it MEANS is the sentence.
-    const label = setAsideLabel(
-      card({ set_aside: -300, short_reserved: 300, set_aside_state: 'paid_ahead' }),
-      money
+  it('asks for categories before describing a calm position', () => {
+    expect(line({}, 2)).toMatchObject({ word: '2 to categorize', mark: 'to-file' })
+    expect(line({}, 1).word).toBe('1 to categorize')
+  })
+
+  it('names what is not covered, without a mark', () => {
+    const got = line({ set_aside: 300, balance: -1200 })
+    expect(got).toMatchObject({ word: '$900.00 not covered', mark: null, tone: 'positive' })
+    expect(got.covered).toBeCloseTo(0.25)
+  })
+
+  it('names the spare, and a card paid off', () => {
+    expect(line({ set_aside: 350, balance: -200, set_aside_state: 'surplus' }).word).toBe(
+      '$150.00 spare'
     )
-    expect(label).toBe('$300.00 below zero')
+    expect(line({ set_aside: 0, balance: 0 })).toMatchObject({ word: 'paid off', tone: 'zero' })
   })
 
-  it('gives the four negatives no noun of their own', () => {
-    // They want opposite responses — nothing to do, re-file an inflow,
-    // back-fund a month, assign to the card — and one word for all four is
-    // what made this column unreadable.
-    const labels = (
-      ['settled_by_others', 'refund_outran_envelope', 'settled_elsewhere', 'paid_ahead'] as const
-    ).map((s) =>
-      setAsideLabel(card({ set_aside: -300, short_reserved: 300, set_aside_state: s }), money)
-    )
-    expect(new Set(labels).size).toBe(1)
-  })
-
-  it('says nothing beside a card with nothing to say', () => {
-    expect(setAsideLabel(card(), money)).toBeNull()
-    expect(stateSentence(card(), money)).toBeNull()
+  it('says covered when everything owed is set aside', () => {
+    const got = line({ set_aside: 100, balance: -100 })
+    expect(got).toMatchObject({ word: 'covered', mark: null })
+    expect(got.covered).toBe(1)
   })
 })
 
@@ -79,7 +74,6 @@ describe('the sentence under the row', () => {
       card_credit: 50,
       set_aside_state: 'card_holds_it',
     })
-    expect(setAsideLabel(card_, money)).toBe('credit balance')
     expect(stateSentence(card_, money)?.sentence).toContain('owes nothing')
   })
 
@@ -231,7 +225,6 @@ describe('the sentence under the row', () => {
       over_reserved: 1200,
       set_aside_state: 'surplus',
     })
-    expect(setAsideLabel(card_, money)).toBe('$1200.00 spare')
     expect(stateSentence(card_, money)?.action).toContain('Ready to Assign')
   })
 

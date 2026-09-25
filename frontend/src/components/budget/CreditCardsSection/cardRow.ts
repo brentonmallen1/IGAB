@@ -14,44 +14,87 @@ import type { DueNotice } from '../../../utils/paymentDue'
 
 type Money = (n: number) => string
 
-/**
- * What the Set aside column PRINTS, which is never a negative.
- *
- * The figure itself stays signed everywhere else — the breakdown, the month
- * history and the server all keep it — because a card that went below zero in
- * March needs to say so. What the column cannot do is print `-$100.00` under
- * a one-word heading and leave the reader to guess which of four unrelated
- * situations produced it. The magnitude moves to a named line beside it
- * (`setAsideLabel`) and the explanation to a sentence under the row
- * (`stateSentence`), both visible without hovering anything.
- */
-export function setAsideShown(card: Pick<CardStatus, 'set_aside'>): number {
-  return Math.max(0, card.set_aside)
+/** How a card's Set aside pill is coloured: red is overspent, green is
+ *  money waiting, grey is nothing either way. The same three a spending
+ *  envelope's Available uses, so a card reads like any envelope. */
+export type PillTone = 'negative' | 'positive' | 'zero'
+
+/** Why a card's line carries a dot: it needs you. */
+export type LineMark = 'overspent' | 'to-file'
+
+export interface CardLine {
+  /** One or two words after the name — what the card is doing, at a glance. */
+  word: string
+  /** Set only when there is something to act on this month. */
+  mark: LineMark | null
+  tone: PillTone
+  /** 0..1: how much of what the card owes is covered by Set aside — the
+   *  filled part of the line's bar. Nothing owed reads as fully covered. */
+  covered: number
 }
 
 /**
- * The short line beside the figure: how this card is unusual, in three words.
+ * What a card's one line says, before anyone opens it.
  *
- * Keyed on the served state and nothing else. The old note branched on causes
- * the client had guessed at — one of them comparing a LIFETIME residual
- * against a CURRENT shortfall — and spent one label, "ahead of budget", on
- * three situations with different remedies. Null on a card with nothing to
- * say, which is most of them.
+ * The line is read, not studied: a word, a bar and the Set aside pill, with
+ * a dot only where the card needs you this month. Everything here is
+ * composition of served figures — `set_aside`, `uncovered`, `over_reserved`,
+ * `card_credit` and the account's `uncategorized_count` — and decides no
+ * money. The order is the order of urgency: overspent first (it reaches Ready
+ * to Assign on the 1st), then rows waiting for a category (they decide what
+ * Set aside even is), then the calm positions.
  */
-export function setAsideLabel(card: CardStatus, money: Money): string | null {
-  switch (card.set_aside_state) {
-    case 'funded':
-      return null
-    case 'surplus':
-      return `${money(card.over_reserved)} spare`
-    case 'card_holds_it':
-      return 'credit balance'
-    default:
-      // The below-zero states. No noun — they want opposite responses, and
-      // one word for all of them is what made this column unreadable. The
-      // distance is a fact; the sentence under the row says what it means.
-      return `${money(card.short_reserved)} below zero`
+export function cardLine(
+  card: Pick<CardStatus, 'set_aside' | 'balance' | 'uncovered' | 'over_reserved' | 'card_credit'>,
+  toCategorize: number,
+  money: Money
+): CardLine {
+  const owed = Math.max(0, -card.balance)
+  const covered = owed === 0 ? 1 : Math.min(1, Math.max(0, card.set_aside) / owed)
+  const tone: PillTone = card.set_aside < 0 ? 'negative' : card.set_aside > 0 ? 'positive' : 'zero'
+  if (card.set_aside < 0) return { word: 'overspent', mark: 'overspent', tone, covered }
+  if (toCategorize > 0) {
+    return {
+      word: toCategorize === 1 ? '1 to categorize' : `${toCategorize} to categorize`,
+      mark: 'to-file',
+      tone,
+      covered,
+    }
   }
+  if (card.card_credit > 0) {
+    return { word: `holds ${money(card.card_credit)} of yours`, mark: null, tone, covered }
+  }
+  if (card.uncovered > 0) {
+    return { word: `${money(card.uncovered)} not covered`, mark: null, tone, covered }
+  }
+  if (card.over_reserved > 0) {
+    return { word: `${money(card.over_reserved)} spare`, mark: null, tone, covered }
+  }
+  if (owed === 0) return { word: 'paid off', mark: null, tone, covered }
+  return { word: 'covered', mark: null, tone, covered }
+}
+
+/**
+ * The detail's one sentence for a card with nothing unusual going on — the
+ * calm positions `stateSentence` has no reason to explain. Never an alarm:
+ * debt nobody has set aside for yet is information, and it comes down as you
+ * assign to the card.
+ */
+export function calmSentence(
+  card: Pick<CardStatus, 'balance' | 'uncovered' | 'over_reserved'>,
+  money: Money
+): string {
+  if (card.uncovered > 0) {
+    return (
+      `${money(card.uncovered)} of what you owe isn't set aside yet. It stays here as ` +
+      `debt — assign to the card as you pay it down.`
+    )
+  }
+  if (card.over_reserved > 0) {
+    return `${money(card.over_reserved)} more than the bill is set aside. Keep it for next month, or release it.`
+  }
+  if (card.balance >= 0) return 'Nothing owed on this card.'
+  return 'Everything you owe is set aside. Pay the full balance.'
 }
 
 export interface StateSentence {
@@ -99,7 +142,10 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
       return {
         sentence:
           `This card owes nothing and is holding ${money(card.card_credit)} of yours. Later ` +
-          `spending on it, or a refund, will absorb the balance.`,
+          `spending on it will use the credit up.`,
+        // Paid past the balance, the card's envelope went below zero too:
+        // overspent like any envelope, until the 1st covers it.
+        ...(card.short_reserved > 0 ? { action: thisMonthOrNext(money(card.short_reserved)) } : {}),
       }
 
     case 'settled_by_others':

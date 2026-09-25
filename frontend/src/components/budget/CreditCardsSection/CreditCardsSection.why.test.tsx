@@ -18,11 +18,15 @@ import type { BudgetMonth, CardStatus } from '../../../types'
 
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 
+const accounts = vi.hoisted(() => ({
+  current: [] as { id: string; uncategorized_count: number }[],
+}))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
@@ -53,55 +57,49 @@ function show() {
   render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
 }
 
-const door = (name = 'Sapphire Visa') =>
-  screen.queryByRole('button', { name: `What is happening with ${name}` })
+const line = (name = 'Sapphire Visa') =>
+  screen.getByRole('button', { name: new RegExp(`^${name}`) })
 
-beforeEach(async () => {
-  // Every test here opens a Dialog; drain the last one's deferred
-  // history.back() or it closes the next test's dialog out from under it.
-  await new Promise((r) => setTimeout(r, 0))
-  await new Promise((r) => setTimeout(r, 0))
-  window.history.replaceState(null, '')
+beforeEach(() => {
   month.current = { cards: [paidAhead()], category_balances: [] } as unknown as BudgetMonth
 })
 
-describe('the explanation door', () => {
-  it('is not there at all on a card with nothing to explain', () => {
-    // The icon's presence IS the signal, so a funded card draws none — which
-    // only works if a funded card really draws none.
+describe('a card opens in place', () => {
+  it('keeps the explanation out of the strip until the card is opened', () => {
+    // The complaint that moved it behind a dialog: a paragraph under every
+    // interesting card, ballooning the table. One line each, until tapped.
+    show()
+    expect(screen.queryByText(/more toward this card than any envelope/)).not.toBeInTheDocument()
+    expect(line()).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('marks a card that needs you, before anyone opens it', () => {
+    show()
+    expect(screen.getByText('overspent')).toBeInTheDocument()
+    expect(document.querySelector('.credit-cards__mark--overspent')).not.toBeNull()
+  })
+
+  it('draws no mark on a card with nothing to do', () => {
     month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
     show()
-
-    expect(door()).not.toBeInTheDocument()
+    expect(document.querySelector('.credit-cards__mark')).toBeNull()
+    expect(screen.getByText('$600.00 not covered')).toBeInTheDocument()
   })
 
-  it('appears on a card in a state worth explaining', () => {
+  it('opens under its own line, not in a dialog', async () => {
     show()
+    await userEvent.click(line())
 
-    expect(door()).toBeInTheDocument()
-  })
-
-  it('keeps the explanation out of the strip until it is asked for', () => {
-    // The complaint this replaced: a paragraph under every interesting card,
-    // ballooning the table.
-    show()
-
-    expect(screen.queryByText(/more toward this card than any envelope/)).not.toBeInTheDocument()
-  })
-
-  it('opens a dialog headed by the card the sentence is about', async () => {
-    // "Hard to know which card it refers to at a glance" — the heading is
-    // the answer, and it has to carry the name.
-    show()
-    await userEvent.click(door() as HTMLElement)
-
-    expect(screen.getByText('What is happening with Sapphire Visa')).toBeInTheDocument()
-    expect(screen.getByText(/more toward this card than any envelope/)).toBeInTheDocument()
+    expect(line()).toHaveAttribute('aria-expanded', 'true')
+    const detail = document.getElementById(line().getAttribute('aria-controls') as string)
+    expect(detail).not.toBeNull()
+    expect(detail?.textContent).toMatch(/more toward this card than any envelope/)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('carries the action where the state has one', async () => {
     show()
-    await userEvent.click(door() as HTMLElement)
+    await userEvent.click(line())
 
     // Overspending on the card's envelope: squared this month, or covered by
     // next month's Ready to Assign — the same as any overspent envelope.
@@ -110,17 +108,24 @@ describe('the explanation door', () => {
     ).toBeInTheDocument()
   })
 
+  it('says something plain about a calm card, too', async () => {
+    month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
+    show()
+    await userEvent.click(line())
+    expect(screen.getByText(/isn.t set aside yet/)).toBeInTheDocument()
+  })
+
   it('never hides the sentence in a title attribute', async () => {
     // The original defect, by name: a `title` is unreachable on the installed
     // iOS PWA, which is the app's mobile target.
     show()
-    await userEvent.click(door() as HTMLElement)
+    await userEvent.click(line())
 
     const sentence = screen.getByText(/more toward this card than any envelope/)
     expect(sentence).not.toHaveAttribute('title')
   })
 
-  it('opens the right card when several have something to say', async () => {
+  it('opens the right card, one at a time', async () => {
     month.current = {
       cards: [
         paidAhead(),
@@ -135,21 +140,21 @@ describe('the explanation door', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     show()
-    await userEvent.click(door('Thistledown Card') as HTMLElement)
+    await userEvent.click(line())
+    await userEvent.click(line('Thistledown Card'))
 
-    expect(screen.getByText('What is happening with Thistledown Card')).toBeInTheDocument()
     expect(screen.getByText(/\$120\.00 more toward this card/)).toBeInTheDocument()
+    expect(screen.queryByText(/\$300\.00 more toward this card/)).not.toBeInTheDocument()
+    expect(line()).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('shows a reserve that does not add up in the same place', async () => {
-    // The short "does not add up" chip stays on the row — it is the one
-    // earned warning — and its sentence joins the rest behind the door.
     month.current = {
       cards: [paidAhead({ reserve_discrepancy: 42 })],
       category_balances: [],
     } as unknown as BudgetMonth
     show()
-    await userEvent.click(door() as HTMLElement)
+    await userEvent.click(line())
 
     expect(screen.getByText(/\$42\.00 of this Set aside is not explained/)).toBeInTheDocument()
   })

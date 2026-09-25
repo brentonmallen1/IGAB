@@ -20,11 +20,15 @@ import { useUIStore } from '../../../stores/uiStore'
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 const rows = vi.hoisted(() => ({ liabilities: [] as Partial<Liability>[] }))
 
+const accounts = vi.hoisted(() => ({
+  current: [] as { id: string; uncategorized_count: number }[],
+}))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: rows.liabilities }) }))
 vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
@@ -174,7 +178,7 @@ describe('the header, which is all a collapsed strip has', () => {
     useUIStore.setState({ creditCardsCollapsed: true })
     show()
 
-    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Credit cards' })).not.toBeInTheDocument()
     expect(screen.getByText('Sapphire Visa due in 4 days')).toBeInTheDocument()
   })
 
@@ -218,18 +222,18 @@ describe('folding the section', () => {
     // A header that reads as one object should behave as one: aiming at a
     // 13px chevron is a needless ask.
     show()
-    expect(screen.getByRole('table', { name: 'Credit cards' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Credit cards' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Sapphire Visa due in 4 days'))
 
-    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Credit cards' })).not.toBeInTheDocument()
   })
 
   it('folds from the count too', () => {
     show()
     fireEvent.click(screen.getByText(/^1 card/))
 
-    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Credit cards' })).not.toBeInTheDocument()
   })
 
   it('still folds from the button, exactly once', () => {
@@ -238,15 +242,14 @@ describe('folding the section', () => {
     show()
     fireEvent.click(screen.getByRole('button', { name: /Credit cards/ }))
 
-    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Credit cards' })).not.toBeInTheDocument()
   })
 
-  it('opens the explainer without folding the section', () => {
-    // The one thing in the band that is not the fold control.
+  it('holds nothing but the fold control', () => {
+    // The "How credit cards work here" essay lived behind a button here; each
+    // card now explains itself in place, so the band is one control.
     show()
-    fireEvent.click(screen.getByRole('button', { name: 'How credit cards work here' }))
-
-    expect(screen.getByText('How credit cards work here')).toBeInTheDocument()
-    expect(screen.getByRole('table', { name: 'Credit cards' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /how credit cards work/i })).toBeNull()
+    expect(screen.getByRole('list', { name: 'Credit cards' })).toBeInTheDocument()
   })
 })

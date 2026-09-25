@@ -17,6 +17,9 @@ import type { BudgetMonth, CardStatus } from '../../../types'
 
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 
+const accounts = vi.hoisted(() => ({
+  current: [] as { id: string; uncategorized_count: number }[],
+}))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
@@ -24,6 +27,7 @@ vi.mock('../../../api/budgets', () => ({
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
 // No liability rows: the payoff link stays out, so this file keeps testing the
 // breakdown rather than needing a router around it.
+vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
@@ -33,6 +37,12 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 
 import { CreditCardsSection } from './CreditCardsSection'
 import { cardStatus } from '../../../test-utils/cardFixture'
+
+/** Open the card's line, then its breakdown — both in place, no dialog. */
+async function openLegs(name = 'Sapphire Visa') {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }))
+  await userEvent.click(screen.getByRole('button', { name: `What makes up Set aside for ${name}` }))
+}
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
   return cardStatus({
@@ -68,7 +78,7 @@ describe('the Set aside breakdown', () => {
 
   it('names each leg that moved and the total they reach', async () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
 
     expect(screen.getByText('Assigned to this card')).toBeInTheDocument()
     expect(screen.getByText('Set aside by funded spending')).toBeInTheDocument()
@@ -80,7 +90,7 @@ describe('the Set aside breakdown', () => {
 
   it('leaves a leg out when it never moved', async () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(screen.queryByText('Refunds beyond what was reserved')).toBeNull()
   })
 
@@ -90,7 +100,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(screen.getByText(/rode onto this card when a month ended short/)).toBeInTheDocument()
     expect(screen.getByText(/sits outside the total above/)).toBeInTheDocument()
   })
@@ -114,7 +124,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(screen.getByText(/Fund an envelope in the month it ended short/)).toBeInTheDocument()
     expect(screen.getByText(/assign to the card instead/)).toBeInTheDocument()
     // Largest first: that is the month worth back-funding before the others.
@@ -140,7 +150,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(
       screen.getByText(/came in with the budget as debt nothing was set aside for/)
     ).toBeInTheDocument()
@@ -164,7 +174,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(screen.getByText(/\$60\.00 of spending rode onto this card/)).toBeInTheDocument()
     expect(screen.getByText(/\$400\.00 came in with the budget/)).toBeInTheDocument()
     // Both remedies, each beside the debt it can actually reach.
@@ -177,7 +187,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(screen.getByText('This month')).toBeInTheDocument()
     expect(screen.getByText('Debt decreased')).toBeInTheDocument()
   })
@@ -199,7 +209,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
 
     const rows = [...document.querySelectorAll('.credit-cards__legs-month .credit-cards__leg')]
     const labelled = (label: string) =>
@@ -238,7 +248,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(screen.getByText('This month')).toBeInTheDocument()
     expect(screen.getByText(/Other credits/)).toBeInTheDocument()
   })
@@ -251,7 +261,7 @@ describe('the Set aside breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    await openLegs()
     expect(totalRow()?.textContent).toContain('999')
     expect(totalRow()?.textContent).not.toContain('115')
   })
@@ -280,9 +290,10 @@ describe('what the row says about a reserve', () => {
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     expect(screen.queryByText(/overpaid/i)).not.toBeInTheDocument()
-    // The column prints $0.00 and the distance is beside it, on the row. The
-    // reason is one tap away — see CreditCardsSection.why.test.tsx.
-    expect(screen.getByText('$220.00 below zero')).toBeInTheDocument()
+    // Paid past what was set aside is overspending on the card's envelope,
+    // and the line says so in the words and colour any envelope uses.
+    expect(screen.getByText('overspent')).toBeInTheDocument()
+    expect(screen.getByText('-$220.00')).toHaveClass('credit-cards__pill--negative')
   })
 
   it('keeps the word for the one state it is true of', async () => {
@@ -301,7 +312,12 @@ describe('what the row says about a reserve', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    expect(screen.getByText('credit balance')).toBeInTheDocument()
+    // Paid past the balance: the card holds your money AND its envelope is
+    // overspent this month. The line leads with what reaches Ready to Assign;
+    // the detail says whose money the card is holding.
+    expect(screen.getByText('overspent')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
+    expect(screen.getByText(/holding \$50\.00 of yours/)).toBeInTheDocument()
   })
 
   it('reports an over-reserve the discrepancy check is silent about', async () => {
@@ -325,14 +341,10 @@ describe('what the row says about a reserve', () => {
     expect(screen.queryByText(/does not add up/)).not.toBeInTheDocument()
   })
 
-  it('shows $0.00 and explains itself without anybody hovering anything', async () => {
-    // F2, the root cause. `reserveNote().title`, `debtMovement().title` and
-    // the drift warning were `title` attributes, and on the installed iOS PWA
-    // a tooltip cannot be reached at all — the row read "-$100.00 ahead of
-    // budget" with no way to learn more. getByText, never
-    // toHaveAttribute('title'): if this passes through a tooltip again, it
-    // fails. The explanation moved behind a button since — a button an iOS
-    // PWA can tap, which a tooltip still is not.
+  it('shows the signed figure and explains itself in place, never in a tooltip', async () => {
+    // F2, the root cause: every explanation here used to be a `title`, and on
+    // the installed iOS PWA a tooltip cannot be reached at all. Then it moved
+    // behind an ⓘ dialog. Now it is under the line, one tap away, in place.
     month.current = {
       cards: [
         card({
@@ -350,19 +362,15 @@ describe('what the row says about a reserve', () => {
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
 
-    expect(screen.queryByText('-$100.00')).not.toBeInTheDocument()
-    expect(screen.getByTitle(/Transactions on/)).toHaveTextContent('$0.00')
-    expect(screen.getByText('$100.00 below zero')).toBeInTheDocument()
-
-    await userEvent.click(
-      screen.getByRole('button', { name: 'What is happening with Sapphire Visa' })
-    )
+    expect(screen.getByText('-$100.00')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
     // Names the $500 that came back, not the $100 left of it.
     expect(screen.getByText(/\$500\.00 came back onto this card/)).toBeInTheDocument()
     expect(screen.getByText(/\$12\.00 of this Set aside is not explained/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     for (const el of document.querySelectorAll('[title]')) {
-      expect(el.getAttribute('title')).not.toMatch(/came back|below zero|not explained/)
+      expect(el.getAttribute('title')).not.toMatch(/came back|overspent|not explained/)
     }
   })
 
@@ -372,6 +380,7 @@ describe('what the row says about a reserve', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    expect(screen.getByText(/^debt decreased /)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
+    expect(screen.getByText(/^debt decreased \$228\.00 this month$/)).toBeInTheDocument()
   })
 })

@@ -17,6 +17,9 @@ import { cardStatus } from '../../../test-utils/cardFixture'
 const month: { current: BudgetMonth | undefined } = { current: undefined }
 const moveMoney = vi.fn(() => Promise.resolve())
 
+const accounts = vi.hoisted(() => ({
+  current: [] as { id: string; uncategorized_count: number }[],
+}))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn() }),
@@ -25,6 +28,7 @@ vi.mock('../../../api/budgets', () => ({
   useMoveHistory: () => ({ data: [] }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
 vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
@@ -120,19 +124,29 @@ describe('releaseAnchors', () => {
   })
 })
 
+/** Release lives in the opened card, beside its other actions. */
+async function openCard() {
+  await userEvent.click(screen.getByRole('button', { name: /^Sapphire Visa/ }))
+}
+
 describe('the Release door', () => {
-  it('is there on a card holding money with no surplus', () => {
+  it('is there on a card holding money with no surplus', async () => {
     show(card({ set_aside: 300, balance: -300, over_reserved: 0, set_aside_state: 'funded' }))
-    expect(screen.getByLabelText('Release money from Sapphire Visa')).toBeInTheDocument()
+    await openCard()
+    expect(
+      screen.getByRole('button', { name: 'Release money from Sapphire Visa' })
+    ).toHaveTextContent('Release')
   })
 
-  it('is not offered on a card holding nothing', () => {
+  it('is not offered on a card holding nothing', async () => {
     show(card({ set_aside: 0, balance: -300, over_reserved: 0, set_aside_state: 'funded' }))
+    await openCard()
     expect(screen.queryByLabelText('Release money from Sapphire Visa')).not.toBeInTheDocument()
   })
 
   it('opens prefilled with the spare, and the amount is editable', async () => {
     show(card())
+    await openCard()
     await userEvent.click(screen.getByLabelText('Release money from Sapphire Visa'))
     const amount = screen.getByLabelText('Amount') as HTMLInputElement
     expect(amount.value).toBe('5900.00')
@@ -143,12 +157,14 @@ describe('the Release door', () => {
 
   it('says what crossing the spare costs, before anybody crosses it', async () => {
     show(card())
+    await openCard()
     await userEvent.click(screen.getByLabelText('Release money from Sapphire Visa'))
     expect(screen.getByText(/Uncovered rises by every dollar/)).toBeInTheDocument()
   })
 
   it('moves money out of the card envelope to Ready to Assign', async () => {
     show(card())
+    await openCard()
     await userEvent.click(screen.getByLabelText('Release money from Sapphire Visa'))
     await userEvent.click(screen.getByRole('button', { name: 'Move Money' }))
     expect(moveMoney).toHaveBeenCalledWith({
@@ -164,6 +180,7 @@ describe('the Release door', () => {
     // whole 7400. One dollar more and the envelope would be below zero — a
     // deficit the row would then have to explain as `moved_out`.
     show(card())
+    await openCard()
     await userEvent.click(screen.getByLabelText('Release money from Sapphire Visa'))
     const box = screen.getByRole('textbox')
     await userEvent.clear(box)

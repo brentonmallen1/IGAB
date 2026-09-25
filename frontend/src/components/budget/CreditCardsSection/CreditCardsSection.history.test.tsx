@@ -15,12 +15,16 @@ import type { BudgetMonth, CardStatus } from '../../../types'
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 const timeline = vi.hoisted(() => ({ current: null as unknown }))
 
+const accounts = vi.hoisted(() => ({
+  current: [] as { id: string; uncategorized_count: number }[],
+}))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
   useCardTimeline: () => ({ data: timeline.current, isPending: false, isError: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: accounts.current }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
@@ -30,6 +34,12 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 
 import { CreditCardsSection } from './CreditCardsSection'
 import { cardStatus } from '../../../test-utils/cardFixture'
+
+/** Open the card's line, then its breakdown — both in place, no dialog. */
+async function openLegs(name = 'Sapphire Visa') {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }))
+  await userEvent.click(screen.getByRole('button', { name: `What makes up Set aside for ${name}` }))
+}
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
   return cardStatus({
@@ -93,7 +103,7 @@ beforeEach(() => {
 
 async function openHistory() {
   render(<CreditCardsSection budgetId="b1" month="2026-02-01" />)
-  await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+  await openLegs()
   await userEvent.click(screen.getByRole('button', { name: /month by month/i }))
 }
 

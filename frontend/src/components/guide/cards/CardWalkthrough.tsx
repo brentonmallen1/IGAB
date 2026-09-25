@@ -3,7 +3,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { CardExample } from '../../../api/guide'
 import { useFormatters } from '../../../hooks/useFormatters'
 import './CardWalkthrough.css'
-import { setAsideShown } from '../../budget/CreditCardsSection/cardRow'
 
 interface Props {
   example: CardExample
@@ -58,15 +57,13 @@ export function CardWalkthrough({ example }: Props) {
         ))}
       </ol>
 
-      {/* Drawn the way the strip draws it — `setAsideShown`, never the signed
-          figure — so a lesson that says "Set aside shows $0.00 with $200.00
-          below zero beside it" is describing what the reader is looking at.
-          This printed the signed number in red, and the beat above it said
-          the opposite. */}
+      {/* Drawn the way the budget page draws it — the signed figure, red
+          when the card's envelope is overspent — so a lesson describing the
+          page describes what the reader is looking at. */}
       <div className="card-walk__figures">
-        <Figure label="Set aside" value={setAsideShown(month)} money={formatMoney} />
+        <Figure label="Set aside" value={month.set_aside} money={formatMoney} />
         {month.short_reserved > 0 && (
-          <Figure label="Below zero" value={month.short_reserved} money={formatMoney} />
+          <Figure label="Overspent" value={month.short_reserved} money={formatMoney} />
         )}
         <Figure label="Balance" value={month.balance} money={formatMoney} />
         <Figure label="Uncovered" value={month.uncovered} money={formatMoney} />
