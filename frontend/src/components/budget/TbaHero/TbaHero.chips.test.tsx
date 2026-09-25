@@ -11,7 +11,7 @@
  * not lay out `gap`, and a space reappearing in the JSX is exactly the
  * regression this pins. The CSS is where the space is allowed to come from.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { BudgetMonth } from '../../../types'
 
@@ -94,9 +94,10 @@ describe('TbaHero overspending chip', () => {
 
 describe('what the 1st took out of Ready to Assign', () => {
   // Ready to Assign always dropped by last month's overspending on the 1st,
-  // and nothing on the page said why. The header says it, in words, with the
-  // envelopes it came from — no tooltip, no dialog.
-  it('names the month, the total and where it came from', () => {
+  // and nothing on the page said why. The header says how much, as a pill
+  // like the overspent one; the envelopes are one tap away. It was a sentence
+  // listing them all, which wrapped into two ragged lines under the number.
+  function withLastMonth() {
     month.current = {
       to_be_assigned: 800,
       total_overspent: 0,
@@ -104,15 +105,37 @@ describe('what the 1st took out of Ready to Assign', () => {
       overspent_last_month: [
         { category_id: 'visa-env', amount: 100 },
         { category_id: 'dining', amount: 50 },
+        { category_id: 'groc', amount: 20 },
+        { category_id: 'gone', amount: 5 },
       ],
       cards: [{ category_id: 'visa-env', name: 'Sapphire Visa' }],
     } as unknown as BudgetMonth
+  }
+
+  it('carries the total in the header, and nothing else', () => {
+    withLastMonth()
     render(<TbaHero budgetId="b1" month="2026-08-01" />)
-    const line = screen.getByText(/overspent in July/)
+    const pill = screen.getByRole('button', { name: /overspent last month/ })
+    expect(pill.textContent).toBe('-$175.00overspent last month')
+    expect(screen.queryByText(/Dining/)).toBeNull()
+  })
+
+  it('opens every envelope, named, not a top few', () => {
+    withLastMonth()
+    render(<TbaHero budgetId="b1" month="2026-08-01" />)
+    fireEvent.click(screen.getByRole('button', { name: /overspent last month/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Overspent in July 2026' })
     // A card's envelope is named for its card.
-    expect(line.textContent).toBe(
-      '-$150.00 overspent in July 2026: Sapphire Visa $100.00, Dining $50.00'
-    )
+    for (const [name, amount] of [
+      ['Sapphire Visa', '-$100.00'],
+      ['Dining', '-$50.00'],
+      ['Groceries', '-$20.00'],
+      ['An envelope', '-$5.00'],
+      ['Total', '-$175.00'],
+    ]) {
+      const row = within(dialog).getByText(name).closest('.last-month__row') as HTMLElement
+      expect(row.textContent).toContain(amount)
+    }
   })
 
   it('says nothing when nothing was absorbed', () => {
@@ -123,6 +146,6 @@ describe('what the 1st took out of Ready to Assign', () => {
       overspent_last_month: [],
     } as unknown as BudgetMonth
     render(<TbaHero budgetId="b1" month="2026-08-01" />)
-    expect(screen.queryByText(/overspent in/)).toBeNull()
+    expect(screen.queryByText(/last month/)).toBeNull()
   })
 })

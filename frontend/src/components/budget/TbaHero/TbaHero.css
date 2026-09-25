@@ -63,20 +63,32 @@
   white-space: nowrap;
 }
 
-/* What the 1st took out of Ready to Assign — the drop, explained where it
-   happened. Muted like the future-assigned note; only the amount carries
-   the negative colour, as the overspent chip's does. Wraps rather than
-   truncating: the names are the point. */
+/* What the 1st took out of Ready to Assign. The overspent chip's shape, so
+   the two read as one family, but calm: last month is settled and there is
+   nothing to act on, and two red pills side by side both read as alarms.
+   Opens the envelope-by-envelope list. */
 .tba-hero__last-month {
-  font-size: var(--font-size-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  line-height: 1.4;
+  color: var(--text-secondary);
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
-.tba-hero__last-month-amount {
-  color: var(--color-negative);
-  font-weight: var(--font-weight-medium);
+.tba-hero__last-month:hover {
+  color: var(--text-primary);
+  background-color: var(--row-hover-bg);
 }
 
 .tba-hero__actions {
@@ -387,8 +399,7 @@
     line-height: 1.2;
   }
 
-  .tba-hero__future,
-  .tba-hero__last-month {
+  .tba-hero__future {
     flex-basis: 100%;
     white-space: normal;
   }
@@ -400,6 +411,7 @@
 
   /* The chips are actions here: hold them to the tap floor. */
   .tba-hero__overspent-chip,
+  .tba-hero__last-month,
   .tba-hero__history-btn {
     min-height: var(--tap-min);
   }

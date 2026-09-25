@@ -89,7 +89,7 @@ describe('overspentLastMonth', () => {
     expect(overspentLastMonth(undefined, nameOf)).toBeNull()
   })
 
-  it('totals everything but names only the first few, keeping the served order', () => {
+  it('totals and names every envelope, keeping the served order', () => {
     const got = overspentLastMonth(
       [
         { category_id: 'a', amount: 40 },
@@ -105,8 +105,8 @@ describe('overspentLastMonth', () => {
         { name: 'Dining', amount: 40 },
         { name: 'Groceries', amount: 30 },
         { name: 'Fuel', amount: 20 },
+        { name: 'Gifts', amount: 10 },
       ],
-      more: 1,
     })
   })
 })

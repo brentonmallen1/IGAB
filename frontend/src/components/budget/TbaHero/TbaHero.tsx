@@ -1,8 +1,7 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { CalendarRange, ChevronDown, History, Wand2, X } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories } from '../../../api/categories'
-import { addMonths } from '../../../utils/dates'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -12,6 +11,7 @@ import { AssignDropdown, AssignDropdownContent } from '../AssignDropdown/AssignD
 import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
 import { overspending, overspentLastMonth } from '../budgetTotals'
 import { CoverOverspentModal } from './CoverOverspentModal'
+import { LastMonthModal } from './LastMonthModal'
 import { TbaDrawer } from './TbaDrawer'
 import type { AssignStrategy } from '../../../types'
 import './TbaHero.css'
@@ -31,7 +31,7 @@ interface Props {
 export function TbaHero({ budgetId, month }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const isMobile = useIsMobile()
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney } = useFormatters()
   // Archived included: an envelope archived since can still have been red.
   const { data: categories = [] } = useCategories(budgetId, true)
 
@@ -45,6 +45,7 @@ export function TbaHero({ budgetId, month }: Props) {
   const setShowCover = useUIStore((s) => s.setCoverOverspentOpen)
   const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const assignRef = useRef<HTMLDivElement>(null)
+  const [showLastMonth, setShowLastMonth] = useState(false)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
   // One implementation of "how much is overspent" (budgetTotals), shared with
@@ -94,14 +95,6 @@ export function TbaHero({ budgetId, month }: Props) {
         <div className="tba-hero__info">
           <span className="tba-hero__label">Ready to Assign</span>
           <span className={`tba-hero__amount ${tbaClass}`}>{formatMoney(tba)}</span>
-          {lastMonth && (
-            <span className="tba-hero__last-month">
-              <span className="tba-hero__last-month-amount">{formatMoney(-lastMonth.total)}</span>{' '}
-              overspent in {formatMonth(addMonths(month, -1))}:{' '}
-              {lastMonth.sources.map((s) => `${s.name} ${formatMoney(s.amount)}`).join(', ')}
-              {lastMonth.more > 0 && ` and ${lastMonth.more} more`}
-            </span>
-          )}
           {assignedInFuture !== 0 && (
             <span className="tba-hero__future" title="Already deducted from Ready to Assign">
               {formatMoney(assignedInFuture)} assigned in future months
@@ -143,6 +136,21 @@ export function TbaHero({ budgetId, month }: Props) {
             >
               {formatMoney(-overspent)}
               <span className="tba-hero__chip-word">overspent</span>
+            </button>
+          )}
+
+          {/* What the 1st took, as a pill like the one beside it. It was a
+              sentence listing every envelope, which wrapped into two ragged
+              lines under the number; the list is one tap away instead. */}
+          {lastMonth && (
+            <button
+              type="button"
+              className="tba-hero__last-month"
+              onClick={() => setShowLastMonth(true)}
+              aria-haspopup="dialog"
+            >
+              {formatMoney(-lastMonth.total)}
+              <span className="tba-hero__chip-word">overspent last month</span>
             </button>
           )}
 
@@ -233,6 +241,13 @@ export function TbaHero({ budgetId, month }: Props) {
           month={month}
           strategy={previewStrategy}
           onClose={() => setPreviewStrategy(null)}
+        />
+      )}
+      {showLastMonth && lastMonth && (
+        <LastMonthModal
+          month={month}
+          lastMonth={lastMonth}
+          onClose={() => setShowLastMonth(false)}
         />
       )}
       {showCover && (

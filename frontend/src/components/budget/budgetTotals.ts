@@ -84,30 +84,24 @@ export interface LastMonthSource {
 
 export interface OverspentLastMonth {
   total: number
-  /** The largest few, named — the header reads top-down. */
+  /** Every envelope, named, in the served order (largest first). */
   sources: LastMonthSource[]
-  /** How many more envelopes contributed beyond `sources`. */
-  more: number
 }
 
 /**
- * What the 1st took out of Ready to Assign, for the header's one line.
+ * What the 1st took out of Ready to Assign: the header pill's total and the
+ * list its dialog shows.
  *
  * Composition of served facts only: the server decides each amount
- * (`overspent_last_month`); this names them and keeps the line short. Ready
- * to Assign always dropped by this total on the 1st, and until this line
- * existed nothing on the page said why. Null when nothing was absorbed.
+ * (`overspent_last_month`); this names them. Ready to Assign always dropped
+ * by this total on the 1st, and until the header said so nothing on the page
+ * did. Null when nothing was absorbed.
  */
 export function overspentLastMonth(
   items: { category_id: string; amount: number }[] | undefined,
-  nameOf: (categoryId: string) => string,
-  shown = 3
+  nameOf: (categoryId: string) => string
 ): OverspentLastMonth | null {
   if (!items || items.length === 0) return null
   const sources = items.map((i) => ({ name: nameOf(i.category_id), amount: Number(i.amount) }))
-  return {
-    total: sources.reduce((sum, s) => sum + s.amount, 0),
-    sources: sources.slice(0, shown),
-    more: Math.max(0, sources.length - shown),
-  }
+  return { total: sources.reduce((sum, s) => sum + s.amount, 0), sources }
 }
