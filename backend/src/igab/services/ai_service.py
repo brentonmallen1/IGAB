@@ -187,6 +187,18 @@ class AIService:
         where the model would otherwise think by default."""
         return False if await self._advertises_thinking(client) else None
 
+    @staticmethod
+    def _sampling(think: bool | None) -> dict:
+        """Temperature 0 for a call that does not think; the model's own
+        sampling for one that does.
+
+        Greedy decoding sent gemma4:12b's thinking round in a loop until Ollama
+        aborted it ("token repeat limit reached") — every scan, since greedy
+        is deterministic. Its own settings (temperature 1, top_p 0.95, top_k
+        64) finished three runs of three. Without thinking, temperature 0 is
+        safe and keeps the answer repeatable."""
+        return {} if think else {"temperature": 0}
+
     async def _merged_options(
         self, client: OllamaClient, *, vision: bool, task_defaults: dict | None = None
     ) -> dict:
@@ -403,7 +415,7 @@ class AIService:
             format=RECEIPT_REPLY_SCHEMA,
             think=think,
             options=await self._merged_options(
-                client, vision=True, task_defaults={"temperature": 0}
+                client, vision=True, task_defaults=self._sampling(think)
             ),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
         )
@@ -432,7 +444,7 @@ class AIService:
             format=NL_REPLY_SCHEMA,  # with thinking too, as extract_receipt
             think=think,
             options=await self._merged_options(
-                client, vision=False, task_defaults={"temperature": 0}
+                client, vision=False, task_defaults=self._sampling(think)
             ),
         )
         return self._reply_object(raw)
@@ -462,15 +474,16 @@ class AIService:
 
         try:
             client = await self._client()
+            think = await self._resolve_think(client)
             raw = await self.gateway.complete(
                 context=AICallContext(feature="suggest_category", budget_id=budget_id),
                 client=client,
                 prompt=prompt,
                 system=system,
                 format="json",
-                think=await self._resolve_think(client),
+                think=think,
                 options=await self._merged_options(
-                    client, vision=False, task_defaults={"temperature": 0}
+                    client, vision=False, task_defaults=self._sampling(think)
                 ),
             )
             data = self._reply_object(raw)
@@ -515,14 +528,15 @@ class AIService:
         prompt = await self._prompt("ai_prompt_suggest_regex", {"names": "\n".join(cleaned)})
         try:
             client = await self._client()
+            think = await self._resolve_think(client)
             raw = await self.gateway.complete(
                 context=AICallContext(feature="suggest_regex", budget_id=budget_id),
                 client=client,
                 prompt=prompt,
                 format="json",
-                think=await self._resolve_think(client),
+                think=think,
                 options=await self._merged_options(
-                    client, vision=False, task_defaults={"temperature": 0}
+                    client, vision=False, task_defaults=self._sampling(think)
                 ),
             )
             data = self._reply_object(raw)

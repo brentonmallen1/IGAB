@@ -93,3 +93,34 @@ class TestShow:
         )
         await client.show("other-model")
         assert json.loads(route.calls[0].request.content)["model"] == "other-model"
+
+
+class TestOllamaErrors:
+    @respx.mock
+    async def test_the_reason_ollama_gave_is_kept(self, client):
+        """gemma4:12b at temperature 0 looped until Ollama aborted it. The job
+        said "Server error '500 Internal Server Error'" and nothing more."""
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(
+                500, json={"error": "prediction aborted, token repeat limit reached"}
+            )
+        )
+        with pytest.raises(httpx.HTTPStatusError, match="token repeat limit reached") as exc:
+            await client.generate("p")
+        assert exc.value.response.status_code == 500
+
+    @respx.mock
+    async def test_a_body_without_a_reason_still_raises(self, client):
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(502, text="bad gateway")
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.generate("p")
+
+    @respx.mock
+    async def test_chat_keeps_the_reason_too(self, client):
+        respx.post(f"{HOST}/api/chat").mock(
+            return_value=httpx.Response(400, json={"error": "model does not support tools"})
+        )
+        with pytest.raises(httpx.HTTPStatusError, match="does not support tools"):
+            await client.chat([{"role": "user", "content": "hi"}])

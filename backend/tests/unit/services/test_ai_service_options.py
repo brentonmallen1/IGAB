@@ -253,6 +253,49 @@ class TestTheReplyHasASchema:
         assert captured["format"] == NL_REPLY_SCHEMA
 
 
+class TestSamplingFollowsThinking:
+    """Greedy decoding looped gemma4:12b's thinking until Ollama aborted it
+    ("token repeat limit reached"); the model's own sampling finished three
+    runs of three. Without thinking, temperature 0 stays."""
+
+    def capture(self, overrides, monkeypatch) -> tuple[AIService, list[dict]]:
+        sent: list[dict] = []
+
+        async def fake_generate(self, prompt, system=None, **kwargs):
+            sent.append(kwargs)
+            return '{"is_receipt": true, "total": 1, "category": null}'
+
+        monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+        model_reports(monkeypatch, caps=["vision", "tools", "thinking"])
+        svc = make_service(overrides)
+        monkeypatch.setattr(
+            svc, "_get_categories", AsyncMock(return_value=[{"id": 1, "name": "G", "group": "E"}])
+        )
+        return svc, sent
+
+    async def test_a_thinking_call_uses_the_models_own_sampling(self, monkeypatch):
+        svc, sent = self.capture({"ai_thinking": "auto"}, monkeypatch)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 9, 25))
+        await svc.suggest_category(uuid.uuid4(), "Harborstone Market", -4.0)
+        assert [k["think"] for k in sent] == [True, True, True]
+        assert all("temperature" not in k["options"] for k in sent)
+
+    async def test_a_call_that_does_not_think_stays_at_temperature_0(self, monkeypatch):
+        svc, sent = self.capture({"ai_thinking": "off"}, monkeypatch)
+        await svc.is_receipt_image("aW1n")
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert [k["think"] for k in sent] == [False, False]
+        assert [k["options"]["temperature"] for k in sent] == [0, 0]
+
+    async def test_a_temperature_the_user_set_still_wins(self, monkeypatch):
+        svc, sent = self.capture(
+            {"ai_thinking": "auto", "ollama_vision_options": '{"temperature": 0.2}'}, monkeypatch
+        )
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert sent[0]["options"]["temperature"] == 0.2
+
+
 class TestTheCallIsRecorded:
     """Every model call lands on the gateway's record, whatever happens to it.
 
