@@ -17,13 +17,23 @@
  * The verdicts now arrive on the row as `is_assignable` and `is_categorizable`
  * — the same expressions the assign and cover-overspent endpoints read, so
  * what a picker offers and what the server acts on cannot drift. There is no
- * predicate left here to share; each caller reads the field.
+ * predicate here: `filingCategoryOptions` reads the served flag, it does not
+ * work one out.
  *
  * What *is* shared is the grouping, and one detail in it: a category whose
  * group is missing from `groups` gets a fallback heading rather than being
  * dropped. Dropping it is how categories in a hidden group vanished from a
  * picker while remaining live in the data — the group list is filtered and the
- * category list is not.
+ * category list is not. (A live category under a soft-deleted group is still
+ * categorizable, and no group list carries its group.)
+ *
+ * The flat builder was written six times before it lived here, and the
+ * copies disagreed about that heading: the register row, the split editor,
+ * bulk categorize and the report filter left it blank, which drew the
+ * orphan headerless, run into the list above it. The Guide's planner import
+ * called it "Ungrouped". Quick-add and every sectioned picker said
+ * `UNGROUPED_LABEL`, which is what all of them say now. Bulk categorize also
+ * skipped `is_categorizable`, so it offered every card's envelope.
  */
 import type { Category, CategoryGroup } from '../types'
 
@@ -47,6 +57,24 @@ export function flatCategoryOptions(
     label: c.name,
     group: groupNames.get(c.category_group_id) ?? UNGROUPED_LABEL,
   }))
+}
+
+/**
+ * What a picker that files a transaction leg offers: the register row, the
+ * split editor, quick-add, bulk categorize, and the AI activity row.
+ *
+ * `is_categorizable` is the server's verdict (`IS_CATEGORIZABLE`, the rule
+ * `require_categorizable` enforces on every write), read and never re-derived.
+ * One call for all five, because one of the copies, bulk categorize's, forgot it.
+ */
+export function filingCategoryOptions(
+  categories: Category[],
+  groups: CategoryGroup[]
+): FlatCategoryOption[] {
+  return flatCategoryOptions(
+    categories.filter((c) => c.is_categorizable),
+    groups
+  )
 }
 
 export interface CategoryGroupSection {

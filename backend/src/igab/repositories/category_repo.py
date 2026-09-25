@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, func, not_, select, update
+from sqlalchemy import ColumnElement, Select, func, not_, select, update
 from sqlalchemy.orm import selectinload, with_expression
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
@@ -340,12 +340,10 @@ class CategoryRepository(BaseRepository[Category]):
         )
         return list(result.scalars().all())
 
-    async def get_all_with_group_names(
-        self, budget_id: uuid.UUID, include_archived: bool = False
+    async def _with_group_names(
+        self, budget_id: uuid.UUID, *where: ColumnElement[bool]
     ) -> list[tuple[Category, str]]:
-        """Categories paired with their group's name — for AI name matching,
-        where the same category name in several groups must be
-        disambiguated."""
+        """Live categories matching `where`, each paired with its group's name."""
         # Through `with_eligibility`, not its own list of expressions: this
         # spelled the three flags out by hand, and a fourth served field would
         # have been forgotten here first.
@@ -355,13 +353,45 @@ class CategoryRepository(BaseRepository[Category]):
             .where(
                 Category.budget_id == budget_id,
                 Category.is_deleted == False,  # noqa: E712
+                *where,
             )
+            .order_by(Category.sort_order, Category.name)
         )
-        if not include_archived:
-            q = q.where(Category.is_archived == False)  # noqa: E712
-        q = q.order_by(Category.sort_order, Category.name)
         result = await self.session.execute(q.execution_options(populate_existing=True))
         return [(row[0], row[1]) for row in result.all()]
+
+    async def get_all_with_group_names(
+        self, budget_id: uuid.UUID, include_archived: bool = False
+    ) -> list[tuple[Category, str]]:
+        """Categories paired with their group's name, for naming them: the
+        chat tools, the YNAB import, parity and export.
+
+        Not for choosing where an AI draft is filed. That is
+        `get_fileable_with_group_names`: this list keeps card envelopes and
+        categories in archived groups, which nothing may be filed to."""
+        where = [] if include_archived else [Category.is_archived == False]  # noqa: E712
+        return await self._with_group_names(budget_id, *where)
+
+    async def get_fileable_with_group_names(
+        self, budget_id: uuid.UUID
+    ) -> list[tuple[Category, str]]:
+        """The categories a transaction may be filed to (`IS_CATEGORIZABLE`),
+        paired with their group's name. It is the one list for AI filing: the
+        model is shown it (`AIService._get_categories`), and its reply is
+        matched against it (`parse_extraction`, `AIDraftService.resolve_category`).
+
+        Both of those used to read `get_all_with_group_names`, which filters
+        only the category's own `is_archived`. So the model was offered a
+        card's envelope and every live category in an archived group. When it
+        picked one, the matcher accepted the pick and `require_categorizable`
+        refused it at create. That InvariantViolation is retryable, so the scan
+        ended as a $0 stub. Showing, matching and filing now read one rule.
+
+        The group names matter as well as the rows. A name is qualified by its
+        group only when it repeats (`category_matching.canonical_label`), so
+        the list the label was made from and the list it is resolved against
+        must be the same list."""
+        return await self._with_group_names(budget_id, IS_CATEGORIZABLE)
 
     async def get_taggable_with_group_names(
         self, budget_id: uuid.UUID

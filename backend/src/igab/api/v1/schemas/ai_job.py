@@ -33,8 +33,12 @@ class AIJobResponse(ApiModel):
     attempts: int
     max_attempts: int
     transaction_id: uuid.UUID | None
-    # The linked transaction has since been deleted — the log entry outlives it
-    transaction_removed: bool = False
+    #: The linked transaction has since been deleted — the log entry outlives
+    #: it. Derived from the served `transaction_account_id` (NULL exactly when
+    #: the job's transaction is not live), not asked separately: it was once
+    #: its own query, run by the list and detail endpoints only, so retry and
+    #: reprocess reported a deleted row as present.
+    transaction_removed: bool
     #: Is the transaction this job created still waiting for the user?
     #:
     #: Required, not optional. The AI Activity page files rows into "Needs your
@@ -51,6 +55,16 @@ class AIJobResponse(ApiModel):
     #: whose required-ness is what makes a forgotten loader fail loudly: None
     #: here is a real answer and cannot be told apart from an unloaded one.
     transaction_account_id: uuid.UUID | None
+    #: Which category the created transaction is filed in now
+    #: (`AIJob.transaction_category_id`). None: uncategorized, a split parent,
+    #: or no transaction. The review list names it beside the model's own pick
+    #: (`result.draft.category`), which is left as the model gave it.
+    transaction_category_id: uuid.UUID | None
+    #: The created transaction is a split parent, so its category is its lines'
+    #: and cannot be set here. False with no transaction. Required, and
+    #: non-null: a path that skipped the loader fails validation rather than
+    #: reading a split as uncategorized.
+    transaction_is_split: bool
     #: Which account owns the card ending printed on the receipt, as of now
     #: (`AIJob.card_ending_account_id`). None: no ending on the receipt, or
     #: none on file. Beside `transaction_account_id` it says whether the scan
@@ -67,9 +81,7 @@ class AIJobResponse(ApiModel):
     finished_at: datetime | None
 
     @classmethod
-    def from_job(
-        cls, job, *, transaction_removed: bool = False, bank_match=None
-    ) -> "AIJobResponse":
+    def from_job(cls, job, *, bank_match=None) -> "AIJobResponse":
         payload = job.payload or {}
         if job.needs_review is None:
             raise RuntimeError(
@@ -89,9 +101,13 @@ class AIJobResponse(ApiModel):
             attempts=job.attempts,
             max_attempts=job.max_attempts,
             transaction_id=job.transaction_id,
-            transaction_removed=transaction_removed,
+            transaction_removed=(
+                job.transaction_id is not None and job.transaction_account_id is None
+            ),
             needs_review=job.needs_review,
             transaction_account_id=job.transaction_account_id,
+            transaction_category_id=job.transaction_category_id,
+            transaction_is_split=job.transaction_is_split,
             card_ending_account_id=job.card_ending_account_id,
             bank_match=ReceiptBankMatch.model_validate(bank_match) if bank_match else None,
             attachment_id=job.attachment_id,

@@ -1971,6 +1971,24 @@ class AIJob(Base):
     #: has one has both.
     transaction_account_id: Mapped[uuid.UUID | None] = query_expression()
 
+    #: Which category the transaction this job created is filed in RIGHT NOW.
+    #: None when it is uncategorized, a split parent, or there is no row.
+    #:
+    #: Not `result["draft"]["category"]`, which is the model's pick. That is a
+    #: label, not an id, and it is the model's record, which a later
+    #: correction must never overwrite. The review list shows both, so a pick
+    #: the user changed still reads as a change.
+    #:
+    #: Not a column, and not computable by the client, for the same reasons
+    #: `transaction_account_id` is not. Populated by the same loader.
+    transaction_category_id: Mapped[uuid.UUID | None] = query_expression()
+
+    #: Whether that transaction is a split parent: its own category is NULL
+    #: by construction, and the server refuses a category on it, so the row
+    #: reads "Split" rather than "Uncategorized" and offers no picker. False
+    #: when there is no transaction. Populated by the same loader.
+    transaction_is_split: Mapped[bool] = query_expression()
+
     #: Which account owns the card that paid, read off the receipt
     #: (`result.draft.card_last4`) and looked up in `account_card_endings`.
     #: None when the receipt showed no card, or its ending is not on file.

@@ -35,17 +35,33 @@ NEEDS_REVIEW_EXPR = or_(
 )
 
 
+def _of_live_transaction(column):
+    """`column` of the job's transaction as it is NOW, NULL when there is none.
+
+    A correlated scalar subquery for the same reason `NEEDS_REVIEW_EXPR` is an
+    EXISTS: a job whose transaction was deleted, or which never created one,
+    must still appear in the log. One helper for every such field, so they
+    cannot disagree about which row "the job's transaction" is.
+    """
+    return (
+        select(column)
+        .where(Transaction.id == AIJob.transaction_id, Transaction.is_deleted == False)  # noqa: E712
+        .scalar_subquery()
+    )
+
+
 #: The account the job's transaction is in now — see the model's comment for
 #: why the payload's account_id is not an answer to that question.
-#:
-#: A correlated scalar subquery for the same reason `NEEDS_REVIEW_EXPR` is an
-#: EXISTS: a job whose transaction was deleted, or which never created one,
-#: must still appear in the log, reading None.
-TRANSACTION_ACCOUNT_EXPR = (
-    select(Transaction.account_id)
-    .where(Transaction.id == AIJob.transaction_id, Transaction.is_deleted == False)  # noqa: E712
-    .scalar_subquery()
-)
+TRANSACTION_ACCOUNT_EXPR = _of_live_transaction(Transaction.account_id)
+
+#: The category the job's transaction is filed in now — see the model's
+#: comment for why the draft's category is not an answer to that question.
+TRANSACTION_CATEGORY_EXPR = _of_live_transaction(Transaction.category_id)
+
+#: Whether the job's transaction is a split parent, whose own category is
+#: NULL by construction. False with no transaction: there is nothing to
+#: split, and a required boolean must not read NULL.
+TRANSACTION_IS_SPLIT_EXPR = func.coalesce(_of_live_transaction(Transaction.is_split), False)
 
 
 #: The account whose card paid for this job's receipt — see the model's
@@ -82,14 +98,17 @@ class AIJobRepository(BaseRepository[AIJob]):
         through `get_with_review` — the schema requires the field, so one that
         forgets raises rather than reporting waiting work as done.
 
-        `transaction_account_id` rides along rather than getting a loader of
-        its own: two loaders is two things to forget, and a review list that
-        cannot say which account a row landed in is the defect this field was
-        added for.
+        `transaction_account_id`, `transaction_category_id` and
+        `transaction_is_split` ride along rather than getting loaders of their
+        own: two loaders is two things to forget, and a review list that
+        cannot say where a row landed (which account, which category) is the
+        defect these fields were added for.
         """
         return stmt.options(
             with_expression(AIJob.needs_review, NEEDS_REVIEW_EXPR),
             with_expression(AIJob.transaction_account_id, TRANSACTION_ACCOUNT_EXPR),
+            with_expression(AIJob.transaction_category_id, TRANSACTION_CATEGORY_EXPR),
+            with_expression(AIJob.transaction_is_split, TRANSACTION_IS_SPLIT_EXPR),
             with_expression(AIJob.card_ending_account_id, CARD_ENDING_ACCOUNT_EXPR),
         )
 
@@ -133,6 +152,9 @@ class AIJobRepository(BaseRepository[AIJob]):
         total = await self.session.scalar(
             select(func.count()).select_from(AIJob).where(*conditions)
         )
+        # populate_existing, as in `get_with_review`: every served field is a
+        # fact about another table's row, and a job the session already holds
+        # would otherwise keep the answers it was first loaded with.
         result = await self.session.execute(
             self.with_review(
                 select(AIJob)
@@ -140,7 +162,7 @@ class AIJobRepository(BaseRepository[AIJob]):
                 .order_by(AIJob.created_at.desc())
                 .limit(limit)
                 .offset(offset)
-            )
+            ).execution_options(populate_existing=True)
         )
         return list(result.scalars().all()), int(total or 0)
 
@@ -152,26 +174,20 @@ class AIJobRepository(BaseRepository[AIJob]):
         )
         return int(count or 0)
 
-    async def existing_transaction_ids(self, txn_ids: list[uuid.UUID]) -> set[uuid.UUID]:
-        """Which of these transaction ids still resolve to a live (non-deleted)
-        transaction — powers the 'transaction removed' badge in the log."""
-        if not txn_ids:
-            return set()
-        result = await self.session.execute(
-            select(Transaction.id).where(
-                Transaction.id.in_(txn_ids),
-                Transaction.is_deleted == False,  # noqa: E712
-            )
-        )
-        return set(result.scalars().all())
-
     async def delete_finished_before(self, cutoff: datetime) -> list[uuid.UUID]:
         """Remove done/error jobs finished before the cutoff; returns the
-        deleted ids so callers can clean up job-owned staging files."""
+        deleted ids so callers can clean up job-owned staging files.
+
+        Never one still waiting for the user (`NEEDS_REVIEW_EXPR`, the
+        predicate "Needs you" lists by). Retention ages out the log, not the
+        work: deleting by age alone dropped an unapproved scan off that list
+        while its row waited on. It goes once its row is approved or deleted.
+        """
         result = await self.session.execute(
             select(AIJob.id).where(
                 AIJob.status.in_(("done", "error")),
                 func.coalesce(AIJob.finished_at, AIJob.created_at) < cutoff,
+                ~NEEDS_REVIEW_EXPR,
             )
         )
         ids = list(result.scalars().all())

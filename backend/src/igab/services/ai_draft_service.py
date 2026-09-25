@@ -329,13 +329,14 @@ class AIDraftService:
         self.transactions = transaction_service
 
     async def resolve_category(self, budget_id: uuid.UUID, name: str | None) -> uuid.UUID | None:
-        """Tolerant name match against the budget's live categories —
+        """Tolerant name match against the categories a row may be filed to
+        (`get_fileable_with_group_names`, the list the label was made from) —
         decoration-stripping and group qualification via category_matching.
         No match ⇒ None (uncategorized), letting the existing payee
         auto-categorization in TransactionService.create() apply."""
         if not name:
             return None
-        pairs = await self.transactions.category_repo.get_all_with_group_names(budget_id)
+        pairs = await self.transactions.category_repo.get_fileable_with_group_names(budget_id)
         matched = match_category(name, [(cat.name, group) for cat, group in pairs])
         return pairs[matched][0].id if matched is not None else None
 

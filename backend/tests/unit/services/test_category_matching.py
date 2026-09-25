@@ -229,7 +229,7 @@ class TestParseExtractionMatching:
 class TestResolveCategory:
     def service_with(self, pairs) -> AIDraftService:
         txn_svc = MagicMock()
-        txn_svc.category_repo.get_all_with_group_names = AsyncMock(return_value=pairs)
+        txn_svc.category_repo.get_fileable_with_group_names = AsyncMock(return_value=pairs)
         return AIDraftService(txn_svc)
 
     def category(self, name: str) -> MagicMock:

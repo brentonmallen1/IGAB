@@ -14,7 +14,8 @@ import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { expressionToCents } from '../../../utils/amountExpression'
 import { apiErrorMessage } from '../../../api/client'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
-import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
+import { Combobox } from '../../common/Combobox/Combobox'
+import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
 import './SplitTransactionEditor.css'
 
@@ -45,14 +46,9 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   const { remainingCents, isValid } = check
   const remaining = fromCents(remainingCents)
 
-  // `is_categorizable` — the same rule the row editor and every other picker
-  // reads. A split line is a leg like any other.
-  const categoryOptions: ComboboxOption[] = categories
-    .filter((c) => c.is_categorizable)
-    .map((c) => {
-      const group = categoryGroups.find((g) => g.id === c.category_group_id)
-      return { id: c.id, label: c.name, group: group?.name ?? '' }
-    })
+  // The list every picker that files a leg offers. A split line is a leg
+  // like any other.
+  const categoryOptions = filingCategoryOptions(categories, categoryGroups)
 
   async function handleSave() {
     if (!isValid || !loaded) return

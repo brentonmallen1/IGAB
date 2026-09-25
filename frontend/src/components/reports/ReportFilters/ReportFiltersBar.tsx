@@ -58,12 +58,6 @@ export function ReportFiltersContent({ budgetId }: Props) {
   const tags = useTags(budgetId)
   const savedFilters = useBudgetFilters(budgetId)
 
-  const groupMap = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const g of groups.data ?? []) m.set(g.id, g.name)
-    return m
-  }, [groups.data])
-
   // Only on tabs that actually roll up by a view. The preference is stored
   // once and shared, so a view picked on Pareto reached tabs with no view
   // selector and no view_id in their request — narrowing the category picker
@@ -74,8 +68,8 @@ export function ReportFiltersContent({ budgetId }: Props) {
   )
 
   const categoryOpts = useMemo(
-    () => categoryOptions(categories.data ?? [], groupMap, activeView),
-    [categories.data, groupMap, activeView]
+    () => categoryOptions(categories.data ?? [], groups.data ?? [], activeView),
+    [categories.data, groups.data, activeView]
   )
 
   const tagOptions = useMemo<MultiSelectOption[]>(

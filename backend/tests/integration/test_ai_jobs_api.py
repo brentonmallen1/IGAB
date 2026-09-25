@@ -11,11 +11,18 @@ from PIL import Image
 from sqlalchemy import select
 
 import igab.config
-from igab.db.models import AIJob
+from igab.db.models import AIJob, ChangeLog
 from igab.services.ai_service import AIService
 from igab.services.settings_service import SettingsService
 
-from .factories import create_account, create_budget, create_transaction, create_user
+from .factories import (
+    create_account,
+    create_budget,
+    create_category,
+    create_category_group,
+    create_transaction,
+    create_user,
+)
 
 
 def tiny_jpeg() -> bytes:
@@ -556,6 +563,229 @@ class TestServedTransactionAccount:
 
         body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
         assert body["jobs"][0]["transaction_account_id"] is None
+
+
+class TestServedTransactionCategory:
+    """`transaction_category_id` and `transaction_is_split` on a job row.
+
+    The review list named the model's reason, and nothing about where the row
+    was actually filed: an uncategorized row and one filed where the model
+    said looked the same until someone opened the register. The model's pick
+    is a label in `result.draft`, and it stays the model's record. So the
+    category the row is in NOW is served beside it, the way the account is.
+
+    The served-field checklist: every listing path carries both fields, they
+    follow a change made after the scan, and every endpoint that mutates a
+    job serializes them.
+    """
+
+    async def _filed(self, db_session, budget, account, category, **over):
+        return await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-12.50",
+            date(2026, 8, 2),
+            **{
+                "approved": False,
+                "created_via": "ai_receipt",
+                "cleared": "uncleared",
+                "category": category,
+                **over,
+            },
+        )
+
+    async def _job_for(self, db_session, budget, txn_id, status="done", draft_category=None):
+        job = AIJob(
+            budget_id=budget.id,
+            kind="receipt",
+            status=status,
+            payload={},
+            result={"draft": {"category": draft_category}} if draft_category else None,
+            transaction_id=txn_id,
+        )
+        db_session.add(job)
+        await db_session.commit()
+        return job
+
+    async def _groceries(self, db_session, budget):
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        dining = await create_category(db_session, budget, group, "Dining Out")
+        return groceries, dining
+
+    @staticmethod
+    def _fields(job: dict) -> tuple:
+        return job["transaction_category_id"], job["transaction_is_split"]
+
+    async def test_every_listing_path_carries_it(self, api_client, db_session, attachments_dir):
+        budget, account = await _setup(api_client, db_session)
+        groceries, _ = await self._groceries(db_session, budget)
+        txn = await self._filed(db_session, budget, account, groceries)
+        job = await self._job_for(db_session, budget, txn.id)
+        expected = (str(groceries.id), False)
+
+        everything = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        waiting = (
+            await api_client.get(f"/api/v1/{budget.id}/ai/jobs", params={"needs_review": "true"})
+        ).json()
+        detail = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs/{job.id}")).json()
+
+        assert [self._fields(j) for j in everything["jobs"]] == [expected]
+        assert [self._fields(j) for j in waiting["jobs"]] == [expected]
+        assert self._fields(detail) == expected
+
+        # And History, the negated filter, once the row is approved.
+        txn.approved = True
+        await db_session.commit()
+        history = (
+            await api_client.get(f"/api/v1/{budget.id}/ai/jobs", params={"needs_review": "false"})
+        ).json()
+        assert [self._fields(j) for j in history["jobs"]] == [expected]
+
+    async def test_a_split_parent_reads_split_not_uncategorized(
+        self, api_client, db_session, attachments_dir
+    ):
+        # A split parent's own category is NULL by construction. Without the
+        # flag it would read exactly like a row that still needs a category.
+        budget, account = await _setup(api_client, db_session)
+        groceries, dining = await self._groceries(db_session, budget)
+        parent = await self._filed(db_session, budget, account, None, is_split=True)
+        for category, amount in ((groceries, "-10.00"), (dining, "-2.50")):
+            await create_transaction(
+                db_session,
+                budget,
+                account,
+                amount,
+                date(2026, 8, 2),
+                category=category,
+                parent_transaction_id=parent.id,
+                approved=False,
+                created_via="ai_receipt",
+                cleared="uncleared",
+            )
+        await self._job_for(db_session, budget, parent.id)
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert [self._fields(j) for j in body["jobs"]] == [(None, True)]
+
+    async def test_uncategorized_reads_none_and_not_split(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._filed(db_session, budget, account, None)
+        await self._job_for(db_session, budget, txn.id)
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert [self._fields(j) for j in body["jobs"]] == [(None, False)]
+
+    async def test_no_transaction_or_a_deleted_one_reads_none_and_not_split(
+        self, api_client, db_session, attachments_dir
+    ):
+        # The log outlives what it created: both rows still appear, reading
+        # a real "nothing" rather than failing validation on a NULL flag.
+        budget, account = await _setup(api_client, db_session)
+        groceries, _ = await self._groceries(db_session, budget)
+        gone = await self._filed(db_session, budget, account, groceries)
+        gone.is_deleted = True
+        await self._job_for(db_session, budget, gone.id)
+        await self._job_for(db_session, budget, None, status="queued")
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert [self._fields(j) for j in body["jobs"]] == [(None, False), (None, False)]
+
+    async def test_a_category_changed_while_waiting_is_served_and_left_unapproved(
+        self, api_client, db_session, attachments_dir
+    ):
+        """The AI Activity picker PATCHes the transaction, the same call the
+        register makes. The row must read the new category, stay in "Needs
+        you" (changing a category is not approving it), go on the undo stack,
+        and leave the model's own pick exactly as the model gave it."""
+        budget, account = await _setup(api_client, db_session)
+        groceries, dining = await self._groceries(db_session, budget)
+        txn = await self._filed(db_session, budget, account, groceries)
+        job = await self._job_for(db_session, budget, txn.id, draft_category="Groceries")
+
+        resp = await api_client.patch(
+            f"/api/v1/transactions/{txn.id}",
+            params={"budget_id": str(budget.id)},
+            json={"category_id": str(dining.id)},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["approved"] is False
+
+        waiting = (
+            await api_client.get(f"/api/v1/{budget.id}/ai/jobs", params={"needs_review": "true"})
+        ).json()
+        [served] = waiting["jobs"]
+        assert served["id"] == str(job.id)
+        assert self._fields(served) == (str(dining.id), False)
+        assert served["needs_review"] is True
+        assert served["result"]["draft"]["category"] == "Groceries"
+
+        changes = (
+            (
+                await db_session.execute(
+                    select(ChangeLog).where(
+                        ChangeLog.budget_id == budget.id,
+                        ChangeLog.entity_type == "transaction",
+                        ChangeLog.entity_id == txn.id,
+                        ChangeLog.action == "update",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(changes) == 1
+        assert changes[0].before["category_id"] == str(groceries.id)
+        assert changes[0].after["category_id"] == str(dining.id)
+
+    async def test_a_category_refused_by_the_server_changes_nothing(
+        self, api_client, db_session, attachments_dir
+    ):
+        # The picker offers only `is_categorizable` envelopes; the server
+        # enforces the same rule, so a card's envelope is refused outright.
+        budget, account = await _setup(api_client, db_session)
+        groceries, _ = await self._groceries(db_session, budget)
+        cards = await create_category_group(db_session, budget, "Credit Card Payments")
+        envelope = await create_category(db_session, budget, cards, "Sapphire Visa")
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        envelope.linked_account_id = card.id
+        txn = await self._filed(db_session, budget, account, groceries)
+        await self._job_for(db_session, budget, txn.id)
+
+        resp = await api_client.patch(
+            f"/api/v1/transactions/{txn.id}",
+            params={"budget_id": str(budget.id)},
+            json={"category_id": str(envelope.id)},
+        )
+        assert resp.status_code == 400
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert self._fields(body["jobs"][0]) == (str(groceries.id), False)
+
+    async def test_every_mutating_endpoint_serializes_it(
+        self, api_client, db_session, attachments_dir
+    ):
+        # Submit, retry and reprocess each write the job and then serialize it
+        # from a fresh read; placing is covered in test_receipt_limbo.py.
+        budget, account = await _setup(api_client, db_session)
+        groceries, _ = await self._groceries(db_session, budget)
+
+        submitted = (await _submit(api_client, budget, account)).json()
+        assert self._fields(submitted) == (None, False)
+
+        txn = await self._filed(db_session, budget, account, groceries)
+        failed = await self._job_for(db_session, budget, txn.id, status="error")
+        retry = await api_client.post(f"/api/v1/{budget.id}/ai/jobs/{failed.id}/retry")
+        assert retry.status_code == 200, retry.text
+        assert self._fields(retry.json()) == (str(groceries.id), False)
+
+        done = await self._job_for(db_session, budget, txn.id, status="done")
+        reprocess = await api_client.post(f"/api/v1/{budget.id}/ai/jobs/{done.id}/reprocess")
+        assert reprocess.status_code == 200, reprocess.text
+        assert self._fields(reprocess.json()) == (str(groceries.id), False)
 
 
 class TestJobListingAndLifecycle:

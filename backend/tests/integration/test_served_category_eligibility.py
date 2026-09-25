@@ -145,6 +145,9 @@ class TestEveryPathCarriesTheFlags:
             "get_all_with_group_names": [
                 c for c, _ in await repo.get_all_with_group_names(budget.id)
             ],
+            "get_fileable_with_group_names": [
+                c for c, _ in await repo.get_fileable_with_group_names(budget.id)
+            ],
             "get_taggable_with_group_names": [
                 c for c, _ in await repo.get_taggable_with_group_names(budget.id)
             ],
@@ -242,6 +245,37 @@ class TestTheServedFlagIsTheOnlyRule:
         assignable = {c.id for c in categories if c.is_assignable}
 
         assert assignable == {offered.id}
+
+    async def test_the_ai_filing_list_is_exactly_the_categorizable_set(self, db_session):
+        """What the model is shown and matched against, and what `require_categorizable`
+        lets a row be filed to, must be one set. The naming list beside it
+        keeps what its readers (the chat tools, the YNAB import, parity,
+        export) always had."""
+        budget = await _budget(db_session)
+        everyday = await create_category_group(db_session, budget, "Everyday")
+        income = await _system_group(db_session, budget)
+        hidden_group = await create_category_group(db_session, budget, "Archive")
+        await CategoryGroupRepository(db_session).update(hidden_group.id, is_archived=True)
+        cards = await create_category_group(db_session, budget, "Credit Card Payments")
+        repo = CategoryRepository(db_session)
+
+        groceries = await create_category(db_session, budget, everyday, "Groceries")
+        paycheque = await create_category(db_session, budget, income, "Paycheque")
+        stale = await create_category(db_session, budget, hidden_group, "Stale")
+        envelope = await create_category(db_session, budget, cards, "Sapphire Visa")
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        await repo.update(envelope.id, linked_account_id=card.id)
+        retired = await create_category(db_session, budget, everyday, "Retired")
+        await repo.update(retired.id, is_archived=True)
+
+        fileable = {c.id for c, _ in await repo.get_fileable_with_group_names(budget.id)}
+        categorizable = {c.id for c in await repo.get_all(budget.id) if c.is_categorizable}
+        assert fileable == categorizable == {groceries.id, paycheque.id}
+
+        named = {c.id for c, _ in await repo.get_all_with_group_names(budget.id)}
+        assert named == {groceries.id, paycheque.id, stale.id, envelope.id}
+        with_archived = await repo.get_all_with_group_names(budget.id, include_archived=True)
+        assert {c.id for c, _ in with_archived} == named | {retired.id}
 
 
 class TestSavingsRole:

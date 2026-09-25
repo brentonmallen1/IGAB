@@ -1,0 +1,50 @@
+{
+  "_comment": "The model's category reaches the client as a LABEL (`result.draft.category`, and each `suggested_split` line), written by backend `category_matching.canonical_label` and read by frontend `labelNamesCategory` (components/ai/draftNotes.ts), which the AI Activity row and the editor's suggested split use to tell which category a label means. `cases` is run by BOTH backend/tests/unit/test_category_label_cases.py (the writer turns candidates[index] into `label`) and frontend/src/components/ai/draftNotes.test.ts (the reader says `label` names candidates[index] and no other candidate). A format changed on one side only fails on the other.",
+  "cases": [
+    {
+      "candidates": [
+        ["Groceries", "Everyday"],
+        ["Rent", "Monthly Bills"]
+      ],
+      "index": 0,
+      "label": "Groceries",
+      "note": "a name that appears once is written bare"
+    },
+    {
+      "candidates": [
+        ["Gifts", "Household"],
+        ["Gifts", "Holidays"]
+      ],
+      "index": 1,
+      "label": "Gifts (Holidays)",
+      "note": "a repeated name is qualified by its group"
+    },
+    {
+      "candidates": [
+        ["Gifts", "Household"],
+        ["Gifts", "Holidays"]
+      ],
+      "index": 0,
+      "label": "Gifts (Household)",
+      "note": "each copy by its own group, never the bare name"
+    },
+    {
+      "candidates": [
+        ["gifts", "Household"],
+        ["Gifts", "Holidays"]
+      ],
+      "index": 1,
+      "label": "Gifts (Holidays)",
+      "note": "names that differ only in case repeat"
+    },
+    {
+      "candidates": [
+        ["Garden – $150", "Home"],
+        ["Dining Out", "Home"]
+      ],
+      "index": 0,
+      "label": "Garden – $150",
+      "note": "the real name, decoration and all, not the model's spelling of it"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { flatCategoryOptions } from '../../../utils/categoryPickers'
+import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
@@ -249,10 +249,10 @@ export function QuickAddSheet() {
 
   const categoryOptions = useMemo<SelectionSheetOption[]>(
     () =>
-      flatCategoryOptions(
-        categories.filter((c) => c.is_categorizable),
-        categoryGroups
-      ).map((o) => ({ ...o, hint: canCategorize ? hintFor(o.id) : undefined })),
+      filingCategoryOptions(categories, categoryGroups).map((o) => ({
+        ...o,
+        hint: canCategorize ? hintFor(o.id) : undefined,
+      })),
     [categories, categoryGroups, canCategorize, hintFor]
   )
 
