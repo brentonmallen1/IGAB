@@ -44,7 +44,12 @@ from .factories import (
 ACCT = "ACT-harborstone"
 PATCH_DECRYPT = patch("igab.services.simplefin_service.decrypt", return_value="https://u:p@x.test")
 
-TODAY = date(2026, 9, 19)
+#: The real day, not a fixed one. The sync fetches from its own clock — the
+#: live window starts SYNC_OVERLAP_DAYS before the last run — and a row older
+#: than that start is, correctly, never offered for adoption. Pinned to the
+#: day this was written, the re-identification test passed on 2026-09-19 and
+#: failed every day after it, once the holds fell out of the window.
+TODAY = date.today()
 #: The four holds, rescaled. Distinct amounts so every feed row has exactly
 #: one candidate and no pairing is ambiguous.
 HOLDS = [("-20.00", "WHISTLE EXPRESS"), ("-75.00", "PAYPAL TRANSFER")]

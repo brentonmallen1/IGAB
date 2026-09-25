@@ -8,14 +8,14 @@ every account predating this column has no date, and no date means the
 staleness question simply is not asked.
 
 Revision ID: b3f70c5e12d9
-Revises: aab17f2376dc
+Revises: a3c8e5f71d24
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "b3f70c5e12d9"
-down_revision = "aab17f2376dc"
+down_revision = "a3c8e5f71d24"
 branch_labels = None
 depends_on = None
 
