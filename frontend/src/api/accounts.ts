@@ -104,8 +104,6 @@ export interface FindingItem {
   /** A row's date. */
   day: string | null
   note: string | null
-  /** What to do about this item, when it differs from the finding's action. */
-  fix: string | null
   account_id: string | null
   transaction_id: string | null
   /** The rows a bulk action would touch — for unlinked card payments,

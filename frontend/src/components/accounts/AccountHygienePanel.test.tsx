@@ -174,15 +174,13 @@ describe('AccountHygienePanel', () => {
     report = {
       findings: [
         finding({
-          kind: 'card_reserve_went_negative',
-          title: '1 card with Set aside below zero',
+          kind: 'card_debt_predates_budget',
+          title: '1 card carrying debt from before the budget',
           items: [
             item({
               label: 'Sapphire Visa',
               amount: '-58.6800',
-              month: '2026-09-01',
-              note: 'a refund went to Clothing instead of the card',
-              fix: 'Move the refund from Clothing to the card.',
+              note: 'charged since March 2026, nothing set aside until June 2026',
               account_id: 'card-1',
             }),
           ],
@@ -193,7 +191,9 @@ describe('AccountHygienePanel', () => {
     renderPanel()
     expect(screen.queryByText(/58\.6800/)).not.toBeInTheDocument()
     expect(screen.getByText(/58\.68/)).toBeInTheDocument()
-    expect(screen.getByText('Move the refund from Clothing to the card.')).toBeInTheDocument()
+    expect(
+      screen.getByText(/charged since March 2026, nothing set aside until June 2026/)
+    ).toBeInTheDocument()
 
     screen.getByRole('button', { name: 'Sapphire Visa' }).click()
     expect(navigate).toHaveBeenCalledWith('/accounts/card-1')
@@ -270,7 +270,6 @@ function item(over: Partial<FindingItem> = {}): FindingItem {
     month: null,
     day: null,
     note: null,
-    fix: null,
     account_id: null,
     transaction_id: null,
     transaction_ids: [],

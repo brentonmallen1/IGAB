@@ -128,7 +128,6 @@ export function HygieneFindings({
     // The card diagnostics resolve on the budget page's cards section — the
     // Set aside breakdown is where the months and legs they cite live.
     if (
-      f.kind === 'card_reserve_went_negative' ||
       f.kind === 'card_debt_predates_budget' ||
       f.kind === 'residual_on_uncharged_category' ||
       f.kind === 'recurring_card_residual'
@@ -254,7 +253,6 @@ function FindingItems({ items, onGo }: { items: FindingItem[]; onGo: (to: string
               )}
               {item.note && <span className="hygiene__row-note">{item.note}</span>}
               {when && <span className="hygiene__row-note">{when}</span>}
-              {item.fix && <span className="hygiene__row-fix">{item.fix}</span>}
             </span>
             {item.amount !== null && (
               <span className="hygiene__row-amount">

@@ -62,7 +62,7 @@ def _words(finding: HygieneFinding) -> str:
     """Every sentence a finding shows, for "is this named anywhere" checks."""
     parts = [finding.title, finding.summary, finding.action, finding.why or ""]
     for item in finding.items:
-        parts += [item.label, item.note or "", item.fix or ""]
+        parts += [item.label, item.note or ""]
     return " ".join(parts)
 
 
@@ -815,10 +815,15 @@ class TestCardReserveDiagnostics:
         cat = await create_category(db_session, budget, group, "Groceries")
         return services, budget, checking, card, group, cat
 
-    async def test_a_reserve_below_zero_names_the_breach_month_and_the_leg(self, db_session):
+    async def test_a_payment_past_set_aside_is_told_by_its_cause_not_by_its_sign(self, db_session):
         """Pre-budget debt, one funded month, and a full-statement payment:
-        the reserve reads 200 − 500 = −300 while the card still owes 1,700,
-        and the finding says the payment did it — in the month it happened."""
+        Set aside reads 200 − 500 = −300 while the card still owes 1,700.
+
+        A finding used to name every card below zero. A negative Set aside is
+        overspending now — the card draws red on the budget page and the 1st
+        covers it from Ready to Assign — so the page says that part, and the
+        only finding here is the one that says why: the debt predates the
+        budget."""
         services, budget, checking, card, _group, cat = await self._card_world(db_session)
         await create_transaction(db_session, budget, card, "-2000.00", LONG_AGO)
         await services.budgets.set_assignment(
@@ -827,27 +832,9 @@ class TestCardReserveDiagnostics:
         await create_transaction(db_session, budget, card, "-200.00", RECENT, category=cat)
         await create_card_payment(services, budget, checking, card, "500.00", RECENT)
 
-        finding = (await _run(db_session, budget))["card_reserve_went_negative"]
-        item = _item(finding, "Sapphire Visa")
-        assert item.amount == Decimal("-300.00")
-        assert item.month == RECENT.replace(day=1)
-        assert "payment paid more than was set aside" in (item.note or "")
-        assert item.fix is not None and "Assign this much to the card" in item.fix
-        assert finding.account_ids == [card.id]
-
-    async def test_a_card_in_credit_is_not_a_negative_reserve_finding(self, db_session):
-        """Genuinely overpaid — the card holds the user's money. The reserve
-        is negative and nothing is wrong; `card_credit` is the discriminator,
-        exactly as it is for the row's own note."""
-        services, budget, checking, card, _group, cat = await self._card_world(db_session)
-        await services.budgets.set_assignment(
-            budget.id, cat.id, RECENT.replace(day=1), Decimal("60.00")
-        )
-        await create_transaction(db_session, budget, card, "-60.00", RECENT, category=cat)
-        await create_card_payment(services, budget, checking, card, "400.00", RECENT)
-
         findings = await _run(db_session, budget)
-        assert "card_reserve_went_negative" not in findings
+        naming = {kind for kind, f in findings.items() if card.id in f.account_ids}
+        assert naming == {"card_debt_predates_budget"}
 
     async def test_an_inflow_via_an_envelope_that_never_charged_the_card(self, db_session):
         """The reimbursed shape: a shared-expenses envelope that never touched
@@ -859,18 +846,15 @@ class TestCardReserveDiagnostics:
         await create_transaction(db_session, budget, card, "300.00", RECENT, category=shared)
 
         findings = await _run(db_session, budget)
-        # Below zero because of it, so the card's own line says where the
-        # money went — and the per-envelope finding does not say it again.
-        item = _item(findings["card_reserve_went_negative"], "Sapphire Visa")
-        assert "Shared Expenses" in (item.note or "")
-        assert item.fix == "Move the refund from Shared Expenses to the card."
-        assert "residual_on_uncharged_category" not in findings
+        # The card is red on the budget page; only this finding says where
+        # the money went. It stood aside for the below-zero finding once.
+        item = _item(findings["residual_on_uncharged_category"], "Shared Expenses")
+        assert item.amount == Decimal("300.00")
+        assert item.note == "on Sapphire Visa"
 
-    async def test_an_uncharged_inflow_on_a_card_still_above_zero_is_its_own_finding(
-        self, db_session
-    ):
-        """Funded charges keep the card above zero, so no negative line names
-        it — the envelope that kept the refund needs its own finding."""
+    async def test_an_uncharged_inflow_on_a_card_still_above_zero_is_reported_too(self, db_session):
+        """Funded charges keep the card above zero, so it is not red — the
+        envelope that kept the refund is still worth a line."""
         services, budget, _checking, card, group, cat = await self._card_world(db_session)
         shared = await create_category(db_session, budget, group, "Shared Expenses")
         await services.budgets.set_assignment(
@@ -880,7 +864,6 @@ class TestCardReserveDiagnostics:
         await create_transaction(db_session, budget, card, "300.00", RECENT, category=shared)
 
         findings = await _run(db_session, budget)
-        assert "card_reserve_went_negative" not in findings
         finding = findings["residual_on_uncharged_category"]
         item = _item(finding, "Shared Expenses")
         assert item.amount == Decimal("300.00")
@@ -1032,11 +1015,9 @@ class TestCardReserveDiagnostics:
         keeping its budget correctly.
 
         Residual lands in three separate months on a pair that does charge
-        this card — `recurring_card_residual`'s exact signature — and the
-        reserve goes below zero on a card that still owes money, which is
-        `card_reserve_went_negative`'s. Both would fire every month forever,
-        and the loudest finding a careful household ever got would be its own
-        bookkeeping."""
+        this card — `recurring_card_residual`'s exact signature. It would fire
+        every month forever, and the loudest finding a careful household ever
+        got would be its own bookkeeping."""
         services, budget, checking, card, group, _cat = await self._card_world(db_session)
         ledger = await create_category(db_session, budget, group, "Shared Expenses")
         await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
@@ -1046,7 +1027,6 @@ class TestCardReserveDiagnostics:
         assert "recurring_card_residual" not in findings
         assert "residual_on_uncharged_category" not in findings
         assert "card_inflow_belongs_to_other_card" not in findings
-        assert "card_reserve_went_negative" not in findings
 
     async def test_the_same_stream_on_a_funded_envelope_is_still_reported(self, db_session):
         """The gate is not a mute, and funding is the only variable: the same
@@ -1066,7 +1046,6 @@ class TestCardReserveDiagnostics:
 
         findings = await _run(db_session, budget)
         assert _item(findings["recurring_card_residual"], "Shared Expenses").amount is not None
-        assert "card_reserve_went_negative" in findings
 
     async def test_a_ledger_that_never_charged_the_card_is_silent(self, db_session):
         """The steady state, with no opening month to reserve anything: every
@@ -1086,7 +1065,7 @@ class TestCardReserveDiagnostics:
         assert "recurring_card_residual" not in findings
 
     async def test_a_ledger_that_kept_the_inflow_is_still_reported(self, db_session):
-        """Never funded, but the repayments ran past the charges and 60 of
+        """Never funded, but the repayments ran past the charges and 30 of
         the card's reserve is now sitting in the envelope. Available reads
         positive, so the complaint the finding makes — the envelope keeps the
         money — is simply true, and re-filing the inflow is a real remedy."""
@@ -1098,23 +1077,8 @@ class TestCardReserveDiagnostics:
             await create_transaction(db_session, budget, card, "130.00", month, category=ledger)
 
         findings = await _run(db_session, budget)
-        item = _item(findings["card_reserve_went_negative"], "Sapphire Visa")
-        assert item.fix == "Move the refund from Shared Expenses to the card."
-
-    async def test_a_shortfall_only_partly_explained_by_a_ledger_still_reports(self, db_session):
-        """Fully explained, not partly. The same ledger stream, plus a 300
-        payment that ran ahead of anything assigned: 100 of the negative
-        reserve is the ledger settling up and the rest is a real shortfall,
-        so the card is named. A rule that skipped any card a ledger touched
-        would hide it behind the household's bookkeeping."""
-        services, budget, checking, card, group, _cat = await self._card_world(db_session)
-        ledger = await create_category(db_session, budget, group, "Shared Expenses")
-        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
-        await self._ledger_stream(db_session, budget, card, checking, ledger, _months(6))
-        await create_card_payment(services, budget, checking, card, "300.00", RECENT)
-
-        finding = (await _run(db_session, budget))["card_reserve_went_negative"]
-        assert finding.account_ids == [card.id]
+        item = _item(findings["residual_on_uncharged_category"], "Shared Expenses")
+        assert item.amount == Decimal("30.00")
 
     async def test_a_single_refund_overshoot_is_not_a_stream(self, db_session):
         """One month of residual on an envelope that charges the card is an

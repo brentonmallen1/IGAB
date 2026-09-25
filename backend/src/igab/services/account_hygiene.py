@@ -27,8 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Asset, Liability, Transaction
-from igab.domain.card_timeline import card_timeline, first_breach
-from igab.domain.cards import SetAsideState, card_reserve, receivable_ledgers, riding_series
+from igab.domain.cards import receivable_ledgers
 from igab.domain.import_mapping import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import LegPair, PairableLeg, pair_legs
@@ -93,8 +92,6 @@ class FindingItem:
     day: date | None = None
     #: One short clause of context — never a figure; figures go in `amount`.
     note: str | None = None
-    #: What to do about this item when it differs from the finding's action.
-    fix: str | None = None
     #: Where the item leads: an account's register, and a row to highlight.
     account_id: uuid.UUID | None = None
     transaction_id: uuid.UUID | None = None
@@ -161,11 +158,6 @@ class AccountHygieneService:
         # here, because two card detectors ask and both must give the same
         # answer about the same category.
         ledgers = self._ledger_categories(summary, walk)
-        # Named before the per-envelope inflow findings: a card this one
-        # already explains (its item names the envelope the refund went to)
-        # is not described a second time in a second vocabulary.
-        negative = await self._card_reserve_went_negative(budget_id, summary, walk, ledgers)
-        named = set(negative.account_ids) if negative is not None else set()
         findings = [
             # Order is the ranking. On-budget-but-tracked leads because it is
             # the only one here that corrupts a number the user reads daily:
@@ -180,9 +172,8 @@ class AccountHygieneService:
             await self._asset_beside_asset_account(budget_id, accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
-            negative,
             await self._card_debt_predates_budget(budget_id, summary, walk),
-            *(await self._misfiled_card_inflows(budget_id, walk, ledgers, named)),
+            *(await self._misfiled_card_inflows(budget_id, walk, ledgers)),
             await self._categorized_tracking_rows(budget_id),
             await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
@@ -564,146 +555,6 @@ class AccountHygieneService:
             {balance.category_id: balance.available for balance in summary.category_balances},
         )
 
-    #: The Set aside states this finding has something to say about: below
-    #: zero, on a card that is not in credit, and not explained by somebody
-    #: else's settle-up. The classification itself is served
-    #: (`domain/cards.py` `set_aside_state`) — this check used to re-derive
-    #: it from `set_aside`, `card_credit` and its own pass over
-    #: `residual_by_pair`, which is two implementations of one rule sitting
-    #: either side of an API boundary.
-    _REPORTABLE_STATES = frozenset(
-        {
-            SetAsideState.REFUND_OUTRAN_ENVELOPE,
-            SetAsideState.SETTLED_ELSEWHERE,
-            SetAsideState.RIDE_UNFUNDED,
-            SetAsideState.PAID_AHEAD,
-            # More than one cause and none covers it: at least part of the
-            # shortfall is not a settle-up, so it is worth reading. A card a
-            # ledger merely touched must not hide behind the bookkeeping —
-            # `test_a_shortfall_only_partly_explained_by_a_ledger_still_reports`.
-            SetAsideState.MIXED,
-            # Overdrawn by a move, not a payment. Real, and the remedy is
-            # to put the money back — worth a line.
-            SetAsideState.MOVED_OUT,
-        }
-    )
-
-    async def _card_reserve_went_negative(
-        self, budget_id: uuid.UUID, summary, walk, ledgers: set[uuid.UUID]
-    ) -> HygieneFinding | None:
-        """A card's Set aside below zero while the card is not in credit.
-
-        A legitimate position, not an integrity failure — the reserve is
-        deliberately unfloored (domain/cards.py `CardReserve`) — but on a
-        card that still owes money it always has a cause worth reading, and
-        the row itself only shows the current figure. This names WHEN it
-        crossed and which leg did it, out of the same walk the row is served
-        from (`domain/card_timeline.py`).
-
-        **Which cards qualify is not decided here.** `SETTLED_BY_OTHERS` is
-        left alone because a ledger settles onto its card every month, so its
-        residual drives Set aside down by construction — beside a debt that
-        fell with it, and with nothing to re-file or assign. That used to be
-        a second pass over `residual_by_pair` written at this call site; it
-        now comes off the same served state the budget page reads, so the two
-        pages cannot describe one card differently.
-        """
-        categories = {
-            c.id: c.name
-            for c in await CategoryRepository(self.session).get_all(
-                budget_id, include_archived=True
-            )
-        }
-        items: list[FindingItem] = []
-        for card in summary.cards:
-            if card.set_aside_state not in self._REPORTABLE_STATES:
-                continue
-            reserve = card_reserve(walk.funding, card.account_id)
-            breach = first_breach(
-                card_timeline(
-                    reserve,
-                    {},
-                    riding_series(walk.funding, card.account_id),
-                    start=(walk.anchor.openings.opening_month if walk.anchor is not None else None),
-                )
-            )
-            # The envelopes a refund raised instead of this card: named, so
-            # the fix says where the money is rather than "an envelope".
-            refunded_into = sorted(
-                categories.get(cat_id, "an envelope")
-                for (cat_id, card_id), series in walk.funding.residual_by_pair.items()
-                if card_id == card.account_id
-                and cat_id not in ledgers
-                and sum(series.values(), Decimal("0")) > 0
-            )
-            note, fix = self._negative_set_aside_story(card.set_aside_state, refunded_into)
-            items.append(
-                FindingItem(
-                    label=card.name,
-                    amount=card.set_aside,
-                    month=breach.month if breach is not None else None,
-                    note=note,
-                    fix=fix,
-                    account_id=card.account_id,
-                )
-            )
-        if not items:
-            return None
-        count = len(items)
-        return HygieneFinding(
-            kind="card_reserve_went_negative",
-            title=f"{count} card{'s' if count != 1 else ''} with Set aside below zero",
-            summary="Something took more out of these cards' Set aside than was ever put in.",
-            items=items,
-            action="Each line says what to do. The card's row on the budget page shows the months.",
-            why=(
-                "Set aside is the money reserved to pay a card. Below zero, the card has "
-                "used money the budget never reserved for it — a payment ahead of the "
-                "budget, or a refund that went to an envelope instead."
-            ),
-            account_ids=[i.account_id for i in items if i.account_id is not None],
-        )
-
-    @staticmethod
-    def _negative_set_aside_story(
-        state: SetAsideState, refunded_into: list[str]
-    ) -> tuple[str, str]:
-        """What happened to a card below zero, and what fixes it — per state.
-
-        Keyed on the served `set_aside_state`, the same classification the
-        card's own row reads, so this panel and the budget page cannot give one
-        card two different causes. Never a figure in the text: the item's
-        amount is the figure, formatted by the client.
-        """
-        where = ", ".join(refunded_into) if refunded_into else "an envelope"
-        stories = {
-            SetAsideState.PAID_AHEAD: (
-                "a payment paid more than was set aside for it",
-                "Assign this much to the card. Ready to Assign already accounts for it.",
-            ),
-            SetAsideState.REFUND_OUTRAN_ENVELOPE: (
-                f"a refund went to {where} instead of the card",
-                f"Move the refund from {where} to the card.",
-            ),
-            SetAsideState.RIDE_UNFUNDED: (
-                "an overspent month rode onto this card and was never funded",
-                "Assign this much to the card, or fund the month that overspent.",
-            ),
-            SetAsideState.SETTLED_ELSEWHERE: (
-                "an overspent month was shared across cards, and this card took part",
-                "Assign this much to the card.",
-            ),
-            SetAsideState.MOVED_OUT: (
-                "money was moved out of the card's envelope",
-                "Move it back to the card.",
-            ),
-            SetAsideState.MIXED: (
-                "more than one cause",
-                "Open the card's Set aside breakdown on the budget page to see each one.",
-            ),
-        }
-        return stories.get(state, ("", "Open the card's Set aside breakdown on the budget page."))
-
     async def _card_debt_predates_budget(
         self, budget_id: uuid.UUID, summary, walk
     ) -> HygieneFinding | None:
@@ -788,11 +639,12 @@ class AccountHygieneService:
             items=items,
             action="Assign toward it on the card as you pay it down.",
             why=(
-                "Spending from before the budget reserved nothing, so paying that debt "
-                "spends money no envelope set aside — which is what pushes Set aside below "
-                "zero. Assigning to the card is how paying off old debt is budgeted. An "
-                "account's budget start date does not change this: it only stops older "
-                "rows asking for a category."
+                "Spending from before the budget reserved nothing, so a payment toward that "
+                "debt spends money no envelope set aside. The card goes red, and what is "
+                "not assigned to it by the end of the month comes out of the next month's "
+                "Ready to Assign. Assigning to the card is how paying off old debt is "
+                "budgeted. An account's budget start date does not change this: it only "
+                "stops older rows asking for a category."
             ),
             account_ids=[i.account_id for i in items if i.account_id is not None],
         )
@@ -802,7 +654,6 @@ class AccountHygieneService:
         budget_id: uuid.UUID,
         walk,
         ledgers: set[uuid.UUID],
-        named: set[uuid.UUID],
     ) -> list[HygieneFinding | None]:
         """Card inflows that drained a reserve without releasing anything.
 
@@ -824,12 +675,12 @@ class AccountHygieneService:
         move to that other card's register. Where the envelope's spending
         sits says nothing about where a refund belongs.
 
-        A card `named` by the negative-Set-aside finding is left out of the
-        uncharged finding: that finding's item already names the envelope the
-        refund went to and says to move it, and a second finding about the
-        same money in other words is the doubling that made this panel hard to
-        read. The recurring finding still names it — a stream is a different
-        story with a different remedy (record it as a transfer).
+        There was a finding for a card whose Set aside went below zero, and
+        this one stood aside for any card it named. A negative Set aside is
+        overspending now: the card draws red on the budget page and the 1st
+        covers it from Ready to Assign, so the page already says it. What
+        only this finding says is where the refund went, so it says it for
+        every card.
 
         A pair whose envelope is a **receivable ledger** — never assigned to,
         holding nothing — is skipped by both: see
@@ -886,8 +737,7 @@ class AccountHygieneService:
                     item.note = f"on {names.get(card_id, 'a card')}, over {len(series)} months"
                     recurring.append(item)
                 continue
-            if card_id not in named:
-                uncharged.append(item)
+            uncharged.append(item)
 
         def cards(items: list[FindingItem]) -> list[uuid.UUID]:
             return sorted({i.account_id for i in items if i.account_id is not None}, key=str)
