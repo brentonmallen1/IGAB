@@ -1,8 +1,7 @@
 import { useFormatters } from '../../../hooks/useFormatters'
 import { addMonths } from '../../../utils/dates'
-import { Dialog } from '../../common/Dialog/Dialog'
+import { EnvelopeListDialog } from '../EnvelopeListDialog/EnvelopeListDialog'
 import type { OverspentLastMonth } from '../budgetTotals'
-import './LastMonthModal.css'
 
 interface Props {
   /** The month being viewed; the overspending was the month before it. */
@@ -19,40 +18,22 @@ interface Props {
  * figure is served (`overspent_last_month`); this names and lists them.
  */
 export function LastMonthModal({ month, lastMonth, onClose }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMonth } = useFormatters()
   const previous = formatMonth(addMonths(month, -1))
   return (
-    <Dialog
+    <EnvelopeListDialog
       title={`Overspent in ${previous}`}
-      onClose={onClose}
       historyKey="overspent-last-month"
-      className="last-month"
-      footer={
-        <div className="dialog-actions">
-          <div className="dialog-actions__end">
-            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
-              Close
-            </button>
-          </div>
-        </div>
+      tone="negative"
+      lede={
+        <>
+          These ended {previous} below zero, so this month&rsquo;s Ready to Assign covered them on
+          the 1st. Nothing to do now.
+        </>
       }
-    >
-      <p className="last-month__lede">
-        These ended {previous} below zero, so this month&rsquo;s Ready to Assign covered them on the
-        1st. Nothing to do now.
-      </p>
-      <dl className="last-month__list">
-        {lastMonth.sources.map((s) => (
-          <div className="last-month__row" key={s.name}>
-            <dt>{s.name}</dt>
-            <dd className="tabular">{formatMoney(-s.amount)}</dd>
-          </div>
-        ))}
-        <div className="last-month__row last-month__row--total">
-          <dt>Total</dt>
-          <dd className="tabular">{formatMoney(-lastMonth.total)}</dd>
-        </div>
-      </dl>
-    </Dialog>
+      rows={lastMonth.sources.map((s) => ({ key: s.name, name: s.name, amount: -s.amount }))}
+      total={-lastMonth.total}
+      onClose={onClose}
+    />
   )
 }

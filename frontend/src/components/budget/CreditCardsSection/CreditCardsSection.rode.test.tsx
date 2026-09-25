@@ -4,11 +4,13 @@
  * It sat in the Ready to Assign header as a second chip ("of it on cards")
  * with its own dialog, beside the overspent chip it was a part of. It is card
  * debt, not money out of Ready to Assign, so it moved: the band says how much
- * rode on this month, and an opened card names its envelopes on one line,
- * next to the assigned box that retires it. These are the dialog's tests,
- * ported to where the answer lives now.
+ * rode on this month, and an opened card says how much and from how many
+ * envelopes, next to the assigned box that retires it. The envelopes were
+ * named inline on that line until a long month wrapped it into a paragraph;
+ * they are one tap away now, in the same list dialog the header uses for
+ * last month's overspending.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BudgetMonth, CardStatus } from '../../../types'
@@ -99,13 +101,44 @@ describe('the band', () => {
 })
 
 describe('an opened card', () => {
-  it('names the envelopes that rode onto it, and how much', async () => {
+  it('says how much rode on, from how many envelopes, on one line', async () => {
     show()
     await openCard()
-    // One line, the envelopes and their amounts — no remedy prose: the
-    // assigned field right under it is the remedy.
-    const said = screen.getByText(/^Rode on this month:/)
-    expect(said.textContent).toBe('Rode on this month: Dining $35.00, Groceries $20.00')
+    // A total and a count, however many envelopes there are — no remedy
+    // prose: the assigned field right under it is the remedy.
+    const said = screen.getByText(/rode on this month from/)
+    expect(said.textContent).toBe('$55.00 rode on this month from 2 envelopesShow')
+    expect(screen.queryByText('Dining')).toBeNull()
+  })
+
+  it('counts one envelope in the singular', async () => {
+    month.current = {
+      cards: [
+        card({
+          overspent_this_month: 35,
+          overspent_by_category: [{ category_id: 'c-dining', category_name: 'Dining', amount: 35 }],
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+    await openCard()
+    expect(screen.getByText(/rode on this month from/).textContent).toContain('from 1 envelope')
+  })
+
+  it('lists every envelope and the total behind Show', async () => {
+    show()
+    await openCard()
+    await userEvent.click(screen.getByRole('button', { name: 'Show' }))
+    const dialog = screen.getByRole('dialog', { name: 'Rode on Sapphire Visa in August 2026' })
+    for (const [name, amount] of [
+      ['Dining', '$35.00'],
+      ['Groceries', '$20.00'],
+      ['Total', '$55.00'],
+    ]) {
+      const row = within(dialog).getByText(name).closest('.envelope-list__row') as HTMLElement
+      expect(row.textContent).toContain(amount)
+    }
   })
 
   it('says nothing about rides on a card that carried none', async () => {
@@ -123,7 +156,10 @@ describe('an opened card', () => {
     // ordinary category peek instead of claiming these transactions rode.
     show()
     await openCard()
+    await userEvent.click(screen.getByRole('button', { name: 'Show' }))
     await userEvent.click(screen.getByRole('button', { name: 'Dining' }))
+    // The list gives way to the envelope's transactions rather than stacking.
+    expect(screen.queryByRole('dialog', { name: /^Rode on/ })).toBeNull()
     expect(screen.getByTestId('peek')).toBeInTheDocument()
     expect(peeked.scope).toEqual({
       kind: 'category',

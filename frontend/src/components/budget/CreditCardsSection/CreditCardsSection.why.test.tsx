@@ -33,6 +33,7 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 }))
 
 import { CreditCardsSection } from './CreditCardsSection'
+import { useUIStore } from '../../../stores/uiStore'
 import { cardStatus } from '../../../test-utils/cardFixture'
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
@@ -60,6 +61,8 @@ const line = (name = 'Sapphire Visa') =>
 
 beforeEach(() => {
   month.current = { cards: [paidAhead()], category_balances: [] } as unknown as BudgetMonth
+  accounts.current = []
+  useUIStore.setState({ creditCardsCollapsed: false })
 })
 
 describe('a card opens in place', () => {
@@ -77,11 +80,23 @@ describe('a card opens in place', () => {
     expect(document.querySelector('.credit-cards__mark--overspent')).not.toBeNull()
   })
 
-  it('draws no mark on a card with nothing to do', () => {
+  it('warns about debt not covered, in the warning colour', () => {
+    // Grey once: a red card whose hole a funded charge refilled went quietly
+    // grey while it still owed what nothing had set aside for.
     month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
     show()
+    expect(screen.getByText('$600.00 not covered')).toHaveClass('credit-cards__word--not-covered')
+    expect(line().querySelector('.credit-cards__mark--not-covered')).not.toBeNull()
+  })
+
+  it('draws no mark on a card with nothing to do', () => {
+    month.current = {
+      cards: [card({ set_aside: 600, reserved: 600 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
     expect(document.querySelector('.credit-cards__mark')).toBeNull()
-    expect(screen.getByText('$600.00 not covered')).toBeInTheDocument()
+    expect(screen.getByText('covered')).toBeInTheDocument()
   })
 
   it('opens under its own line, not in a dialog', async () => {
@@ -124,6 +139,21 @@ describe('a card opens in place', () => {
     const stats = document.querySelector('.credit-cards__stats') as HTMLElement
     expect(stats.textContent).toBe('Owes$600.00Covered$0.00Not covered$600.00')
     expect(document.querySelector('.credit-cards__callout')).toBeNull()
+    // The figure carries the line's warning; the other two stay plain.
+    const figures = stats.querySelectorAll('dd')
+    expect(figures[2]).toHaveClass('credit-cards__stat--not-covered')
+    expect(figures[0]).not.toHaveClass('credit-cards__stat--not-covered')
+    expect(figures[1]).not.toHaveClass('credit-cards__stat--not-covered')
+  })
+
+  it('leaves Not covered plain on a card with nothing uncovered', async () => {
+    month.current = {
+      cards: [card({ set_aside: 600, reserved: 600 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+    await userEvent.click(line())
+    expect(document.querySelector('.credit-cards__stat--not-covered')).toBeNull()
   })
 
   it('never hides the headline in a title attribute', async () => {
@@ -167,5 +197,61 @@ describe('a card opens in place', () => {
     await userEvent.click(line())
 
     expect(screen.getByText(/\$42\.00 of this Set aside is not explained/)).toBeInTheDocument()
+  })
+})
+
+describe('the section header', () => {
+  // Folded, the header is all there is. It carries the most urgent dot any
+  // card's line carries, so a closed list still says there is something in it.
+  const band = () => screen.getByTestId('credit-cards-band')
+  const covered = (name: string) => card({ account_id: name, name, set_aside: 600, reserved: 600 })
+
+  it('carries the overspent dot when any card is overspent', () => {
+    month.current = {
+      cards: [card({ account_id: 'a', name: 'Harborstone' }), paidAhead()],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+    const dot = band().querySelector('.credit-cards__header .credit-cards__mark')
+    expect(dot).toHaveClass('credit-cards__mark--overspent')
+    expect(screen.getByRole('img', { name: 'A card is overspent' })).toBe(dot)
+  })
+
+  it('carries the warning dot when debt not covered is the worst of it', () => {
+    month.current = {
+      cards: [covered('Harborstone'), card()],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+    const dot = band().querySelector('.credit-cards__header .credit-cards__mark')
+    expect(dot).toHaveClass('credit-cards__mark--not-covered')
+  })
+
+  it('carries the to-categorize dot over debt not covered', () => {
+    accounts.current = [{ id: 'a-file', uncategorized_count: 2 }]
+    month.current = {
+      cards: [card(), covered('a-file')],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+    const dot = band().querySelector('.credit-cards__header .credit-cards__mark')
+    expect(dot).toHaveClass('credit-cards__mark--to-file')
+  })
+
+  it('stays plain when every card is covered', () => {
+    month.current = {
+      cards: [covered('Harborstone')],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+    expect(band().querySelector('.credit-cards__mark')).toBeNull()
+  })
+
+  it('keeps its dot while folded', () => {
+    useUIStore.setState({ creditCardsCollapsed: true })
+    month.current = { cards: [paidAhead()], category_balances: [] } as unknown as BudgetMonth
+    show()
+    expect(screen.queryByRole('list', { name: 'Credit cards' })).toBeNull()
+    expect(band().querySelector('.credit-cards__mark--overspent')).not.toBeNull()
   })
 })

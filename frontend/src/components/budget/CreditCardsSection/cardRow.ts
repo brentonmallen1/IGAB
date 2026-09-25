@@ -20,7 +20,43 @@ type Money = (n: number) => string
 export type PillTone = 'negative' | 'positive' | 'zero'
 
 /** Why a card's line carries a dot: it needs you. */
-export type LineMark = 'overspent' | 'to-file'
+export type LineMark = 'overspent' | 'to-file' | 'not-covered'
+
+/** Most urgent first: the order `cardLine` checks them in, and the order the
+ *  section header picks its one dot from. */
+const MARK_SEVERITY: readonly LineMark[] = ['overspent', 'to-file', 'not-covered']
+
+/** What the header's dot says to a screen reader, which cannot see its colour. */
+const MARK_LABEL: Record<LineMark, string> = {
+  overspent: 'A card is overspent',
+  'to-file': 'A card has transactions to categorize',
+  'not-covered': 'A card owes more than is set aside',
+}
+
+/**
+ * Whether what a card owes beyond its Set aside is a warning. It is: paying
+ * past Set aside is overspending (red, and next month's Ready to Assign
+ * covers it), so "not covered" is the step before red. It read as calm grey
+ * once, and a card whose red had only moved — a funded charge refilling a
+ * hole a payment dug — looked settled. The line and the opened card's figure
+ * both ask this.
+ */
+export function notCoveredWarns(card: Pick<CardStatus, 'uncovered'>): boolean {
+  return card.uncovered > 0
+}
+
+/**
+ * The section header's one dot: the most urgent any card's line carries, so
+ * a folded list still says there is something inside to look at. Null when
+ * no line has a dot.
+ */
+export function sectionMark(lines: Pick<CardLine, 'mark'>[]): {
+  mark: LineMark
+  label: string
+} | null {
+  const mark = MARK_SEVERITY.find((m) => lines.some((l) => l.mark === m))
+  return mark ? { mark, label: MARK_LABEL[mark] } : null
+}
 
 export interface CardLine {
   /** One or two words after the name — what the card is doing, at a glance. */
@@ -40,9 +76,10 @@ export interface CardLine {
  * a dot only where the card needs you this month. Everything here is
  * composition of served figures — `set_aside`, `uncovered`, `over_reserved`,
  * `card_credit` and the account's `uncategorized_count` — and decides no
- * money. The order is the order of urgency: overspent first (it reaches Ready
- * to Assign on the 1st), then rows waiting for a category (they decide what
- * Set aside even is), then the calm positions.
+ * money. The order is the order of urgency (`MARK_SEVERITY`): overspent first
+ * (it reaches Ready to Assign on the 1st), then rows waiting for a category
+ * (they decide what Set aside even is), then debt not covered (a payment
+ * would turn it red), then the calm positions.
  */
 export function cardLine(
   card: Pick<CardStatus, 'set_aside' | 'balance' | 'uncovered' | 'over_reserved' | 'card_credit'>,
@@ -64,8 +101,8 @@ export function cardLine(
   if (card.card_credit > 0) {
     return { word: `holds ${money(card.card_credit)} of yours`, mark: null, tone, covered }
   }
-  if (card.uncovered > 0) {
-    return { word: `${money(card.uncovered)} not covered`, mark: null, tone, covered }
+  if (notCoveredWarns(card)) {
+    return { word: `${money(card.uncovered)} not covered`, mark: 'not-covered', tone, covered }
   }
   if (card.over_reserved > 0) {
     return { word: `${money(card.over_reserved)} spare`, mark: null, tone, covered }

@@ -30,7 +30,10 @@ import {
   rideMonths,
   otherCredits,
   cardLine,
+  notCoveredWarns,
+  sectionMark,
 } from './cardRow'
+import { EnvelopeListDialog } from '../EnvelopeListDialog/EnvelopeListDialog'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
@@ -54,14 +57,13 @@ import './CreditCardsSection.css'
  * like any envelope's Available — red when overspent (it is covered from
  * Ready to Assign on the 1st), green when money is waiting. The card's
  * envelope never renders in the grid; this strip is where it is read. Debt
- * not covered is deliberately calm — a bill unpaid because the due date is
- * the 8th, or a partner's share still pending, is a normal state, not
- * overspending.
+ * not covered is a warning, not overspending: nothing is wrong yet, but a
+ * payment past Set aside would turn the card red (`notCoveredWarns`).
  *
  * Sits above the category grid (below the filter bar) and folds shut; the
  * fold is a standing choice, persisted like a collapsed sidebar section.
  * Collapsed, the header still answers the one question worth interrupting
- * for: whether anything is uncovered.
+ * for: its dot is the most urgent any card's line carries (`sectionMark`).
  *
  * "Assigned" edits the card's assignment for the viewed month through the
  * same mutation the grid uses — money to a card is an ordinary assignment,
@@ -570,12 +572,15 @@ function ReleaseButton({
  * 1. Three figures: what it owes, how much of that is covered, how much not.
  * 2. At most one callout, only when something is off: a headline, one line
  *    of cause, and the fix as a button ("Assign $100.00").
- * 3. One-line notes for rows to categorize and what rode on this month.
+ * 3. One-line notes for rows to categorize and what rode on this month —
+ *    each a count and a total, with the rows one tap away.
  * 4. The assigned field, then every other door as a quiet link.
  *
  * It was paragraphs — the state, its cause and every remedy, then more
  * paragraphs for each note — and too much to read to be read at all.
- * Nothing here is a tooltip or a dialog.
+ * Nothing here is a tooltip. The one dialog is the envelope list behind the
+ * ride note: named inline, a month with many short envelopes wrapped into a
+ * paragraph of its own.
  */
 function CardDetail({
   id,
@@ -631,6 +636,8 @@ function CardDetail({
   const drift = driftSentence(card, formatMoney)
   const owed = Math.max(0, -card.balance)
   const covered = Math.min(owed, Math.max(0, card.set_aside))
+  const [rodeOpen, setRodeOpen] = useState(false)
+  const rodeCount = card.overspent_by_category.length
   return (
     <div id={id} className="credit-cards__detail">
       <dl className="credit-cards__stats">
@@ -644,7 +651,11 @@ function CardDetail({
         </div>
         <div>
           <dt>Not covered</dt>
-          <dd className="tabular">{formatMoney(card.uncovered)}</dd>
+          <dd
+            className={`tabular ${notCoveredWarns(card) ? 'credit-cards__stat--not-covered' : ''}`}
+          >
+            {formatMoney(card.uncovered)}
+          </dd>
         </div>
       </dl>
 
@@ -683,26 +694,47 @@ function CardDetail({
           </button>
         </p>
       )}
-      {/* What rode on this month, and from which envelopes — card debt, so
-        it is said on the card. The ride is a month's net, not a set of rows,
-        so each envelope opens its ordinary transactions. */}
+      {/* What rode on this month — card debt, so it is said on the card: a
+        total and a count, and the envelopes behind Show. They were named
+        inline once, and a month with a dozen short envelopes wrapped into a
+        paragraph. The ride is a month's net, not a set of rows, so an
+        envelope opens its ordinary transactions. */}
       {card.overspent_this_month > 0 && (
         <p className="credit-cards__note">
-          Rode on this month:{' '}
-          {card.overspent_by_category.map((rode, i) => (
-            <Fragment key={rode.category_id}>
-              {i > 0 && ', '}
-              <button
-                type="button"
-                className="credit-cards__inline-link"
-                onClick={() => onPeekCategory(rode.category_id, rode.category_name)}
-              >
-                {rode.category_name}
-              </button>{' '}
-              <span className="tabular">{formatMoney(rode.amount)}</span>
-            </Fragment>
-          ))}
+          <span className="tabular">{formatMoney(card.overspent_this_month)}</span> rode on this
+          month from {rodeCount === 1 ? '1 envelope' : `${rodeCount} envelopes`}
+          <button
+            type="button"
+            className="credit-cards__inline-link"
+            onClick={() => setRodeOpen(true)}
+          >
+            Show
+          </button>
         </p>
+      )}
+      {rodeOpen && (
+        <EnvelopeListDialog
+          title={`Rode on ${card.name} in ${formatMonth(month)}`}
+          historyKey="card-rode"
+          tone="warning"
+          lede={
+            <>
+              These envelopes spent more on this card than they held in {formatMonth(month)}, so the
+              card carries the difference as not covered.
+            </>
+          }
+          rows={card.overspent_by_category.map((rode) => ({
+            key: rode.category_id,
+            name: rode.category_name,
+            amount: rode.amount,
+            onOpen: () => {
+              setRodeOpen(false)
+              onPeekCategory(rode.category_id, rode.category_name)
+            },
+          }))}
+          total={card.overspent_this_month}
+          onClose={() => setRodeOpen(false)}
+        />
       )}
 
       <div className="credit-cards__assigned">
@@ -864,6 +896,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   )
 
   const toCategorize = new Map(accounts.map((a) => [a.id, a.uncategorized_count ?? 0]))
+  // Once per card, and the header reads the same lines the list draws, so
+  // the folded band's dot and the dots inside it cannot disagree.
+  const lines = cards.map((c) => cardLine(c, toCategorize.get(c.account_id) ?? 0, formatMoney))
+  const headerMark = sectionMark(lines)
 
   function commit(categoryId: string) {
     // The same rule the grid's cell uses: the box is the whole equation,
@@ -911,6 +947,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             ) : (
               <ChevronDown size={13} aria-hidden />
             )}
+            {headerMark && (
+              <span
+                className={`credit-cards__mark credit-cards__mark--${headerMark.mark}`}
+                role="img"
+                aria-label={headerMark.label}
+              />
+            )}
             <span className="section-label surface__title">Credit cards</span>
           </button>
           <span className="credit-cards__summary">
@@ -933,9 +976,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       {!collapsed && (
         <div id="credit-cards-body" className="credit-cards__body">
           <ul className="credit-cards__list" aria-label="Credit cards">
-            {cards.map((card) => {
+            {cards.map((card, i) => {
               const open = openFor === card.account_id
-              const line = cardLine(card, toCategorize.get(card.account_id) ?? 0, formatMoney)
+              const line = lines[i]
               const detailId = `credit-card-detail-${card.account_id}`
               const due = dueByAccount.get(card.account_id) ?? null
               return (

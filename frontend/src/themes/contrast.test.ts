@@ -54,6 +54,11 @@ function washPercent(file: string, selector: string): number {
 }
 
 const WISH_DONE_TINT = washPercent('components/guide/wishlist/Wishlist.css', '.wish__done')
+/** The credit-card list's ground: a wash of the accent over the chrome band. */
+const CARDS_BODY_TINT = washPercent(
+  'components/budget/CreditCardsSection/CreditCardsSection.css',
+  '.credit-cards__body'
+)
 
 type RGBA = [number, number, number, number]
 
@@ -424,6 +429,16 @@ function checksFor(theme: string): Check[] {
     wishWell,
     AA_TEXT
   )
+
+  // A card's line and its opened figures print "overspent" in red and "to
+  // categorize" / "not covered" in the warning colour at 11–13px, on the card
+  // list's accent wash rather than on the chrome band it washes.
+  const chrome = token(theme, 'surface-chrome')
+  const accent = token(theme, 'color-accent')
+  const cardList = chrome && accent ? tint(accent, chrome, CARDS_BODY_TINT) : null
+  for (const fg of ['color-warning', 'color-negative']) {
+    add(`${fg} on the credit-card list`, token(theme, fg), cardList, AA_TEXT)
+  }
 
   add(
     'input-border on input-bg',

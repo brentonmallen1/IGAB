@@ -133,7 +133,7 @@ describe('what the 1st took out of Ready to Assign', () => {
       ['An envelope', '-$5.00'],
       ['Total', '-$175.00'],
     ]) {
-      const row = within(dialog).getByText(name).closest('.last-month__row') as HTMLElement
+      const row = within(dialog).getByText(name).closest('.envelope-list__row') as HTMLElement
       expect(row.textContent).toContain(amount)
     }
   })
