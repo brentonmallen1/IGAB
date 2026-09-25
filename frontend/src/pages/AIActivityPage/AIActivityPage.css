@@ -169,6 +169,14 @@
   color: var(--text-muted);
 }
 
+/* The category the model named that resolved to none here — beside the
+   reason that names it, so the uncategorized row does not read as misfiled. */
+.ai-activity__unresolved {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
 /* Raw typed/dictated input for text entries — the source the draft came from */
 .ai-activity__source {
   margin-top: 2px;

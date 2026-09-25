@@ -82,6 +82,58 @@ class TestMatchCategory:
         assert match_category("Tech (A)", candidates) == 0
 
 
+class TestDashSuffixTargets:
+    """Reported 2026-09-24: a budget whose names carry the funding
+    reminder as a dash suffix ("Garden – $150"). The model returned "Garden"
+    with a correct reason, the matcher found nothing at any tier, and payee
+    history filed the receipt somewhere unrelated."""
+
+    def test_the_reported_shapes_normalize_to_their_stem(self):
+        assert normalize_category_name("Garden – $150") == "garden"
+        assert normalize_category_name("Home Repair – $100x2") == "home repair"
+        assert normalize_category_name("Gifts - ~$200") == "gifts"
+        assert normalize_category_name("Insurance – $107/12") == "insurance"
+        assert normalize_category_name("Travel — ≈$900") == "travel"
+
+    def test_a_hyphen_inside_a_name_is_part_of_it(self):
+        assert normalize_category_name("Wi-Fi") == "wi-fi"
+        assert normalize_category_name("Back-to-school") == "back-to-school"
+        assert match_category("Wi-Fi", [("Wi-Fi", "Bills"), ("Wi", "Bills")]) == 0
+
+    def test_the_stem_reaches_the_suffixed_category(self):
+        candidates = [("Garden – $150", "Home"), ("Utilities", "Bills")]
+        assert match_category("Garden", candidates) == 0
+        assert match_category("Garden – $150", candidates) == 0
+        assert match_category("garden", candidates) == 0
+
+    def test_every_reported_spelling_matches(self):
+        for name in ("A – $150", "A - ~$200", "A – $107/12"):
+            assert match_category("A", [(name, "G"), ("B", "G")]) == 0, name
+            assert match_category("a", [(name, "G"), ("B", "G")]) == 0, name
+
+    def test_two_targets_on_one_stem_stay_ambiguous(self):
+        candidates = [("A – $50", "One"), ("A – $75", "Two")]
+        assert match_category("A", candidates) is None
+        assert match_category("A (Two)", candidates) == 1
+
+
+class TestUniquePrefix:
+    def test_decoration_of_an_unanticipated_shape(self):
+        candidates = [("Garden: 150/mo", "Home"), ("Utilities", "Bills")]
+        assert match_category("Garden", candidates) == 0
+
+    def test_a_bare_space_is_not_a_separator(self):
+        # "Home" must never reach "Home Repair" by prefix.
+        assert match_category("Home", [("Home Repair", "House")]) is None
+
+    def test_two_prefixed_candidates_never_guess(self):
+        candidates = [("Garden: spring", "Home"), ("Garden: fall", "Home")]
+        assert match_category("Garden", candidates) is None
+
+    def test_only_decoration_matches_nothing(self):
+        assert match_category("{$10}", [("Tech {$10}", "Fun")]) is None
+
+
 class TestCanonicalLabel:
     def test_unique_name_stays_bare(self):
         candidates = [("Tech {$10}*", "Fun"), ("Gifts", "Household")]

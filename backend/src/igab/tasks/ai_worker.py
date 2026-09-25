@@ -93,25 +93,6 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
-def _draft_result_json(draft) -> dict:
-    return {
-        "extraction": draft.raw,
-        "draft": {
-            "payee": draft.payee_name,
-            "amount": str(draft.amount),
-            "date": draft.date.isoformat(),
-            "category": draft.category_name,
-            "memo": draft.memo,
-            "confidence": draft.confidence,
-        },
-        "suggested_split": (
-            [{"category": s.category_name, "amount": str(s.amount)} for s in draft.suggested_split]
-            if draft.suggested_split
-            else None
-        ),
-    }
-
-
 def _build_services(session: AsyncSession):
     from igab.repositories.attachment_repo import AttachmentRepository
     from igab.repositories.settings_repo import SettingsRepository
@@ -141,7 +122,7 @@ async def process_one_job(session: AsyncSession, job: AIJob) -> None:
 
 
 async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
-    from igab.services.ai_draft_service import parse_extraction
+    from igab.services.ai_draft_service import draft_result_json, parse_extraction
     from igab.services.ai_service import prepare_image_for_model
 
     payload = job.payload or {}
@@ -255,7 +236,7 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         )
         job.attachment_id = attachment.id
 
-    result = _draft_result_json(draft)
+    result = draft_result_json(draft)
     # Raw response on success too: "extraction" is the parsed object, and a
     # thinking transcript exists only here.
     result.update(debug_view(svcs["ai"].gateway.last_result))

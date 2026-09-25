@@ -167,6 +167,35 @@ class TestCategories:
         )
         assert draft.category_name is None
 
+    def test_an_unresolved_name_is_kept_as_the_models_opinion(self):
+        draft = parse_extraction(
+            receipt(category="Fun Money"),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert draft.category_unresolved == "Fun Money"
+
+    def test_a_resolved_or_absent_name_is_not_unresolved(self):
+        for value in ("Groceries", None, "", "   "):
+            draft = parse_extraction(
+                receipt(category=value),
+                kind="receipt",
+                client_today=TODAY,
+                category_names=CATEGORIES,
+            )
+            assert draft.category_unresolved is None, value
+
+    def test_an_ambiguous_name_is_unresolved(self):
+        draft = parse_extraction(
+            receipt(category="Gifts"),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=[("Gifts", "A"), ("Gifts", "B")],
+        )
+        assert draft.category_name is None
+        assert draft.category_unresolved == "Gifts"
+
     def test_no_category_names_provided_drops_category(self):
         draft = parse_extraction(receipt(category="Groceries"), kind="receipt", client_today=TODAY)
         assert draft.category_name is None

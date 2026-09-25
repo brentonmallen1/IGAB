@@ -38,7 +38,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.ai_draft_service import AIDraftService, parse_extraction
+from igab.services.ai_draft_service import AIDraftService, draft_result_json, parse_extraction
 from igab.services.ai_service import AIService
 from igab.services.settings_service import SettingsService
 from igab.services.transaction_service import TransactionService
@@ -419,17 +419,7 @@ async def parse_nl_transaction(
     category_id = await AIDraftService(txn_svc).resolve_category(budget_id, draft.category_name)
     job.status = "done"
     job.finished_at = datetime.now(UTC)
-    result: dict = {
-        "extraction": draft.raw,
-        "draft": {
-            "payee": draft.payee_name,
-            "amount": str(draft.amount),
-            "date": draft.date.isoformat(),
-            "category": draft.category_name,
-            "memo": draft.memo,
-            "confidence": draft.confidence,
-        },
-    }
+    result = draft_result_json(draft)
     result.update(debug_view(ai_svc.gateway.last_result))
     job.result = result
     session.add(job)

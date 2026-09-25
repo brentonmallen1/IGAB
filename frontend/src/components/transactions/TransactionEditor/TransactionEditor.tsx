@@ -75,6 +75,7 @@ import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
+import { unresolvedCategoryNote } from '../../ai/draftNotes'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
@@ -745,6 +746,11 @@ export function TransactionEditor({
                     ? ` · ${Math.round((aiJob!.result.draft.confidence ?? 0) * 100)}% confidence`
                     : ''}
                 </span>
+                {unresolvedCategoryNote(aiJob!.result?.draft) && (
+                  <span className="txn-editor__ai-banner-note">
+                    {unresolvedCategoryNote(aiJob!.result?.draft)}
+                  </span>
+                )}
               </>
             )}
             {aiJob!.status === 'error' && (

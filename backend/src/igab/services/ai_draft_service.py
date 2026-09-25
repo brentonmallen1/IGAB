@@ -51,6 +51,12 @@ class AIDraft:
     # auto-applied — offered to the user in the review modal.
     suggested_split: list[SplitLine] | None
     raw: dict = field(default_factory=dict)
+    #: The category the model NAMED when it named one this budget could not
+    #: resolve to exactly one category (no such name, or several). Distinct
+    #: from "the model had no opinion": that falls through to payee history,
+    #: this must not — history filed a garden receipt in an unrelated
+    #: envelope while the model's reason, shown beside it, named Garden.
+    category_unresolved: str | None = None
 
 
 def _parse_amount(value: object) -> Decimal:
@@ -193,7 +199,8 @@ def parse_extraction(
     else:
         raise InvariantViolation(f"Unknown AI draft kind: {kind}")
 
-    matched = match_category(_clean_str(raw.get("category")), candidates)
+    named = _clean_str(raw.get("category"))
+    matched = match_category(named, candidates)
     category_name = canonical_label(matched, candidates) if matched is not None else None
 
     try:
@@ -214,7 +221,30 @@ def parse_extraction(
         confidence=confidence,
         suggested_split=suggested_split,
         raw=raw,
+        category_unresolved=named if named and category_name is None else None,
     )
+
+
+def draft_result_json(draft: AIDraft) -> dict:
+    """What an AI job records about the draft it produced — the one shape the
+    receipt worker and the text-entry endpoint both store in `job.result`."""
+    return {
+        "extraction": draft.raw,
+        "draft": {
+            "payee": draft.payee_name,
+            "amount": str(draft.amount),
+            "date": draft.date.isoformat(),
+            "category": draft.category_name,
+            "category_unresolved": draft.category_unresolved,
+            "memo": draft.memo,
+            "confidence": draft.confidence,
+        },
+        "suggested_split": (
+            [{"category": s.category_name, "amount": str(s.amount)} for s in draft.suggested_split]
+            if draft.suggested_split
+            else None
+        ),
+    }
 
 
 class AIDraftService:
@@ -250,5 +280,9 @@ class AIDraftService:
             memo=draft.memo,
             approved=False,
             created_via=created_via,
+            # Payee history is for a draft with no opinion. A category the
+            # model named and we failed to resolve is an opinion; guessing
+            # over it reads as the AI mis-filing.
+            auto_categorize=draft.category_unresolved is None,
         )
         return await self.transactions.create(budget_id, data)

@@ -13,6 +13,10 @@ export interface AIJobDraft {
   amount: string
   date: string
   category: string | null
+  /** The category the model named when it resolved to no single category
+   *  here (`AIDraft.category_unresolved`). Absent on jobs recorded before it
+   *  existed. */
+  category_unresolved?: string | null
   memo: string | null
   confidence: number
 }

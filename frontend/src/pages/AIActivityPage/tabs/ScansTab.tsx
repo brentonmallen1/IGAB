@@ -33,6 +33,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import '../AIActivityPage.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { scanFailureReason } from '../../../components/transactions/TransactionEditor/scanFailure'
+import { unresolvedCategoryNote } from '../../../components/ai/draftNotes'
 
 const PAGE_SIZE = 50
 
@@ -133,6 +134,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
 
   const draft = job.result?.draft
   const reason = job.result?.extraction?.reason
+  const unresolved = unresolvedCategoryNote(draft)
   const title =
     draft?.payee ??
     job.payload.text ??
@@ -236,6 +238,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             {reason}
           </div>
         )}
+        {unresolved && <div className="ai-activity__unresolved">{unresolved}</div>}
         {job.error && (
           <div className="ai-activity__error">
             <button className="ai-activity__error-toggle" onClick={() => setErrorOpen((v) => !v)}>
