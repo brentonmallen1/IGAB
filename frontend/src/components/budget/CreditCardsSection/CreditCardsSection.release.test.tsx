@@ -3,7 +3,7 @@
  *
  * Offered on any card holding money, not only one with a surplus. Set aside
  * is committed to a bill, but committing it was a decision and so is taking
- * it back — and past the spare it raises that card's Uncovered dollar for
+ * it back — and past the spare it raises what that card has not covered dollar for
  * dollar. The app's job is to say so, not to refuse.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
@@ -109,7 +109,7 @@ describe('releaseAnchors', () => {
   it('states the consequence past the spare, and caps at what is held', () => {
     const lines = releaseAnchors(card(), money).lines.join(' ')
     expect(lines).toContain('$5900.00 is spare')
-    expect(lines).toMatch(/Uncovered rises/)
+    expect(lines).toMatch(/debt not covered/)
     expect(lines).toMatch(/That is allowed/)
   })
 
@@ -159,7 +159,9 @@ describe('the Release door', () => {
     show(card())
     await openCard()
     await userEvent.click(screen.getByLabelText('Release money from Sapphire Visa'))
-    expect(screen.getByText(/Uncovered rises by every dollar/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/every dollar you take out is a dollar of this card's debt not covered/)
+    ).toBeInTheDocument()
   })
 
   it('moves money out of the card envelope to Ready to Assign', async () => {

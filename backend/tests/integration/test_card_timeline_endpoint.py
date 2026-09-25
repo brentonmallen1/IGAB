@@ -90,3 +90,42 @@ async def test_a_cash_account_is_not_a_card(api_client, db_session):
         f"/api/v1/{budget.id}/cards/{checking.id}/timeline/{TODAY.isoformat()}"
     )
     assert resp.status_code == 404
+
+
+async def test_the_1st_that_covered_last_month_is_a_leg_of_its_own(api_client, db_session):
+    """Paid 300 past what was set aside last month: this month's row carries
+    the 300 covered from Ready to Assign on the 1st, and every row's legs add
+    up to what that month did. Without the leg served, the drill-down's list
+    summed to −300 beside a Set aside of 0."""
+    services, budget, checking, card, cat = await _card_world(db_session, api_client.test_user)
+    this_month = TODAY.replace(day=1)
+    last = (this_month - timedelta(days=1)).replace(day=15)
+    await create_transaction(db_session, budget, card, "-2000.00", LONG_AGO)
+    await services.budgets.set_assignment(budget.id, cat.id, last.replace(day=1), Decimal("200.00"))
+    await create_transaction(db_session, budget, card, "-200.00", last, category=cat)
+    await create_card_payment(services, budget, checking, card, "500.00", last)
+    await db_session.commit()
+
+    resp = await api_client.get(f"/api/v1/{budget.id}/cards/{card.id}/timeline/{TODAY.isoformat()}")
+    months = {m["month"]: m for m in resp.json()["months"]}
+    now = months[this_month.isoformat()]
+    assert Decimal(now["written_off"]) == Decimal("300.00")
+    assert Decimal(now["set_aside"]) == Decimal("0.00")
+    assert Decimal(months[last.replace(day=1).isoformat()]["set_aside"]) == Decimal("-300.00")
+
+    signs = {
+        "opening": 1,
+        "assigned": 1,
+        "reserved": 1,
+        "released": -1,
+        "residual": -1,
+        "payments": -1,
+        "written_off": 1,
+    }
+    for m in months.values():
+        moved = sum((sign * Decimal(m[leg]) for leg, sign in signs.items()), Decimal("0"))
+        assert moved == Decimal(m["reserve_delta"]), m["month"]
+
+    summary = await api_client.get(f"/api/v1/{budget.id}/months/{TODAY.isoformat()}")
+    served = next(c for c in summary.json()["cards"] if c["name"] == "Sapphire Visa")
+    assert Decimal(served["written_off"]) == Decimal("300.00")

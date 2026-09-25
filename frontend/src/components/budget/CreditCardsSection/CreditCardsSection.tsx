@@ -49,13 +49,16 @@ import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import './CreditCardsSection.css'
 
 /**
- * The budget's cards — Balance / Set aside / Uncovered, served whole by the
- * month endpoint (`cards` on BudgetMonth; the model is domain/cards.py).
+ * The budget's cards, served whole by the month endpoint (`cards` on
+ * BudgetMonth; the model is domain/cards.py).
  *
- * A card is not an envelope: its set-aside category never renders in the
- * grid, and Uncovered is deliberately calm — a bill unpaid because the due
- * date is the 8th, or a partner's share still pending, is a normal state,
- * not overspending. Color marks nothing here; the numbers carry it.
+ * Each card is one line: a word, a covered/owed bar, and its Set aside drawn
+ * like any envelope's Available — red when overspent (it is covered from
+ * Ready to Assign on the 1st), green when money is waiting. The card's
+ * envelope never renders in the grid; this strip is where it is read. Debt
+ * not covered is deliberately calm — a bill unpaid because the due date is
+ * the 8th, or a partner's share still pending, is a normal state, not
+ * overspending.
  *
  * Sits above the category grid (below the filter bar) and folds shut; the
  * fold is a standing choice, persisted like a collapsed sidebar section.
@@ -67,8 +70,8 @@ import './CreditCardsSection.css'
  * undo included.
  */
 /**
- * The five legs a card's Set aside is the running total of, plus what is
- * still riding on the card uncovered.
+ * The legs a card's Set aside is the running total of, plus what is still
+ * riding on the card not covered.
  *
  * Served, never summed here: `set_aside` already comes from the server, and a
  * client-side second opinion about what a reserve is made of is the exact
@@ -461,9 +464,9 @@ function breachSentence(
   }
   const [leg] = breach.legs
   const cause = leg ? ` — ${legPhrases[leg.leg] ?? leg.leg} (${formatMoney(leg.amount)})` : ''
-  return `Set aside first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
+  return `First overspent in ${formatMonth(breach.month)}: Set aside went from ${formatMoney(
     breach.set_aside_before
-  )} → ${formatMoney(breach.set_aside_after)}${cause}.`
+  )} to ${formatMoney(breach.set_aside_after)}${cause}.`
 }
 
 /**
@@ -479,8 +482,8 @@ function breachSentence(
  * Offered on ANY card holding money, not only one with a surplus. The money
  * is committed to a bill, but committing it was a decision and so is taking
  * it back — needing that cash elsewhere this month is a real situation. Past
- * the spare it raises this card's Uncovered dollar for dollar, so the form
- * says that instead of refusing.
+ * the spare every dollar out is a dollar of this card's debt not covered, so
+ * the form says that instead of refusing.
  */
 function ReleaseButton({
   budgetId,

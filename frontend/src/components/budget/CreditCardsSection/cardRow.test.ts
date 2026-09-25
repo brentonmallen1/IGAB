@@ -438,7 +438,7 @@ describe('pendingNote', () => {
 })
 
 describe('reserveLegs', () => {
-  it('names the five terms, in order, with the sign each carries', () => {
+  it('names the terms, in order, with the sign each carries', () => {
     const legs = reserveLegs({
       assigned: 40,
       reserved: 100,
@@ -446,6 +446,7 @@ describe('reserveLegs', () => {
       residual: 7,
       payments: 5,
       opening: 0,
+      written_off: 30,
     })
     expect(legs.map((l) => [l.label, l.sign])).toEqual([
       ['Assigned to this card', '+'],
@@ -453,7 +454,25 @@ describe('reserveLegs', () => {
       ['Released by refunds', '−'],
       ['Refunds beyond what was reserved', '−'],
       ['Paid to the card', '−'],
+      ['Covered from Ready to Assign on the 1st', '+'],
     ])
+  })
+
+  it('adds up to Set aside once a month has been covered on the 1st', () => {
+    // Paid 100 past the 50 set aside in July; August's 1st covered the 50
+    // below zero. Without the covered leg the list summed to −50 beside a
+    // Set aside of 0, and "what makes up Set aside" did not make it up.
+    const legs = reserveLegs({
+      assigned: 50,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 100,
+      opening: 0,
+      written_off: 50,
+    })
+    const total = legs.reduce((sum, l) => sum + (l.sign === '+' ? l.value : -l.value), 0)
+    expect(total).toBe(0)
   })
 
   it('drops a leg that never moved — a month lists what happened', () => {
@@ -464,6 +483,7 @@ describe('reserveLegs', () => {
       residual: 0,
       payments: 150,
       opening: 0,
+      written_off: 0,
     })
     expect(legs).toHaveLength(1)
     expect(legs[0]).toEqual({ label: 'Paid to the card', value: 150, sign: '−' })
@@ -471,7 +491,15 @@ describe('reserveLegs', () => {
 
   it('returns nothing at all for a month where nothing moved', () => {
     expect(
-      reserveLegs({ assigned: 0, reserved: 0, released: 0, residual: 0, payments: 0, opening: 0 })
+      reserveLegs({
+        assigned: 0,
+        reserved: 0,
+        released: 0,
+        residual: 0,
+        payments: 0,
+        opening: 0,
+        written_off: 0,
+      })
     ).toEqual([])
   })
 
@@ -486,6 +514,7 @@ describe('reserveLegs', () => {
       residual: 0,
       payments: 0,
       opening: 0,
+      written_off: 0,
     })
     const oneMonth = reserveLegs({
       assigned: 5,
@@ -494,6 +523,7 @@ describe('reserveLegs', () => {
       residual: 0,
       payments: 0,
       opening: 0,
+      written_off: 0,
     })
     expect(lifetime.map((l) => l.sign)).toEqual(oneMonth.map((l) => l.sign))
     expect(lifetime.map((l) => l.label)).toEqual(oneMonth.map((l) => l.label))
@@ -504,6 +534,7 @@ describe('the opening leg', () => {
   it('leads the list on an anchored budget', () => {
     const legs = reserveLegs({
       opening: 150,
+      written_off: 0,
       assigned: 250,
       reserved: 100,
       released: 0,
@@ -516,6 +547,7 @@ describe('the opening leg', () => {
   it('is omitted everywhere else, like any zero leg', () => {
     const legs = reserveLegs({
       opening: 0,
+      written_off: 0,
       assigned: 250,
       reserved: 0,
       released: 0,

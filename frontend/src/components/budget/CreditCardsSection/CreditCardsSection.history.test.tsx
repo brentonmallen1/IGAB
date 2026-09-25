@@ -73,6 +73,7 @@ function tlMonth(m: string, over: Record<string, number> = {}) {
     covered: 0,
     ride_reaches_this_card: true,
     opening: 0,
+    written_off: 0,
     uncovered: 0,
     over_reserved: 0,
     short_reserved: 0,
@@ -193,7 +194,7 @@ describe('the month-by-month history', () => {
     for (const row of dataRows()) expect(row.getAttribute('title')).toBeNull()
   })
 
-  it('marks the month the reserve first went below zero', async () => {
+  it('marks the month the card was first overspent', async () => {
     timeline.current = {
       account_id: 'a1',
       name: 'Sapphire Visa',
@@ -206,7 +207,7 @@ describe('the month-by-month history', () => {
       },
     }
     await openHistory()
-    expect(screen.getByText(/first went below zero in January 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/First overspent in January 2026/)).toBeInTheDocument()
     const marked = dataRows().filter((r) => r.className.includes('--breach'))
     expect(marked).toHaveLength(1)
     expect(marked[0].textContent).toContain('January 2026')

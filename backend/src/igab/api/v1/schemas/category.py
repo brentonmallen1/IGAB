@@ -663,6 +663,9 @@ class CardTimelineMonthOut(ApiModel):
     released: Decimal
     residual: Decimal
     payments: Decimal
+    #: Last month's overspending on the card, covered from Ready to Assign on
+    #: this month's 1st. Brings a Set aside that ended below zero back to it.
+    written_off: Decimal
     #: What this month did to the reserve, signed — served so the client
     #: ranks rather than re-deriving the legs' arithmetic.
     reserve_delta: Decimal

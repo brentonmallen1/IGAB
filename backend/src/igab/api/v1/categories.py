@@ -694,6 +694,7 @@ async def get_card_timeline(
                 released=cm.legs["released"],
                 residual=cm.legs["residual"],
                 payments=cm.legs["payments"],
+                written_off=cm.legs["written_off"],
                 reserve_delta=cm.reserve_delta,
                 set_aside=cm.set_aside,
                 balance=cm.balance,

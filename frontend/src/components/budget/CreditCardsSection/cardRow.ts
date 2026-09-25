@@ -132,10 +132,9 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
     case 'surplus':
       return {
         sentence:
-          `${money(card.over_reserved)} more is set aside than this card owes. Money assigned ` +
-          `to a card stays in its envelope until riding debt turns up to retire, so on a card ` +
-          `you pay from funded envelopes it simply accumulates.`,
-        action: 'Release it and it goes back to Ready to Assign, where it came from.',
+          `${money(card.over_reserved)} more is set aside than this card owes: money assigned ` +
+          `to the card that no debt has needed.`,
+        action: 'Keep it for the next bill, or release it back to Ready to Assign.',
       }
 
     case 'card_holds_it':
@@ -206,8 +205,7 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
       return {
         sentence:
           `${money(card.short_reserved)} more was moved out of this card's envelope than it ` +
-          `held. No payment happened and nothing came back onto the card — the money is in ` +
-          `Ready to Assign, or wherever it was moved, and the envelope is overdrawn.`,
+          `held, so the envelope is overdrawn.`,
         action: thisMonthOrNext(money(card.short_reserved)),
       }
 
@@ -260,11 +258,11 @@ export interface ReleaseAnchors {
  * money committed to a bill, but committing it is a decision and so is
  * un-committing it: needing that cash for something else this month is a real
  * situation, and the app's job is to say what it does, not to refuse it. The
- * consequence is stated rather than enforced — past the spare, Uncovered
- * rises dollar for dollar, which is a deliberate choice to carry more of this
+ * consequence is stated rather than enforced — past the spare, what is not
+ * covered rises dollar for dollar, which is a deliberate choice to carry more of this
  * card's balance.
  *
- * Two served anchors and no third figure. "Uncovered after this" would need
+ * Two served anchors and no third figure. "Not covered after this" would need
  * either a preview endpoint or a second copy of `card_position` on the client,
  * and a client-side second opinion about a card's position is the defect this
  * whole section exists to end.
@@ -277,13 +275,13 @@ export function releaseAnchors(card: CardStatus, money: Money): ReleaseAnchors {
       ? [
           `${money(spare)} is spare — more than this card owes. Releasing up to that leaves ` +
             `the card exactly as covered as it is now.`,
-          `Past ${money(spare)}, Uncovered rises by every dollar you take out. That is allowed: ` +
-            `it means choosing to carry more of this balance.`,
+          `Past ${money(spare)}, every dollar you take out is a dollar of this card's debt not ` +
+            `covered. That is allowed: it means choosing to carry more of the balance.`,
         ]
       : [
           `${money(held)} is set aside for this card's bill, and none of it is spare.`,
-          `Uncovered rises by every dollar you take out. That is allowed: it means choosing ` +
-            `to carry more of this balance.`,
+          `Every dollar you take out is a dollar of this card's debt not covered. That is ` +
+            `allowed: it means choosing to carry more of the balance.`,
         ]
   // Prefill the spare, or nothing: prefilling `held` proposed emptying an
   // envelope that was exactly covering its bill. `ceiling` is what the form
@@ -369,7 +367,7 @@ export interface CardLeg {
   sign: '+' | '−'
 }
 
-/** The five terms a reserve is made of. */
+/** The terms a reserve is made of. */
 export interface ReserveTerms {
   assigned: number
   reserved: number
@@ -379,6 +377,9 @@ export interface ReserveTerms {
   /** An import anchor's B−1 seed (server: CardStatusOut.opening /
    *  CardTimelineMonthOut.opening). Zero everywhere but anchored budgets. */
   opening: number
+  /** Overspending covered from Ready to Assign on a 1st (server:
+   *  CardStatusOut.written_off / CardTimelineMonthOut.written_off). */
+  written_off: number
 }
 
 /**
@@ -402,6 +403,7 @@ export function reserveLegs(terms: ReserveTerms): CardLeg[] {
       { label: 'Released by refunds', value: terms.released, sign: '−' },
       { label: 'Refunds beyond what was reserved', value: terms.residual, sign: '−' },
       { label: 'Paid to the card', value: terms.payments, sign: '−' },
+      { label: 'Covered from Ready to Assign on the 1st', value: terms.written_off, sign: '+' },
     ] satisfies CardLeg[]
   ).filter((leg) => leg.value !== 0)
 }
