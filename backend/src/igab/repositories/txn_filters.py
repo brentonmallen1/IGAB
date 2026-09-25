@@ -394,6 +394,11 @@ ON_CARD_ACCOUNT = Transaction.account_id.in_(
     .where(CARD_ACCOUNT, Account.budget_id == Transaction.budget_id)
     .correlate(Transaction)
 )
+#: A correction of a card's own ledger — its starting balance, or a
+#: reconciliation adjustment. Debt the card records, never a purchase for an
+#: envelope: not work to categorize (`NEEDS_CATEGORY`), and not a charge
+#: wrongly filed as income (`CARD_ROW_FILED_AS_INCOME`).
+CARD_LEDGER_CORRECTION = and_(ON_CARD_ACCOUNT, BALANCE_ADJUSTMENT_ROW)
 #: The row is not older than its account's place in the budget.
 #:
 #: A synced account arrives with whatever history the bank kept, and that
@@ -551,12 +556,23 @@ UNPAIRED_TRANSFER_LEG = and_(
 #: account's arrival in the budget is opening position, not unfiled work. See
 #: `Account.budget_start_date` — NULL there means the account never answered
 #: the question, and nothing changes.
+#:
+#: The third is `CARD_LEDGER_CORRECTION`, and it is the one place this rule
+#: parts from "counts as budget cash flow" — on purpose, and bounded to rows
+#: under a `BALANCE_ADJUSTMENT_PAYEES` name on a card. A card's starting
+#: balance is debt it arrived with; no envelope ever paid for it, so it sits in
+#: the card's Not covered and is retired by assigning to the card
+#: (domain/cards.py). Asking for a category read "1 to categorize" on every
+#: card created with a balance, forever — seven of seventeen sample cards —
+#: and filing one in an envelope would book the old debt as this month's
+#: spending. Pinned in test_needs_category_card_corrections.py.
 NEEDS_CATEGORY = and_(
     Transaction.category_id.is_(None),
     LEAF,
     ON_BUDGET_ACCOUNT,
     CASH_FLOW_ROW,
     AFTER_BUDGET_START,
+    not_(CARD_LEDGER_CORRECTION),
 )
 
 
@@ -767,7 +783,7 @@ CARD_ROW_FILED_AS_INCOME = and_(
     Transaction.amount < 0,
     row_category(IN_SYSTEM_GROUP),
     ON_CARD_ACCOUNT,
-    not_(BALANCE_ADJUSTMENT_ROW),
+    not_(CARD_LEDGER_CORRECTION),
 )
 
 
