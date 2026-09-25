@@ -64,6 +64,10 @@ import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 
 type Direction = 'outflow' | 'inflow'
 
+/** What tapping Scan or Save goes on to do once the account it asked for is
+ *  chosen. */
+type AfterAccount = 'scan' | 'save' | 'save-another'
+
 /** Sentinel for the plain Category row, so one picker can also serve the
  *  split legs, which address themselves by tempId. */
 const SINGLE_CATEGORY = '__single__'
@@ -122,13 +126,13 @@ export function QuickAddSheet() {
   // mounted over the first fights it for the viewport on a phone.
   const [categorySheetFor, setCategorySheetFor] = useState<string | null>(null)
   const [accountSheetOpen, setAccountSheetOpen] = useState(false)
-  // Scan was tapped before an account was chosen. The Account row carries a
-  // warning until it is answered, so a dismissed picker still says why
-  // nothing happened.
-  const [accountAsked, setAccountAsked] = useState(false)
-  // The account picker was opened by Scan: choosing an account goes on to the
-  // camera. A ref, not state — it is read inside the same tap that picks.
-  const scanAfterAccountRef = useRef(false)
+  // Scan or Save was tapped before an account was chosen. The Account row
+  // carries a warning until it is answered, so a dismissed picker still says
+  // what is waiting on it.
+  const [accountAskedFor, setAccountAskedFor] = useState<AfterAccount | null>(null)
+  // What the account picker was opened for: choosing an account carries it
+  // on. A ref, not state — it is read inside the same tap that picks.
+  const afterAccountRef = useRef<AfterAccount | null>(null)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
@@ -173,10 +177,10 @@ export function QuickAddSheet() {
     setFailedScans([])
     setScanTotal(0)
     setScanDone(0)
-    setAccountAsked(false)
+    setAccountAskedFor(null)
     // No account, deliberately: a pre-selected one is a choice nobody made,
     // and receipts went to whichever account the last entry happened to use.
-    // Save stays disabled until this is answered; Scan asks for it.
+    // Save and Scan ask for it rather than assume one.
     setAccountId(null)
   }, [open])
 
@@ -287,28 +291,31 @@ export function QuickAddSheet() {
    * is usually taken at a checkout on poor cellular, which is exactly when
    * silently discarding it would hurt most.
    */
-  function startScan() {
-    if (accountId) {
-      aiScanInputRef.current?.click()
-      return
-    }
-    // A receipt is queued against an account, and none is chosen yet. Ask
-    // rather than sit disabled: a greyed-out Scan with no reason on screen
-    // reads as broken.
-    setAccountAsked(true)
-    scanAfterAccountRef.current = true
+  /** Scan or Save with no account chosen: ask for it rather than sit
+   *  disabled — a greyed-out button with no reason on screen reads as broken. */
+  function askForAccount(next: AfterAccount) {
+    setAccountAskedFor(next)
+    afterAccountRef.current = next
     setAccountSheetOpen(true)
+  }
+
+  function startScan() {
+    if (accountId) aiScanInputRef.current?.click()
+    else askForAccount('scan')
   }
 
   function chooseAccount(id: string) {
     setAccountId(id)
-    setAccountAsked(false)
-    if (scanAfterAccountRef.current) {
-      scanAfterAccountRef.current = false
-      // Still inside the tap that picked the account, which is what lets iOS
-      // open the camera from here; deferring it would lose the gesture.
-      aiScanInputRef.current?.click()
-    }
+    setAccountAskedFor(null)
+    const next = afterAccountRef.current
+    afterAccountRef.current = null
+    // Still inside the tap that picked the account, which is what lets iOS
+    // open the camera from here; deferring it would lose the gesture.
+    if (next === 'scan') aiScanInputRef.current?.click()
+    // The render that knows the new account has not happened yet, so the
+    // save is handed it directly.
+    else if (next === 'save') void save(false, id)
+    else if (next === 'save-another') void save(true, id)
   }
 
   async function scanReceipts(files: File[]) {
@@ -390,7 +397,8 @@ export function QuickAddSheet() {
   const remainingCents = splitCheck.remainingCents
   const splitIsValid = !isSplit || splitCheck.isValid
 
-  const canSave = amountValid && !!accountId && !saving && splitIsValid
+  // Everything Save needs except the account, which Save asks for itself.
+  const entryComplete = amountValid && !saving && splitIsValid
 
   function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
     setSplits((prev) => prev.map((sp) => (sp.tempId === tempId ? { ...sp, ...data } : sp)))
@@ -422,8 +430,13 @@ export function QuickAddSheet() {
     setSplits(freshSplits())
   }
 
-  async function save(addAnother: boolean) {
-    if (!canSave || !budgetId || !accountId) return
+  function requestSave(addAnother: boolean) {
+    if (accountId) void save(addAnother, accountId)
+    else askForAccount(addAnother ? 'save-another' : 'save')
+  }
+
+  async function save(addAnother: boolean, account: string) {
+    if (!entryComplete || !budgetId) return
     const sign = direction === 'outflow' ? -1 : 1
     const signed = (cents / 100) * sign
 
@@ -456,7 +469,7 @@ export function QuickAddSheet() {
     setSaving(true)
     try {
       const txn = await createTxn.mutateAsync({
-        account_id: accountId,
+        account_id: account,
         date,
         amount: signed,
         payee_id: payeeId ?? undefined,
@@ -468,7 +481,7 @@ export function QuickAddSheet() {
         approved: true,
         ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
       })
-      noteAccountUsed(accountId)
+      noteAccountUsed(account)
 
       // Transaction first, receipts second — the money record always wins.
       // Failed photos stay in the camera roll; retry from the editor.
@@ -563,15 +576,15 @@ export function QuickAddSheet() {
           <div className="quick-add__footer">
             <button
               className="quick-add__save-another press-scale"
-              disabled={!canSave}
-              onClick={() => save(true)}
+              disabled={!entryComplete}
+              onClick={() => requestSave(true)}
             >
               Save & add another
             </button>
             <button
               className="quick-add__save press-scale"
-              disabled={!canSave}
-              onClick={() => save(false)}
+              disabled={!entryComplete}
+              onClick={() => requestSave(false)}
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -785,14 +798,17 @@ export function QuickAddSheet() {
             {/* The warning waits for the picker to close, so the pulse plays
                 where it can be seen rather than behind the sheet. */}
             <button
-              className={`quick-add__row ${accountAsked && !accountSheetOpen ? 'quick-add__row--asked' : ''}`}
+              className={`quick-add__row ${accountAskedFor && !accountSheetOpen ? 'quick-add__row--asked' : ''}`}
               onClick={() => setAccountSheetOpen(true)}
             >
               <span className="quick-add__row-label">Account</span>
               <span
                 className={`quick-add__row-value ${accountName ? '' : 'quick-add__row-value--empty'}`}
               >
-                {accountName || (accountAsked ? 'Choose account to scan' : 'Choose account')}
+                {accountName ||
+                  (accountAskedFor
+                    ? `Choose account to ${accountAskedFor === 'scan' ? 'scan' : 'save'}`
+                    : 'Choose account')}
               </span>
               <ChevronRight size={16} className="quick-add__row-chevron" />
             </button>
@@ -1041,7 +1057,7 @@ export function QuickAddSheet() {
       <SelectionSheet
         open={accountSheetOpen}
         onClose={() => {
-          scanAfterAccountRef.current = false
+          afterAccountRef.current = null
           setAccountSheetOpen(false)
         }}
         title="Account"
