@@ -269,6 +269,46 @@ class TestANegativeSetAsideIsOverspending:
         assert august.to_be_assigned == D("900.00")
         assert all(c.written_off == D("0") for c in august.cards)
 
+    async def test_a_red_card_envelope_is_overspent_and_cover_overspent_covers_it(self, db_session):
+        """Overspent like any envelope, so it is counted like one and Cover
+        Overspent offers to fix it — by assigning to the card, which squares
+        it now instead of on the 1st."""
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-100.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        july = await _summary(services, budget, JUL)
+        # Groceries' red is the ride (credit) and the card's is its own: both
+        # are overspending, and only the card's is cash-side.
+        assert july.total_overspent == D("200.00")
+        assert july.total_overspent_credit == D("100.00")
+        assert july.overspent_count == 2
+        preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
+        by_id = {i.category_id: i for i in preview.items}
+        assert by_id[linked.id].overspent == D("100.00")
+        assert by_id[linked.id].credit_overspent == D("0")
+
+        await services.budgets.cover_overspent_apply(budget.id, JUL, [(linked.id, D("100.00"))])
+        covered = await _summary(services, budget, JUL)
+        assert covered.cards[0].set_aside == D("0.00")
+        assert covered.to_be_assigned == D("900.00")
+        august = await _summary(services, budget, AUG)
+        assert august.cards[0].written_off == D("0")
+        assert august.to_be_assigned == D("900.00")
+
     async def test_a_refund_that_releases_its_reserve_never_goes_negative(self, db_session):
         """Groceries is funded 100 and spends 100 on the card, so the card
         owes 100 with 100 reserved. An 80 refund for those groceries releases
@@ -588,14 +628,17 @@ class TestTheIdentity:
         assert groceries_bal.activity == D("0")
         assert groceries_bal.available == D("100.00")
 
-    async def test_card_envelopes_stay_out_of_cover_overspent(self, db_session):
+    async def test_a_red_card_envelope_is_offered_beside_the_ride(self, db_session):
+        """Both reds, each for what it is. Groceries overspent 50 and all of it
+        rode onto the card; the card was then paid 150 against 100 reserved,
+        so its own envelope is 50 below zero. Cover Overspent offers both:
+        funding Groceries retires the ride, and assigning to the card squares
+        its envelope before the 1st writes it off."""
         services, budget, checking, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
         await create_transaction(
             db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
         )
-        # Overpay the card so its envelope runs negative — a cards-section
-        # state, not overspending Cover Overspent may act on.
         from igab.services.transaction_service import TransactionCreate
 
         await services.transactions.create(
@@ -613,15 +656,11 @@ class TestTheIdentity:
         linked_bal = next(b for b in s.category_balances if b.category_id == linked.id)
         assert linked_bal.is_card_payment
         assert linked_bal.available == D("-50.00")  # paid 150, only 100 funded
-        assert s.total_overspent == D("50.00"), "groceries only — the card is not overspending"
+        assert s.total_overspent == D("100.00")
         preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
-        assert linked.id not in [i.category_id for i in preview.items]
-        # Groceries IS offered, though its whole 50 rode onto the card:
-        # funding it in the month it rode retires the ride. Only the card's
-        # own envelope is out of scope here — a negative there is the card's
-        # Uncovered, retired by assigning to the card in the cards strip.
-        assert [i.category_id for i in preview.items] == [groceries.id]
-        assert preview.total_overspent == D("50.00")
+        assert {i.category_id for i in preview.items} == {groceries.id, linked.id}
+        assert preview.total_overspent == D("100.00")
+        # Only Groceries' red rode onto the card; the card's own is cash-side.
         assert preview.total_overspent_credit == D("50.00")
 
     async def test_cover_overspent_offers_the_whole_red_including_the_ride(self, db_session):

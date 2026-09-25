@@ -332,8 +332,9 @@ class CategoryBalance(ApiModel):
     #: exactly what Fill Underfunded would move. None when there is no target.
     needed_this_month: Decimal | None = None
     #: A card's envelope (linked to the card account). Not drawn in
-    #: the category grid — the cards section owns it — and never counted as
-    #: overspending; its state reads as the card's Set aside / Uncovered.
+    #: the category grid — the cards section owns it. Below zero it is
+    #: overspent like any envelope and counts in the overspent totals; Cover
+    #: Overspent covers it by assigning to the card.
     #: Required, not optional: a path that forgets it must raise, not draw
     #: every card's envelope as an ordinary row.
     is_card_payment: bool

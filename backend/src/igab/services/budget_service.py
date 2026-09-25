@@ -100,10 +100,11 @@ class CategoryBalance:
     #: A card's envelope (Category.linked_account_id set). Its
     #: available is cash reserved for the card — in the envelope total, but
     #: not spending: excluded from total_activity (its synthetic inflows
-    #: mirror spending already counted in the spending categories) and from
-    #: the overspent totals (a shortfall on a card is Uncovered in the card
-    #: section, not something Cover Overspent offers to fix). Decided once,
-    #: here, like `in_system_group`.
+    #: mirror spending already counted in the spending categories). Below
+    #: zero it IS overspent, like any envelope — a payment or a refund ran
+    #: past what it held — so it counts in the overspent totals and Cover
+    #: Overspent covers it, by assigning to the card. Decided once, here,
+    #: like `in_system_group`.
     is_card_payment: bool = False
     #: The part of this month's shortfall that was spent on a card, straight
     #: out of `card_funding`'s `floored_by_category` — the same dict
@@ -1340,11 +1341,6 @@ class BudgetService:
                 continue
             total_category_balance += bal.available
             total_assigned += bal.assigned
-            if bal.is_card_payment:
-                # In the envelope total (reserved cash is not assignable) and
-                # in assigned (a real allocation), but not spending and not
-                # overspending — see the flag's comment.
-                continue
             if bal.available < 0:
                 # Straight out of the dict `uncovered_current` is summed from,
                 # so the row and the Ready to Assign arithmetic cannot tell
@@ -1367,6 +1363,12 @@ class BudgetService:
                 overspent_count += 1
                 if -bal.available > bal.credit_overspent:
                     overspent_count_cash += 1
+            if bal.is_card_payment:
+                # In the envelope total (reserved cash is not assignable), in
+                # assigned (a real allocation) and, below zero, overspent —
+                # but not spending: its activity mirrors spending already
+                # counted in the categories that made it.
+                continue
             total_activity += bal.activity
 
         assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
@@ -1722,14 +1724,17 @@ class BudgetService:
         this is card debt you are about to retire" is worth saying — it is a
         label on the money, not a reason to withhold it.
 
-        Card envelopes stay out: a negative there is the card's own
-        Uncovered, not an overspent envelope, and it is retired by assigning to
-        the card in the cards strip."""
+        **Card envelopes are in.** A card's Set aside below zero is
+        overspending on its envelope — a payment or a refund ran past what it
+        held — and covering it is assigning to the card, which is exactly what
+        this does. Left uncovered, the 1st writes it off from Ready to Assign
+        like any other red envelope; covering it now is the same money, spent
+        now instead of next month."""
         summary = await self.get_budget_summary(budget_id, month)
         shortfalls = {
             b.category_id: -b.available
             for b in summary.category_balances
-            if b.available < 0 and not b.in_system_group and not b.is_card_payment
+            if b.available < 0 and not b.in_system_group
         }
         return summary, {k: v for k, v in shortfalls.items() if v > 0}
 

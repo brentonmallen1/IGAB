@@ -252,7 +252,10 @@ async def test_the_demo_cards_show_both_ways_a_bill_can_fall_due(db_session):
 
 async def test_full_tier_keeps_starter_invariants(db_session):
     """More data, same promises: TBA lands exactly on target, exactly one
-    intentional overspend, every financial invariant green."""
+    intentional overspend among ordinary envelopes, every financial invariant
+    green. The full tier also carries demo cards whose Set aside is below zero
+    this month — the situations they exist to show — and those are overspent
+    on their envelopes, so the total carries them too."""
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     await generate_full(db_session, budget)
@@ -266,13 +269,17 @@ async def test_full_tier_keeps_starter_invariants(db_session):
     )
     summary = await service.get_budget_summary(budget.id, ANCHOR.replace(day=1))
     assert summary.to_be_assigned == Decimal("150.00")
-    assert summary.total_overspent == Decimal("45.00")
+    red_cards = sum(
+        (-b.available for b in summary.category_balances if b.is_card_payment and b.available < 0),
+        Decimal("0"),
+    )
+    assert red_cards > 0, "the full tier demos the below-zero card situations"
+    assert summary.total_overspent == Decimal("45.00") + red_cards
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    # Card envelopes excluded, as in the starter suite: a card whose
-    # reserve is negative is a card-section state, not an overspent envelope,
-    # and one of the demo cards exists precisely to show that.
+    # Among ordinary envelopes, the one intentional overspend. The red card
+    # envelopes are counted above and belong to their demo cards.
     overspent = [
         names[b.category_id]
         for b in summary.category_balances

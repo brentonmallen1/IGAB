@@ -255,8 +255,9 @@ export interface CategoryBalance {
    * exactly what Fill Underfunded would move. `null` when there is no target.
    */
   needed_this_month: number | null
-  /** A card's envelope — the cards section owns it; the grid never
-   *  draws it and its negative is not overspending. Served, not derived:
+  /** A card's envelope — the cards section owns it and the grid never
+   *  draws it. Below zero it is overspent like any envelope, and Cover
+   *  Overspent covers it by assigning to the card. Served, not derived:
    *  see `CategoryBalance` in api/v1/schemas/category.py. */
   is_card_payment: boolean
   /**
