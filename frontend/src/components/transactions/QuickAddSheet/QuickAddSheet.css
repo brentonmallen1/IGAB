@@ -548,3 +548,31 @@
 .quick-add__split-remaining--done {
   color: var(--color-positive);
 }
+
+/* Scan was tapped with no account chosen and the picker was dismissed: the
+   row says what Scan is waiting for. An inset ring, so the row keeps its
+   height and the group's hairlines stay put. */
+.quick-add__row--asked {
+  box-shadow: inset 0 0 0 2px var(--color-warning);
+  animation: quick-add-asked-pulse 0.9s ease-out;
+}
+
+.quick-add__row--asked .quick-add__row-value--empty {
+  color: var(--color-warning);
+}
+
+@keyframes quick-add-asked-pulse {
+  0%,
+  50% {
+    background-color: color-mix(in srgb, var(--color-warning) 18%, var(--bg-primary));
+  }
+  100% {
+    background-color: var(--bg-primary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-add__row--asked {
+    animation: none;
+  }
+}

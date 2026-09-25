@@ -122,6 +122,13 @@ export function QuickAddSheet() {
   // mounted over the first fights it for the viewport on a phone.
   const [categorySheetFor, setCategorySheetFor] = useState<string | null>(null)
   const [accountSheetOpen, setAccountSheetOpen] = useState(false)
+  // Scan was tapped before an account was chosen. The Account row carries a
+  // warning until it is answered, so a dismissed picker still says why
+  // nothing happened.
+  const [accountAsked, setAccountAsked] = useState(false)
+  // The account picker was opened by Scan: choosing an account goes on to the
+  // camera. A ref, not state — it is read inside the same tap that picks.
+  const scanAfterAccountRef = useRef(false)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
@@ -166,9 +173,10 @@ export function QuickAddSheet() {
     setFailedScans([])
     setScanTotal(0)
     setScanDone(0)
+    setAccountAsked(false)
     // No account, deliberately: a pre-selected one is a choice nobody made,
     // and receipts went to whichever account the last entry happened to use.
-    // Save and Scan stay disabled until this is answered.
+    // Save stays disabled until this is answered; Scan asks for it.
     setAccountId(null)
   }, [open])
 
@@ -279,6 +287,30 @@ export function QuickAddSheet() {
    * is usually taken at a checkout on poor cellular, which is exactly when
    * silently discarding it would hurt most.
    */
+  function startScan() {
+    if (accountId) {
+      aiScanInputRef.current?.click()
+      return
+    }
+    // A receipt is queued against an account, and none is chosen yet. Ask
+    // rather than sit disabled: a greyed-out Scan with no reason on screen
+    // reads as broken.
+    setAccountAsked(true)
+    scanAfterAccountRef.current = true
+    setAccountSheetOpen(true)
+  }
+
+  function chooseAccount(id: string) {
+    setAccountId(id)
+    setAccountAsked(false)
+    if (scanAfterAccountRef.current) {
+      scanAfterAccountRef.current = false
+      // Still inside the tap that picked the account, which is what lets iOS
+      // open the camera from here; deferring it would lose the gesture.
+      aiScanInputRef.current?.click()
+    }
+  }
+
   async function scanReceipts(files: File[]) {
     if (!accountId || files.length === 0) return
 
@@ -750,12 +782,17 @@ export function QuickAddSheet() {
               </div>
             ) : null}
 
-            <button className="quick-add__row" onClick={() => setAccountSheetOpen(true)}>
+            {/* The warning waits for the picker to close, so the pulse plays
+                where it can be seen rather than behind the sheet. */}
+            <button
+              className={`quick-add__row ${accountAsked && !accountSheetOpen ? 'quick-add__row--asked' : ''}`}
+              onClick={() => setAccountSheetOpen(true)}
+            >
               <span className="quick-add__row-label">Account</span>
               <span
                 className={`quick-add__row-value ${accountName ? '' : 'quick-add__row-value--empty'}`}
               >
-                {accountName || 'Choose account'}
+                {accountName || (accountAsked ? 'Choose account to scan' : 'Choose account')}
               </span>
               <ChevronRight size={16} className="quick-add__row-chevron" />
             </button>
@@ -839,8 +876,8 @@ export function QuickAddSheet() {
               <div className="quick-add__scan-row">
                 <button
                   className="quick-add__scan-btn"
-                  onClick={() => aiScanInputRef.current?.click()}
-                  disabled={submitReceipt.isPending || !accountId}
+                  onClick={startScan}
+                  disabled={submitReceipt.isPending}
                   title="AI reads the receipt and drafts the transaction for review"
                 >
                   <Sparkles size={15} />
@@ -921,6 +958,7 @@ export function QuickAddSheet() {
                 shouldn't have to. */}
             <input
               ref={aiScanInputRef}
+              aria-label="Receipts to scan"
               type="file"
               accept={ATTACHMENT_ACCEPT}
               multiple
@@ -1002,7 +1040,10 @@ export function QuickAddSheet() {
 
       <SelectionSheet
         open={accountSheetOpen}
-        onClose={() => setAccountSheetOpen(false)}
+        onClose={() => {
+          scanAfterAccountRef.current = false
+          setAccountSheetOpen(false)
+        }}
         title="Account"
         options={accountOptions}
         topSection={
@@ -1011,7 +1052,7 @@ export function QuickAddSheet() {
             : undefined
         }
         value={accountId}
-        onChange={(id) => id && setAccountId(id)}
+        onChange={(id) => id && chooseAccount(id)}
         placeholder="Search accounts…"
       />
     </>
