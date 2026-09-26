@@ -41,6 +41,8 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     uncounted_deposits: 0,
     implied_term_months: null,
     implied_never_pays_off: null,
+    level_payment: null,
+    terms_disagree: false,
     promo_end_date: null,
     promo_deferred_interest: false,
     term_months: null,
@@ -59,6 +61,10 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     live_payoff_date: null,
     live_never_pays_off: false,
     has_live_projection: false,
+    // The served verdict (`amortization.payoff_verdict`) for these terms.
+    payoff_basis: 'minimum',
+    payoff_date: '2028-04-15',
+    payoff_never: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -72,6 +78,8 @@ const blankTerms = {
   monthly_interest_now: null,
   baseline_payoff_date: null,
   baseline_never_pays_off: false,
+  payoff_basis: null,
+  payoff_date: null,
 } satisfies Partial<Liability>
 
 describe('PayoffPill', () => {
@@ -115,6 +123,8 @@ describe('PayoffPill', () => {
           recent_interest_average: 1619,
           has_live_projection: true,
           live_payoff_date: '2051-03-01',
+          payoff_basis: 'observed',
+          payoff_date: '2051-03-01',
         })}
       />
     )
@@ -137,7 +147,12 @@ describe('PayoffPill', () => {
   it('still warns when a real minimum cannot cover interest', () => {
     render(
       <PayoffPill
-        liability={liability({ baseline_never_pays_off: true, baseline_payoff_date: null })}
+        liability={liability({
+          baseline_never_pays_off: true,
+          baseline_payoff_date: null,
+          payoff_date: null,
+          payoff_never: true,
+        })}
       />
     )
 

@@ -10,6 +10,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useAccountTypes } from '../../api/accountTypes'
 import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
+import { formatRate } from '../../utils/rate'
 import './LiabilitiesOverviewPage.css'
 
 export function LiabilitiesOverviewPage() {
@@ -71,12 +72,9 @@ export function LiabilitiesOverviewPage() {
       ) : (
         <div className="liabilities-page__grid">
           {liabilities.map((liability) => {
-            const payoffDate = liability.has_live_projection
-              ? liability.live_payoff_date
-              : liability.baseline_payoff_date
-            const neverPays = liability.has_live_projection
-              ? liability.live_never_pays_off
-              : liability.baseline_never_pays_off
+            // The server's one verdict (`amortization.payoff_verdict`).
+            const payoffDate = liability.payoff_date
+            const neverPays = liability.payoff_never
             const linkedAccount = liability.linked_account_id
               ? accounts?.find((a) => a.id === liability.linked_account_id)
               : undefined
@@ -99,7 +97,7 @@ export function LiabilitiesOverviewPage() {
                   <span>
                     {liability.interest_rate === null
                       ? 'APR not set'
-                      : `${liability.interest_rate}% APR`}
+                      : `${formatRate(liability.interest_rate)} APR`}
                   </span>
                   <span
                     className="liability-card__mode"
@@ -127,7 +125,7 @@ export function LiabilitiesOverviewPage() {
                   ) : neverPays ? (
                     <>
                       <AlertTriangle size={12} />{' '}
-                      {liability.has_live_projection
+                      {liability.payoff_basis === 'observed'
                         ? "Recent payments won't pay this off"
                         : "Minimum payment won't pay this off"}
                     </>

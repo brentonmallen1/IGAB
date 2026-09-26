@@ -85,9 +85,24 @@ describe('the answer', () => {
     panel({
       extra: '200',
       extraPayment: 200,
-      savings: { monthsSooner: null, interestSaved: 900 },
+      savings: { monthsSooner: null, interestSaved: null },
     })
     expect(screen.getByText(/actually pays off/)).toBeInTheDocument()
+  })
+
+  it('quotes no saving against a minimum that never pays off', () => {
+    // The baseline's interest was its running total — $0 when it stopped at
+    // its first uncovered month — so "saved" came out negative. The server
+    // now says there is no finite comparison (`paydown_gain`).
+    panel({
+      extra: '200',
+      extraPayment: 200,
+      savings: { monthsSooner: null, interestSaved: null },
+    })
+    expect(screen.queryByText(/less interest/)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/no interest comparison: the minimum alone never pays it off/)
+    ).toBeInTheDocument()
   })
 
   it('is honest when even the extra does not clear the debt', () => {

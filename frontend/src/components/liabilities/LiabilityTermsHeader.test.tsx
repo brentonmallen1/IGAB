@@ -51,6 +51,8 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     uncounted_deposits: 0,
     implied_term_months: null,
     implied_never_pays_off: null,
+    level_payment: null,
+    terms_disagree: false,
     promo_end_date: null,
     promo_deferred_interest: false,
     term_months: null,
@@ -69,6 +71,9 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     live_payoff_date: null,
     live_never_pays_off: false,
     has_live_projection: false,
+    payoff_basis: null,
+    payoff_date: null,
+    payoff_never: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -117,6 +122,8 @@ describe('LiabilityTermsHeader', () => {
         minimum_payment: 95,
         terms_complete: true,
         baseline_payoff_date: '2029-06-15',
+        payoff_basis: 'minimum',
+        payoff_date: '2029-06-15',
       }),
     ])
 
@@ -130,6 +137,31 @@ describe('LiabilityTermsHeader', () => {
     expect(screen.queryByText(/Add the APR/)).not.toBeInTheDocument()
   })
 
+  it('states the served verdict, not a choice of its own between pace and minimum', () => {
+    // The header, the overview cards and the payoff pill each picked "live,
+    // else minimum" from `has_live_projection`; the server decides it once.
+    renderHeader([
+      liability({
+        interest_rate: 6,
+        minimum_payment: 400,
+        terms_complete: true,
+        baseline_payoff_date: '2031-01-15',
+        has_live_projection: true,
+        live_payoff_date: '2029-06-15',
+        payoff_basis: 'observed',
+        payoff_date: '2029-06-15',
+      }),
+    ])
+
+    expect(screen.getByText(/2029/)).toBeInTheDocument()
+    expect(screen.queryByText(/2031/)).not.toBeInTheDocument()
+  })
+
+  it('prints the rate in the one format', () => {
+    renderHeader([liability({ interest_rate: 6.5, terms_complete: true })])
+    expect(screen.getByText('6.5%')).toBeInTheDocument()
+  })
+
   it('warns when a real minimum cannot cover interest', () => {
     renderHeader([
       liability({
@@ -137,6 +169,8 @@ describe('LiabilityTermsHeader', () => {
         minimum_payment: 5,
         terms_complete: true,
         baseline_never_pays_off: true,
+        payoff_basis: 'minimum',
+        payoff_never: true,
       }),
     ])
 
