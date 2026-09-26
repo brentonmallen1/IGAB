@@ -231,15 +231,17 @@ export function useBudgetActualReport(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
-  categoryIds?: string[]
+  scope?: ReportScope
 ) {
-  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
+  // The whole scope, not the category ids alone: the filter bar offers tags
+  // and saved filters on this tab too, and the report ignored both.
+  const scopeQuery = scopeParams(scope)
   return useQuery({
-    queryKey: [ROOT.reports, 'budget-actual', budgetId, startDate, endDate, catParam],
+    queryKey: [ROOT.reports, 'budget-actual', budgetId, startDate, endDate, scopeQuery],
     queryFn: async () => {
       const { data } = await apiClient.get<BudgetActualReport>(
         `/${budgetId}/reports/budget-actual`,
-        { params: params({ start_date: startDate, end_date: endDate, category_ids: catParam }) }
+        { params: params({ start_date: startDate, end_date: endDate, ...scopeQuery }) }
       )
       return data
     },

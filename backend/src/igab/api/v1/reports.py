@@ -423,6 +423,7 @@ async def budget_actual_report(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_spent=data["total_spent"],
+        total_variance=data["total_variance"],
         filter_unavailable=scope.filter_unavailable,
     )
 

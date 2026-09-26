@@ -1423,6 +1423,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '500',
         total_spent: '450',
+        total_variance: 50,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -1462,6 +1463,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '-200',
         total_spent: '160',
+        total_variance: -60,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -1501,6 +1503,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '600',
         total_spent: '610',
+        total_variance: -10,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -1510,6 +1513,83 @@ describe('BudgetActualReport values', () => {
     const whole = cellsOf('of $610.00 across 2 categories')
     expect(whole).toContain('$610.00')
     expect(whole.some((c) => c.includes('%'))).toBe(false)
+  })
+
+  /** Car Repairs drained by 300 with nothing spent; Dining 60 over its 100;
+   *  Gifts 40 spent with no plan. Raw assigned − spent is -200 − 200 = -400;
+   *  the rows' verdicts are 0, -60 and -40. */
+  const drained = {
+    categories: [
+      {
+        category_id: 'c1',
+        category_name: 'Car Repairs',
+        category_group_name: 'Irregular',
+        assigned: -300,
+        spent: 0,
+        variance: 0,
+        variance_pct: null,
+        overspent: false,
+      },
+      {
+        category_id: 'c2',
+        category_name: 'Dining',
+        category_group_name: 'Everyday',
+        assigned: 100,
+        spent: 160,
+        variance: -60,
+        variance_pct: -60,
+        overspent: true,
+      },
+      {
+        category_id: 'c3',
+        category_name: 'Gifts',
+        category_group_name: 'Everyday',
+        assigned: 0,
+        spent: 40,
+        variance: -40,
+        variance_pct: null,
+        overspent: true,
+      },
+    ],
+    total_assigned: -200,
+    total_spent: 200,
+    total_variance: -100,
+    filter_unavailable: false,
+  }
+
+  it('headlines the rows’ verdicts, with the direction in words', () => {
+    // The card was "Variance" over raw assigned − spent: -$400.00 above rows
+    // that sum to -100, with the sign left for the reader to decode.
+    setQuery({ data: drained })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    expect(card('Over plan by').value).toBe('$100.00')
+    expect(screen.queryByText('-$400.00')).toBeNull()
+  })
+
+  it('says "no plan" for spending nobody planned, not "0.0%"', () => {
+    setQuery({ data: drained })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    expect(cellsOf('Gifts')).toContain('no plan')
+    expect(cellsOf('Dining')).toContain('-60.0%')
+    expect(screen.queryByText('0.0%')).toBeNull()
+  })
+
+  it('asks for the tags and the saved filter the filter bar offers, not the categories alone', () => {
+    useReportStore.getState().setFilters({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
+    try {
+      setQuery({ data: drained })
+      renderReport(<BudgetActualReport budgetId="b1" />)
+      const [, , , scope] = hookCalls.get('useBudgetActualReport')!.at(-1)!
+      expect(scope).toEqual({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
+    } finally {
+      useReportStore.getState().setFilters({ tagIds: [], filterId: null })
+    }
+  })
+
+  it('says so when the saved filter it was asked for is gone', () => {
+    setQuery({ data: { ...drained, filter_unavailable: true } })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    expect(screen.getByText(/That saved filter no longer exists/)).toBeInTheDocument()
   })
 })
 
@@ -1791,6 +1871,7 @@ describe('drill tables read spending as a positive figure', () => {
         ],
         total_assigned: '500',
         total_spent: '450',
+        total_variance: 50,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)

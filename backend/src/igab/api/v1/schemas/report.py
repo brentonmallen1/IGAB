@@ -304,7 +304,8 @@ class BudgetActualItem(ApiModel):
     spent: Decimal
     #: Against the plan floored at zero (`domain.plan`), like Plan vs Reality.
     variance: Decimal
-    variance_pct: float
+    #: None where there was no plan to take a share of — "no plan", not 0%.
+    variance_pct: float | None
     #: The server's verdict; the chart's filter, sort and red bar read it.
     overspent: bool
 
@@ -313,6 +314,10 @@ class BudgetActualResponse(ApiModel):
     categories: list[BudgetActualItem]
     total_assigned: Decimal
     total_spent: Decimal
+    #: The rows' floored variances summed (`plan.total_variance`) — the
+    #: headline. Not `total_assigned - total_spent`, which disagrees with the
+    #: rows wherever an envelope was drained.
+    total_variance: Decimal
     #: A saved filter was named and could not be found (see `CategoryScope`).
     #: REQUIRED, not defaulted: a report that forgets it would report an empty
     #: scope as an empty budget, which is the failure the flag exists to prevent.

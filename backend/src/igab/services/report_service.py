@@ -56,7 +56,7 @@ from igab.domain.dates import (
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.money_moves import Figures, figures, flows
-from igab.domain.plan import plan_outcome
+from igab.domain.plan import plan_outcome, total_variance
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.view_arrangement import arrange_by_view
 from igab.repositories.account_repo import AccountRepository
@@ -1261,7 +1261,12 @@ class ReportService:
         spending = (await self.session.execute(spend_q)).all()
 
         if not assignments and not spending:
-            return {"categories": [], "total_assigned": Decimal("0"), "total_spent": Decimal("0")}
+            return {
+                "categories": [],
+                "total_assigned": Decimal("0"),
+                "total_spent": Decimal("0"),
+                "total_variance": Decimal("0"),
+            }
 
         # Aggregate assignments by category
         assign_by_cat: dict[str, dict] = {}
@@ -1291,6 +1296,7 @@ class ReportService:
             assign_by_cat[cid]["spent"] += abs(Decimal(str(r.amount)))
 
         categories = []
+        outcomes = []
         total_assigned = Decimal("0")
         total_spent = Decimal("0")
 
@@ -1300,6 +1306,7 @@ class ReportService:
             # neutral there. `overspent` is served so the chart stops
             # deciding it from the raw assignment.
             outcome = plan_outcome(item["assigned"], item["spent"])
+            outcomes.append(outcome)
             categories.append(
                 {
                     **item,
@@ -1315,6 +1322,9 @@ class ReportService:
             "categories": categories,
             "total_assigned": total_assigned,
             "total_spent": total_spent,
+            # The headline is the rows' verdicts summed, so it cannot say
+            # something the rows under it do not (`plan.total_variance`).
+            "total_variance": total_variance(outcomes),
         }
 
     # ─── Cumulative Variance ──────────────────────────────────────────────────

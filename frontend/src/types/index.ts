@@ -980,7 +980,8 @@ export interface BudgetActualItem {
   spent: number
   /** Against the plan floored at zero — backend `domain/plan.py`. */
   variance: number
-  variance_pct: number
+  /** Null where there was no plan to take a share of: "no plan", not 0%. */
+  variance_pct: number | null
   /** The server's verdict, same rule as Plan vs Reality. Never re-derive it
    * from `spent > assigned`: a drained envelope has a negative assignment. */
   overspent: boolean
@@ -990,6 +991,10 @@ export interface BudgetActualReport {
   categories: BudgetActualItem[]
   total_assigned: number
   total_spent: number
+  /** The headline: the rows' floored variances summed (backend
+   *  `plan.total_variance`). Never `total_assigned - total_spent`, which
+   *  disagrees with the rows wherever an envelope was drained. */
+  total_variance: number
   /** A saved filter was named and could not be found — backend
    *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
   filter_unavailable: boolean

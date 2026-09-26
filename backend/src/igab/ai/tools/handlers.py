@@ -191,6 +191,9 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     result = clip(rows)
     result["total_assigned"] = money(data["total_assigned"])
     result["total_spent"] = money(data["total_spent"])
+    # The report's headline, so the assistant cannot quote a raw
+    # assigned-minus-spent that the rows above disagree with.
+    result["total_variance"] = money(data["total_variance"])
     result["start_date"] = start.isoformat()
     result["end_date"] = end.isoformat()
     return result
