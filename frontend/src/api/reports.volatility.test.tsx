@@ -44,7 +44,7 @@ describe('useVolatilityReport', () => {
     await waitFor(() => expect(result.current.data?.amortized).toBe(true))
     expect(apiGet).toHaveBeenCalledTimes(2)
     expect(apiGet).toHaveBeenLastCalledWith('/b1/reports/volatility', {
-      params: { months: 6, amortize: true },
+      params: { months: 6, amortize: true, client_today: expect.any(String) },
     })
   })
 

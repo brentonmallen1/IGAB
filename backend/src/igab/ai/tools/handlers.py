@@ -143,7 +143,7 @@ async def list_accounts(ctx: ToolContext, args: dict) -> dict:
 
 
 async def get_data_range(ctx: ToolContext, args: dict) -> dict:
-    result = await ctx.reports.available_range(ctx.budget_id)
+    result = await ctx.reports.available_range(ctx.budget_id, ctx.today)
     earliest = result.get("earliest_month")
     return {
         "earliest_month": earliest.isoformat() if isinstance(earliest, date) else None,
@@ -197,7 +197,7 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
 
 
 async def income_vs_expense(ctx: ToolContext, args: dict) -> dict:
-    rows = await ctx.reports.income_vs_expense(ctx.budget_id, _months(args))
+    rows = await ctx.reports.income_vs_expense(ctx.budget_id, _months(args), ctx.today)
     shaped = [
         {
             "month": r["month"].isoformat() if isinstance(r["month"], date) else str(r["month"]),
@@ -214,7 +214,7 @@ async def income_vs_expense(ctx: ToolContext, args: dict) -> dict:
 
 
 async def savings_rate(ctx: ToolContext, args: dict) -> dict:
-    data = await ctx.reports.savings_rate(ctx.budget_id, _months(args))
+    data = await ctx.reports.savings_rate(ctx.budget_id, _months(args), ctx.today)
     summary = data.get("summary", {})
     return {
         "summary": {k: money(v) for k, v in summary.items()},
@@ -554,7 +554,7 @@ async def get_debt_status(ctx: ToolContext, args: dict) -> dict:
     is not a shorter answer, it is a different one — an imported loan arrives
     with no rate at all, and saying nothing beats inventing a date.
     """
-    report = await ctx.liabilities.liabilities_report(ctx.budget_id)
+    report = await ctx.liabilities.liabilities_report(ctx.budget_id, as_of=ctx.today)
     rows = [
         {
             "name": item["name"],
@@ -597,7 +597,7 @@ def _iso(value: Any) -> Any:
 async def get_net_worth(ctx: ToolContext, args: dict) -> dict:
     """Assets minus debts, at each of the last months' ends."""
     months = _months(args, 12)
-    history = await ctx.reports.net_worth_history(ctx.budget_id, months)
+    history = await ctx.reports.net_worth_history(ctx.budget_id, months, ctx.today)
     points = [
         {
             "month": _iso(point["date"]),
@@ -713,7 +713,7 @@ async def spending_anomalies(ctx: ToolContext, args: dict) -> dict:
     disagree with the report the user can open beside it.
     """
     months = _months(args, 12)
-    report = await ctx.reports.anomalies_report(ctx.budget_id, months)
+    report = await ctx.reports.anomalies_report(ctx.budget_id, months, today=ctx.today)
     rows = [
         {
             "category": row["category_name"],

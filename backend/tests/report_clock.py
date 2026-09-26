@@ -19,21 +19,20 @@ from unittest.mock import patch
 
 @contextmanager
 def report_today(today: date) -> Iterator[date]:
-    """`date.today()` inside the report service, report_basics, savings_report,
-    essentials and emergency_fund returns `today`."""
+    """The server's day, as a report falls back to it without a reader, is
+    `today`.
+
+    Every report reads that fallback through `services/report_day.py`, so
+    that is the one clock to pin. `report_service` is pinned as well for Cash
+    Projection, which still reads its own."""
 
     class _Pinned(date):
         @classmethod
         def today(cls) -> date:
             return today
 
-    # report_basics too: its free functions (Income by Source, the savings-rate
-    # contributors) read the clock the same way the service's methods do.
     with (
+        patch("igab.services.report_day.date", _Pinned),
         patch("igab.services.report_service.date", _Pinned),
-        patch("igab.services.report_basics.date", _Pinned),
-        patch("igab.services.savings_report.date", _Pinned),
-        patch("igab.services.essentials.date", _Pinned),
-        patch("igab.services.emergency_fund.date", _Pinned),
     ):
         yield today

@@ -53,6 +53,7 @@ from igab.guide.detection import budget_service_from
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.emergency_fund import EmergencyFund, fund_balance_at
 from igab.services.essentials import essentials_summary
+from igab.services.report_day import reader_today
 
 
 def history_index(months: list[date], history_from: date | None) -> int:
@@ -89,7 +90,10 @@ class EmergencyCoverageService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def coverage(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+    async def coverage(
+        self, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+    ) -> dict:
+        today = reader_today(today)
         # The budget page's own service, built the way the DI layer builds it,
         # so an envelope's balance here IS the budget page's balance rather
         # than a second derivation pinned equal by a comment.
@@ -99,7 +103,9 @@ class EmergencyCoverageService:
         # spreads sinking-fund bills over twelve months, so it needs the eleven
         # months before it (the three-month average needs only two of them).
         lead_in = SPREAD_MONTHS - 1
-        summary = await essentials_summary(self.session, budget_id, months=months + lead_in)
+        summary = await essentials_summary(
+            self.session, budget_id, months=months + lead_in, today=today
+        )
         # The composition the Essentials report quotes — one reading, so the
         # newest point, the headline and every other surface share a total.
         fund: EmergencyFund = summary["emergency_fund"]
@@ -113,7 +119,6 @@ class EmergencyCoverageService:
             await TransactionRepository(self.session).earliest_date(budget_id),
         )
 
-        today = date.today()
         first_of_month = month_start(today)
         points = []
         # Nothing identified as the fund: draw no line rather than a flat zero

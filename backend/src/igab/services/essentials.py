@@ -29,6 +29,7 @@ from igab.guide.concepts import (
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.emergency_fund import emergency_fund
 from igab.services.report_basics import class_excluded_note
+from igab.services.report_day import reader_today
 from igab.services.report_settings import spread_sinking_funds
 
 
@@ -64,16 +65,19 @@ async def reported_essentials(
     return replace(figures, as_paid=Decimal("0"), spread=Decimal("0")), False
 
 
-async def essentials_summary(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def essentials_summary(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """What a lean month costs, and what a reserve of N months would be.
 
     The headline (`essentials`) is the Guide's figure — rolling 90 days
     ÷ 3 — so the Overview card, this report and the roadmap's target quote
     one number. The per-category table averages over `months` COMPLETE
     months instead: a partial current month would drag every average
-    down. That divergence is deliberate and pinned by test.
+    down. That divergence is deliberate and pinned by test. `today` is the
+    reader's, as the Overview card's is.
     """
-    today = date.today()
+    today = reader_today(today)
     txns = TransactionRepository(session)
     # Not clamped to the budget's history, unlike volatility: the table
     # divides by `months` and Emergency Coverage reads it, so clamping is a

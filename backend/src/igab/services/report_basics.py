@@ -52,6 +52,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     category_tagged,
 )
+from igab.services.report_day import reader_today
 from igab.services.savings_held import held_by_envelope
 
 if TYPE_CHECKING:
@@ -131,7 +132,9 @@ async def spending_trends(
     }
 
 
-async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def income_by_source(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """Income per payee per month: what the classifier reads as income.
 
     **The sign does not decide; the class does.** This filtered
@@ -149,7 +152,7 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
     summed positive split parents by sign until it did.
     """
     # N complete months, like every averaging report (`complete_month_window`).
-    start_date, end_date = complete_month_window(date.today(), months)
+    start_date, end_date = complete_month_window(reader_today(today), months)
     month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
     q = (
@@ -216,7 +219,11 @@ _CONTRIBUTOR_CLASSES = (ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL)
 
 
 async def savings_contributors(
-    session: AsyncSession, budget_id: uuid.UUID, start_date: date, end_date: date
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    today: date | None = None,
 ) -> dict:
     """What a savings rate over a window was made of — the rate cards' dialog.
 
@@ -239,9 +246,10 @@ async def savings_contributors(
     destination were decided by different rules, the first in
     `REASON_PRIORITY`, the classifier's own order.
 
-    **Through today.** The Overview card's frame is read up to today whatever
-    range was picked, and the Savings Rate tab's window ends today, so a
-    future-dated row is in neither and is not in this either.
+    **Through today** — the reader's, as the rate cards read it. The Overview
+    card's frame is read up to today whatever range was picked, and the Savings
+    Rate tab's window ends today, so a future-dated row is in neither and is not
+    in this either.
 
     **Held rows.** Saved is moved plus held (`domain.savings`), so each
     kept-here Savings envelope whose balance changed over the window is a
@@ -252,7 +260,7 @@ async def savings_contributors(
 
     Income is grouped by payee, as Income by Source groups it.
     """
-    end = min(end_date, date.today())
+    end = min(end_date, reader_today(today))
     held = {
         cid: pair
         for cid, pair in (await held_by_envelope(session, budget_id, start_date, end)).items()
@@ -510,7 +518,7 @@ def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSp
 
 
 async def subscriptions_report(
-    session: AsyncSession, budget_id: uuid.UUID, months: int = 12
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
 ) -> dict:
     """Recurring charges: every posted outflow filed to a category tagged
     Subscription, grouped BY CATEGORY, with the payees inside each one.
@@ -561,7 +569,7 @@ async def subscriptions_report(
     # (`complete_month_window`). This took N calendar months through today and
     # averaged the N−1 complete ones, so Subscriptions and Cost of Living read
     # one month fewer than Essentials over the same setting.
-    start_date, end_date = complete_month_window(date.today(), months)
+    start_date, end_date = complete_month_window(reader_today(today), months)
     month_list = month_starts(start_date, end_date)
 
     q = (
@@ -783,7 +791,9 @@ def class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | No
 UNCATEGORIZED_GROUP = "Uncategorized"
 
 
-async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def cost_of_living(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """What it costs to keep the lights on, by category group, in two tiers.
 
     The groups roll up the WIDE tier, `NecessityTier.COST_OF_LIVING`:
@@ -811,7 +821,8 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # N−1 complete ones, which agreed with Essentials only when spending was
     # flat: rent of 3,000 a month plus a 1,200 premium twelve months back read
     # 3,000 here and 3,100 there.
-    start_date, end_date = complete_month_window(date.today(), months)
+    today = reader_today(today)
+    start_date, end_date = complete_month_window(today, months)
     month_list = month_starts(start_date, end_date)
 
     repo = TransactionRepository(session)
@@ -875,7 +886,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
 
     # Take-home is Income by Source's own served average over the same
     # window, not a second division of its monthly totals here.
-    income = await income_by_source(session, budget_id, months)
+    income = await income_by_source(session, budget_id, months, today)
     avg_income = income["avg_monthly"]
     avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
     avg_essentials: Decimal | None = None
@@ -948,7 +959,9 @@ def _by_total(item: DiscretionaryLine | DiscretionaryGroup) -> Decimal:
     return item["total"]
 
 
-async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def discretionary(
+    svc: ReportService, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """Spending outside Cost of living, by category within its group.
 
     The rows are `DISCRETIONARY_ROW` — SPENDING-class rows in no category
@@ -967,7 +980,7 @@ async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 
     construction (see `DISCRETIONARY_ROW`). The share between them is the
     page's arithmetic: two served figures and no missing input.
     """
-    start_date, end_date = complete_month_window(date.today(), months)
+    start_date, end_date = complete_month_window(reader_today(today), months)
     month_list = month_starts(start_date, end_date)
     rows, basis = await svc.txns.discretionary_by_category_month(budget_id, start_date, end_date)
     tagged = basis_is_chosen(basis)

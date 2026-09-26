@@ -88,6 +88,7 @@ from igab.services.report_basics import (
     class_excluded_note,
     means_months,
 )
+from igab.services.report_day import reader_today
 from igab.services.report_stats import (
     anomaly_rows,
     balance_sheet,
@@ -188,7 +189,7 @@ class ReportService:
         self.accounts = AccountRepository(session)
         self.session = session
 
-    async def available_range(self, budget_id: uuid.UUID) -> dict:
+    async def available_range(self, budget_id: uuid.UUID, today: date | None = None) -> dict:
         """How far back this budget's reports can look.
 
         Served so the range picker offers only windows that exist: a budget
@@ -201,16 +202,18 @@ class ReportService:
         earliest = await self.txns.earliest_date(budget_id)
         return {
             "earliest_month": earliest.replace(day=1) if earliest else None,
-            "months_available": months_spanned(earliest, date.today()) if earliest else 0,
+            "months_available": months_spanned(earliest, reader_today(today)) if earliest else 0,
         }
 
-    async def _complete_window(self, budget_id: uuid.UUID, months: int) -> tuple[date, date]:
-        """The last `months` complete months, never reaching before this
-        budget's history — the window volatility, seasonality and anomalies
-        all read. `complete_month_window` says why it clamps; this only
-        supplies where the history starts."""
+    async def _complete_window(
+        self, budget_id: uuid.UUID, months: int, today: date
+    ) -> tuple[date, date]:
+        """The last `months` complete months before the reader's `today`, never
+        reaching before this budget's history — the window volatility,
+        seasonality and anomalies all read. `complete_month_window` says why it
+        clamps; this only supplies where the history starts."""
         earliest = await self.txns.earliest_date(budget_id)
-        return complete_month_window(date.today(), months, earliest)
+        return complete_month_window(today, months, earliest)
 
     # ─── Existing ─────────────────────────────────────────────────────────────
 
@@ -246,7 +249,9 @@ class ReportService:
             c["pct"] = float(c["total"] / grand_total * 100) if grand_total else 0.0
         return categories, grand_total
 
-    async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
+    async def income_vs_expense(
+        self, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+    ) -> list[dict]:
         """Money in, money out, per month — with saving broken out of spending.
 
         `expenses` used to be every negative row, which meant a transfer into a
@@ -267,7 +272,7 @@ class ReportService:
         between two on-budget accounts are excluded: they cancel, and showing
         them would double the apparent flow.
         """
-        today = date.today()
+        today = reader_today(today)
         series = await self._class_series(budget_id, months, today)
         held = await held_by_month(self.session, budget_id, [m for m, _ in series], today)
         results = []
@@ -369,10 +374,8 @@ class ReportService:
         end_date: date,
         today: date | None = None,
     ) -> dict:
-        # The reader's day (`client_today`) when the browser sent one: every
-        # figure below is "as of today", and near midnight the server's clock
-        # answers for a different day than the one the household is living in.
-        today = today or date.today()
+        # The reader's day (`report_day`): every figure below is "as of today".
+        today = reader_today(today)
         # "vs prior period" is the equal-length window before this one — the
         # month before `start`, as this was, held a twelve-day month-to-date
         # against a whole prior month. `prev_end` is also the net-worth "before".
@@ -389,7 +392,7 @@ class ReportService:
         # had already drifted. An empty budget takes the same path: it had a
         # short-circuit of its own that restated the composition, set prev to
         # "now", and so drew a 0.0% change the chart beside it contradicted.
-        prev_sheet, now_sheet = await self._balance_sheets(budget_id, [prev_end, today])
+        prev_sheet, now_sheet = await self._balance_sheets(budget_id, [prev_end, today], today)
         net_worth, net_worth_prev = now_sheet["net_worth"], prev_sheet["net_worth"]
 
         # Every figure below reads the activity-class partition, not the sign
@@ -603,17 +606,22 @@ class ReportService:
             series[snap.asset_id].append((snap.date, snap.value))
         return current_total, series
 
-    async def _balance_sheets(self, budget_id: uuid.UUID, as_of: list[date]) -> list[dict]:
+    async def _balance_sheets(
+        self, budget_id: uuid.UUID, as_of: list[date], today: date
+    ) -> list[dict]:
         """The balance sheet (`balance_sheet`) at the end of each day in
         `as_of`, ascending — net worth's one rule. The Overview card asks it
         for two days, the chart for every month end.
 
-        Clamped to today: a month end still ahead is not net worth yet, and
-        money that has not moved is not in it. On today, stated debts and
-        asset values read their current figures; before it, each reads its
-        step function and contributes nothing before its first point.
+        Clamped to the reader's `today`: a month end still ahead is not net
+        worth yet, and money that has not moved is not in it. On today, stated
+        debts and asset values read their current figures; before it, each
+        reads its step function and contributes nothing before its first point.
+        `today` is the caller's and never read here: this read the server's
+        clock while the Overview card asked for the reader's day, so every
+        evening west of UTC the card's "now" missed the clamp's, and its stated
+        debts and asset values fell back to their step functions.
         """
-        today = date.today()
         cutoffs = [min(day, today) for day in as_of]
         accounts = (
             await self.session.execute(
@@ -637,12 +645,14 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        today: date | None = None,
     ) -> list[dict]:
         """Net worth at each of the last `months` month ends, the newest being
         today. An empty register needs no branch of its own: stated assets and
         unmanaged debts still stand on every point."""
-        grid = report_months(date.today(), months)
-        sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid])
+        today = reader_today(today)
+        grid = report_months(today, months)
+        sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid], today)
         return [{"date": month, **sheet} for month, sheet in zip(grid, sheets, strict=True)]
 
     # ─── Account Composition ─────────────────────────────────────────────────
@@ -651,8 +661,9 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        today: date | None = None,
     ) -> list[dict]:
-        history = await self.net_worth_history(budget_id, months)
+        history = await self.net_worth_history(budget_id, months, today)
         # Series per type key actually present (custom types included) —
         # every point carries every key so the chart's series stay aligned.
         all_types = sorted(
@@ -697,7 +708,7 @@ class ReportService:
         falls in two. That is what "rolling" means, and `rolling_30` says so;
         a per-calendar-month figure is what Spending Trends is for.
         """
-        today = today or date.today()
+        today = reader_today(today)
         grid = report_months(today, months)
         burns = await self._burns(budget_id, [clamped_month_end(m, today) for m in grid])
         return [
@@ -1324,8 +1335,9 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        today: date | None = None,
     ) -> list[dict]:
-        months_list = report_months(date.today(), months)
+        months_list = report_months(reader_today(today), months)
 
         assign_q = (
             select(BudgetAssignment.month, BudgetAssignment.assigned)
@@ -1393,6 +1405,7 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        today: date | None = None,
     ) -> dict:
         """Assigned vs actually spent, per category per month.
 
@@ -1415,7 +1428,7 @@ class ReportService:
         Guide's chronic-overspend check, so saving could be reported as a bad
         habit.
         """
-        months_list = report_months(date.today(), months)
+        months_list = report_months(reader_today(today), months)
 
         assign_q = (
             select(
@@ -1553,6 +1566,7 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
         amortize: bool = False,
+        today: date | None = None,
     ) -> dict:
         """Per-category spread over complete months, and the window it read.
 
@@ -1569,7 +1583,7 @@ class ReportService:
         stopped being the same the day this one moved: the panel added the
         partial current month the statistics leave out and dropped the oldest.
         """
-        start, end = await self._complete_window(budget_id, months)
+        start, end = await self._complete_window(budget_id, months, reader_today(today))
 
         q = (
             select(
@@ -1773,6 +1787,7 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        today: date | None = None,
     ) -> dict:
         # COMPLETE months only, bounded at both ends, and never before the
         # budget's history (`complete_month_window`). With no upper bound a
@@ -1783,7 +1798,7 @@ class ReportService:
         # the newest column was always blank and the oldest month's cells had
         # no column at all — yet still set the colour scale and the top-20
         # ranking, the undrawn-cell defect the window was moved to fix.
-        start, end = await self._complete_window(budget_id, months)
+        start, end = await self._complete_window(budget_id, months, reader_today(today))
         months_list = month_starts(start, end)
 
         q = (
@@ -2261,7 +2276,9 @@ class ReportService:
 
     # ─── Savings Rate ─────────────────────────────────────────────────────────
 
-    async def savings_rate(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+    async def savings_rate(
+        self, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+    ) -> dict:
         """How much of what came in was kept, month by month.
 
         Asked for directly: "i would like there to be categories
@@ -2288,7 +2305,7 @@ class ReportService:
         show a gap rather than a floor.
         """
 
-        today = date.today()
+        today = reader_today(today)
         class_series = await self._class_series(budget_id, months, today)
         axis = [month for month, _ in class_series]
         held = await held_by_month(self.session, budget_id, axis, today)
@@ -2315,7 +2332,11 @@ class ReportService:
     # ─── Anomaly Detection ────────────────────────────────────────────────────
 
     async def anomalies_report(
-        self, budget_id: uuid.UUID, months: int = 12, threshold: float = 2.0
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+        threshold: float = 2.0,
+        today: date | None = None,
     ) -> dict:
         """Detect category-months with spending outside baseline z-score.
 
@@ -2325,8 +2346,8 @@ class ReportService:
         therefore runs from the complete-month start through TODAY, not
         through last month's end.
         """
-        start_date, _ = await self._complete_window(budget_id, months)
-        today = date.today()
+        today = reader_today(today)
+        start_date, _ = await self._complete_window(budget_id, months, today)
 
         # Get spending per category per month
         month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
@@ -2378,6 +2399,7 @@ class ReportService:
         budget_id: uuid.UUID,
         window: int = 14,
         months: int = 12,
+        today: date | None = None,
     ) -> dict:
         """Compute average daily spending for N days after income events.
 
@@ -2387,7 +2409,7 @@ class ReportService:
         DAY or per payday, over days that happened, so a partial month cannot
         drag it down; dropping it would only hide the newest paydays.
         """
-        end_date = date.today()
+        end_date = reader_today(today)
         start_date, _ = complete_month_window(end_date, months)
 
         # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
