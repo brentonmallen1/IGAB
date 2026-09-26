@@ -246,10 +246,18 @@ async def test_a_drained_envelope_is_not_a_chronic_overspender(db_session, api_c
     body = await _fetch(api_client, budget.id, months=6)
 
     assert body["chronic_count"] == 0
-    # The plan was nothing and nothing was spent in every month, so there is
-    # no row at all: a row of "$0 / $0" cells is not a finding, and before
-    # the floor each of them was tinted as a 300 overspend.
-    assert [c for c in body["categories"] if c["category_id"] == str(drained.id)] == []
+    # A row — something was assigned, if negatively (`PlanMonth.quiet`) — but
+    # every cell on plan: no plan, nothing spent, never over. Before the floor
+    # each cell was tinted as a 300 overspend.
+    (row,) = [c for c in body["categories"] if c["category_id"] == str(drained.id)]
+    assert row["months_over"] == 0
+    assert not row["chronic"]
+    drained_cells = [m for m in row["monthly"] if m["active"]]
+    assert len(drained_cells) == 3
+    assert all(
+        (D(m["plan"]), D(m["variance"]), m["over"]) == (D("0"), D("0"), False)
+        for m in drained_cells
+    )
 
 
 async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, api_client):
@@ -303,10 +311,12 @@ class TestBudgetVsActualGivesTheSameVerdict:
 
         bva, pvr = await self._both(api_client, budget.id)
 
-        # Planned nothing, spent nothing: on neither report as a row, so on
-        # neither as an overrun. Both used to disagree about it.
-        assert [c for c in bva["categories"] if c["category_id"] == str(drained.id)] == []
-        assert [c for c in pvr["categories"] if c["category_id"] == str(drained.id)] == []
+        # A row on both — something was assigned — and on plan on both: no
+        # plan, nothing spent. Both used to disagree about it.
+        item = _cat(bva, drained.id)
+        assert (D(item["plan"]), D(item["variance"]), item["overspent"]) == (D("0"), D("0"), False)
+        cell = _cat(pvr, drained.id)["monthly"][-1]
+        assert (cell["active"], cell["over"], D(cell["variance"])) == (True, False, D("0"))
         assert D(bva["total_variance"]) == D("0")
 
     async def test_real_spending_is_over_by_the_same_amount_on_both(self, db_session, api_client):

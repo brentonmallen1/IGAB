@@ -9,6 +9,7 @@ import {
   expensesDrill,
   filterSupport,
   incomeDrill,
+  planSpentDrill,
   resolveGroupBy,
   useReportStore,
 } from './reportStore'
@@ -73,6 +74,27 @@ describe('expensesDrill', () => {
     // Income vs Expenses passed `direction: 'outflow'`: a bar of 15,300 net
     // opened 19,400 of purchases with the 4,100 of refunds left out.
     expect(expensesDrill('Expenses', window, ['spending']).direction).toBeUndefined()
+  })
+})
+
+describe('planSpentDrill', () => {
+  const window = { startDate: '2026-08-01', endDate: '2026-08-31' }
+
+  it("lists the plan ledger's spent rows of one category, by the server's rule", () => {
+    expect(planSpentDrill('cat-1', 'Groceries · Aug', window)).toEqual({
+      kind: 'category',
+      label: 'Groceries · Aug',
+      scope: 'leaf',
+      categoryIds: ['cat-1'],
+      planSpent: true,
+      ...window,
+    })
+  })
+
+  it('keeps the refunds, so the list totals the figure', () => {
+    // Budget vs Actual, Plan vs Reality, Volatility and Anomalies each passed
+    // `direction: 'outflow'`: a cell of 70 net opened 100 of purchases.
+    expect(planSpentDrill('cat-1', 'Groceries', window).direction).toBeUndefined()
   })
 })
 

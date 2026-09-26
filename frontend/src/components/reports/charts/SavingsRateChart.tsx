@@ -280,7 +280,7 @@ export function SavingsRateReport({ budgetId }: Props) {
                   dataKey={RATE_SERIES}
                   name={rateLabel}
                   stroke={FLOW_COLORS.line}
-                  strokeOpacity={dim(rateLabel)}
+                  strokeOpacity={dim(RATE_SERIES)}
                   strokeWidth={2}
                   dot={{ r: 3 }}
                   connectNulls={false}
@@ -329,8 +329,8 @@ export function SavingsRateReport({ budgetId }: Props) {
             </ResponsiveContainer>
             <ChartLegend
               series={[
-                { name: rateLabel, color: FLOW_COLORS.line },
-                ...bars.map((b) => ({ name: b.key, color: b.color })),
+                { id: RATE_SERIES, name: rateLabel, color: FLOW_COLORS.line },
+                ...bars.map((b) => ({ id: b.key, name: b.key, color: b.color })),
               ]}
               active={highlight}
               onHover={setHighlight}

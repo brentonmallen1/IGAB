@@ -148,6 +148,32 @@ export function expensesDrill(
   return netClassDrill(label, classes, window)
 }
 
+/** The drill-down behind a plan-family Spent figure — Budget vs Actual, Plan
+ *  vs Reality, Volatility, Anomalies: the rows the plan ledger counts as spent
+ *  in one category (served as `plan_spent`), whichever way they went.
+ *
+ *  They each sent `direction: 'outflow'` and the category, which is not what
+ *  the figure counts: it nets refunds, so a refund-heavy month opened a list
+ *  totalling more than its cell; it counts a Savings envelope's transfer out,
+ *  which an outflow list of the category happens to hold but a class filter
+ *  would not; and it never counts a brokerage transfer out of an untagged
+ *  envelope, which the outflow list did. The rule is the server's, as the
+ *  spending reports' classes are — one builder, because four charts open it. */
+export function planSpentDrill(
+  categoryId: string,
+  label: string,
+  window: { startDate: string; endDate: string }
+): DrillDownContext {
+  return {
+    kind: 'category',
+    label,
+    scope: 'leaf',
+    categoryIds: [categoryId],
+    planSpent: true,
+    ...window,
+  }
+}
+
 export interface TabFilterSupport {
   /** Whether the tab can roll up by a saved view's groups instead of the
    *  budget's own. Only the group-capable ones — everything else has no group
@@ -402,6 +428,9 @@ export interface DrillDownContext {
    *  Discretionary report's lines are cut by tag and class, so their category
    *  ids alone list rows the line never counted. */
   discretionary?: boolean
+  /** Only the rows a plan report counts as spent (served as `plan_spent`) —
+   *  see `planSpentDrill`. */
+  planSpent?: boolean
   startDate: string
   endDate: string
 }

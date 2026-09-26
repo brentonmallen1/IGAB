@@ -70,7 +70,7 @@ export function VarianceReport({ budgetId }: Props) {
           <p>
             Each <strong>bar</strong> is one month&apos;s plan minus what it spent: green under
             plan, red over. A month&apos;s plan is what you assigned plus money moved into
-            envelopes, and spending is net of refunds.
+            envelopes, less money moved out of them, and spending is net of refunds.
           </p>
           <p>
             The <strong>line</strong> is the running total of those bars. Above zero you have spent
@@ -95,6 +95,7 @@ export function VarianceReport({ budgetId }: Props) {
                 partial_month: p.partial_month,
                 assigned: p.budget_assigned,
                 moved_in: p.moved_in,
+                moved_out: p.moved_out,
                 planned: p.planned,
                 spent: p.actual_spent,
                 monthly_variance: p.monthly_variance,
@@ -186,9 +187,9 @@ export function VarianceReport({ budgetId }: Props) {
           // a colour no bar had.
           <ChartLegend
             series={[
-              { name: 'Month under plan', color: COLOR_POSITIVE },
-              { name: 'Month over plan', color: COLOR_NEGATIVE },
-              { name: 'Running total', color: COLOR_NET },
+              { id: 'under', name: 'Month under plan', color: COLOR_POSITIVE },
+              { id: 'over', name: 'Month over plan', color: COLOR_NEGATIVE },
+              { id: 'running', name: 'Running total', color: COLOR_NET },
             ]}
             active={null}
             onHover={() => {}}

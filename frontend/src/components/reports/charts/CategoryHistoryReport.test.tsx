@@ -30,6 +30,7 @@ const month = (m: string, over: Partial<Record<string, number | null>> = {}) => 
   activity: 0,
   spent: 100,
   moved_in: 0,
+  moved_out: 0,
   available: 0,
   ...over,
 })

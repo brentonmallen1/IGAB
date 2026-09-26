@@ -134,6 +134,17 @@ class TestTheFiguresMatchTheApp:
         assert result["total_rows"] == 0
         assert "No payee matches" in result["note"]
 
+    async def test_an_unmatched_account_returns_nothing_not_everything(self, ctx):
+        """The account half of the same promise: the handler passed [] and
+        the listing read an empty list as no filter."""
+        result = await handlers.search_transactions(ctx, {"account_name": "Tidewater Savings"})
+        assert result["total_rows"] == 0
+        assert "No account matches" in result["note"]
+        rolled = await handlers.query_transactions(
+            ctx, {"account_name": "Tidewater Savings", "group_by": "category"}
+        )
+        assert (rolled["groups"], rolled["group_count"]) == ([], 0)
+
     async def test_budget_vs_actual_states_the_headline_the_rows_sum_to(self, ctx):
         data = await ctx.reports.budget_vs_actual(ctx.budget_id, MONTH, TODAY)
         result = await handlers.budget_vs_actual(

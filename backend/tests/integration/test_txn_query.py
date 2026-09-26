@@ -296,8 +296,61 @@ class TestThePayeeFilter:
         )
         assert count == 0
 
+    async def test_the_payee_rollup_files_a_split_under_the_shop_its_parent_names(self, db_session):
+        """The MCP grouped query's payee dimension grouped by the raw column,
+        so the -100 split's legs (payee on the parent only) read "(no payee)"
+        beside the same shop's -25."""
+        budget, market = await _split_at(db_session)
+        groups, _ = await grouped_totals(
+            db_session,
+            budget.id,
+            group_by="payee",
+            filters=TransactionFilters(start_date=date(2026, 8, 20), end_date=date(2026, 8, 20)),
+        )
+        assert [(g["group"], g["value"], g["rows"]) for g in groups] == [
+            ("Harborstone Market", -125, 3)
+        ]
+
+    async def test_a_payee_rollup_and_a_search_still_agree(self, db_session):
+        """The dimension joins its own alias: `search` still matches the row's
+        own payee, as the listing's does, under a payee rollup."""
+        budget, market = await _split_at(db_session)
+        filters = TransactionFilters(search="Harborstone Market")
+        _rows, count, total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, search="Harborstone Market", scope="leaf"
+        )
+        groups, _ = await grouped_totals(db_session, budget.id, group_by="payee", filters=filters)
+        assert sum(g["rows"] for g in groups) == count
+        assert sum(g["value"] for g in groups) == total
+
     def test_only_a_payee_filter_asks_for_the_split_parent(self):
         budget_id = uuid.uuid4()
         asked = build_where(budget_id, TransactionFilters(payee_ids=[uuid.uuid4()]))
         assert asked.split_parent_join is True
         assert build_where(budget_id, TransactionFilters()).split_parent_join is False
+
+
+class TestTheAccountFilter:
+    async def test_an_empty_account_list_matches_nothing(self, db_session):
+        """The assistant's tools pass [] for an account name that resolved to
+        nothing, and say "nothing was searched". A truthiness test read [] as
+        no filter and answered with every row in the budget — the payee
+        filter's bug, which was fixed on its own."""
+        budget, *_ = await _budget_with_spending(db_session)
+        _rows, count, _total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, account_ids=[], scope="leaf"
+        )
+        groups, total_groups = await grouped_totals(
+            db_session,
+            budget.id,
+            group_by="category",
+            filters=TransactionFilters(account_ids=[]),
+        )
+        assert (count, groups, total_groups) == (0, [], 0)
+
+    async def test_no_account_filter_is_still_every_account(self, db_session):
+        budget, *_ = await _budget_with_spending(db_session)
+        _rows, count, _total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, account_ids=None, scope="leaf"
+        )
+        assert count == 5

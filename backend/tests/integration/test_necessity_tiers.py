@@ -246,6 +246,37 @@ class TestTheServedReport:
         # And the shares are of the wide total, so they add to 100.
         assert sum(g["share"] for g in report["groups"]) == D("100.00")
 
+    async def test_groups_are_keyed_by_id_not_by_name(self, db_session):
+        """The page found its Uncategorized bucket by comparing a group's name
+        to "Uncategorized", so a real group a household had named that opened
+        as every row with no category. Each group is served with its id, and
+        the bucket — here an unfiled loan payment, which joins the tier by
+        class — with None; the two share a name and nothing else."""
+        budget, checking, bills, tags, by_key = await _household(db_session)
+        named = await create_category_group(db_session, budget, "Uncategorized")
+        water = await create_category(db_session, budget, named, "Water")
+        await tags.set_category_tags(water.id, [by_key["essential"].id])
+        await create_transaction(
+            db_session, budget, checking, "-80.00", _last_month(), category=water
+        )
+        student_loan = await create_account(
+            db_session, budget, "Harborstone Student Loan", account_type="loan", on_budget=False
+        )
+        await create_transfer(db_session, budget, checking, student_loan, "150.00", _last_month())
+
+        report = await cost_of_living(db_session, budget.id, months=1)
+        uncategorized = sorted(
+            ((g["group_id"] or ""), g["total"], g["category_ids"])
+            for g in report["groups"]
+            if g["group_name"] == "Uncategorized"
+        )
+        assert uncategorized == [
+            ("", D("150.00"), []),
+            (str(named.id), D("80.00"), [str(water.id)]),
+        ]
+        by_id = {g["group_id"]: g["group_name"] for g in report["groups"]}
+        assert by_id[str(bills.id)] == "Bills"
+
     async def test_it_serves_the_complete_month_figures_the_ratios_divide(self, db_session):
         """Required and the essentials ratio are the page's, not this
         service's — they divide two of the figures below, and the client is

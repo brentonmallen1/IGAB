@@ -17,6 +17,9 @@ export interface DrillDownRow {
   /** Null where the row has no percentage to state; the cell then reads
    *  `pctAbsent`. */
   pct?: number | null
+  /** What this row's % cell says when `pct` is null, where it differs from
+   *  the table's `pctAbsent`. */
+  pctAbsent?: string
   extra?: string
 }
 
@@ -104,7 +107,7 @@ export function DrillDownTable({
                   {row.pct === undefined
                     ? ''
                     : row.pct === null
-                      ? pctAbsent
+                      ? (row.pctAbsent ?? pctAbsent)
                       : `${row.pct.toFixed(1)}%`}
                 </td>
               )}

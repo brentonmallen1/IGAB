@@ -224,8 +224,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           </ResponsiveContainer>
           <ChartLegend
             series={[
-              ...bars.map((b) => ({ name: b.key, color: b.color })),
-              { name: SERIES.net, color: FLOW_COLORS.line },
+              ...bars.map((b) => ({ id: b.key, name: b.key, color: b.color })),
+              { id: SERIES.net, name: SERIES.net, color: FLOW_COLORS.line },
             ]}
             active={highlight}
             onHover={setHighlight}

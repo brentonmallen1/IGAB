@@ -984,6 +984,12 @@ export interface CategoryPayee {
   total: number
 }
 
+/** A payee band under a Sankey category: its payee of record's id, or null
+ *  for "Other payees" and payee-less rows (backend `SankeyPayee`). */
+export interface SankeyPayee extends CategoryPayee {
+  payee_id: string | null
+}
+
 /** Sources → the hub (`__budget__`) → groups → categories, both sides of
  *  the hub balanced by a Left over or Shortfall node. Spent mode is net: a
  *  refund comes off its category, a withdrawal off what was saved. Backend
@@ -1007,7 +1013,7 @@ export interface CashFlowReport {
   /** Spent mode: money in less money out — Income vs Expenses' `net` for the
    *  same window. null in budgeted mode, which has no such figure. */
   net: number | string | null
-  category_payees: Record<string, CategoryPayee[]>
+  category_payees: Record<string, SankeyPayee[]>
   group_categories: Record<string, CategoryPayee[]>
   /** Per category node whose drawn payees are wider than it: what came back
    *  (a refund from a payee with no charge in the window), drawn as a source
@@ -1023,8 +1029,12 @@ export interface BudgetActualItem {
   /** Money moved into the envelope — a transfer from savings, a deposit filed
    *  to it. It raises the plan (backend `domain/plan.py` `plan_effect`). */
   moved_in: number
-  /** `assigned + moved_in` floored at zero: what `variance` is measured
-   *  against. Served — never add the two here. */
+  /** Money moved out of the envelope and not spent — a transfer to a
+   *  brokerage, a principal payment from an untagged envelope. It lowers the
+   *  plan. Non-negative (backend `plan_effect`). */
+  moved_out: number
+  /** `assigned + moved_in - moved_out` floored at zero: what `variance` is
+   *  measured against. Served — never add them here. */
   plan: number
   /** Net of refunds; negative only when refunds beat the spending. */
   spent: number
@@ -1041,6 +1051,7 @@ export interface BudgetActualReport {
   categories: BudgetActualItem[]
   total_assigned: number
   total_moved_in: number
+  total_moved_out: number
   /** The rows' plans summed: `total_plan - total_spent === total_variance`. */
   total_plan: number
   total_spent: number
@@ -1057,15 +1068,19 @@ export interface PlanRealityCell {
   month: string
   assigned: number
   moved_in: number
-  /** `assigned + moved_in`, floored at zero — backend `plan_outcome`. */
+  /** Non-negative: money moved out and not spent (backend `plan_effect`). */
+  moved_out: number
+  /** `assigned + moved_in - moved_out`, floored at zero — backend
+   *  `plan_outcome`. */
   plan: number
   spent: number
   variance: number
   /** The verdict: past the plan by at least $1 and 1% of it. Tint by this,
    *  never by the variance's sign — a few cents over is on plan. */
   over: boolean
-  /** Anything planned or spent: the cells the matrix fills. Served, as the
-   *  count `months_active` reads it. */
+  /** Anything assigned, moved in, moved out or spent (backend
+   *  `PlanMonth.quiet`): the cells the matrix fills. Served, as the count
+   *  `months_active` reads it — never re-derived from plan and spent here. */
   active: boolean
 }
 
@@ -1078,6 +1093,7 @@ export interface PlanRealityCategory {
   months_active: number
   total_assigned: number
   total_moved_in: number
+  total_moved_out: number
   total_spent: number
   avg_overspend: number
   /** Backend `domain/plan.py` `is_chronic`; the Guide reads the same flag. */
@@ -1095,6 +1111,7 @@ export interface PlanRealityReport {
   categories: PlanRealityCategory[]
   total_assigned: number
   total_moved_in: number
+  total_moved_out: number
   total_spent: number
   chronic_count: number
 }
@@ -1107,6 +1124,7 @@ export interface VariancePoint {
   partial_month: boolean
   budget_assigned: number
   moved_in: number
+  moved_out: number
   /** The month's category plans summed, each floored at zero:
    *  `planned - actual_spent === monthly_variance`. */
   planned: number
@@ -1402,10 +1420,12 @@ export interface CategoryHistoryReport {
     assigned: number
     activity: number
     /** Spent as every plan report counts it — net of refunds, and not the
-     *  money moved in, which `activity` nets away (backend
+     *  money moved in or out, which `activity` nets away (backend
      *  `services/plan_ledger.py`). */
     spent: number
     moved_in: number
+    /** Non-negative: money moved out and not spent (backend `plan_effect`). */
+    moved_out: number
     /** Null for an income category: "Income categories do not hold money", so
      *  their available is a lifetime carryover the budget page never draws.
      *  Their monthly activity is meaningful and is still served. Null too for
@@ -1838,6 +1858,9 @@ export interface TransactionMatch {
 }
 
 export interface CostOfLivingGroup {
+  /** null for the Uncategorized bucket — the flag its drill reads (backend
+   *  `report_basics.cost_of_living`). Never test the name. */
+  group_id: string | null
   group_name: string
   monthly_amounts: number[]
   total: number

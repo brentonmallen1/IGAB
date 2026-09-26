@@ -51,8 +51,8 @@ describe('treemap colours', () => {
     // A map whose insertion order does not match the slots: `indexOf(gid)`
     // over the keys and the slot disagree here, and only the slot is right.
     const groups = new Map<string, TreemapGroup>([
-      ['fun', { name: 'Fun', total: 200, colorIdx: 1, children: [] }],
-      ['home', { name: 'Home', total: 1020, colorIdx: 0, children: [] }],
+      ['fun', { key: 'fun', name: 'Fun', total: 200, colorIdx: 1, children: [] }],
+      ['home', { key: 'home', name: 'Home', total: 1020, colorIdx: 0, children: [] }],
     ])
     const fills = Object.fromEntries(flatTiles(ITEMS, groups, 1220).map((t) => [t.id, t.fill]))
     expect(fills).toEqual({ rent: chartColor(0), power: chartColor(0), dining: chartColor(1) })
@@ -60,8 +60,8 @@ describe('treemap colours', () => {
 
   it('colours a group tile by its slot, not by its position in the list', () => {
     const groups = new Map<string, TreemapGroup>([
-      ['fun', { name: 'Fun', total: 200, colorIdx: 1, children: [] }],
-      ['home', { name: 'Home', total: 1020, colorIdx: 0, children: [] }],
+      ['fun', { key: 'fun', name: 'Fun', total: 200, colorIdx: 1, children: [] }],
+      ['home', { key: 'home', name: 'Home', total: 1020, colorIdx: 0, children: [] }],
     ])
     const fills = Object.fromEntries(groupTiles(groups, 1220).map((t) => [t.name, t.fill]))
     expect(fills).toEqual({ Fun: chartColor(1), Home: chartColor(0) })
@@ -150,12 +150,23 @@ describe('groupColorKey', () => {
     // Category mode shaded every tile by its group and named no group.
     const groups = treemapGroups(ITEMS)
     expect(groupColorKey(groups)).toEqual([
-      { name: 'Group home', color: chartColor(0) },
-      { name: 'Group fun', color: chartColor(1) },
+      { id: 'home', name: 'Group home', color: chartColor(0) },
+      { id: 'fun', name: 'Group fun', color: chartColor(1) },
     ])
     for (const tile of flatTiles(ITEMS, groups, 1220)) {
-      const key = groupColorKey(groups).find((k) => k.name === tile.groupName)!
+      const key = groupColorKey(groups).find((k) => k.id === tile.groupKey)!
       expect(tile.fill).toBe(key.color)
     }
+  })
+
+  it('keeps two groups sharing a name as two keys', () => {
+    // Keyed by name, they shared one legend entry and lit up together.
+    const twins = [
+      { id: 'a', name: 'Rent', parent_id: 'g1', parent_name: 'Bills', total: 100 },
+      { id: 'b', name: 'Power', parent_id: 'g2', parent_name: 'Bills', total: 50 },
+    ]
+    const groups = treemapGroups(twins)
+    expect(groupColorKey(groups).map((k) => k.id)).toEqual(['g1', 'g2'])
+    expect(flatTiles(twins, groups, 150).map((t) => t.groupKey)).toEqual(['g1', 'g2'])
   })
 })

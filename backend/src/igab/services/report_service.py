@@ -141,6 +141,7 @@ class ChronicMonth(TypedDict):
     month: date
     assigned: Decimal
     moved_in: Decimal
+    moved_out: Decimal
     plan: Decimal
     spent: Decimal
     variance: Decimal
@@ -157,6 +158,7 @@ class ChronicCategory(TypedDict):
     months_active: int
     total_assigned: Decimal
     total_moved_in: Decimal
+    total_moved_out: Decimal
     total_spent: Decimal
     avg_overspend: Decimal
     chronic: bool
@@ -963,10 +965,11 @@ class ReportService:
         """Each category's plan for the window against what it spent.
 
         The plan is the window's assignments plus money moved into the
-        envelope, and spent is net of refunds — `plan_ledger` reads both and
-        `domain.plan` says why. A category that planned nothing and spent
-        nothing is not a row: "$0 / $0" is not a finding, and a drained
-        envelope, floored to no plan, was one of those.
+        envelope less money moved out, and spent is net of refunds —
+        `plan_ledger` reads both and `domain.plan` says why. A category with
+        no activity at all (`PlanMonth.quiet`: nothing assigned, moved or
+        spent) is not a row. One whose plan floors to nothing is: a mortgage
+        paid by a principal transfer is on plan, not missing.
 
         The totals are the served rows summed, so the headline cannot say
         something the rows under it do not (`plan.total_variance`).
@@ -977,11 +980,17 @@ class ReportService:
         zero = Decimal("0")
         categories: list[dict] = []
         outcomes = []
-        totals = {"assigned": zero, "moved_in": zero, "plan": zero, "spent": zero}
+        totals = {
+            "assigned": zero,
+            "moved_in": zero,
+            "moved_out": zero,
+            "plan": zero,
+            "spent": zero,
+        }
         for cat in ledger.values():
             t = cat.total()
-            outcome = plan_outcome(t.assigned, t.spent, moved_in=t.moved_in)
-            if outcome.plan == zero and t.spent == zero:
+            outcome = plan_outcome(t.assigned, t.spent, moved_in=t.moved_in, moved_out=t.moved_out)
+            if t.quiet:
                 continue
             # `overspent` is served so the chart stops deciding it from the
             # raw assignment; `plan` so it never adds moved-in money itself.
@@ -993,6 +1002,7 @@ class ReportService:
                     "category_group_name": cat.group,
                     "assigned": t.assigned,
                     "moved_in": t.moved_in,
+                    "moved_out": t.moved_out,
                     "plan": outcome.plan,
                     "spent": t.spent,
                     "variance": outcome.variance,
@@ -1002,6 +1012,7 @@ class ReportService:
             )
             totals["assigned"] += t.assigned
             totals["moved_in"] += t.moved_in
+            totals["moved_out"] += t.moved_out
             totals["plan"] += outcome.plan
             totals["spent"] += t.spent
         categories.sort(key=lambda c: (-c["spent"], c["category_name"]))
@@ -1009,6 +1020,7 @@ class ReportService:
             "categories": categories,
             "total_assigned": totals["assigned"],
             "total_moved_in": totals["moved_in"],
+            "total_moved_out": totals["moved_out"],
             "total_plan": totals["plan"],
             "total_spent": totals["spent"],
             "total_variance": total_variance(outcomes),
@@ -1046,14 +1058,17 @@ class ReportService:
         results = []
         cumulative = zero
         for month in window.axis:
-            assigned = moved_in = planned = spent = variance = zero
+            assigned = moved_in = moved_out = planned = spent = variance = zero
             for cat in ledger.values():
                 cell = cat.months.get(month)
                 if cell is None:
                     continue
-                outcome = plan_outcome(cell.assigned, cell.spent, moved_in=cell.moved_in)
+                outcome = plan_outcome(
+                    cell.assigned, cell.spent, moved_in=cell.moved_in, moved_out=cell.moved_out
+                )
                 assigned += cell.assigned
                 moved_in += cell.moved_in
+                moved_out += cell.moved_out
                 planned += outcome.plan
                 spent += cell.spent
                 variance += outcome.variance
@@ -1066,6 +1081,7 @@ class ReportService:
                     "partial_month": running,
                     "budget_assigned": assigned,
                     "moved_in": moved_in,
+                    "moved_out": moved_out,
                     "planned": planned,
                     "actual_spent": spent,
                     "monthly_variance": variance,
@@ -1104,8 +1120,9 @@ class ReportService:
         reads the complete months alone: a month whose assignment is all in
         and whose spending is a week old is neither over nor under yet.
 
-        A category with no active month — nothing planned and nothing spent
-        anywhere in the window, the running month included — is not a row.
+        A category with no active month — nothing assigned, moved or spent
+        anywhere in the window, the running month included (`PlanMonth.quiet`)
+        — is not a row.
         """
         today = reader_today(today)
         window = await budget_window(self.session, budget_id, months, today)
@@ -1115,7 +1132,7 @@ class ReportService:
         zero = Decimal("0")
         recent = set(window.complete[-CHRONIC_WINDOW:])
         categories: list[ChronicCategory] = []
-        total_assigned = total_moved_in = total_spent = zero
+        total_assigned = total_moved_in = total_moved_out = total_spent = zero
         chronic_count = 0
         for cat in ledger.values():
             monthly: list[ChronicMonth] = []
@@ -1130,13 +1147,16 @@ class ReportService:
                 # One verdict for the chronic count, the cell's tint AND its
                 # variance: a drained envelope was once coloured as overspent
                 # while the chronic flag beside it disagreed.
-                outcome = plan_outcome(cell.assigned, cell.spent, moved_in=cell.moved_in)
-                active = outcome.plan != zero or cell.spent != zero
+                outcome = plan_outcome(
+                    cell.assigned, cell.spent, moved_in=cell.moved_in, moved_out=cell.moved_out
+                )
+                active = not cell.quiet
                 running = window.is_running(m)
                 shown = shown or active
                 if not running:
                     t.assigned += cell.assigned
                     t.moved_in += cell.moved_in
+                    t.moved_out += cell.moved_out
                     t.spent += cell.spent
                     if active:
                         months_active += 1
@@ -1150,6 +1170,7 @@ class ReportService:
                         "month": m,
                         "assigned": cell.assigned,
                         "moved_in": cell.moved_in,
+                        "moved_out": cell.moved_out,
                         "plan": outcome.plan,
                         "spent": cell.spent,
                         "variance": outcome.variance,
@@ -1173,6 +1194,7 @@ class ReportService:
                     "months_active": months_active,
                     "total_assigned": t.assigned,
                     "total_moved_in": t.moved_in,
+                    "total_moved_out": t.moved_out,
                     "total_spent": t.spent,
                     "avg_overspend": avg_overspend,
                     "chronic": chronic,
@@ -1181,6 +1203,7 @@ class ReportService:
             )
             total_assigned += t.assigned
             total_moved_in += t.moved_in
+            total_moved_out += t.moved_out
             total_spent += t.spent
 
         categories.sort(
@@ -1199,6 +1222,7 @@ class ReportService:
             "categories": categories,
             "total_assigned": total_assigned,
             "total_moved_in": total_moved_in,
+            "total_moved_out": total_moved_out,
             "total_spent": total_spent,
             "chronic_count": chronic_count,
         }
@@ -2112,7 +2136,9 @@ class ReportService:
         sub_q = (
             join_split_parent(
                 select(
-                    Transaction.payee_id,
+                    # By payee of record, as the Subscriptions report groups:
+                    # a split charge's legs carry the service on the parent.
+                    PAYEE_OF_RECORD.label("payee_id"),
                     Payee.name.label("payee_name"),
                     func.max(Transaction.date).label("last_date"),
                     func.min(Transaction.date).label("first_date"),
@@ -2120,7 +2146,7 @@ class ReportService:
                     func.avg(Transaction.amount).label("avg_amount"),
                 )
             )
-            .join(Payee, Payee.id == Transaction.payee_id)
+            .join(Payee, Payee.id == PAYEE_OF_RECORD)
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Transaction.budget_id == budget_id,
@@ -2134,7 +2160,7 @@ class ReportService:
                 CASH_ACCOUNT,
                 none_of(*live_schedules),
             )
-            .group_by(Transaction.payee_id, Payee.name)
+            .group_by(PAYEE_OF_RECORD, Payee.name)
         )
         sub_rows = (await self.session.execute(sub_q)).all()
 

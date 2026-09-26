@@ -352,9 +352,14 @@ class TestBudgetVsActual:
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
 
-        # The drained envelope planned nothing and spent nothing, so it is not
-        # a row — "$0 / $0" is not a finding — and the totals are the rows'.
-        assert [c["category_name"] for c in result["categories"]] == ["B"]
+        # The drained envelope is a row (something was assigned) on plan, and
+        # the totals are the rows'.
+        drained = next(c for c in result["categories"] if c["category_name"] == "A")
+        assert (drained["plan"], drained["variance"], drained["overspent"]) == (
+            D("0"),
+            D("0"),
+            False,
+        )
         assert result["total_variance"] == D("-150.00")
         assert result["total_variance"] == sum(c["variance"] for c in result["categories"])
 
@@ -365,6 +370,7 @@ class TestBudgetVsActual:
             "categories": [],
             "total_assigned": D("0"),
             "total_moved_in": D("0"),
+            "total_moved_out": D("0"),
             "total_plan": D("0"),
             "total_spent": D("0"),
             "total_variance": D("0"),

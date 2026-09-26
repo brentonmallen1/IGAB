@@ -66,6 +66,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
       activityClasses: drillDown.activityClasses,
       necessityTier: drillDown.necessityTier,
       discretionary: drillDown.discretionary,
+      planSpent: drillDown.planSpent,
       accountIds: filters.accountIds.length > 0 ? filters.accountIds : undefined,
       limit,
     }),

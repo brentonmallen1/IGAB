@@ -4,6 +4,7 @@ import {
   HUB,
   buildSankeyView,
   categoryNodeDrill,
+  payeeNodeDrill,
   deltaColor,
   extractPrevTotals,
   formatDelta,
@@ -48,8 +49,8 @@ function report(): CashFlowReport {
     net: 2100,
     category_payees: {
       c_1: [
-        { name: 'MegaMart', total: 250 },
-        { name: 'CornerStore', total: 70 },
+        { name: 'MegaMart', total: 250, payee_id: 'p-mega' },
+        { name: 'CornerStore', total: 70, payee_id: 'p-corner' },
       ],
     },
     group_categories: { g_1: [{ name: 'Groceries', total: 300 }] },
@@ -159,7 +160,7 @@ describe('buildSankeyView', () => {
 
   it('matches previous payees by name at the payee level', () => {
     const prev = report()
-    prev.category_payees = { c_1: [{ name: 'MegaMart', total: 200 }] }
+    prev.category_payees = { c_1: [{ name: 'MegaMart', total: 200, payee_id: 'p-mega' }] }
     const view = buildSankeyView(report(), 'g_1', 'c_1', extractPrevTotals(prev), prev)
     const byName = new Map(view.sankeyData.nodes.map((n) => [n.name, n]))
     expect(byName.get('MegaMart')?.prev).toBe(200)
@@ -289,6 +290,49 @@ describe('categoryNodeDrill', () => {
     expect(drill.categoryIds).toEqual(['cat-1'])
     expect(drill.noCategory).toBeUndefined()
     expect(drill.activityClasses).toEqual(['savings'])
+  })
+})
+
+describe('payeeNodeDrill', () => {
+  const window = { startDate: '2026-08-01', endDate: '2026-08-31' }
+  const groceries = { entity_id: 'cat-1', activity_classes: ['spending'] }
+
+  it('opens a band by its served payee id, inside its category', () => {
+    // It matched the band's name against every payee: two payees named alike
+    // opened the first one's rows.
+    const payee = buildSankeyView(report(), 'g_1', 'c_1', null, undefined).sankeyData.nodes.find(
+      (n) => n.name === 'MegaMart'
+    )
+    expect(payee?.entity_id).toBe('p-mega')
+    expect(payeeNodeDrill(payee!, groceries, window)).toEqual({
+      kind: 'payee',
+      label: 'MegaMart',
+      scope: 'leaf',
+      payeeIds: ['p-mega'],
+      categoryIds: ['cat-1'],
+      activityClasses: ['spending'],
+      ...window,
+    })
+  })
+
+  it('opens nothing for a band with no payee of its own', () => {
+    // "Other payees", and payee-less rows the server calls "Unknown" — which
+    // a payee named Unknown used to answer for.
+    expect(payeeNodeDrill({ name: 'Other payees', entity_id: null }, groceries, window)).toBeNull()
+    expect(payeeNodeDrill({ name: 'Unknown', entity_id: null }, groceries, window)).toBeNull()
+  })
+
+  it('opens a band under the Uncategorized bucket by "no category"', () => {
+    // `categoryIds: undefined` dropped the category scope and listed the
+    // payee's rows in every envelope.
+    const drill = payeeNodeDrill(
+      { name: 'MegaMart', entity_id: 'p-mega' },
+      { entity_id: null, activity_classes: ['spending'] },
+      window
+    )
+    expect(drill).toMatchObject({ noCategory: true, payeeIds: ['p-mega'] })
+    expect(drill?.categoryIds).toBeUndefined()
+    expect(drill?.direction).toBeUndefined()
   })
 })
 

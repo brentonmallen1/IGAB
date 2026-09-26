@@ -1214,6 +1214,7 @@ describe('VarianceReport cards', () => {
             partial_month: false,
             budget_assigned: 3000,
             moved_in: 0,
+            moved_out: 0,
             planned: 3000,
             actual_spent: 2900,
             monthly_variance: 100,
@@ -1224,6 +1225,7 @@ describe('VarianceReport cards', () => {
             partial_month: true,
             budget_assigned: 3000,
             moved_in: 200,
+            moved_out: 0,
             planned: 3200,
             actual_spent: 1200,
             monthly_variance: 2000,
@@ -1506,11 +1508,15 @@ describe('AnomaliesReport list', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /Dining/ }))
 
-      expect(useReportStore.getState().drillDown).toMatchObject({
+      const drill = useReportStore.getState().drillDown
+      expect(drill).toMatchObject({
         categoryIds: ['c1'],
+        planSpent: true,
         startDate: '2026-09-01',
         endDate: '2026-09-10',
       })
+      // The figure nets refunds; an outflow-only list totalled more than it.
+      expect(drill?.direction).toBeUndefined()
     } finally {
       vi.useRealTimers()
     }
@@ -1649,6 +1655,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-06-01',
             assigned: 100,
             moved_in: 0,
+            moved_out: 0,
             plan: 100,
             spent: 140,
             variance: -40,
@@ -1659,6 +1666,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-07-01',
             assigned: 100,
             moved_in: 0,
+            moved_out: 0,
             plan: 100,
             spent: 90,
             variance: 10,
@@ -1669,6 +1677,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-08-01',
             assigned: 0,
             moved_in: 0,
+            moved_out: 0,
             plan: 0,
             spent: 0,
             variance: 0,
@@ -1680,6 +1689,7 @@ describe('PlanVsRealityReport matrix', () => {
         months_active: 2,
         total_assigned: '200',
         total_moved_in: '0',
+        total_moved_out: '0',
         total_spent: '230',
         avg_overspend: 40.0,
         chronic: true,
@@ -1694,6 +1704,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-06-01',
             assigned: 900,
             moved_in: 0,
+            moved_out: 0,
             plan: 900,
             spent: 900,
             variance: 0,
@@ -1704,6 +1715,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-07-01',
             assigned: 900,
             moved_in: 0,
+            moved_out: 0,
             plan: 900,
             spent: 900.27,
             variance: -0.27,
@@ -1714,6 +1726,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-08-01',
             assigned: 900,
             moved_in: 0,
+            moved_out: 0,
             plan: 900,
             spent: 900,
             variance: 0,
@@ -1725,6 +1738,7 @@ describe('PlanVsRealityReport matrix', () => {
         months_active: 3,
         total_assigned: '2700',
         total_moved_in: '0',
+        total_moved_out: '0',
         total_spent: '2700.27',
         avg_overspend: '0',
         chronic: false,
@@ -1733,6 +1747,7 @@ describe('PlanVsRealityReport matrix', () => {
     ],
     total_assigned: '2900',
     total_moved_in: '0',
+    total_moved_out: '0',
     total_spent: '2930.27',
     chronic_count: 1,
   }
@@ -1866,6 +1881,7 @@ describe('BudgetActualReport values', () => {
             category_group_name: 'Everyday',
             assigned: 500,
             moved_in: 0,
+            moved_out: 0,
             plan: 500,
             spent: 450,
             variance: 50,
@@ -1875,6 +1891,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '500',
         total_moved_in: '0',
+        total_moved_out: '0',
         total_plan: '500',
         total_spent: '450',
         total_variance: 50,
@@ -1899,6 +1916,7 @@ describe('BudgetActualReport values', () => {
             category_group_name: 'Health',
             assigned: 0,
             moved_in: 2000,
+            moved_out: 0,
             plan: 2000,
             spent: 2000,
             variance: 0,
@@ -1908,6 +1926,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: 0,
         total_moved_in: 2000,
+        total_moved_out: 0,
         total_plan: 2000,
         total_spent: 2000,
         total_variance: 0,
@@ -1916,7 +1935,13 @@ describe('BudgetActualReport values', () => {
     renderReport(<BudgetActualReport budgetId="b1" />)
 
     expect(card('Planned').value).toBe('$2,000.00')
-    expect(screen.getByText('$2,000.00 ($2,000.00 moved in)')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Medical'))
+    const drill = useReportStore.getState().drillDown
+    // The plan ledger's own rows, both ways — the figure is net of refunds.
+    expect(drill).toMatchObject({ categoryIds: ['c1'], planSpent: true, scope: 'leaf' })
+    expect(drill?.direction).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+    expect(screen.getByText('$2,000.00 (assigned $0.00 + moved in $2,000.00)')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Planned' })).toBeInTheDocument()
   })
 
@@ -2061,6 +2086,43 @@ describe('BudgetActualReport values', () => {
     expect(screen.queryByText('0.0%')).toBeNull()
   })
 
+  it('reads a mortgage paid by a principal transfer as a row on plan', () => {
+    // Assigned 1,500, moved out 1,500: plan 0, spent 0. The row used to be
+    // dropped as "$0 / $0", which reads as the mortgage missing; it is a row,
+    // and its % cell says "on plan", not "no plan".
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'm1',
+            category_name: 'Mortgage',
+            category_group_name: 'Housing',
+            assigned: 1500,
+            moved_in: 0,
+            moved_out: 1500,
+            plan: 0,
+            spent: 0,
+            variance: 0,
+            variance_pct: null,
+            overspent: false,
+          },
+        ],
+        total_assigned: 1500,
+        total_moved_in: 0,
+        total_moved_out: 1500,
+        total_plan: 0,
+        total_spent: 0,
+        total_variance: 0,
+        filter_unavailable: false,
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    const cells = cellsOf('Mortgage')
+    expect(cells).toContain('on plan')
+    expect(cells).toContain('$0.00 (assigned $1,500.00 − moved out $1,500.00)')
+    expect(card('Against plan').value).toBe('On plan')
+  })
+
   it('asks for the tags and the saved filter the filter bar offers, not the categories alone', () => {
     useReportStore.getState().setFilters({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
     try {
@@ -2092,6 +2154,7 @@ describe('CostOfLivingReport tiers', () => {
     window_end: '2026-08-31',
     groups: [
       {
+        group_id: 'g-bills',
         group_name: 'Bills',
         monthly_amounts: [700, 700],
         total: 1400,
@@ -2100,6 +2163,7 @@ describe('CostOfLivingReport tiers', () => {
         category_ids: ['c1'],
       },
       {
+        group_id: 'g-fun',
         group_name: 'Fun',
         monthly_amounts: [200, 200],
         total: 400,
@@ -2143,6 +2207,50 @@ describe('CostOfLivingReport tiers', () => {
       sub: 'per month, over 2 complete months',
     })
     expect(card('Required')).toEqual({ value: '75%', sub: 'of take-home' })
+  })
+
+  it('opens the Uncategorized bucket by its served null id, by "no category"', () => {
+    const bucket = {
+      group_id: null,
+      group_name: 'Uncategorized',
+      monthly_amounts: [50, 50],
+      total: 100,
+      avg_monthly: 50,
+      share: 5,
+      category_ids: [],
+    }
+    setQuery({ data: { ...tiered, groups: [...tiered.groups, bucket] } })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Uncategorized' })
+    )
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ noCategory: true, label: 'Uncategorized' })
+    expect(drill?.categoryIds).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+  })
+
+  it('opens a real group named "Uncategorized" by its categories', () => {
+    // The page compared the name to the string "Uncategorized", so a group a
+    // household had named that opened every row with no category instead.
+    const named = {
+      group_id: 'g-named',
+      group_name: 'Uncategorized',
+      monthly_amounts: [50, 50],
+      total: 100,
+      avg_monthly: 50,
+      share: 5,
+      category_ids: ['c9'],
+    }
+    setQuery({ data: { ...tiered, groups: [...tiered.groups, named] } })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Uncategorized' })
+    )
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ categoryIds: ['c9'] })
+    expect(drill?.noCategory).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
   })
 
   it('names its table for the tier it rolls up', () => {

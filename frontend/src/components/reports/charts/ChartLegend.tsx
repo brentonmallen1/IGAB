@@ -1,6 +1,10 @@
 import './ChartLegend.css'
 
 export interface LegendSeries {
+  /** What the entry is keyed and highlighted by: the series' id (a category
+   *  or group id, or a chart's own key), never its name. Keyed by name, two
+   *  categories named alike shared a React key and lit up together. */
+  id: string
   name: string
   color: string
   /** Optional figure shown beside the name — a legend that only names things
@@ -32,9 +36,9 @@ export function ChartLegend({
   onHover,
 }: {
   series: LegendSeries[]
-  /** The series being highlighted, or null. */
+  /** The id of the series being highlighted, or null. */
   active: string | null
-  onHover: (name: string | null) => void
+  onHover: (id: string | null) => void
 }) {
   return (
     <ul
@@ -43,12 +47,12 @@ export function ChartLegend({
       aria-label="Series in this chart"
     >
       {series.map((s) => (
-        <li key={s.name}>
+        <li key={s.id}>
           <button
             type="button"
-            className={`chart-legend__item ${active && active !== s.name ? 'is-dimmed' : ''}`}
-            onMouseEnter={() => onHover(s.name)}
-            onFocus={() => onHover(s.name)}
+            className={`chart-legend__item ${active && active !== s.id ? 'is-dimmed' : ''}`}
+            onMouseEnter={() => onHover(s.id)}
+            onFocus={() => onHover(s.id)}
             onBlur={() => onHover(null)}
             // Highlighting is a pointer/focus affordance over a chart that is
             // already fully described by the table beneath it, so the button

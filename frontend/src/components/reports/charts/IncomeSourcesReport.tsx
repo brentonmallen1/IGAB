@@ -158,7 +158,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                     name={s.name}
                     stackId="stack"
                     fill={s.color}
-                    fillOpacity={highlight && highlight !== s.name ? 0.25 : 1}
+                    fillOpacity={highlight && highlight !== s.key ? 0.25 : 1}
                     isAnimationActive={false}
                   />
                 ))}
@@ -167,6 +167,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
           </div>
           <ChartLegend
             series={stacked.series.map((s) => ({
+              id: s.key,
               name: s.name,
               color: s.color,
               value: formatMoney(s.total),

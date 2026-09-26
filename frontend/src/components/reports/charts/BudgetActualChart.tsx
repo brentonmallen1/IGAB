@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportScope, useReportStore } from '../../../stores/reportStore'
+import { planSpentDrill, useReportScope, useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -23,7 +23,8 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { ReportNotes } from '../ReportNotes'
-import { NO_PLAN, varianceHeadline } from './budgetActualView'
+import { NO_PLAN, noPlanLabel, varianceHeadline } from './budgetActualView'
+import { planLabel } from './planLabel'
 
 interface Props {
   budgetId: string
@@ -98,23 +99,18 @@ export function BudgetActualReport({ budgetId }: Props) {
     fullName: c.category_name,
     categoryId: c.category_id,
     group: c.category_group_name,
-    // The served plan — assigned plus money moved in, floored. Drawing the
-    // raw assignment put a 2,000 bill paid from savings beside a zero bar.
+    // The served plan — assigned plus money moved in less money moved out,
+    // floored. Drawing the raw assignment put a 2,000 bill paid from savings
+    // beside a zero bar.
     Planned: c.plan,
     Spent: c.spent,
     overspent: c.overspent,
   }))
 
   function drillTo(categoryId: string, name: string) {
-    setDrillDown({
-      kind: 'category',
-      label: name,
-      scope: 'leaf',
-      direction: 'outflow',
-      categoryIds: [categoryId],
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-    })
+    setDrillDown(
+      planSpentDrill(categoryId, name, { startDate: filters.startDate, endDate: filters.endDate })
+    )
   }
 
   const barClick = (data: unknown) => {
@@ -136,10 +132,8 @@ export function BudgetActualReport({ budgetId }: Props) {
     subName: c.category_group_name,
     amount: c.spent,
     pct: c.variance_pct,
-    extra:
-      c.moved_in !== 0
-        ? `${formatMoney(c.plan)} (${formatMoney(c.moved_in)} moved in)`
-        : formatMoney(c.plan),
+    pctAbsent: noPlanLabel(c),
+    extra: planLabel(c, formatMoney),
   }))
 
   return (
@@ -149,13 +143,15 @@ export function BudgetActualReport({ budgetId }: Props) {
         <ReportInfoButton title="Budget vs Actual">
           <p>
             Compares each category&apos;s <strong>plan</strong> — what you assigned, plus money
-            moved into the envelope — with what you <strong>spent</strong> in the selected dates,
-            net of refunds.
+            moved into the envelope, less money moved out of it — with what you{' '}
+            <strong>spent</strong> in the selected dates, net of refunds.
           </p>
           <p>
             <strong>Green bars</strong> = within plan. <strong>Red bars</strong> = over it by at
-            least $1 and 1%. Moving money out of an envelope lowers its plan, and moving money in —
-            a transfer from savings, a deposit filed to it — raises it; neither is spending.
+            least $1 and 1%. Moving money in — a transfer from savings, a deposit filed to it —
+            raises the plan, and moving it out — a transfer to a brokerage, a loan payment — lowers
+            it; neither is spending. Money leaving a Savings envelope is the exception: that is what
+            its plan was for, so it counts as spent.
           </p>
           <p>
             Use the <em>Overspent only</em> filter to focus on problem categories, and{' '}
@@ -187,6 +183,7 @@ export function BudgetActualReport({ budgetId }: Props) {
                 group: c.category_group_name,
                 assigned: c.assigned,
                 moved_in: c.moved_in,
+                moved_out: c.moved_out,
                 planned: c.plan,
                 spent: c.spent,
                 variance: c.variance,

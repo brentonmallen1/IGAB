@@ -149,6 +149,9 @@ export interface BudgetTransactionParams {
   /** Restrict to discretionary spending — the Discretionary report's own
    *  predicate, since its lines are cut by tag and class, not by category. */
   discretionary?: boolean
+  /** Restrict to the rows a plan report counts as spent — backend
+   *  `plan_rows.PLAN_SPENT_ROW`. */
+  planSpent?: boolean
   limit?: number
   offset?: number
 }
@@ -183,6 +186,7 @@ function drillDownParams(p: BudgetTransactionParams): Record<string, unknown> {
     activity_classes: csv(p.activityClasses),
     necessity_tier: p.necessityTier || undefined,
     discretionary: p.discretionary || undefined,
+    plan_spent: p.planSpent || undefined,
     no_category: p.noCategory || undefined,
     tag_ids: csv(p.tagIds),
     filter_id: p.filterId || undefined,

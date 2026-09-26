@@ -182,6 +182,10 @@ async def list_budget_transactions(
     #: (`activity_class.DISCRETIONARY_ROW`), so a line opens the rows it
     #: totals rather than every row of its categories.
     discretionary: bool = False,
+    #: Only the rows a plan report counts as spent (`plan_rows.PLAN_SPENT_ROW`),
+    #: so a Budget vs Actual, Plan vs Reality, Volatility or Anomalies figure
+    #: opens the rows it totals — refunds included, as the figure nets them.
+    plan_spent: bool = False,
     direction: Literal["inflow", "outflow"] | None = None,
     day_of_week: int | None = Query(None, ge=0, le=6),
     cleared: str | None = None,
@@ -248,6 +252,7 @@ async def list_budget_transactions(
         activity_classes=parse_csv(activity_classes),
         necessity_tier=necessity_tier,
         discretionary=discretionary,
+        plan_spent=plan_spent,
         direction=direction,
         day_of_week=day_of_week,
         cleared=cleared,

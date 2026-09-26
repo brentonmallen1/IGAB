@@ -12,6 +12,7 @@ import { ReportNotes } from '../ReportNotes'
 import type { CostOfLivingGroup } from '../../../types'
 import { chartColor } from './chartColors'
 import { ChartLegend } from './ChartLegend'
+import { categoryKey, categoryTarget } from '../drillScope'
 import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
@@ -41,10 +42,11 @@ interface Props {
  * in the groups a budget already has, which are the shape a household
  * thinks in.
  */
-/** The null-group bucket's name, which the server also spells. A drill into it
- *  means "rows with no category" — an empty id list filters nothing and would
- *  open a panel listing the whole window. */
-const UNCATEGORIZED = 'Uncategorized'
+/** A group's key on this page: its served id, or `categoryKey`'s Uncategorized
+ *  key for the bucket served with `group_id: null`. Keyed by name, two groups
+ *  sharing a name were one band, and a real group named "Uncategorized"
+ *  opened as rows with no category. */
+const groupKey = (g: CostOfLivingGroup) => categoryKey(g.group_id)
 
 export function CostOfLivingReport({ budgetId }: Props) {
   const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
@@ -94,7 +96,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
    * which is indistinguishable from the report being wrong.
    */
   function drillTo(g: CostOfLivingGroup) {
-    const uncategorized = g.group_name === UNCATEGORIZED
+    // The bucket is the served `group_id: null`, opened by "no category" —
+    // `categoryTarget`, the rule every spending chart opens a line by.
+    const uncategorized = g.group_id === null
     if (!uncategorized && g.category_ids.length === 0) return
     setDrillDown({
       kind: 'category-group',
@@ -102,8 +106,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
       // Categories live on split children, so a category-keyed drill counts
       // leaves — the scope the report's own query uses.
       scope: 'leaf',
-      categoryIds: uncategorized ? undefined : g.category_ids,
-      noCategory: uncategorized || undefined,
+      ...categoryTarget(uncategorized ? [null] : g.category_ids),
       activityClasses: report.counted_classes,
       // Debt principal joins the tier by class, per row: without the tier a
       // bar's categories list the fuel beside the loan payment it counted.
@@ -124,7 +127,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
     const entry: Record<string, string | number> = {
       month: formatMonthShort(monthStr),
     }
-    for (const g of data.groups) entry[g.group_name] = g.monthly_amounts[idx] ?? 0
+    for (const g of data.groups) entry[groupKey(g)] = g.monthly_amounts[idx] ?? 0
     return entry
   })
 
@@ -292,11 +295,12 @@ export function CostOfLivingReport({ budgetId }: Props) {
                 />
                 {data.groups.map((g, idx) => (
                   <Bar
-                    key={g.group_name}
-                    dataKey={g.group_name}
+                    key={groupKey(g)}
+                    dataKey={groupKey(g)}
+                    name={g.group_name}
                     stackId="stack"
                     fill={chartColor(idx)}
-                    fillOpacity={highlight && highlight !== g.group_name ? 0.25 : 1}
+                    fillOpacity={highlight && highlight !== groupKey(g) ? 0.25 : 1}
                     isAnimationActive={false}
                   />
                 ))}
@@ -306,6 +310,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
           <ChartLegend
             series={data.groups.map((g, idx) => ({
+              id: groupKey(g),
               name: g.group_name,
               color: chartColor(idx),
               value: formatMoney(g.avg_monthly),
@@ -334,7 +339,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
             </thead>
             <tbody>
               {data.groups.map((g) => (
-                <tr key={g.group_name}>
+                <tr key={groupKey(g)}>
                   <td>
                     {/* A button, not a clickable row: this is the bucket a
                         reader most needs to open, and a row reachable only by

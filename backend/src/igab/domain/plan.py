@@ -26,6 +26,22 @@ few dollars short. A
 REFUND is different: it is spending coming back, so it lowers spent. Which is
 which is the row's activity class (`plan_effect`).
 
+**Money moved OUT of an envelope lowers its plan** — the mirror of money
+moved in (owner's call, 2026-09-26). A transfer to a brokerage, a principal
+payment to a tracked loan, filed to an envelope nobody tagged as savings or
+debt: the household took that money back out of the plan as surely as by
+un-assigning it, and the budget page's Available says so. Read as nothing, a
+Mortgage envelope assigned 1,500 and paid by a 1,500 principal transfer read
+1,500 underspent every month, a plan the household had kept to the dollar.
+
+**One floor, over the whole plan**: `max(assigned + moved_in - moved_out, 0)`.
+Not a floor per term: money moved out past what the period planned is the
+envelope drawing down a balance it carried in, which a period's plan cannot
+see, exactly as a negative assignment is. Unfloored, that leaves a negative
+plan every dollar of spending overruns, so an envelope drained into a
+brokerage with nothing spent read "over" — the drained-envelope bug above,
+arriving by a transfer instead of an assignment.
+
 Pure: takes the figures at whatever grain the report plans in — a month for
 Plan vs Reality, the whole window for Budget vs Actual — and returns the
 verdict.
@@ -62,7 +78,7 @@ CHRONIC_WINDOW = 6
 @dataclass(frozen=True)
 class PlanOutcome:
     #: What the category planned to spend: the assignment plus money moved
-    #: in, floored at zero.
+    #: in, less money moved out, floored at zero.
     plan: Decimal
     #: `plan - spent`, unrounded and untolerated — the arithmetic. Whether it
     #: is bad news is `over`, never the sign: a few cents past a plan is
@@ -97,15 +113,21 @@ def total_variance(outcomes: Iterable[PlanOutcome]) -> Decimal:
     return sum((o.variance for o in outcomes), ZERO)
 
 
-def plan_outcome(assigned: Decimal, spent: Decimal, *, moved_in: Decimal) -> PlanOutcome:
+def plan_outcome(
+    assigned: Decimal, spent: Decimal, *, moved_in: Decimal, moved_out: Decimal
+) -> PlanOutcome:
     """The verdict for one category over one planning period.
 
-    `assigned` is the budget assignments, `moved_in` what `plan_effect`
-    counts as money moved into the envelope, and `spent` the net spent —
-    negative only when refunds beat spending, which leaves the plan with room
-    to spare, as the budget page's Available does.
+    `assigned` is the budget assignments, `moved_in` and `moved_out` what
+    `plan_effect` counts as money moved into and out of the envelope (both
+    non-negative), and `spent` the net spent — negative only when refunds
+    beat spending, which leaves the plan with room to spare, as the budget
+    page's Available does.
+
+    Both movements are required: a caller that forgot `moved_out` would
+    report a debt-paying envelope as underspent by its whole payment.
     """
-    plan = max(assigned + moved_in, ZERO)
+    plan = max(assigned + moved_in - moved_out, ZERO)
     overrun = spent - plan
     over = overrun >= OVER_BY_AT_LEAST and overrun >= plan * OVER_SHARE_AT_LEAST
     return PlanOutcome(plan=plan, variance=plan - spent, over=over)
@@ -131,9 +153,12 @@ class PlanEffect(NamedTuple):
     spent: Decimal
     #: Added to the plan: money moved into the envelope.
     moved_in: Decimal
+    #: Taken off the plan: money moved out of the envelope that is not spent.
+    #: Non-negative, like `moved_in`.
+    moved_out: Decimal
 
 
-NO_EFFECT = PlanEffect(ZERO, ZERO)
+NO_EFFECT = PlanEffect(ZERO, ZERO, ZERO)
 
 
 def plan_effect(amount: Decimal, cls: str, *, savings_envelope: bool) -> PlanEffect:
@@ -154,21 +179,30 @@ def plan_effect(amount: Decimal, cls: str, *, savings_envelope: bool) -> PlanEff
     - **Money leaving a savings envelope is spent, whatever its class.** The
       household planned that money to leave; see
       `activity_class.PLANNED_SPEND_TAG_KEYS` and #182 for the phantom
-      underspend counting it as nothing made.
+      underspend counting it as nothing made. This is the only statement of
+      that exception — `money_moves.counts_as_planned_spend_by_tag` asks it
+      here rather than restating it.
+    - **A starting balance does nothing.** It is where an account's counting
+      begins, not money that moved, in either direction.
     - **Anything else arriving raises the plan**: a transfer from savings, a
       deposit filed to the envelope, a loan draw spent through it. It funds
       the envelope exactly as an assignment does — the mirror of a negative
       assignment lowering it (`plan_outcome`).
-    - **A starting balance does neither.** It is where an account's counting
-      begins, not money that moved.
-    - Anything else leaving (a transfer to a brokerage out of an untagged
-      envelope, a debt-principal payment) is still not spent: it is saving
-      the plan never meant as spending.
+    - **Anything else leaving lowers the plan**: a transfer to a brokerage
+      out of an untagged envelope, a principal payment from an envelope not
+      tagged Debt principal. It is not spent — it is saving, or paying down
+      a debt, which no spending figure counts — but it was not left unspent
+      either. It used to do nothing, so the envelope read underspent by the
+      whole transfer.
     """
     if cls in counted_classes():
-        return PlanEffect(spent=-amount, moved_in=ZERO)
+        return PlanEffect(spent=-amount, moved_in=ZERO, moved_out=ZERO)
+    if cls == ActivityClass.OPENING_BALANCE.value:
+        return NO_EFFECT
     if amount < ZERO:
-        return PlanEffect(spent=-amount, moved_in=ZERO) if savings_envelope else NO_EFFECT
-    if amount > ZERO and cls != ActivityClass.OPENING_BALANCE.value:
-        return PlanEffect(spent=ZERO, moved_in=amount)
+        if savings_envelope:
+            return PlanEffect(spent=-amount, moved_in=ZERO, moved_out=ZERO)
+        return PlanEffect(spent=ZERO, moved_in=ZERO, moved_out=-amount)
+    if amount > ZERO:
+        return PlanEffect(spent=ZERO, moved_in=amount, moved_out=ZERO)
     return NO_EFFECT
