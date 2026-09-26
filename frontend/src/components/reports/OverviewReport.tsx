@@ -173,7 +173,7 @@ export function OverviewReport({ budgetId }: Props) {
             value={formatMoney(data.net_worth)}
             delta={
               data.net_worth_prev !== 0
-                ? { value: netWorthDeltaPct, label: 'vs prior period' }
+                ? { value: netWorthDeltaPct, label: 'vs prior period', good: 'up' }
                 : undefined
             }
           />
@@ -223,7 +223,8 @@ export function OverviewReport({ budgetId }: Props) {
             value={formatMoney(data.expenses_this_month)}
             delta={
               spendingDeltaPct !== null
-                ? { value: spendingDeltaPct, label: 'vs prior period' }
+                ? // More spending is the bad direction: "+21%" was drawn green.
+                  { value: spendingDeltaPct, label: 'vs prior period', good: 'down' }
                 : undefined
             }
           />

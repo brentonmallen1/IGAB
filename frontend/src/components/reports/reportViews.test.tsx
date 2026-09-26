@@ -445,6 +445,14 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('$1,100.00')).toBeInTheDocument()
     expect(screen.getByText(/\+10\.0%/)).toBeInTheDocument() // net worth delta
     expect(screen.getByText(/\+20\.0%/)).toBeInTheDocument() // spending delta
+    // Spending up is bad news and net worth up good, whatever the sign says:
+    // "Spent +21%" was drawn green.
+    expect(screen.getByText(/\+20\.0%/).closest('.metric-card__delta')).toHaveClass(
+      'metric-card__delta--bad'
+    )
+    expect(screen.getByText(/\+10\.0%/).closest('.metric-card__delta')).toHaveClass(
+      'metric-card__delta--good'
+    )
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
     expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
     expect(screen.getByText('Groceries')).toBeInTheDocument()

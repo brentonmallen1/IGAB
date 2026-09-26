@@ -1,12 +1,16 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Surface, type SurfaceVariant } from '../common/Surface'
+import { deltaTone, type GoodDirection } from './metricDelta'
 import './MetricCard.css'
 
 interface Props {
   label: string
   value: ReactNode
-  delta?: { value: number; label?: string }
+  /** A percentage change. `good` is required: the sign says which way the
+   *  figure moved, and only the caller knows which way is good news
+   *  (`metricDelta.ts`). */
+  delta?: { value: number; label?: string; good: GoodDirection }
   sub?: ReactNode
   // `trend?: 'up' | 'down' | 'neutral'` lived here, declared and never
   // rendered. One caller passed it — the Emergency Fund's coverage card — and
@@ -44,7 +48,7 @@ export function MetricCard({
   variant = 'sunken',
   details,
 }: Props) {
-  const deltaSign = delta && delta.value > 0 ? 'pos' : delta && delta.value < 0 ? 'neg' : 'neutral'
+  const tone = delta ? deltaTone(delta.value, delta.good) : 'neutral'
 
   const classes = ['metric-card']
   if (accent) classes.push('metric-card--accent')
@@ -76,7 +80,7 @@ export function MetricCard({
         )}
       </div>
       {delta !== undefined && (
-        <div className={`metric-card__delta metric-card__delta--${deltaSign}`}>
+        <div className={`metric-card__delta metric-card__delta--${tone}`}>
           {delta.value > 0 ? '+' : ''}
           {delta.value.toFixed(1)}%
           {delta.label && <span className="metric-card__delta-label"> {delta.label}</span>}
