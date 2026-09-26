@@ -4,12 +4,14 @@ import { ifIncomeStopped } from '../../../test-utils/runwayFixtures'
 import {
   PROJECTION_BANDS,
   STOPPED_LABEL,
+  STOPPED_LINE_MAX_STRETCH,
   chosenStoppedOption,
   moneyAvailable,
   projectionRows,
   projectionTooltipEntries,
   projectionWarning,
   spendingAvailable,
+  stoppedLineOnChart,
 } from './cashProjectionView'
 
 const point = (date: string, p10: number, p50: number, p90: number): CashProjectionPoint => ({
@@ -187,5 +189,55 @@ describe('projectionWarning', () => {
       date: '2026-12-01',
       lead: 'More likely than not to be below',
     })
+  })
+})
+
+describe('stoppedLineOnChart', () => {
+  const band = (p10: number, p90: number) => ({ p10, p90 })
+  const line = (start: number) => [
+    { date: '2026-09-26', balance: start },
+    { date: '2026-12-25', balance: 0 },
+  ]
+
+  it('draws a line that starts inside the bands', () => {
+    expect(stoppedLineOnChart([band(500, 4000)], line(3000))).toBe(true)
+  })
+
+  it('draws a line up to twice the highest 1 in 10 high, and not a cent past it', () => {
+    // Bands above zero: the axis spans 0–4,000, so the line may take it to 8,000.
+    expect(stoppedLineOnChart([band(500, 4000)], line(8000))).toBe(true)
+    expect(stoppedLineOnChart([band(500, 4000)], line(8000.01))).toBe(false)
+    expect(STOPPED_LINE_MAX_STRETCH).toBe(2)
+  })
+
+  it('leaves off a line many times the projection — the fan it flattened', () => {
+    // Checking plus the savings accounts against checking's bands: drawn, the
+    // axis ran to 50,000 and 1,000–4,000 of fan became a stripe.
+    expect(stoppedLineOnChart([band(1000, 3000), band(1500, 4000)], line(50000))).toBe(false)
+  })
+
+  it('measures the stretch from the low band when it dips below zero', () => {
+    // The axis spans -2,000–4,000 (6,000): the line may reach 10,000.
+    expect(stoppedLineOnChart([band(-2000, 4000)], line(10000))).toBe(true)
+    expect(stoppedLineOnChart([band(-2000, 4000)], line(10001))).toBe(false)
+  })
+
+  it('measures bands entirely below zero from zero down', () => {
+    // -3,000 to -1,000: the axis spans -3,000–0, so the line may reach 3,000.
+    expect(stoppedLineOnChart([band(-3000, -1000)], line(3000))).toBe(true)
+    expect(stoppedLineOnChart([band(-3000, -1000)], line(3001))).toBe(false)
+  })
+
+  it('draws a line that has already run out', () => {
+    expect(stoppedLineOnChart([band(500, 4000)], line(0))).toBe(true)
+  })
+
+  it('draws the line over a fan with no height — there is nothing to flatten', () => {
+    expect(stoppedLineOnChart([band(0, 0)], line(20000))).toBe(true)
+    expect(stoppedLineOnChart([], line(20000))).toBe(true)
+  })
+
+  it('has nothing to draw with no served points', () => {
+    expect(stoppedLineOnChart([band(500, 4000)], [])).toBe(false)
   })
 })

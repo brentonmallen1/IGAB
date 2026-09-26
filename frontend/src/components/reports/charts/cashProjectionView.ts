@@ -70,6 +70,42 @@ export function projectionRows(
   }))
 }
 
+/** How far the "If income stopped" line may stretch the chart's axis, as a
+ *  multiple of the height the bands alone give it, before it is left off. */
+export const STOPPED_LINE_MAX_STRETCH = 2
+
+/** Said on the headline card when the line is left off the chart. */
+export const STOPPED_OFF_CHART_NOTE = 'Not drawn: it starts far above the projection'
+
+/**
+ * Whether the "If income stopped" line goes on the chart.
+ *
+ * The line starts at the money the runway counts, which can be many times the
+ * cash the bands project — checking plus the savings accounts, against
+ * checking alone. Drawn anyway, the axis ran up to meet it and the whole fan
+ * flattened into a stripe along the bottom: the chart's own subject became
+ * unreadable to show a line whose figure the headline card already states.
+ *
+ * The axis without the line spans the bands and zero (recharts' default
+ * domain includes 0). The line is left off when drawing it would stretch that
+ * span more than `STOPPED_LINE_MAX_STRETCH` times; with bands all above zero
+ * that is a start above twice the highest 1-in-10 high. A fan with no height
+ * has nothing to flatten, so the line is drawn.
+ */
+export function stoppedLineOnChart(
+  points: Pick<CashProjectionPoint, 'p10' | 'p90'>[],
+  line: StoppedIncomeOption['line']
+): boolean {
+  if (line.length === 0) return false
+  if (points.length === 0) return true
+  const top = Math.max(0, ...points.map((p) => p.p90))
+  const bottom = Math.min(0, ...points.map((p) => p.p10))
+  const height = top - bottom
+  if (height <= 0) return true
+  const highest = Math.max(...line.map((p) => p.balance))
+  return Math.max(top, highest) - bottom <= STOPPED_LINE_MAX_STRETCH * height
+}
+
 /** Fill opacity of each band's own area. The inner band is drawn over the
  *  outer one, so where it sits both layers show. */
 const FILL = { outer: 0.14, inner: 0.22 } as const

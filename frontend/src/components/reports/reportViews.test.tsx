@@ -710,8 +710,17 @@ describe('CashProjectionReport', () => {
   describe('if income stopped', () => {
     afterEach(() => useReportStore.setState({ runwaySpending: null, runwayMoney: null }))
 
+    // Bands that reach the line's height (up to 10,000), so the chart draws it.
+    const besideLine = () => ({
+      ...projection(null, null),
+      points: [
+        { date: '2026-09-26', p10: 9000, p25: 9000, p50: 9000, p75: 9000, p90: 9000 },
+        { date: '2026-10-26', p10: 6000, p25: 7000, p50: 8000, p75: 9000, p90: 10000 },
+      ],
+    })
+
     it('opens on the Overview’s runway and says what it read', () => {
-      setQuery({ data: projection(null, null) })
+      setQuery({ data: besideLine() })
       renderReport(<CashProjectionReport budgetId="b1" />)
       // 10,000 of checking and fund, cards paid, at 1,000 of Essentials.
       expect(card('If income stopped')).toEqual({
@@ -731,7 +740,7 @@ describe('CashProjectionReport', () => {
     })
 
     it('remembers a pick, and draws it', () => {
-      setQuery({ data: projection(null, null) })
+      setQuery({ data: besideLine() })
       renderReport(<CashProjectionReport budgetId="b1" />)
       fireEvent.click(screen.getByRole('button', { name: 'All' }))
       fireEvent.click(screen.getByRole('button', { name: '+ Savings accounts' }))
@@ -748,7 +757,7 @@ describe('CashProjectionReport', () => {
     it('disables + Emergency fund with no fund chosen, and falls back from a remembered one', () => {
       useReportStore.setState({ runwayMoney: 'with_fund' })
       setQuery({
-        data: { ...projection(null, null), if_income_stopped: ifIncomeStopped({ noFund: true }) },
+        data: { ...besideLine(), if_income_stopped: ifIncomeStopped({ noFund: true }) },
       })
       renderReport(<CashProjectionReport budgetId="b1" />)
       expect(screen.getByRole('button', { name: '+ Emergency fund' })).toBeDisabled()
@@ -756,7 +765,7 @@ describe('CashProjectionReport', () => {
     })
 
     it('keys the line by its question, and the Scheduled only line is gone', () => {
-      setQuery({ data: projection(null, null) })
+      setQuery({ data: besideLine() })
       renderReport(<CashProjectionReport budgetId="b1" />)
       const key = document.querySelector('.chart-key')?.textContent ?? ''
       expect(key).toContain('If income stopped')
@@ -764,6 +773,21 @@ describe('CashProjectionReport', () => {
       fireEvent.click(screen.getByRole('button', { name: 'About the Cash Projection report' }))
       expect(screen.queryByText(/no random daily spending/)).toBeNull()
       expect(screen.getByText(/credit\s+cards owe already paid/)).toBeInTheDocument()
+    })
+
+    it('leaves a line far above the projection off the chart, and says so on its card', () => {
+      // 10,000 of checking and fund against bands that reach 1,600: drawn, the
+      // axis ran to 10,000 and the fan flattened into a stripe.
+      setQuery({ data: projection(null, null) })
+      renderReport(<CashProjectionReport budgetId="b1" />)
+      const key = document.querySelector('.chart-key')?.textContent ?? ''
+      expect(key).not.toContain('If income stopped')
+      expect(card('If income stopped')).toEqual({
+        value: '10.0 months',
+        sub:
+          'to Jan 1, 2027Essentials, checking + emergency fund, cards paid' +
+          'Not drawn: it starts far above the projection',
+      })
     })
   })
 })

@@ -24,12 +24,14 @@ import {
   MEDIAN_LABEL,
   PROJECTION_BANDS,
   STOPPED_LABEL,
+  STOPPED_OFF_CHART_NOTE,
   chosenStoppedOption,
   moneyAvailable,
   projectionRows,
   projectionTooltipEntries,
   projectionWarning,
   spendingAvailable,
+  stoppedLineOnChart,
   type ProjectionRow,
 } from './cashProjectionView'
 import { HORIZON_OPTIONS } from './reportControls'
@@ -74,7 +76,12 @@ export function CashProjectionReport({ budgetId }: Props) {
     ? monthRange(stopped.window_start, stopped.window_end, formatMonthShort)
     : null
 
-  const chartData = projectionRows(data?.points ?? [], formatDayMonth, option?.line)
+  const stoppedDrawn = stoppedLineOnChart(data?.points ?? [], option?.line ?? [])
+  const chartData = projectionRows(
+    data?.points ?? [],
+    formatDayMonth,
+    stoppedDrawn ? option?.line : []
+  )
 
   const endPoint = chartData[chartData.length - 1]
   const projectedBalance = endPoint?.p50 ?? startBalance
@@ -110,7 +117,8 @@ export function CashProjectionReport({ budgetId }: Props) {
             off-budget savings accounts that hold cash, and the emergency fund’s own — not a 401k,
             an IRA or a brokerage account, which you cannot spend next month without selling. The
             Overview’s <strong>Runway</strong> card is this figure at Essentials and the emergency
-            fund.
+            fund. When the line would start more than twice as high as the projection reaches, it is
+            left off the chart — it would flatten the bands to a stripe — and its card says so.
           </p>
           <ReportScopeNote report="projection" />
         </ReportInfoButton>
@@ -154,6 +162,9 @@ export function CashProjectionReport({ budgetId }: Props) {
               <>
                 {statement.detail}
                 <span className="cash-projection__sub-line">{runwayBasis(option)}</span>
+                {!stoppedDrawn && option.line.length > 0 && (
+                  <span className="cash-projection__sub-line">{STOPPED_OFF_CHART_NOTE}</span>
+                )}
               </>
             }
             warning={statement.gone}
@@ -258,17 +269,19 @@ export function CashProjectionReport({ budgetId }: Props) {
             />
             {/* Two served points joined straight: a burn-down at a fixed
                 pace is a line, and "linear" keeps recharts from bending it. */}
-            <Line
-              type="linear"
-              dataKey="stopped"
-              name={STOPPED_LABEL}
-              stroke="var(--text-muted)"
-              strokeDasharray="4 4"
-              strokeWidth={1.5}
-              dot={false}
-              connectNulls
-              isAnimationActive={false}
-            />
+            {stoppedDrawn && (
+              <Line
+                type="linear"
+                dataKey="stopped"
+                name={STOPPED_LABEL}
+                stroke="var(--text-muted)"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            )}
             <Line
               type="monotone"
               dataKey="p50"
@@ -299,13 +312,15 @@ export function CashProjectionReport({ budgetId }: Props) {
             />
             {MEDIAN_LABEL}
           </span>
-          <span className="chart-key__item">
-            <span
-              className="chart-key__swatch chart-key__swatch--line"
-              style={{ background: 'var(--text-muted)' }}
-            />
-            {STOPPED_LABEL}
-          </span>
+          {stoppedDrawn && (
+            <span className="chart-key__item">
+              <span
+                className="chart-key__swatch chart-key__swatch--line"
+                style={{ background: 'var(--text-muted)' }}
+              />
+              {STOPPED_LABEL}
+            </span>
+          )}
         </div>
       )}
 
