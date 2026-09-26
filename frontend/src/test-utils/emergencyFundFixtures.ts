@@ -1,7 +1,8 @@
 // One invented emergency fund, for every test that renders the Counting line
 // or the picker — so the surfaces are held to the same served facts.
 import type { EmergencyFundPicker } from '../api/emergencyFund'
-import type { MembershipCategory, Tag, TagMembership } from '../api/tags'
+import type { Tag, TagMembership } from '../api/tags'
+import { makeMembershipRow as row } from './factories'
 
 export const FUND_PICKER: EmergencyFundPicker = {
   fund: {
@@ -50,20 +51,6 @@ export const EMERGENCY_FUND_TAG: Tag = {
   color_slot: 'green',
   category_count: 1,
   hand_settable: true,
-}
-
-function row(over: Partial<MembershipCategory>): MembershipCategory {
-  return {
-    id: 'c1',
-    name: 'Groceries',
-    group_id: 'g-everyday',
-    group_name: 'Everyday',
-    is_archived: false,
-    member: false,
-    savings_role: 'none',
-    savings_mode: null,
-    ...over,
-  }
 }
 
 export const FUND_MEMBERSHIP: TagMembership = {

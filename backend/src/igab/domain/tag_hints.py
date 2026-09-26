@@ -19,22 +19,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
 
+from igab.domain.tag_implication import implied_by
+
 #: Never proposed. `wishlist` is derived from the wish -> envelope link by
 #: `guide.wishlist_service`, and re-derived on the next wishlist write, so
 #: offering it would be offering a choice the app immediately overrules.
 DERIVED_KEYS = frozenset({"wishlist"})
-
-#: Tags another tag already means. An Emergency fund category IS a savings
-#: category (`category_filters.SAVINGS_CATEGORY_KEYS`), so offering it the
-#: Savings tag would be offering a second copy of a fact it already carries —
-#: and accepting it would change nothing but the tag list. An implication, not
-#: an auto-add: nothing writes the implied tag.
-IMPLIED_TAGS: dict[str, tuple[str, ...]] = {"emergency_fund": ("savings",)}
-
-
-def implied_by(keys: Iterable[str]) -> frozenset[str]:
-    """Every key these system keys imply."""
-    return frozenset().union(*(IMPLIED_TAGS.get(k, ()) for k in keys))
 
 
 @dataclass(frozen=True)
@@ -75,7 +65,7 @@ _SUBSCRIPTION = ("subscription", "streaming", "membership", "prime", "netflix", 
 #: Kept short and obvious rather than clever.
 TAG_HINTS: tuple[TagHint, ...] = (
     # Savings no longer claims "emergency fund" or "rainy day": those name the
-    # Emergency fund tag now, which implies Savings (`IMPLIED_TAGS`).
+    # Emergency fund tag now, which implies Savings (`domain.tag_implication`).
     TagHint("savings", ("saving", "nest egg"), False),
     TagHint("emergency_fund", ("emergency", "rainy day", "buffer"), False),
     # `long_term_expense` was written on import until it stopped overriding
@@ -139,9 +129,11 @@ def suggest_review_tags(
     already carry, in `TAG_HINTS` order.
 
     `held` is the category's system keys. A key a held or suggested tag
-    implies is not offered (`IMPLIED_TAGS`): an Emergency fund category is
-    never offered Savings, and "Rainy Day Savings" is offered Emergency fund
-    alone.
+    implies is not offered (`domain.tag_implication`): offering it would be
+    offering a second copy of a fact the category already carries, and
+    accepting it would change nothing but the tag list. An Emergency fund
+    category is never offered Savings, an Essential one never Cost of living,
+    and "Rainy Day Savings" is offered Emergency fund alone.
 
     A category can be offered more than one — "Car Insurance" is plausibly
     both essential and a long-term expense, and picking one for the user would

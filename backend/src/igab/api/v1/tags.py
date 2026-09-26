@@ -241,23 +241,24 @@ async def list_tag_suggestions(
     """
     await seed_system_tags(tag_repo.session, budget_id)
 
-    rows = await category_repo.get_taggable_with_group_names(budget_id)
+    # No tag's checklist, so no archived exception: proposing NEW tags for a
+    # category the user put away is noise — an import review offered the
+    # whole of YNAB's Hidden Categories group.
+    rows = await category_repo.get_taggable_with_group_names(budget_id, None)
     existing = await tag_repo.get_tags_for_categories([c.id for c, _ in rows])
     applied = {h.system_key for h in TAG_HINTS if h.applied_on_import}
 
     out: list[TagSuggestionOut] = []
     for category, group_name in rows:
-        # Live envelopes only. The rows include hidden categories on purpose
-        # (a wrong tag there still moves reports, and the category's own
-        # settings is where it gets removed), but proposing NEW tags for a
-        # category the user put away is noise: an import review offered the
-        # whole of YNAB's Hidden Categories group. `is_assignable` is the
-        # server's rule the review dialog also draws its rows by.
+        # Offered envelopes only: `is_assignable` is the server's rule the
+        # review dialog also draws its rows by, and it leaves out a card's
+        # envelope too.
         if not category.is_assignable:
             continue
         held = [t.system_key for t in existing.get(category.id, []) if t.system_key]
         # Minus what the category carries, and what that implies: an Emergency
-        # fund category is never offered Savings (`tag_hints.IMPLIED_TAGS`).
+        # fund category is never offered Savings, nor an Essential one Cost of
+        # living (`domain.tag_implication`).
         for suggestion in suggest_review_tags(category.name, group_name, held):
             out.append(
                 TagSuggestionOut(
@@ -367,6 +368,7 @@ async def membership_out(session: AsyncSession, budget_id, tag) -> TagMembership
                     "group_name": r.group_name,
                     "is_archived": r.category.is_archived,
                     "member": r.member,
+                    "implied_by": r.implied_by,
                     "savings_role": r.category.savings_role,
                     "savings_mode": r.category.savings_mode,
                 }

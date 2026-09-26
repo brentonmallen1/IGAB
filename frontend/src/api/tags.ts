@@ -10,6 +10,9 @@ export interface Tag {
   name: string
   system_key: string | null
   color_slot: TagColorSlot | null
+  /** The rows its checklist draws ticked — carrying it, or a tag that implies
+   *  it (`category_filters.ticked_on_checklist`). Served: the client cannot
+   *  see a category's other tags. */
   category_count: number
   /** False for a tag the app sets itself (the wishlist's) — its checklist is
    *  not offered, and the server refuses a membership write. */
@@ -153,15 +156,23 @@ export function useDismissTagNotice(budgetId: string | null) {
 
 // ── one tag's checklist ─────────────────────────────────────────────────────
 
-/** One row of a tag's checklist: every taggable category, member or not.
- *  Served by `GET /tags/{id}/membership` (services/tag_membership.py). */
+/** One row of a tag's checklist: every category it could be on, member or
+ *  not — an archived one only while it carries the tag. Served by
+ *  `GET /tags/{id}/membership` (services/tag_membership.py). */
 export interface MembershipCategory {
   id: string
   name: string
   group_id: string
   group_name: string
   is_archived: boolean
+  /** Carries the tag itself — the half a person can untick. */
   member: boolean
+  /** The name of a tag on this category that implies this one: "Essential" on
+   *  the Cost of living checklist, "Emergency fund" on the Savings one
+   *  (backend domain/tag_implication.py). The row counts as tagged whatever
+   *  `member` says, so it is drawn ticked and locked, and a save never names
+   *  it. Served: the client cannot see a row's other tags. */
+  implied_by: string | null
   /** `category_filters.SAVINGS_ROLE` as it stands now. */
   savings_role: SavingsRole
   /** The stored choice; null lets the tags decide. */

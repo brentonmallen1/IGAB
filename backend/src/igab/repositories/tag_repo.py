@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, Tag, category_tags, payee_tags
 from igab.repositories.base import BaseRepository
-from igab.repositories.category_filters import tagged_category_ids
+from igab.repositories.category_filters import (
+    on_tag_checklist,
+    tagged_category_ids,
+    ticked_on_checklist,
+)
 
 TAG_COLOR_SLOTS = frozenset({"red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"})
 
@@ -26,9 +30,8 @@ SYSTEM_TAGS = [
     # What the emergency fund reads: these envelopes' Available, with the
     # off-budget accounts marked `counts_toward_emergency_fund` and anything
     # declared as kept elsewhere (`services/emergency_fund.py`). Chosen, never
-    # guessed from a name. It implies Savings (`category_filters.
-    # SAVINGS_CATEGORY_KEYS`) and defaults to kept here; green, beside Savings,
-    # because it is savings.
+    # guessed from a name. It implies Savings (`domain.tag_implication`) and
+    # defaults to kept here; green, beside Savings, because it is savings.
     ("emergency_fund", "Emergency fund", "green"),
     # Cadence, not classification. It marks an envelope that saves monthly
     # toward a known annual bill, so the Savings report lists it beside real
@@ -48,9 +51,10 @@ SYSTEM_TAGS = [
     # principal joins it by CLASS rather than by tag, so a household with a car
     # loan gets a truthful figure without tagging each loan envelope.
     #
-    # The gap between the two is the point: what a lean month could shed. See
-    # `domain.activity_class.TIER_TAG_KEYS`, which builds the wide tier's keys
-    # from the lean tier's so the nesting cannot drift.
+    # The gap between the two is the point: what a lean month could shed.
+    # Essential implies Cost of living (`domain.tag_implication`), and
+    # `domain.activity_class.TIER_TAG_KEYS` builds both tiers' keys from that
+    # one statement, so the nesting cannot drift.
     ("essential", "Essential", "blue"),
     ("cost_of_living", "Cost of living", "yellow"),
     # Applied by the wishlist to every envelope that funds an open wish, and
@@ -75,10 +79,22 @@ class TagRepository(BaseRepository[Tag]):
         return list(result.scalars().all())
 
     async def list_for_budget_with_counts(self, budget_id: uuid.UUID) -> list[tuple[Tag, int]]:
+        """Each live tag and the rows its checklist draws ticked.
+
+        The same two predicates the checklist is built from
+        (`services/tag_membership.membership`), so the "N categories" a person
+        clicks is the number of ticks the dialog then shows. It counted raw
+        `category_tags` rows: a deleted category and an income one counted
+        while the checklist drew neither, and an Essential category drawn
+        ticked on the Cost of living checklist did not count.
+        """
         category_count_subq = (
-            select(func.count())
-            .select_from(category_tags)
-            .where(category_tags.c.tag_id == Tag.id)
+            select(func.count(Category.id))
+            .where(
+                Category.budget_id == Tag.budget_id,
+                on_tag_checklist(Tag.id),
+                ticked_on_checklist(Tag.id, Tag.system_key),
+            )
             .correlate(Tag)
             .scalar_subquery()
         )

@@ -5,7 +5,9 @@ import { DEFAULT_MARKER, SAVINGS_MODE_OPTIONS, savingsModeShort } from '../../ut
 import {
   chooseMode,
   draftMode,
+  drawsChecked,
   groupRows,
+  isImplied,
   servedDefault,
   toggleChecked,
   type MembershipDraft,
@@ -21,6 +23,11 @@ interface Props {
   savingsTag: boolean
   /** Names the checklist for assistive tech: "Categories tagged Essential". */
   label: string
+  /** The checklist is its dialog's whole body, so on a phone it fills the
+   *  sheet rather than keeping the desktop footprint. Required, so each caller
+   *  says which it is: one sharing its sheet with other sections keeps the
+   *  footprint, or it would push them below a full screen of categories. */
+  fillsSheet: boolean
 }
 
 /**
@@ -29,15 +36,27 @@ interface Props {
  * and sends `membershipDiff` on Save.
  *
  * The list scrolls inside a fixed-height region, so the dialog around it does
- * not grow with the budget and the filter stays in view.
+ * not grow with the budget and the filter stays in view; on a phone it fills
+ * the sheet instead.
+ *
+ * A row counted through another tag (served `implied_by` — an Essential
+ * category on the Cost of living checklist) is drawn ticked and locked, and
+ * never enters the diff.
  */
-export function CategoryMembershipList({ rows, draft, onChange, savingsTag, label }: Props) {
+export function CategoryMembershipList({
+  rows,
+  draft,
+  onChange,
+  savingsTag,
+  label,
+  fillsSheet,
+}: Props) {
   const [filter, setFilter] = useState('')
   const base = useId()
   const groups = groupRows(rows, filter)
 
   return (
-    <div className="membership-list">
+    <div className={`membership-list${fillsSheet ? ' membership-list--fill' : ''}`}>
       <label className="dialog-form__field membership-list__filter" htmlFor={`${base}-filter`}>
         Filter
         <input
@@ -73,25 +92,42 @@ export function CategoryMembershipList({ rows, draft, onChange, savingsTag, labe
               <ul className="membership-list__rows">
                 {group.rows.map((row) => {
                   const id = `${base}-${row.id}`
-                  const checked = draft.checked.has(row.id)
+                  const checked = drawsChecked(draft, row)
+                  const implied = isImplied(row)
                   return (
                     <li key={row.id} className="membership-list__row">
-                      <label className="membership-list__choice" htmlFor={id}>
+                      <label
+                        className={`membership-list__choice${implied ? ' membership-list__choice--implied' : ''}`}
+                        htmlFor={id}
+                      >
                         <input
                           id={id}
                           type="checkbox"
                           checked={checked}
-                          onChange={() => onChange(toggleChecked(draft, row.id))}
+                          disabled={implied}
+                          onChange={() => {
+                            if (!implied) onChange(toggleChecked(draft, row.id))
+                          }}
                         />
                         <span className="membership-list__name">
                           {row.name}
                           <span className="sr-only">, {group.groupName}</span>
                         </span>
+                        {/* The hidden commas keep the accessible name
+                            "Rent, Bills, counted through Essential" — inline
+                            spans are joined without a space. */}
                         {row.is_archived && (
-                          <span className="membership-list__archived">archived</span>
+                          <span className="membership-list__note">
+                            <span className="sr-only">,</span> archived
+                          </span>
+                        )}
+                        {implied && (
+                          <span className="membership-list__note">
+                            <span className="sr-only">,</span> counted through {row.implied_by}
+                          </span>
                         )}
                       </label>
-                      {savingsTag && checked && (
+                      {savingsTag && checked && !implied && (
                         <ModeSelect
                           id={`${id}-mode`}
                           row={row}

@@ -18,6 +18,7 @@
 // which is a limitation of the mock hoisting, not a copy anyone chose.
 import type { Category, CategoryBalance, CategoryGroup } from '../types'
 import type { Signal } from '../api/guide'
+import type { MembershipCategory } from '../api/tags'
 import type { SignalKey } from '../content/roadmap'
 
 export function makeCategory(over: Partial<Category> = {}): Category {
@@ -107,6 +108,24 @@ export function makeSignal(key: SignalKey, over: Partial<Signal> = {}): Signal {
     entities: {},
     gaps: [],
     note: null,
+    ...over,
+  }
+}
+
+/** One row of a tag's checklist: an ordinary spending envelope, not carrying
+ *  the tag and not implied onto it. Three test files each spelled this literal
+ *  out, and each had to learn the served `implied_by`. */
+export function makeMembershipRow(over: Partial<MembershipCategory> = {}): MembershipCategory {
+  return {
+    id: 'c1',
+    name: 'Groceries',
+    group_id: 'g-everyday',
+    group_name: 'Everyday',
+    is_archived: false,
+    member: false,
+    implied_by: null,
+    savings_role: 'none',
+    savings_mode: null,
     ...over,
   }
 }

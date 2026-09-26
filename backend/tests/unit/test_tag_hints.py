@@ -10,12 +10,11 @@ import pytest
 
 from igab.domain.tag_hints import (
     DERIVED_KEYS,
-    IMPLIED_TAGS,
     TAG_HINTS,
     TagSuggestion,
-    implied_by,
     suggest_review_tags,
 )
+from igab.domain.tag_implication import IMPLIES, implied_by
 
 
 class TestNothingIsWrittenFromAName:
@@ -75,9 +74,33 @@ class TestTheEmergencyFundHint:
 
     def test_every_implied_key_is_a_hinted_key(self):
         hinted = {h.system_key for h in TAG_HINTS}
-        for key, implied in IMPLIED_TAGS.items():
+        for key, implied in IMPLIES.items():
             assert key in hinted
             assert set(implied) <= hinted
+
+
+class TestTheNecessityTiersImplication:
+    """Essential implies Cost of living. The suggestion table's own statement
+    of implications (`IMPLIED_TAGS`) knew only Emergency fund → Savings, so the
+    import review offered Cost of living to a category already tagged
+    Essential — a second tag that would change nothing but the tag list, since
+    the Cost of Living report already counts every Essential category."""
+
+    def test_an_essential_category_is_never_offered_cost_of_living(self):
+        # "Gym" names the wide tier; the category already carries the lean one.
+        assert suggest_review_tags("Gym", "Health", held=["essential"]) == []
+
+    def test_a_name_offered_both_tiers_is_offered_essential_alone(self):
+        # "Insurance" names Essential and "Maintenance" names Cost of living.
+        assert suggest_review_tags("Home Maintenance Insurance", "Bills") == [
+            TagSuggestion("essential", "Home Maintenance Insurance")
+        ]
+
+    def test_the_implication_is_one_way(self):
+        """A subscription is cost of living without being essential."""
+        assert suggest_review_tags("Groceries", "Everyday", held=["cost_of_living"]) == [
+            TagSuggestion("essential", "Groceries")
+        ]
 
 
 class TestWhatTheReviewProposes:

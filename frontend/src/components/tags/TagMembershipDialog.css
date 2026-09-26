@@ -1,0 +1,13 @@
+@media (max-width: 768px) {
+  /* On a phone the dialog is a full-height bottom sheet and the checklist is
+     its whole body, so the panel takes the sheet body's height and the form
+     passes it on — the list fills it (`.membership-list--fill`). */
+  .tag-membership {
+    height: 100%;
+  }
+
+  .tag-membership__form {
+    flex: 1;
+    min-height: 0;
+  }
+}

@@ -4,6 +4,7 @@ import { apiErrorMessage } from '../../api/client'
 import { Dialog } from '../common/Dialog/Dialog'
 import { CategoryMembershipList } from './CategoryMembershipList'
 import { initialDraft, isEmptyChange, membershipDiff, type MembershipDraft } from './membershipList'
+import './TagMembershipDialog.css'
 
 interface Props {
   budgetId: string
@@ -52,6 +53,7 @@ export function TagMembershipDialog({ budgetId, tagId, tagName, onClose }: Props
       title={title}
       onClose={onClose}
       historyKey="tag-membership"
+      className="tag-membership"
       footer={
         <div className="dialog-actions">
           {error && (
@@ -82,13 +84,14 @@ export function TagMembershipDialog({ budgetId, tagId, tagName, onClose }: Props
           {apiErrorMessage(loadError, 'Could not load the categories')}
         </p>
       ) : (
-        <form id={formId} className="dialog-form" onSubmit={submit}>
+        <form id={formId} className="dialog-form tag-membership__form" onSubmit={submit}>
           <CategoryMembershipList
             rows={data.categories}
             draft={draft}
             onChange={setTouched}
             savingsTag={data.tag.savings_tag}
             label={title}
+            fillsSheet
           />
         </form>
       )}
