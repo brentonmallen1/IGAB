@@ -2214,6 +2214,54 @@ describe('EmergencyCoverageReport', () => {
   })
 })
 
+describe('info panels say what the chart draws', () => {
+  const openInfo = (name: string) =>
+    fireEvent.click(screen.getByRole('button', { name: `About the ${name} report` }))
+
+  it('Net Worth: overlaid areas, debts subtracted, stated assets counted', () => {
+    // It said "The stacked area shows…" over areas drawn on top of each other,
+    // "plus any manually tracked debts" of debts it subtracts, and never
+    // mentioned the stated asset values it adds.
+    setQuery({ data: { points: [] } })
+    renderReport(<NetWorthReport budgetId="b1" />)
+    openInfo('Net Worth Over Time')
+    expect(screen.getByText(/not stacked/)).toBeInTheDocument()
+    expect(screen.getByText(/stated value of things/)).toBeInTheDocument()
+    expect(screen.getByText(/both are subtracted/)).toBeInTheDocument()
+    expect(screen.queryByText(/stacked area/)).toBeNull()
+    expect(screen.queryByText(/plus any manually tracked debts/)).toBeNull()
+  })
+
+  it('Income vs Expenses: series by legend name, never by a colour the theme may not use', () => {
+    setQuery({ data: { months: [] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    openInfo('Income vs Expenses')
+    expect(screen.getAllByText(/Net line/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/\b(blue|green|red)\b/)).toBeNull()
+  })
+
+  it('Overview: which cards follow the range, and which are as of today', () => {
+    // "All metrics use the selected date range except burn rates" — while Net
+    // Worth, Essentials and Days Until Zero were as of today too.
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 0,
+        burn_rate_prior_60: 0,
+        income_this_month: 0,
+        outflows_this_month: 0,
+        top_categories: [],
+        means_months: [],
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    openInfo('Overview Dashboard')
+    expect(screen.getByText(/follow the selected date range/)).toBeInTheDocument()
+    expect(screen.getByText(/are as of today/)).toBeInTheDocument()
+    expect(screen.queryByText(/All metrics use the selected date range/)).toBeNull()
+  })
+})
+
 describe('AccountCompositionReport info panel', () => {
   it('explains the Net line without a note about its own earlier wording', () => {
     // The panel ended '(An unmanaged debt REDUCES net worth; this said "plus".)'

@@ -82,7 +82,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'on-budget',
     summary:
       'What a lean month costs; the headline is the last 90 days ÷ 3, with yearly Long-term expense bills spread over 12 months when that is on.',
-    counts: 'Spending and debt payments in categories tagged Essential, or bound in the Guide.',
+    counts: 'Spending and debt payments in categories tagged Essential.',
     leavesOut: 'Money that counts as saved, and everything not tagged Essential.',
   },
   'cost-of-living': {

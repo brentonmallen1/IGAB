@@ -63,8 +63,13 @@ export function OverviewReport({ budgetId }: Props) {
           <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
             <p>
-              A snapshot of your financial health at a glance. All metrics use the selected date
-              range except burn rates, which use rolling windows from today.
+              A snapshot of your financial health at a glance. <strong>Your Means</strong>,{' '}
+              <strong>Savings Rate</strong>, <strong>Income</strong> and <strong>Spent</strong> this
+              period, and <strong>Top Spending</strong> follow the selected date range.{' '}
+              <strong>Net Worth</strong>, <strong>Burn Rate</strong>, <strong>Essentials</strong>{' '}
+              and <strong>Days Until Zero</strong> are as of today; Net Worth’s change is against
+              the day before the range. <strong>Means trend</strong> reads the last 12 complete
+              months, and <strong>Ready to Assign</strong> is the month open on the Budget page.
             </p>
             <p>
               <strong>Burn Rate</strong>: spending over the last 30 days, net of refunds, beside the

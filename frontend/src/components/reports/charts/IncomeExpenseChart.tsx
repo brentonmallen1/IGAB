@@ -92,8 +92,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
           <p>
-            Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with
-            the <strong>net cash flow</strong> (blue line) overlaid.
+            Monthly <strong>Income</strong> and <strong>Expenses</strong> as bars, with the{' '}
+            <strong>Net</strong> line — cash flow — drawn over them.
           </p>
           <p>
             <strong>Saved</strong> is money that stayed yours — moved into savings or investments,
@@ -106,8 +106,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             an envelope is still in them, so it does not lower net.
           </p>
           <p>
-            Months where the blue line is above zero mean you spent less than you earned — a
-            positive sign. Dipping below zero means you ran a deficit that month.
+            Months where the Net line is above zero mean you spent less than you earned. Below zero,
+            you ran a deficit that month.
           </p>
           <ReportScopeNote report="income-expense" />
         </ReportInfoButton>
