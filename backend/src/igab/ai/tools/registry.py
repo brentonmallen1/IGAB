@@ -316,9 +316,11 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="cash_projection",
         description=(
-            "Where the balance is heading, and the date it would go negative "
-            "if it does. Use this for 'will I make it to payday', 'can I "
-            "afford this', and anything about running out."
+            "Where the cash balance is heading if things carry on — recent "
+            "cash in and out, paychecks included, replayed on top of scheduled "
+            "bills — with the date the median path would go negative and the "
+            "date about 1 path in 10 would. Use this for 'will I make it to "
+            "payday', 'can I afford this', and anything about running out."
         ),
         parameters=_obj(
             {

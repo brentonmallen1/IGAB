@@ -4,7 +4,13 @@ The simulation is seeded from today's ordinal, so results are deterministic
 within a day. Two engineered scenarios make every band collapse onto a known
 path (no history -> all sampled flows are 0; uniform history -> every sample
 is identical), which lets exact balances be asserted. Random-history tests
-assert only structural invariants (band ordering, same-day idempotence).
+assert only properties that hold on every day's seed — the sampler's own
+suite (`tests/unit/test_domain_cash_projection.py`) sweeps the seeds that
+back them.
+
+"Uniform" means every CALENDAR day of the window: a day with no rows is a zero
+flow, and the window starts at the register's first row. So a test that wants
+-10 a day opens its account (`opened_days_back`) on the first of those days.
 
 Also pins the scope rule: the projection is ON-BUDGET cash, so off-budget
 and closed accounts contribute neither balance, nor sampled history, nor
@@ -14,7 +20,11 @@ scheduled events — and pending transactions contribute nothing anywhere.
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import select
+
+from igab.db.models import Payee
 from igab.domain.dates import add_months, month_end
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 
@@ -35,14 +45,28 @@ from .factories import (
 TODAY = date.today()
 
 
-async def _budget_with_checking(db_session, opening: str = "5000.00"):
+async def _budget_with_checking(db_session, opening: str = "5000.00", opened_days_back: int = 200):
+    """A checking account and its Starting Balance row.
+
+    By default opened 200 days back: the opening counts toward the balance,
+    and the 180-day history window is all register — every day of it a zero
+    flow unless the test adds rows. Opened inside the window, the window
+    starts on the opening day and the opening itself is not a flow."""
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking")
-    # Opening balance 200 days back: counts toward the balance but sits
-    # outside the 180-day history window, keeping sampled flows empty.
-    await create_transaction(db_session, budget, checking, opening, TODAY - timedelta(days=200))
+    await _open(db_session, budget, checking, opening, TODAY - timedelta(days=opened_days_back))
     return budget, checking
+
+
+async def _open(db_session, budget, account, amount: str, day: date):
+    """`account`'s Starting Balance row — the one payee every opening shares."""
+    starting = await db_session.scalar(
+        select(Payee).where(Payee.budget_id == budget.id, Payee.name == STARTING_BALANCE_PAYEE)
+    )
+    if starting is None:
+        starting = await create_payee(db_session, budget, STARTING_BALANCE_PAYEE)
+    await create_transaction(db_session, budget, account, amount, day, payee=starting)
 
 
 def _assert_bands_collapsed(points):
@@ -62,10 +86,11 @@ def _charged_dates(points) -> list[date]:
 
 def _assert_sampled_flow_per_day(points, per_day: Decimal):
     """Every path carries exactly `per_day` of sampled flow on top of the fixed
-    events — what uniform history leaves in the bootstrap."""
+    events — what uniform history leaves in the bootstrap. Day 0 draws
+    nothing: the start balance already holds today's rows."""
     _assert_bands_collapsed(points)
     for k, p in enumerate(points):
-        assert p["p50"] - p["deterministic"] == per_day * (k + 1)
+        assert p["p50"] - p["deterministic"] == per_day * k
 
 
 async def _subscription_category(db_session, budget, name: str):
@@ -101,7 +126,7 @@ async def test_scheduled_transactions_drive_a_deterministic_path(db_session):
         payee=pay_payee,
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
     assert data["start_balance"] == Decimal("5000.00")
     points = data["points"]
@@ -126,23 +151,31 @@ async def test_scheduled_transactions_drive_a_deterministic_path(db_session):
 
 
 async def test_uniform_history_projects_constant_daily_flow(db_session):
-    budget, checking = await _budget_with_checking(db_session, opening="310.00")
-    # 21 consecutive days of exactly -10: every weekday bucket holds only -10,
-    # so every sampled flow is -10 and all 500 paths are identical.
+    """A budget opened 21 days ago with -10 on each of those days: the window
+    is those 21 days, every one of them -10, so every path is identical.
+
+    It pins two more rules on the way. The window starts at the first row —
+    padded back to 180 days, 159 zero days would un-collapse the bands — and
+    the opening is not a flow: sampled, the opening day would read +300."""
+    budget, checking = await _budget_with_checking(
+        db_session, opening="310.00", opened_days_back=21
+    )
     for days_back in range(1, 22):
         await create_transaction(
             db_session, budget, checking, "-10.00", TODAY - timedelta(days=days_back)
         )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
     assert data["start_balance"] == Decimal("100.00")  # 310 - 21 * 10
     points = data["points"]
     _assert_bands_collapsed(points)
     for k, p in enumerate(points):
-        assert p["p50"] == Decimal(100 - 10 * (k + 1))
-    # Median crosses zero on day 10 (100 - 10*11 = -10)
-    assert data["goes_negative_date"] == TODAY + timedelta(days=10)
+        assert p["p50"] == Decimal(100 - 10 * k)
+    # Day 0 is the balance, so the median crosses zero on day 11 (100 - 110).
+    # It read day 10 while day 0 drew a sampled day of its own.
+    assert data["goes_negative_date"] == TODAY + timedelta(days=11)
+    assert data["p10_negative_date"] == TODAY + timedelta(days=11)
 
 
 async def test_off_budget_pending_and_deleted_contribute_nothing(db_session):
@@ -167,7 +200,7 @@ async def test_off_budget_pending_and_deleted_contribute_nothing(db_session):
         is_deleted=True,
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=20)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=20, today=TODAY)
 
     assert data["start_balance"] == Decimal("5000.00")
     _assert_bands_collapsed(data["points"])
@@ -195,7 +228,7 @@ async def test_a_closed_account_keeps_its_balance_but_generates_no_flows(db_sess
     closed.is_closed = True
     await db_session.flush()
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=20)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=20, today=TODAY)
 
     assert data["start_balance"] == Decimal("5744.00")  # 5000 + 777 − 33
     _assert_bands_collapsed(data["points"])
@@ -254,7 +287,9 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
     assert charges != [last_charge + timedelta(days=30), last_charge + timedelta(days=60)]
     horizon = (charges[-1] - TODAY).days
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+    data = await ReportService(db_session).cash_projection(
+        budget.id, horizon_days=horizon, today=TODAY
+    )
 
     # The path carries both charges; the event list stops at 30 days out.
     assert _charged_dates(data["points"]) == charges
@@ -280,7 +315,7 @@ async def test_scheduled_end_date_and_event_cap_respected(db_session):
         end_date=TODAY + timedelta(days=9),
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
     assert [e["date"] for e in data["events"]] == [
         TODAY + timedelta(days=2),
         TODAY + timedelta(days=9),
@@ -289,7 +324,9 @@ async def test_scheduled_end_date_and_event_cap_respected(db_session):
     # A daily schedule floods the 30-day event window; the list caps at 20
     budget2, checking2 = await _budget_with_checking(db_session)
     await create_scheduled_transaction(db_session, budget2, checking2, "-1.00", "daily", TODAY)
-    data2 = await ReportService(db_session).cash_projection(budget2.id, horizon_days=90)
+    data2 = await ReportService(db_session).cash_projection(
+        budget2.id, horizon_days=90, today=TODAY
+    )
     assert len(data2["events"]) == 20
 
 
@@ -305,8 +342,8 @@ async def test_percentile_bands_ordered_and_same_day_idempotent(db_session):
     )
 
     reports = ReportService(db_session)
-    first = await reports.cash_projection(budget.id, horizon_days=45)
-    second = await reports.cash_projection(budget.id, horizon_days=45)
+    first = await reports.cash_projection(budget.id, horizon_days=45, today=TODAY)
+    second = await reports.cash_projection(budget.id, horizon_days=45, today=TODAY)
 
     for p in first["points"]:
         assert p["p10"] <= p["p25"] <= p["p50"] <= p["p75"] <= p["p90"]
@@ -330,7 +367,9 @@ async def test_cards_contribute_neither_balance_nor_history_nor_schedules(db_ses
         db_session, budget, card, "-45.00", "monthly", TODAY + timedelta(days=5)
     )
 
-    result = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    result = await ReportService(db_session).cash_projection(
+        budget.id, horizon_days=30, today=TODAY
+    )
 
     assert result["start_balance"] == Decimal("5000.00")
     assert result["events"] == []
@@ -369,7 +408,9 @@ async def test_a_twice_monthly_schedule_projects_every_occurrence(db_session):
         second_day_of_month=15,
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+    data = await ReportService(db_session).cash_projection(
+        budget.id, horizon_days=horizon, today=TODAY
+    )
     _assert_bands_collapsed(data["points"])
 
     # Seventy days from a 1st reach the 1st two months on (59–62 days) but not
@@ -407,7 +448,9 @@ async def test_a_month_end_schedule_keeps_its_day(db_session):
         start_date=start,
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+    data = await ReportService(db_session).cash_projection(
+        budget.id, horizon_days=horizon, today=TODAY
+    )
 
     # February has no 31st, so that one occurrence clamps; March must return to
     # the 31st. The old code answered 28 Feb, then 28 Mar.
@@ -437,7 +480,9 @@ async def test_a_schedule_already_advanced_to_a_clamped_day_returns_to_its_own(d
     )
     horizon = (date(year, 4, 5) - TODAY).days
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+    data = await ReportService(db_session).cash_projection(
+        budget.id, horizon_days=horizon, today=TODAY
+    )
 
     assert _charged_dates(data["points"]) == [month_end(date(year, 2, 1)), date(year, 3, 31)]
 
@@ -459,7 +504,9 @@ async def test_a_twice_monthly_schedule_stored_on_its_second_day_keeps_its_first
     )
     horizon = (date(year, 2, 20) - TODAY).days
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+    data = await ReportService(db_session).cash_projection(
+        budget.id, horizon_days=horizon, today=TODAY
+    )
 
     assert _charged_dates(data["points"]) == [
         date(year, 1, 15),
@@ -487,7 +534,7 @@ async def test_an_overdue_occurrence_lands_on_the_projected_path(db_session):
         start_date=TODAY - timedelta(days=3),
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
     start = data["start_balance"]
 
     # Booked on today, so the events list and the path agree.
@@ -518,7 +565,7 @@ async def test_a_long_cancelled_subscription_is_not_projected_forever(db_session
             category=streaming,
         )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=90)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=90, today=TODAY)
     assert [e for e in data["events"] if e["source"] == "subscription"] == []
     assert data["points"][90]["deterministic"] == data["start_balance"]
 
@@ -554,7 +601,7 @@ async def test_a_subscription_with_a_schedule_is_charged_once(db_session):
         start_date=TODAY + timedelta(days=6),
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
     sources = [e["source"] for e in data["events"]]
     assert sources == ["scheduled"], f"the subscription arm booked it too: {sources}"
@@ -598,7 +645,7 @@ async def test_a_scheduled_bill_is_not_also_sampled_from_history(db_session):
         start_date=add_months(TODAY, 1),
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
 
     # No residual variation left, so every band sits on the deterministic path.
     _assert_bands_collapsed(data["points"])
@@ -614,9 +661,11 @@ async def test_rows_with_no_payee_stay_in_the_sampled_history(db_session):
 
     Uniform history of -10 a day, half of it split legs and half plain rows
     with no payee, beside an unrelated $1 schedule with a payee. Before, the
-    sampled flow was 0 and "goes negative in 10 days" read as never.
+    sampled flow was 0 and "goes negative in 11 days" read as never.
     """
-    budget, checking = await _budget_with_checking(db_session, opening="310.00")
+    budget, checking = await _budget_with_checking(
+        db_session, opening="310.00", opened_days_back=21
+    )
     market = await create_payee(db_session, budget, "Harborstone Market")
     gym = await create_payee(db_session, budget, "Cascade Point Gym")
     for days_back in range(1, 22):
@@ -635,7 +684,7 @@ async def test_rows_with_no_payee_stay_in_the_sampled_history(db_session):
         db_session, budget, checking, "-1.00", "monthly", TODAY + timedelta(days=5), payee=gym
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
     _assert_sampled_flow_per_day(data["points"], Decimal("-10"))
 
 
@@ -659,7 +708,7 @@ async def test_a_split_bill_leaves_the_history_with_its_schedule(db_session):
         db_session, budget, checking, "-1800.00", "monthly", add_months(TODAY, 1), payee=landlord
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
     _assert_sampled_flow_per_day(data["points"], Decimal("0"))
 
 
@@ -680,7 +729,7 @@ async def test_rows_a_schedule_created_leave_the_history_by_its_id(db_session):
         row.scheduled_transaction_id = sched.id
     await db_session.flush()
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
     _assert_sampled_flow_per_day(data["points"], Decimal("0"))
 
 
@@ -691,7 +740,9 @@ async def test_a_subscription_payees_other_spending_stays_sampled(db_session):
     shopping from both layers: the fixed layer never had it, and the sampled
     one threw it away.
     """
-    budget, checking = await _budget_with_checking(db_session)
+    # Opened on the first membership charge, with household shopping on every
+    # day from then on: once the membership leaves, every day is -10.
+    budget, checking = await _budget_with_checking(db_session, opened_days_back=45)
     membership = await _subscription_category(db_session, budget, "Warehouse Membership")
     group = await create_category_group(db_session, budget, "Home")
     household = await create_category(db_session, budget, group, "Household")
@@ -706,7 +757,7 @@ async def test_a_subscription_payees_other_spending_stays_sampled(db_session):
             payee=megastore,
             category=membership,
         )
-    for days_back in range(1, 22):
+    for days_back in range(1, 46):
         await create_transaction(
             db_session,
             budget,
@@ -717,7 +768,7 @@ async def test_a_subscription_payees_other_spending_stays_sampled(db_session):
             category=household,
         )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
     assert [e["source"] for e in data["events"]] == ["subscription"]
     # The membership charges are the fixed layer's; the shopping is all that
@@ -755,7 +806,7 @@ async def test_a_schedule_made_in_the_editor_is_charged_once(db_session):
         category=streaming,
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
     assert [e["source"] for e in data["events"]] == ["scheduled"]
     assert data["points"][30]["deterministic"] == data["start_balance"] - Decimal("20.00")
@@ -783,29 +834,29 @@ async def test_an_editor_schedules_bill_leaves_the_history(db_session):
         db_session, budget, checking, "-1800.00", "monthly", add_months(TODAY, 1), category=rent
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
     _assert_sampled_flow_per_day(data["points"], Decimal("0"))
 
 
 async def test_a_refund_into_a_scheduled_bills_envelope_stays_sampled(db_session):
     """A schedule stands in for money moving its own way. A +50 refund filed
-    to Rent is not rent, and the fixed layer never re-applies it."""
-    budget, checking = await _budget_with_checking(db_session)
+    to Rent is not rent, and the fixed layer never re-applies it.
+
+    One day of register — opened yesterday, rent paid and partly refunded the
+    same day — so that day is the whole history and every path replays it:
+    +50 if the partition is right, -1750 if the rent stayed in, 0 if the
+    refund left with it."""
+    budget, checking = await _budget_with_checking(db_session, opened_days_back=1)
     group = await create_category_group(db_session, budget, "Bills")
     rent = await create_category(db_session, budget, group, "Rent")
-    for months_back in range(1, 6):
-        await create_transaction(
-            db_session, budget, checking, "-1800.00", add_months(TODAY, -months_back), category=rent
-        )
-    await create_transaction(
-        db_session, budget, checking, "50.00", TODAY - timedelta(days=3), category=rent
-    )
+    yesterday = TODAY - timedelta(days=1)
+    await create_transaction(db_session, budget, checking, "-1800.00", yesterday, category=rent)
+    await create_transaction(db_session, budget, checking, "50.00", yesterday, category=rent)
     await create_scheduled_transaction(
         db_session, budget, checking, "-1800.00", "monthly", add_months(TODAY, 1), category=rent
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
-    # The refund is the only history left, so every weekday samples it.
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
     _assert_sampled_flow_per_day(data["points"], Decimal("50"))
 
 
@@ -827,9 +878,168 @@ async def test_a_stale_reminder_schedule_books_one_overdue_occurrence(db_session
         db_session, budget, checking, "-100.00", "weekly", first_due, payee=payee
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=5)
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=5, today=TODAY)
 
     assert [e["date"] for e in data["events"]] == [TODAY, TODAY + timedelta(days=4)]
     start = data["start_balance"]
     assert data["points"][0]["deterministic"] == start - Decimal("100.00")
     assert data["points"][5]["deterministic"] == start - Decimal("200.00")
+    # Every band starts where the "Scheduled only" line does: the overdue
+    # charge is on day 0 for all of them, and nothing sampled is.
+    _assert_bands_collapsed(data["points"][:1])
+    assert data["points"][0]["p50"] == start - Decimal("100.00")
+
+
+# ─── The sampled history: every day, from the first row, no openings ────────
+
+
+async def test_quiet_weekends_project_flat_when_the_register_is_flat(db_session):
+    """Twenty-four weeks that net to zero: +300 every Monday, -50 every
+    weekday, nothing on a weekend except every sixth Saturday, a -300 one.
+
+    The history used to be grouped by date, so only days WITH rows entered it
+    and the Saturday bucket held nothing but the four busy Saturdays: every
+    simulated Saturday cost 300, and the median fell about 3,200 in ninety
+    days from a register that had not moved. Zero-filled, a quiet Saturday is
+    a zero, and the median ends within one busy Saturday of where it started
+    — on every day's seed (the domain suite sweeps them)."""
+    budget, checking = await _budget_with_checking(
+        db_session, opening="2000.00", opened_days_back=168
+    )
+    saturdays = 0
+    for days_back in range(168, 0, -1):
+        day = TODAY - timedelta(days=days_back)
+        if day.weekday() == 0:
+            await create_transaction(db_session, budget, checking, "300.00", day)
+        if day.weekday() < 5:
+            await create_transaction(db_session, budget, checking, "-50.00", day)
+        if day.weekday() == 5:
+            saturdays += 1
+            if saturdays % 6 == 0:
+                await create_transaction(db_session, budget, checking, "-300.00", day)
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=90, today=TODAY)
+
+    start = data["start_balance"]
+    assert start == Decimal("2000.00")
+    first, last = data["points"][0], data["points"][90]
+    # Day 0 is the balance on every band — it used to start one sampled day
+    # below "Current Balance".
+    assert first["p10"] == first["p50"] == first["p90"] == start
+    assert abs(last["p50"] - start) <= Decimal("300")
+    assert data["goes_negative_date"] is None
+
+
+async def test_an_account_opened_inside_the_window_is_not_a_flow(db_session):
+    """A savings account added a month ago: its Starting Balance is the money
+    it arrived with, not a deposit. Sampled, it was a +2,000 day that every
+    path drawing that weekday replayed; excluded, the register is still the
+    zero it was, and every band sits on the balance."""
+    budget, _checking = await _budget_with_checking(db_session)
+    savings = await create_account(db_session, budget, "Cascade Point HYSA", account_type="savings")
+    await _open(db_session, budget, savings, "2000.00", TODAY - timedelta(days=30))
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
+
+    assert data["start_balance"] == Decimal("7000.00")
+    _assert_bands_collapsed(data["points"])
+    assert {p["p50"] for p in data["points"]} == {Decimal("7000.00")}
+
+
+async def test_a_young_budget_is_not_padded_with_months_before_its_first_row(db_session):
+    """Opened 14 days ago, -10 on each of those days. The window starts at the
+    first row, so every day replayed is -10 — padded to 180 days, 166 zero
+    days would have diluted it to under a dollar a day.
+
+    The first row is read with the history's own scope: a deleted row, a
+    pending one, a closed account's and a card's — all older — do not reach
+    back and pad it."""
+    budget, checking = await _budget_with_checking(
+        db_session, opening="1000.00", opened_days_back=14
+    )
+    for days_back in range(1, 15):
+        await create_transaction(
+            db_session, budget, checking, "-10.00", TODAY - timedelta(days=days_back)
+        )
+    long_ago = TODAY - timedelta(days=150)
+    await create_transaction(db_session, budget, checking, "-1.00", long_ago, cleared="pending")
+    deleted = await create_transaction(db_session, budget, checking, "-1.00", long_ago)
+    deleted.is_deleted = True
+    closed = await create_account(db_session, budget, "Old Checking")
+    await create_transaction(db_session, budget, closed, "-1.00", long_ago)
+    closed.is_closed = True
+    card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+    await create_transaction(db_session, budget, card, "-1.00", long_ago)
+    await db_session.flush()
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
+
+    _assert_sampled_flow_per_day(data["points"], Decimal("-10"))
+
+
+async def test_a_rare_large_bill_warns_on_p10_before_the_median(db_session):
+    """One 3,000 bill in six months of nothing, against a 1,000 balance: a
+    path that replays it ends 2,000 under, and fewer than half of them do in
+    sixty days. The median never crosses — the old warning, which read only
+    the median, said nothing — but p10 does, and that date is served for the
+    softer "about a 1 in 10 chance" line. Holds on every day's seed (the
+    domain suite sweeps the same shape)."""
+    budget, checking = await _budget_with_checking(db_session, opening="4000.00")
+    await create_transaction(db_session, budget, checking, "-3000.00", TODAY - timedelta(days=90))
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
+
+    assert data["start_balance"] == Decimal("1000.00")
+    assert data["goes_negative_date"] is None
+    first_low = next(p["date"] for p in data["points"] if p["p10"] < 0)
+    assert data["p10_negative_date"] == first_low
+
+
+async def test_the_readers_today_starts_the_path(db_session):
+    """The container's clock is UTC: of an evening in the Americas it is
+    already tomorrow there. The reader's today decides where the path starts,
+    which rows are in the balance, and which day the history ends on.
+
+    A row dated tomorrow is in tomorrow-reader's balance and history window
+    only; today's row is in the balance for both."""
+    budget, checking = await _budget_with_checking(
+        db_session, opening="500.00", opened_days_back=20
+    )
+    for days_back in range(-1, 21):
+        await create_transaction(
+            db_session, budget, checking, "-10.00", TODAY - timedelta(days=days_back)
+        )
+    reports = ReportService(db_session)
+    tomorrow = TODAY + timedelta(days=1)
+
+    server = await reports.cash_projection(budget.id, horizon_days=10, today=TODAY)
+    reader = await reports.cash_projection(budget.id, horizon_days=10, today=tomorrow)
+
+    assert server["points"][0]["date"] == TODAY
+    assert reader["points"][0]["date"] == tomorrow
+    assert [p["date"] for p in reader["points"]] == [
+        tomorrow + timedelta(days=k) for k in range(11)
+    ]
+    # 500 - 21 rows through today; the reader's balance holds tomorrow's too.
+    assert server["start_balance"] == Decimal("290.00")
+    assert reader["start_balance"] == Decimal("280.00")
+    _assert_sampled_flow_per_day(server["points"], Decimal("-10"))
+    _assert_sampled_flow_per_day(reader["points"], Decimal("-10"))
+
+
+async def test_the_endpoint_takes_the_readers_today(db_session, api_client):
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    await _open(db_session, budget, checking, "500.00", TODAY - timedelta(days=200))
+    tomorrow = TODAY + timedelta(days=1)
+
+    resp = await api_client.get(
+        f"/api/v1/{budget.id}/reports/cash-projection",
+        params={"days": 30, "client_today": tomorrow.isoformat()},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["points"][0]["date"] == tomorrow.isoformat()
+    assert body["goes_negative_date"] is None
+    assert body["p10_negative_date"] is None

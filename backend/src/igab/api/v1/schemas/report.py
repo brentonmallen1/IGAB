@@ -1017,7 +1017,12 @@ class CashProjectionResponse(ApiModel):
     start_balance: Decimal
     points: list[CashProjectionPoint]
     events: list[CashProjectionEvent]
-    goes_negative_date: date | None  # first date P50 goes negative, if any
+    #: The first day the median path is below zero, if any.
+    goes_negative_date: date | None
+    #: The first day the p10 band is below zero — about a 1 in 10 chance of
+    #: being under $0 by then. Never later than `goes_negative_date`; the UI
+    #: warns softly on this one alone (`domain.cash_projection`).
+    p10_negative_date: date | None
 
 
 class ReportRangeResponse(ApiModel):

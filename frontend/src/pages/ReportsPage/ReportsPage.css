@@ -723,6 +723,19 @@
   font-size: var(--font-size-sm);
 }
 
+/* A 1 in 10 chance is worth saying, not worth alarm: the same row, calmer.
+   The icon keeps the warning hue; the words are ordinary text. */
+.projection-warning--possible {
+  background: transparent;
+  border-color: var(--edge-strong);
+  color: var(--text-secondary);
+}
+
+.projection-warning--possible svg {
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+
 .projection-events {
   margin-top: var(--spacing-lg);
 }

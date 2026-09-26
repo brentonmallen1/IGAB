@@ -571,6 +571,56 @@ describe('BurnRateReport', () => {
   })
 })
 
+describe('CashProjectionReport', () => {
+  const projection = (goes: string | null, p10: string | null) => ({
+    start_balance: 900,
+    points: [
+      { date: '2026-09-26', p10: 900, p25: 900, p50: 900, p75: 900, p90: 900, deterministic: 900 },
+      {
+        date: '2026-10-26',
+        p10: -150,
+        p25: 300,
+        p50: 700,
+        p75: 1100,
+        p90: 1600,
+        deterministic: 900,
+      },
+    ],
+    events: [],
+    goes_negative_date: goes,
+    p10_negative_date: p10,
+  })
+
+  it('says a 1 in 10 dip softly when only the low band crosses', () => {
+    setQuery({ data: projection(null, '2026-10-20') })
+    renderReport(<CashProjectionReport budgetId="b1" />)
+    const warning = document.querySelector('.projection-warning')
+    expect(warning).toHaveClass('projection-warning--possible')
+    expect(warning?.textContent).toMatch(/^About a 1 in 10 chance of dipping below \$0\.00 by /)
+  })
+
+  it('says it plainly when the median crosses', () => {
+    setQuery({ data: projection('2026-10-24', '2026-10-20') })
+    renderReport(<CashProjectionReport budgetId="b1" />)
+    const warning = document.querySelector('.projection-warning')
+    expect(warning).not.toHaveClass('projection-warning--possible')
+    expect(warning?.textContent).toMatch(/^More likely than not to be below \$0\.00 by /)
+  })
+
+  it('keys both bands, in the words the info panel uses', () => {
+    setQuery({ data: projection(null, null) })
+    renderReport(<CashProjectionReport budgetId="b1" />)
+    expect(document.querySelector('.projection-warning')).toBeNull()
+    const key = document.querySelector('.chart-key')?.textContent ?? ''
+    expect(key).toContain('Middle half (25–75%)')
+    expect(key).toContain('8 in 10 (10–90%)')
+    expect(card('Projected (90d)')).toEqual({
+      value: '$700.00',
+      sub: '8 in 10: -$150.00 – $1,600.00',
+    })
+  })
+})
+
 describe('the savings-rate cards open what contributed', () => {
   beforeEach(async () => {
     // A dialog opened in more than one test leaves a deferred history.back().

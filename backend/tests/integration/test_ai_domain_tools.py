@@ -19,6 +19,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_liability,
+    create_payee,
     create_scheduled_transaction,
     create_user,
 )
@@ -181,7 +182,44 @@ class TestReports:
             await _ctx(db_session, budget), {"horizon_days": 30}
         )
         assert "goes_negative_date" in result
+        assert "p10_negative_date" in result
         assert result["horizon_days"] == 30
+
+    async def test_cash_projection_names_the_bills_from_the_users_today(self, db_session):
+        """Events carry `payee`; the tool read `payee_name`, which no event
+        has, so every upcoming bill reached the model named null. And the
+        projection starts on the user's today, as the chart they see does —
+        a schedule due on the context's day is booked there, not on the
+        server's."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user, "Household")
+        checking = await create_account(db_session, budget, "Harborstone")
+        payee = await create_payee(db_session, budget, "Northwind Payserv")
+        ctx_today = date(2026, 9, 19)
+        await create_scheduled_transaction(
+            db_session,
+            budget,
+            checking,
+            "2000.00",
+            "monthly",
+            ctx_today + timedelta(days=5),
+            payee=payee,
+        )
+        await db_session.flush()
+
+        result = await handlers.cash_projection(
+            await _ctx(db_session, budget, ctx_today), {"horizon_days": 30}
+        )
+
+        assert result["upcoming"] == [
+            {
+                "date": (ctx_today + timedelta(days=5)).isoformat(),
+                "payee": "Northwind Payserv",
+                "amount": 2000.0,
+            }
+        ]
+        assert result["goes_negative_date"] is None
+        assert result["p10_negative_date"] is None
 
     async def test_the_horizon_is_clamped(self, db_session):
         user = await create_user(db_session)
