@@ -1366,54 +1366,72 @@ export interface TimelineReport extends SavedFilterScope {
   transactions: TimelineTransaction[]
 }
 
-/** The figures a recurring line carries — same shape for a category and for
- *  a payee inside it, because the arithmetic is the same, except
- *  `avg_monthly`, which a category rolls up from its payees. */
-export interface RecurringSpend {
-  monthly_amounts: number[]
-  /** True monthly burden, from the server
-   *  (`services/report_basics._recurring_spend`). Per payee: total / complete
-   *  months since THAT service's first charge. Per category: the sum of its
-   *  payees', so the nested table adds up and a service that started after
-   *  its envelope did is not lost to a shared divisor. */
-  avg_monthly: number
-  total: number
-  /** Typical charge: total / charge count */
-  avg_per_charge: number
-  last_charge_date: string | null
-  transaction_count: number
-}
-
-export interface SubscriptionPayee extends RecurringSpend {
+/** One service — a payee inside a Subscription-tagged category — and what it
+ *  costs a year. Served by `domain/subscriptions.py`; the page adds nothing
+ *  up and decides nothing about cadence. */
+export interface SubscriptionService {
   payee_id: string | null
   payee_name: string
+  /** How `annual` was arrived at: the last 12 complete months' charges
+   *  ("observed"), projected from the latest charge for a service younger than
+   *  that year ("new") or one whose price changed ("price_change"), or zero
+   *  because it has had no charge for 1.5 cycles ("stopped"). */
+  basis: 'observed' | 'new' | 'price_change' | 'stopped'
+  /** Net of refunds; zero when stopped. */
+  annual: number
+  /** annual ÷ 12 */
+  monthly: number
+  interval_days: number
+  /** "monthly"/"yearly" are calendar cadences; "days" is every `interval_days`. */
+  cadence: 'monthly' | 'yearly' | 'days'
+  /** One charge says nothing about cadence, so monthly was assumed. */
+  cadence_assumed: boolean
+  latest_charge: number
+  first_charge_date: string
+  last_charge_date: string
+  charges_in_year: number
+  refunded_in_year: number
 }
 
-export interface SubscriptionCategory extends RecurringSpend {
+export interface SubscriptionCategory {
   category_id: string
   category_name: string
   group_name: string
-  payees: SubscriptionPayee[]
+  /** The sum of its services' annual. */
+  annual: number
+  monthly: number
+  /** Net charges per month of `months` — the chart. The range picker moves
+   *  only these. */
+  monthly_amounts: number[]
+  total: number
+  last_charge_date: string
+  services: SubscriptionService[]
 }
 
 export interface SubscriptionsSummary {
-  /** The sum of every category's `avg_monthly`, each of which is the sum of
-   *  its payees': the headline is the rows added up. */
-  total_monthly: number
+  /** The sum of every category's `annual`. */
   total_annual: number
-  active_count: number
+  /** total_annual ÷ 12 */
+  total_monthly: number
+  /** Categories with a service still charging, of `tagged_categories`. */
+  charged_categories: number
+  tagged_categories: number
+  new_this_month: number
+  /** Services whose annual is projected ("new" or "price_change"). */
+  projected_services: number
+  stopped_services: number
 }
 
 export interface SubscriptionsReport {
-  /** The complete months the window holds — every entry of `months`, on
-   *  every day (backend `domain.dates.complete_month_window`). The MOST an
-   *  effective-monthly figure divides by: each SERVICE divides by the months
-   *  since its own first charge, and the category and summary figures are
-   *  sums of those. 0 when nothing was charged in the window. */
-  months_averaged: number
   subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary
+  /** The chart's complete months. */
   months: string[]
+  /** Every listed category's month, summed — the height of each stacked bar. */
+  monthly_totals: number[]
+  /** The 12 complete months `annual` reads, whatever the range says. */
+  year_start: string
+  year_end: string
 }
 
 /** An envelope's target on the Savings report, judged as the Budget page

@@ -422,28 +422,28 @@ class TestSubscriptionOccurrences:
         )
         assert out == [date(2026, 9, 16), date(2026, 10, 16), date(2026, 11, 16)]
 
-    def test_a_subscription_that_missed_two_cycles_is_treated_as_cancelled(self):
+    def test_a_subscription_long_past_its_cycle_is_treated_as_cancelled(self):
         # Last charged 400 days ago on a monthly cadence.
         assert (
             subscription_occurrences(date(2025, 7, 1), date(2025, 8, 1), 2, self.TODAY, self.END)
             == []
         )
 
-    # The boundary itself: missing two cycles is cancelled, missing them by a
-    # day more is. Only a thirteen-cycle gap was pinned, so any threshold from
-    # two cycles to twelve passed — and a subscription cancelled three months
-    # ago would have gone on being projected. Weekly and 40-day cadences step
-    # by days; 30 steps a calendar month.
-    @pytest.mark.parametrize("interval", [7, 30, 40])
-    def test_a_last_charge_exactly_two_cycles_back_is_still_projected(self, interval):
-        last = self.TODAY - timedelta(days=2 * interval)
+    # The boundary itself: 1.5 cycles without a charge is still live, a day
+    # more is stopped (`has_stopped`, the rule the Subscriptions report reads
+    # too). This was two cycles here and no rule at all on the report, so a
+    # service cancelled in the spring counted in the report's Annual all year.
+    # Weekly-ish and 40-day cadences step by days; 30 steps a calendar month.
+    @pytest.mark.parametrize("interval", [8, 30, 40])
+    def test_a_last_charge_one_and_a_half_cycles_back_is_still_projected(self, interval):
+        last = self.TODAY - timedelta(days=interval * 3 // 2)
         first = last - timedelta(days=interval)
         out = subscription_occurrences(first, last, 2, self.TODAY, self.END)
         assert out and min(out) >= self.TODAY
 
-    @pytest.mark.parametrize("interval", [7, 30, 40])
-    def test_a_day_past_two_cycles_is_cancelled(self, interval):
-        last = self.TODAY - timedelta(days=2 * interval + 1)
+    @pytest.mark.parametrize("interval", [8, 30, 40])
+    def test_a_day_past_one_and_a_half_cycles_is_cancelled(self, interval):
+        last = self.TODAY - timedelta(days=interval * 3 // 2 + 1)
         first = last - timedelta(days=interval)
         assert subscription_occurrences(first, last, 2, self.TODAY, self.END) == []
 

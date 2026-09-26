@@ -211,8 +211,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   subscriptions: {
     scope: 'on-budget',
     summary: 'What your subscriptions cost, monthly and annually.',
-    counts: 'Charges in Subscription-tagged categories, per category and per payee.',
-    leavesOut: 'Untagged categories and the month in progress.',
+    counts:
+      'Charges less refunds in Subscription-tagged categories over the last 12 complete months, per category and per service.',
+    leavesOut: 'Untagged categories, and services with no charge for one and a half cycles.',
   },
   'plan-reality': {
     scope: 'categories',

@@ -703,59 +703,77 @@ class LiabilitiesReportResponse(ApiModel):
 # ─── Subscriptions Report ────────────────────────────────────────────────────
 
 
-class RecurringSpend(ApiModel):
-    """The figures a recurring line carries. One shape for a category and for
-    a payee inside it, because the arithmetic is the same — except
-    `avg_monthly`, which a category rolls up from its payees."""
+class SubscriptionService(ApiModel):
+    """One service — a payee inside a Subscription-tagged category — and what
+    it costs a year (`domain.subscriptions.service_cost`)."""
 
-    monthly_amounts: list[Decimal]  # amounts per month in the period
-    #: True monthly burden. Per payee: total / complete months since THAT
-    #: service's first charge, so a quarterly $30 subscription reads $10/mo.
-    #: Per category: the SUM of its payees', so the nested table adds up and a
-    #: service that started after its envelope did is not lost to a shared
-    #: divisor.
-    avg_monthly: Decimal
-    total: Decimal
-    avg_per_charge: Decimal  # typical charge: total / charge count
-    last_charge_date: date | None
-    transaction_count: int
-
-
-class SubscriptionPayee(RecurringSpend):
     #: None for charges filed to a subscription category with no payee.
     payee_id: uuid.UUID | None
     payee_name: str
+    #: How Annual was arrived at: "observed" (the last 12 complete months'
+    #: charges), "new" (younger than that year: latest charge × cycles a
+    #: year), "price_change" (the year's charges at the latest price) or
+    #: "stopped" (no charge for 1.5 cycles; Annual is zero).
+    basis: Literal["observed", "new", "price_change", "stopped"]
+    #: Net of refunds. Zero for a stopped service.
+    annual: Decimal
+    monthly: Decimal  # annual ÷ 12
+    interval_days: int
+    #: "monthly" and "yearly" are calendar cadences (`schedule.cadence_of`);
+    #: "days" is every `interval_days`.
+    cadence: Literal["monthly", "yearly", "days"]
+    #: One charge says nothing about cadence, so monthly was assumed.
+    cadence_assumed: bool
+    latest_charge: Decimal  # the most recent charge, positive
+    first_charge_date: date
+    last_charge_date: date
+    charges_in_year: int
+    refunded_in_year: Decimal  # already taken off `annual`
 
 
-class SubscriptionCategory(RecurringSpend):
+class SubscriptionCategory(ApiModel):
     #: Never null: the tag is on categories, so a row without one cannot be
     #: in this report at all.
     category_id: uuid.UUID
     category_name: str
     group_name: str
-    payees: list[SubscriptionPayee]
+    #: The sum of its services' Annual — the table adds up.
+    annual: Decimal
+    monthly: Decimal  # annual ÷ 12
+    #: Net charges per month of `months`, for the chart. The range picker
+    #: moves only these; Annual reads its own year.
+    monthly_amounts: list[Decimal]
+    total: Decimal  # the sum of monthly_amounts
+    last_charge_date: date
+    services: list[SubscriptionService]
 
 
 class SubscriptionsSummary(ApiModel):
-    #: The sum of every category's avg_monthly, which is itself the sum of its
-    #: payees': the page's headline is its rows added up.
-    total_monthly: Decimal
-    total_annual: Decimal  # projected annual cost
-    active_count: int  # number of tagged categories with charges in the period
+    #: The sum of every category's Annual, itself the sum of its services'.
+    total_annual: Decimal
+    total_monthly: Decimal  # total_annual ÷ 12
+    #: Categories with a service still charging, of `tagged_categories`. The
+    #: card read "Active 2" — a count of categories, under a label that read
+    #: as services, and stopped ones counted.
+    charged_categories: int
+    tagged_categories: int
+    #: Services first charged in the month still running.
+    new_this_month: int
+    #: Services whose Annual is projected (basis "new" or "price_change").
+    projected_services: int
+    stopped_services: int
 
 
 class SubscriptionsReportResponse(ApiModel):
     subscriptions: list[SubscriptionCategory]
     summary: SubscriptionsSummary
-    months: list[date]  # month labels for the period
-    #: The complete months the window holds — every month in `months`, on
-    #: every day (`domain.dates.complete_month_window`). It is the MOST an
-    #: effective-monthly figure divides by: each SERVICE divides by the months
-    #: since its own first charge, and the category and summary figures are
-    #: sums of those. 0 when nothing was charged in the window: no figure was
-    #: averaged. Required, not optional — a default would let the page claim a
-    #: divisor nothing served.
-    months_averaged: int
+    months: list[date]  # the chart's complete months
+    #: Every listed category's month, summed — what a stacked chart that
+    #: draws the largest few and an Other band must stand at.
+    monthly_totals: list[Decimal]
+    #: The 12 complete months Annual reads, whatever `months` is.
+    year_start: date
+    year_end: date
 
 
 # ─── Savings Report ──────────────────────────────────────────────────────────

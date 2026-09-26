@@ -20,6 +20,8 @@ test.
 
 import calendar
 from datetime import date, timedelta
+from decimal import Decimal
+from enum import StrEnum
 from typing import Protocol
 
 from igab.domain.dates import add_months
@@ -255,6 +257,26 @@ def observed_interval_days(first: date, last: date, charge_count: int) -> int:
     return max(MIN_INTERVAL_DAYS, min(MAX_INTERVAL_DAYS, round(span / (charge_count - 1))))
 
 
+class Cadence(StrEnum):
+    """How an observed interval is read: a calendar month, a calendar year, or
+    plain days. One classification, because stepping a cycle (`step_cadence`)
+    and counting cycles in a year (`cycles_per_year`) must agree on what
+    "monthly" is — a 33-day gap stepped as a month but counted as 11 cycles a
+    year would book twelve charges the report said were eleven."""
+
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+    DAYS = "days"
+
+
+def cadence_of(interval_days: int) -> Cadence:
+    if 25 <= interval_days <= 35:
+        return Cadence.MONTHLY
+    if 350 <= interval_days <= MAX_INTERVAL_DAYS:
+        return Cadence.YEARLY
+    return Cadence.DAYS
+
+
 def step_cadence(d: date, interval_days: int, *, anchor_day: int | None = None) -> date:
     """Advance one billing cycle.
 
@@ -265,11 +287,38 @@ def step_cadence(d: date, interval_days: int, *, anchor_day: int | None = None) 
     its billing date, and the drift compounds across a 90-day horizon.
     """
     day = anchor_day or d.day
-    if 25 <= interval_days <= 35:
+    cadence = cadence_of(interval_days)
+    if cadence is Cadence.MONTHLY:
         return _step_months(d, 1, day)
-    if 350 <= interval_days <= MAX_INTERVAL_DAYS:
+    if cadence is Cadence.YEARLY:
         return _step_months(d, 12, day)
     return d + timedelta(days=interval_days)
+
+
+def cycles_per_year(interval_days: int) -> Decimal:
+    """How many charges a year a cadence makes: 12 for a calendar month, 1 for
+    a calendar year — exactly, as `step_cadence` steps them — and 365 ÷ the
+    interval otherwise (a weekly bill, 52.14)."""
+    cadence = cadence_of(interval_days)
+    if cadence is Cadence.MONTHLY:
+        return Decimal(12)
+    if cadence is Cadence.YEARLY:
+        return Decimal(1)
+    return Decimal(365) / Decimal(interval_days)
+
+
+def has_stopped(last_charge: date, interval_days: int, today: date) -> bool:
+    """Whether a subscription has gone 1.5 cycles with no charge — cancelled,
+    for every reader: the Subscriptions report shows it as stopped and leaves
+    it out of Monthly and Annual, and the cash projection books nothing for it.
+
+    One rule for both. The projection stopped at two missed cycles while the
+    report had no rule at all, so a service cancelled in the spring went on
+    counting in Monthly, Annual and Active for the rest of the year. Half a
+    cycle late is the line: a monthly bill two weeks overdue has not been
+    delayed, it has been cancelled — and an annual one six months overdue.
+    """
+    return 2 * (today - last_charge).days > 3 * interval_days
 
 
 def billing_day(first_charge: date, last_charge: date) -> int:
@@ -290,13 +339,13 @@ def subscription_occurrences(
 ) -> list[date]:
     """Future charge dates for a subscription inferred from its own history.
 
-    Empty when the subscription has missed two cycles — treated as cancelled.
-    The cash projection had no recency bound at all, so a payee last charged
-    years ago was projected forward forever: the walk stepped from its final
-    charge up to today and then booked every future cycle.
+    Empty once the subscription `has_stopped`. The cash projection had no
+    recency bound at all, so a payee last charged years ago was projected
+    forward forever: the walk stepped from its final charge up to today and
+    then booked every future cycle.
     """
     interval = observed_interval_days(first_charge, last_charge, charge_count)
-    if last_charge < today - timedelta(days=2 * interval):
+    if has_stopped(last_charge, interval, today):
         return []
 
     day = billing_day(first_charge, last_charge)

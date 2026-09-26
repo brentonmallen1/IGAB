@@ -759,105 +759,112 @@ describe('the savings-rate cards open what contributed', () => {
 })
 
 describe('SubscriptionsReport table', () => {
-  it('shows BOTH the per-charge and normalized monthly columns', () => {
-    setQuery({
-      data: {
-        subscriptions: [
-          {
-            category_id: 'c1',
-            category_name: 'Fitness',
-            group_name: 'Wellbeing',
-            monthly_amounts: [30, 0, 0, 30],
-            total: 120,
-            avg_monthly: 10,
-            avg_per_charge: 30,
-            last_charge_date: '2026-05-01',
-            transaction_count: 4,
-            payees: [
-              {
-                payee_id: 'p1',
-                payee_name: 'Quarterly Gym',
-                monthly_amounts: [30, 0, 0, 30],
-                total: 120,
-                avg_monthly: 10,
-                avg_per_charge: 30,
-                last_charge_date: '2026-05-01',
-                transaction_count: 4,
-              },
-            ],
-          },
-        ],
-        summary: { total_monthly: 10, total_annual: 120, active_count: 1 },
-        months: ['2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'],
-        months_averaged: 4,
+  function service(overrides: Record<string, unknown> = {}) {
+    return {
+      payee_id: 'p1',
+      payee_name: 'Quarterly Gym',
+      basis: 'observed',
+      annual: 120,
+      monthly: 10,
+      interval_days: 91,
+      cadence: 'days',
+      cadence_assumed: false,
+      latest_charge: 30,
+      first_charge_date: '2024-02-01',
+      last_charge_date: '2026-08-01',
+      charges_in_year: 4,
+      refunded_in_year: 0,
+      ...overrides,
+    }
+  }
+
+  function report(services: ReturnType<typeof service>[]) {
+    return {
+      subscriptions: [
+        {
+          category_id: 'c1',
+          category_name: 'Fitness',
+          group_name: 'Wellbeing',
+          annual: 120,
+          monthly: 10,
+          monthly_amounts: [30, 0, 0, 30],
+          total: 60,
+          last_charge_date: '2026-08-01',
+          services,
+        },
+      ],
+      summary: {
+        total_annual: 120,
+        total_monthly: 10,
+        charged_categories: 1,
+        tagged_categories: 3,
+        new_this_month: 0,
+        projected_services: 0,
+        stopped_services: 0,
       },
-    })
+      months: ['2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01'],
+      monthly_totals: [30, 0, 0, 30],
+      year_start: '2025-09-01',
+      year_end: '2026-08-31',
+    }
+  }
+
+  it('reads Monthly as Annual ÷ 12 and Active as N of M', () => {
+    setQuery({ data: report([service()]) })
     renderReport(<SubscriptionsReport budgetId="b1" />)
 
-    // The count is a bound, not a divisor: the figure is the services added
-    // up, each spread over the months since its own first charge.
-    expect(card('Monthly').sub).toBe(
-      'effective, each service since its first charge, at most 4 complete months'
-    )
-    expect(screen.getByText('Per Charge')).toBeInTheDocument()
-    expect(screen.getByText('Monthly (effective)')).toBeInTheDocument()
-    // $30 per charge but only $10/mo effective — both perspectives visible
-    expect(screen.getByText('$30.00')).toBeInTheDocument()
-    expect(screen.getAllByText('$10.00').length).toBeGreaterThan(0)
-    // projected annual (also the total column — both show $120.00)
-    expect(screen.getAllByText('$120.00').length).toBeGreaterThan(0)
+    expect(card('Monthly')).toEqual({ value: '$10.00', sub: 'Annual ÷ 12' })
+    expect(card('Annual')).toEqual({ value: '$120.00', sub: 'last 12 complete months' })
+    expect(card('Active')).toEqual({ value: '1 of 3', sub: 'tagged categories charged' })
   })
 
-  it('leads with the tagged category and opens onto its payees', () => {
+  it('leads with the tagged category and opens onto its services', () => {
     // The tag is on categories, so the category is the line. Listing payees
     // at the top level made the tag a filter and left the envelope unnamed.
-    setQuery({
-      data: {
-        subscriptions: [
-          {
-            category_id: 'c1',
-            category_name: 'Streaming',
-            group_name: 'Bills',
-            monthly_amounts: [30],
-            total: 30,
-            avg_monthly: 30,
-            avg_per_charge: 15,
-            last_charge_date: '2026-05-01',
-            transaction_count: 2,
-            payees: [
-              {
-                payee_id: 'p1',
-                payee_name: 'Northwind Stream',
-                monthly_amounts: [20],
-                total: 20,
-                avg_monthly: 20,
-                avg_per_charge: 20,
-                last_charge_date: '2026-05-01',
-                transaction_count: 1,
-              },
-            ],
-          },
-        ],
-        summary: { total_monthly: 30, total_annual: 360, active_count: 1 },
-        months: ['2026-05-01'],
-        months_averaged: 1,
-      },
-    })
+    setQuery({ data: report([service()]) })
     renderReport(<SubscriptionsReport budgetId="b1" />)
 
-    expect(card('Monthly').sub).toBe(
-      'effective, each service since its first charge, at most 1 complete month'
-    )
-
     expect(screen.getByText('Category')).toBeInTheDocument()
-    const row = screen.getByRole('button', { name: /Streaming/ })
+    const row = screen.getByRole('button', { name: /Fitness/, expanded: false })
     expect(row).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('Northwind Stream')).toBeNull()
+    expect(screen.queryByText('Quarterly Gym')).toBeNull()
 
     fireEvent.click(row)
 
     expect(row).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('Northwind Stream')).toBeInTheDocument()
+    expect(screen.getByText('Quarterly Gym')).toBeInTheDocument()
+    expect(screen.getByText('every 91 days')).toBeInTheDocument()
+    // $30 a charge, $10 a month: both visible.
+    expect(screen.getByText('$30.00')).toBeInTheDocument()
+  })
+
+  it('opens a service onto its own charges', () => {
+    setQuery({ data: report([service()]) })
+    renderReport(<SubscriptionsReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: /Fitness/, expanded: false }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'List charges from Quarterly Gym' }))
+
+    expect(useReportStore.getState().drillDown).toMatchObject({
+      kind: 'payee',
+      categoryIds: ['c1'],
+      payeeIds: ['p1'],
+      startDate: '2025-09-01',
+    })
+  })
+
+  it('marks a stopped service and a projected one', () => {
+    setQuery({
+      data: report([
+        service({ payee_id: 'p2', payee_name: 'Fresh Plan', basis: 'new' }),
+        service({ payee_id: 'p3', payee_name: 'Old Plan', basis: 'stopped', annual: 0 }),
+      ]),
+    })
+    renderReport(<SubscriptionsReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: /Fitness/, expanded: false }))
+
+    expect(screen.getByText('new · projected')).toBeInTheDocument()
+    expect(screen.getByText('stopped')).toBeInTheDocument()
   })
 })
 

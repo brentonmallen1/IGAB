@@ -160,13 +160,15 @@ class TestEveryAverageDividesByTheHistory:
             db_session, budget.id, await ask(db_session, budget), TODAY
         )
 
-        # The per-service figure already divided from the first charge; what
-        # moved is the axis, which drew empty months nobody recorded.
+        # The chart's axis drew empty months nobody recorded.
         assert data["months"] == HISTORY
-        assert data["months_averaged"] == 3
         (streaming,) = data["subscriptions"]
         assert streaming["monthly_amounts"] == [D("15")] * 3
-        assert streaming["avg_monthly"] == D("15.00")
+        # A service younger than a year is projected from its cadence, on
+        # either setting: the range picker moves the chart, never the cost.
+        assert streaming["services"][0]["basis"] == "new"
+        assert streaming["monthly"] == D("15.00")
+        assert data["summary"]["total_annual"] == D("180.00")
 
     async def test_cost_of_living_quotes_the_essentials_table(self, db_session, ask):
         """The two reports read one window, so the Essentials figure on Cost of
