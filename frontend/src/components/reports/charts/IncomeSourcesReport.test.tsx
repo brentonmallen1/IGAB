@@ -13,7 +13,7 @@
  * recharts renders zero-size under jsdom, so it is stubbed: each stub records
  * the props the report handed it.
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,6 +29,7 @@ const chart = vi.hoisted(() => ({
   data: [] as Row[],
   bars: [] as string[],
   tooltipContent: null as TooltipContent | null,
+  yAxis: null as { domain?: [number, number]; ticks?: number[] } | null,
 }))
 
 vi.mock('recharts', () => ({
@@ -56,8 +57,10 @@ vi.mock('recharts', () => ({
   },
   CartesianGrid: () => null,
   XAxis: () => null,
-  YAxis: () => null,
-  Legend: () => null,
+  YAxis: (props: { domain?: [number, number]; ticks?: number[] }) => {
+    chart.yAxis = props
+    return null
+  },
 }))
 
 const queryState = vi.hoisted(() => ({ current: { data: undefined as unknown } }))
@@ -74,6 +77,7 @@ vi.mock('../../../api/reports', async (importOriginal) => {
 })
 
 import { IncomeSourcesReport } from './IncomeSourcesReport'
+import { OTHER_KEY } from './spendingTrends'
 
 /** Eight payees paying 375 each, plus one that only took money back. The
  *  server sorts by total, so the negative one falls outside the eight series
@@ -112,6 +116,7 @@ beforeEach(() => {
   chart.data = []
   chart.bars = []
   chart.tooltipContent = null
+  chart.yAxis = null
   queryState.current = { data: DATA }
 })
 
@@ -126,8 +131,10 @@ describe('Income by Source with a negative month', () => {
 
   it('draws the negative remainder as an Other band', () => {
     render(<IncomeSourcesReport budgetId="b1" />)
-    expect(chart.bars).toContain('Other')
-    expect(chart.data[0].Other).toBe(-75)
+    // Keyed by id like every stacked series, never by name: a payee called
+    // "Other" is not the band.
+    expect(chart.bars).toContain(OTHER_KEY)
+    expect(chart.data[0][OTHER_KEY]).toBe(-75)
   })
 
   it('counts only the payees that paid something as Sources', () => {
@@ -156,5 +163,49 @@ describe('Income by Source with a negative month', () => {
     const tooltip = within(tip.container)
     expect(tooltip.getByText('-$75.00')).toBeInTheDocument()
     expect(tooltip.getByText('$2,925.00')).toBeInTheDocument()
+  })
+})
+
+describe('Income by Source key and axis', () => {
+  it('lists the key in the order the bars stack, Other last — not alphabetically', () => {
+    render(<IncomeSourcesReport budgetId="b1" />)
+    const names = within(screen.getByRole('list', { name: 'Series in this chart' }))
+      .getAllByRole('button')
+      .map((b) => b.querySelector('.chart-legend__name')?.textContent)
+    // recharts' own legend sorted by name, so the key read Alder, Beacon,
+    // Cascade… over a stack that ran Northwind, Cascade, Willow…
+    expect(names).toEqual([...SHOWN, 'Other'])
+    expect(chart.bars).toEqual([...SHOWN.map((_, i) => `p${i}`), OTHER_KEY])
+  })
+
+  it('keeps two payees who share a name apart', () => {
+    queryState.current = {
+      data: {
+        ...DATA,
+        sources: [
+          { payee_id: 'a', payee_name: 'Payment', monthly: [2000], total: 2000, count: 1 },
+          { payee_id: 'b', payee_name: 'Payment', monthly: [925], total: 925, count: 1 },
+        ],
+      },
+    }
+    render(<IncomeSourcesReport budgetId="b1" />)
+    expect(chart.bars).toEqual(['a', 'b'])
+    expect(chart.data[0]).toMatchObject({ a: 2000, b: 925 })
+  })
+
+  it('gives a small negative adjustment a sliver of axis, not a whole step', () => {
+    render(<IncomeSourcesReport budgetId="b1" />)
+    // Eight 375s stack to 3,000 over a -75 Other band.
+    const [bottom, top] = chart.yAxis?.domain ?? [0, 0]
+    expect(top).toBe(3000)
+    expect(bottom).toBeLessThan(-75)
+    expect(bottom).toBeGreaterThan(-750)
+    expect(chart.yAxis?.ticks?.[0]).toBe(0)
+  })
+
+  it('states which accounts it reads in its ⓘ', () => {
+    render(<IncomeSourcesReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Income by Source report' }))
+    expect(screen.getByText(/^Accounts:/)).toBeInTheDocument()
   })
 })

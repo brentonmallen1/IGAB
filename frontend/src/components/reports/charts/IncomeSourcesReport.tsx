@@ -1,14 +1,5 @@
-import { useMemo, useRef } from 'react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { useMemo, useRef, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useIncomeBySourceReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
@@ -16,15 +7,16 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { chartColor, COLOR_OTHER } from './chartColors'
+import { ChartLegend } from './ChartLegend'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { incomeSourceCount } from './incomeSourcesView'
-import { otherBand } from '../drillDownTotals'
+import { stackedValueAxis } from '../../../utils/axisScale'
+import { incomeSourceCount, incomeSourceRows } from './incomeSourcesView'
 import { MIXED_SIGN_STACK } from './mixedSignStack'
+import { stackTrends } from './spendingTrends'
 
 interface Props {
   budgetId: string
@@ -42,20 +34,28 @@ export function IncomeSourcesReport({ budgetId }: Props) {
   const captureRef = useRef<HTMLDivElement>(null)
   const { data, isLoading, isError, error, refetch } = useIncomeBySourceReport(budgetId, months)
 
-  const shown = useMemo(() => (data?.sources ?? []).slice(0, MAX_SERIES), [data])
-  const chartData = useMemo(() => {
-    if (!data) return []
-    return data.months.map((m, i) => {
-      const row: Record<string, string | number> = { month: formatMonthShort(m) }
-      for (const s of shown) row[s.payee_name] = s.monthly[i] ?? 0
-      const rest = otherBand(
-        data.monthly_totals[i],
-        shown.map((s) => s.monthly[i] ?? 0)
-      )
-      if (rest !== null) row.Other = rest
-      return row
-    })
-  }, [data, shown, formatMonthShort])
+  const [highlight, setHighlight] = useState<string | null>(null)
+  // The stack Spending Trends and Subscriptions draw: the largest sources by
+  // total, bottom first, and one Other band holding the rest so every bar is
+  // its month's income. This chart built its own copy of that stack, keyed by
+  // payee NAME — two payees who share a name drew as one — and let recharts
+  // write the legend, which sorted it alphabetically rather than in the order
+  // the bars stack.
+  const stacked = useMemo(
+    () =>
+      data
+        ? stackTrends(data, incomeSourceRows(data.sources), formatMonthShort, MAX_SERIES)
+        : { rows: [], series: [] },
+    [data, formatMonthShort]
+  )
+  const axis = useMemo(
+    () =>
+      stackedValueAxis(
+        stacked.rows,
+        stacked.series.map((s) => s.key)
+      ),
+    [stacked]
+  )
 
   if (isLoading) return <div className="report-loading">Loading...</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -65,7 +65,6 @@ export function IncomeSourcesReport({ budgetId }: Props) {
   // window, reading 5,500 beside Cost of Living's Take-home of 6,000 for the
   // same steady pay.
   const avg = data.avg_monthly
-  const hasOther = chartData.some((r) => 'Other' in r)
 
   return (
     <div className="report-section surface">
@@ -76,6 +75,12 @@ export function IncomeSourcesReport({ budgetId }: Props) {
             Income per payee, month by month. Only rows IGAB reads as income count — transfers
             between your accounts, refunds into an envelope and investment growth are not income.
           </p>
+          <p>
+            The largest {MAX_SERIES} sources are drawn on their own, bottom first in the order the
+            key lists them; the rest share one Other band, so every bar is its month&apos;s income.
+            A source can dip below zero — a clawed-back paycheck, an adjustment filed as income.
+          </p>
+          <ReportScopeNote report="income-sources" />
         </ReportInfoButton>
         <div className="flex-row">
           <ReportRangeSelect />
@@ -110,7 +115,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
           <div className="report-chart" style={{ height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={chartData}
+                data={stacked.rows}
                 margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 // A payee's month can be negative — a reconciliation
                 // adjustment filed to Ready to Assign is income by class.
@@ -120,6 +125,12 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                 <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis
                   {...moneyAxis}
+                  // Sized to the stacks, a small dip below zero given a
+                  // sliver: recharts' own axis spent a whole step on a −$75
+                  // adjustment, a quarter of the plot below zero.
+                  domain={axis.domain}
+                  ticks={axis.ticks}
+                  allowDataOverflow
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
@@ -140,19 +151,29 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                     />
                   )}
                 />
-                <Legend />
-                {shown.map((s, idx) => (
+                {stacked.series.map((s) => (
                   <Bar
-                    key={s.payee_id ?? '__none__'}
-                    dataKey={s.payee_name}
+                    key={s.key}
+                    dataKey={s.key}
+                    name={s.name}
                     stackId="stack"
-                    fill={chartColor(idx)}
+                    fill={s.color}
+                    fillOpacity={highlight && highlight !== s.name ? 0.25 : 1}
+                    isAnimationActive={false}
                   />
                 ))}
-                {hasOther && <Bar dataKey="Other" stackId="stack" fill={COLOR_OTHER} />}
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <ChartLegend
+            series={stacked.series.map((s) => ({
+              name: s.name,
+              color: s.color,
+              value: formatMoney(s.total),
+            }))}
+            active={highlight}
+            onHover={setHighlight}
+          />
           <table className="report-table">
             <caption className="sr-only">Income by payee and month</caption>
             <thead>
