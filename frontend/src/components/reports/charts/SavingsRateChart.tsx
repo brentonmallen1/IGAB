@@ -4,8 +4,9 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
-  Legend,
   Line,
+  LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -17,7 +18,8 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
-import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
+import { ChartLegend } from './ChartLegend'
+import { FLOW_COLORS } from './chartColors'
 import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -25,8 +27,8 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { SavingsRateDialog } from '../SavingsRateDialog'
-import { SAVED_DEFINITION } from '../savingsRateBreakdown'
-import { pct, RATE_SERIES, ratePercent, savingsRateTooltipWith } from './savingsRateView'
+import { INVISIBLE_SAVING, SAVED_DEFINITION } from '../savingsRateBreakdown'
+import { keptFigure, pct, RATE_SERIES, ratePercent, rateTooltip } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
 import {
   completeMonthRows,
@@ -34,20 +36,34 @@ import {
   reportMonthLabel,
   RUNNING_MONTH_OPACITY,
 } from '../../../utils/reportMonths'
+import { DEBT_PAYMENTS, SAVED, SAVED_WITH_DEBT, savingsRateLabel } from '../../../utils/flowLabels'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 
 interface Props {
   budgetId: string
 }
 
+/** The money panel's series names — what the legend and the tooltip say. */
+const BAR = { income: 'Income', saved: SAVED, debt: DEBT_PAYMENTS } as const
+
+/** The rate panel's height. It holds one line, read against its own zero. */
+const RATE_PANEL_HEIGHT = 150
+
+/** How far a series fades while the legend highlights another. */
+const DIMMED = 0.25
+
 export function SavingsRateReport({ budgetId }: Props) {
-  const chartHeight = useChartHeight(320)
+  const moneyHeight = useChartHeight(260)
   const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
-  const savingsRateTooltip = savingsRateTooltipWith(formatMoney)
   const months = useReportMonths()
-  const [withDebt, setWithDebt] = useState(true)
+  // Off by default, as on the Overview: the rate everyone quotes is saved ÷
+  // income. The tab opened with debt payments counted while the Overview's
+  // card — and the server's comment on it — said the plain rate was the
+  // default, so one August read 4.9% here and 0.0% there.
+  const [withDebt, setWithDebt] = useState(false)
   const [contributorsOpen, setContributorsOpen] = useState(false)
+  const [highlight, setHighlight] = useState<string | null>(null)
   const { data, isLoading, isError, error, refetch } = useSavingsRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -57,20 +73,33 @@ export function SavingsRateReport({ budgetId }: Props) {
   const rows = data?.months ?? []
   const summary = data?.summary
   const rateKey = withDebt ? 'savings_rate_with_debt' : 'savings_rate'
+  const rateLabel = savingsRateLabel(withDebt)
+  const dim = (name: string) => (highlight && highlight !== name ? DIMMED : 1)
 
+  // The bars are the rate's two terms — Income, what it divides by, and what
+  // was kept of it — so a month's bars show the fraction its point on the line
+  // states. They used to be Saved, Debt Paid and Spent: Spent is in no
+  // savings rate, and Income, which is in every one, was not drawn at all.
   const chartData = rows.map((m) => ({
     iso: m.month,
     date: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
     partial: m.partial_month,
-    Saved: Number(m.savings),
-    'Debt Paid': Number(m.debt_principal),
-    Spent: Number(m.spending),
+    [BAR.income]: Number(m.income),
+    [BAR.saved]: Number(m.savings),
+    // Only while the rate counts them: a bar the rate leaves out would make
+    // the stack say one fraction and the line another.
+    ...(withDebt ? { [BAR.debt]: Number(m.debt_principal) } : {}),
     // null leaves a gap in the line rather than dropping it to zero, which
     // would read as "saved nothing" in a month with no income at all. The
     // running month has no rate either: its bills are in and its pay may not
     // be, so a mid-month rate is the calendar talking — its bars say so far.
     [RATE_SERIES]: m[rateKey] === null || m.partial_month ? null : ratePercent(m[rateKey]),
   }))
+  const bars: { key: string; color: string; stack?: string }[] = [
+    { key: BAR.income, color: FLOW_COLORS.income },
+    { key: BAR.saved, color: FLOW_COLORS.saved, stack: 'kept' },
+    ...(withDebt ? [{ key: BAR.debt, color: FLOW_COLORS.debtPayments, stack: 'kept' }] : []),
+  ]
   // The summary is the complete months alone, served; the card says which.
   const complete = completeMonthRows(rows)
   const covered = monthRange(complete[0]?.month, complete.at(-1)?.month, formatMonthShort)
@@ -88,10 +117,18 @@ export function SavingsRateReport({ budgetId }: Props) {
           <p>
             <strong>Savings rate</strong> = saved ÷ income. {SAVED_DEFINITION} Assigning to an
             envelope that counts while it’s in the budget counts as saved, spending from it lowers
-            saved, and moving its money on to a savings account nets to zero. With{' '}
-            <em>“include debt payments”</em> on, money used to pay down a tracked debt counts too —
-            both build what you own rather than consuming it.
+            saved, and moving its money on to a savings account nets to zero.
           </p>
+          <p>
+            <em>Include debt payments</em> adds what you paid into a tracked debt, and the rate is
+            then labelled <em>with debt payments</em>. It is off unless you turn it on: a payment
+            carries interest and escrow as well as principal, so not all of it is money kept.
+          </p>
+          <p>
+            The top panel is the rate. The bars under it are the two figures it divides: income, and
+            what you kept of it.
+          </p>
+          <p>{INVISIBLE_SAVING}</p>
           <p>
             Growth <em>inside</em> a tracked account — dividends, market movement — is deliberately{' '}
             <strong>not</strong> counted. It changes your net worth, but you didn’t save it, and
@@ -112,7 +149,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             partial month&apos;s rate says more about the calendar than about saving.
           </p>
           <p>
-            Open the rate to see where the savings went, what paid down debt and where the income
+            Open the rate to see where the savings went, which debts were paid and where the income
             came from.
           </p>
           <p>
@@ -130,7 +167,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             aria-pressed={withDebt}
             onClick={() => setWithDebt((v) => !v)}
             type="button"
-            title="Count money used to pay down a tracked debt as saving"
+            title="Count money paid into a tracked debt as kept"
           >
             Include debt payments
           </button>
@@ -159,19 +196,31 @@ export function SavingsRateReport({ budgetId }: Props) {
         {summary && (
           <MetricRow>
             <MetricCard
-              label={withDebt ? 'Savings Rate (with debt)' : 'Savings Rate'}
+              label={rateLabel}
               value={pct(summary[rateKey])}
               sub={covered ?? undefined}
               details={{
-                label: `Savings rate ${pct(summary[rateKey])}. Show what contributed`,
+                label: `${rateLabel} ${pct(summary[rateKey])}. Show what contributed`,
                 onOpen: () => setContributorsOpen(true),
               }}
             />
             <MetricCard label="Income" value={formatMoney(Number(summary.income))} />
-            <MetricCard label="Saved" value={formatMoney(Number(summary.savings))} />
             <MetricCard
-              label="Debt Paid Down"
+              label={withDebt ? SAVED_WITH_DEBT : SAVED}
+              value={formatMoney(
+                keptFigure(
+                  {
+                    savings: Number(summary.savings),
+                    debt_principal: Number(summary.debt_principal),
+                  },
+                  withDebt
+                )
+              )}
+            />
+            <MetricCard
+              label={DEBT_PAYMENTS}
               value={formatMoney(Number(summary.debt_principal))}
+              sub={withDebt ? 'in this rate' : 'not in this rate'}
             />
           </MetricRow>
         )}
@@ -195,59 +244,95 @@ export function SavingsRateReport({ budgetId }: Props) {
             here.
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            {/* Saved goes negative in a month that drew money back out of
-                savings, and Debt Paid stacks on it. */}
-            <ComposedChart
-              data={chartData}
-              {...MIXED_SIGN_STACK}
-              margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis
-                yAxisId="money"
-                tickFormatter={moneyAxis.tickFormatter}
-                tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={moneyAxis.width}
-              />
-              <YAxis
-                yAxisId="rate"
-                orientation="right"
-                tickFormatter={(v) => `${v}%`}
-                tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={50}
-              />
-              <Tooltip
-                content={<ChartTooltip showTotal={false} formatter={savingsRateTooltip} />}
-                offset={16}
-                isAnimationActive={false}
-              />
-              <Legend />
-              {(
-                [
-                  ['Saved', COLOR_POSITIVE, 'kept'],
-                  ['Debt Paid', COLOR_NEUTRAL, 'kept'],
-                  ['Spent', COLOR_NEGATIVE, undefined],
-                ] as const
-              ).map(([key, fill, stackId]) => (
-                <Bar key={key} yAxisId="money" dataKey={key} stackId={stackId} fill={fill}>
-                  {chartData.map((d) => (
-                    <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
-                  ))}
-                </Bar>
-              ))}
-              <Line
-                yAxisId="rate"
-                type="monotone"
-                dataKey={RATE_SERIES}
-                stroke={COLOR_NET}
-                strokeWidth={2}
-                dot={{ r: 3 }}
-                connectNulls={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <>
+            {/* Two panels on one month axis, never two scales on one plot. The
+                rate shared a chart with the money bars on a second axis whose
+                zero sat a third of the way up the first, so a 0% month drew
+                level with $11,000 and a negative rate dipped below bars that
+                were positive. Each panel now has one scale and its own zero;
+                `syncId` keeps their tooltips on the same month, and the rate
+                panel's axis takes the money axis's width so the months line
+                up. */}
+            <ResponsiveContainer width="100%" height={RATE_PANEL_HEIGHT}>
+              <LineChart
+                data={chartData}
+                syncId="savings-rate"
+                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis dataKey="date" hide />
+                <YAxis
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  width={moneyAxis.width}
+                />
+                <ReferenceLine y={0} stroke="var(--text-muted)" />
+                <Tooltip
+                  content={<ChartTooltip showTotal={false} formatter={rateTooltip} />}
+                  offset={16}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey={RATE_SERIES}
+                  name={rateLabel}
+                  stroke={FLOW_COLORS.line}
+                  strokeOpacity={dim(rateLabel)}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={moneyHeight}>
+              {/* Saved goes negative in a month that drew money back out of
+                  savings, and Debt payments stack on it. */}
+              <ComposedChart
+                data={chartData}
+                syncId="savings-rate"
+                {...MIXED_SIGN_STACK}
+                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <YAxis
+                  tickFormatter={moneyAxis.tickFormatter}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  width={moneyAxis.width}
+                />
+                <Tooltip
+                  content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
+                  offset={16}
+                  isAnimationActive={false}
+                />
+                {bars.map(({ key, color, stack }) => (
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    stackId={stack}
+                    fill={color}
+                    isAnimationActive={false}
+                  >
+                    {chartData.map((d) => (
+                      <Cell
+                        key={d.iso}
+                        fillOpacity={(d.partial ? RUNNING_MONTH_OPACITY : 1) * dim(key)}
+                      />
+                    ))}
+                  </Bar>
+                ))}
+              </ComposedChart>
+            </ResponsiveContainer>
+            <ChartLegend
+              series={[
+                { name: rateLabel, color: FLOW_COLORS.line },
+                ...bars.map((b) => ({ name: b.key, color: b.color })),
+              ]}
+              active={highlight}
+              onHover={setHighlight}
+            />
+          </>
         )}
       </div>
     </div>

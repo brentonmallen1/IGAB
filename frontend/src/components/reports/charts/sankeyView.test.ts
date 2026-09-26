@@ -255,7 +255,7 @@ describe('categoryNodeDrill', () => {
   // three — a $500 Savings node listing $1,580.
   it.each([
     ['To savings accounts', ['savings']],
-    ['Debt Payments', ['debt_principal']],
+    ['Debt payments', ['debt_principal']],
     ['Uncategorized', ['spending']],
   ])('%s lists only its own classes, by the absence of a category', (name, classes) => {
     expect(categoryNodeDrill({ name, entity_id: null, activity_classes: classes }, window)).toEqual(

@@ -967,7 +967,7 @@ export interface SankeyNode {
    *  category can sit under both its own group and the savings trunk. */
   entity_id?: string | null
   /** Spent-mode category nodes: the activity classes the node counted, which
-   *  its drill-down must list. The Savings, Debt Payments and Uncategorized
+   *  its drill-down must list. The Savings, Debt payments and Uncategorized
    *  pseudo-nodes differ by nothing else. */
   activity_classes?: string[] | null
 }

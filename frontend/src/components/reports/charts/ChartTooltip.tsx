@@ -29,8 +29,7 @@ interface Props {
   /** How to render one entry. REQUIRED — see the note above.
    *
    * `name` is the series name, so a chart whose series are not all in the same
-   * unit can branch on it. `SavingsRateChart` needs that: three money bars and
-   * a percentage line share one tooltip.
+   * unit can branch on it — money bars and a percentage line, say.
    */
   formatter: (value: number, name: string) => string
   labelFormatter?: (label: string) => string

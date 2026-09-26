@@ -3,6 +3,7 @@
  * number and class here arrived in the response.
  */
 import type { MoneyFigures, MoveExplanation, ReportFamily } from '../../../api/moneyRules'
+import { DEBT_PAYMENTS } from '../../../utils/flowLabels'
 
 export interface FigureLine {
   key: keyof MoneyFigures
@@ -15,7 +16,7 @@ const FIGURE_LABEL: [keyof MoneyFigures, string][] = [
   ['spending', 'Spending'],
   ['cost_of_living', 'Cost of living'],
   ['savings', 'Saved'],
-  ['debt_principal', 'Debt principal'],
+  ['debt_principal', DEBT_PAYMENTS],
 ]
 
 /** The report figures a move changes, zeros left out. */

@@ -164,7 +164,7 @@ describe('SavingsRateDialog', () => {
     expect(figures()).toEqual({
       Income: '$5,000.00',
       Saved: '$1,000.00',
-      'Debt principal': '$500.00',
+      'Debt payments': '$500.00',
     })
   })
 
@@ -205,7 +205,7 @@ describe('SavingsRateDialog', () => {
       Saved: '$900.00',
       'Moved to savings': '$1,000.00',
       'Held in envelopes': '-$100.00',
-      'Debt principal': '$500.00',
+      'Debt payments': '$500.00',
     })
     expect(rows('Where the savings went').at(-1)).toBe(
       'General Savingsserved held label-$100.00-11% of savings'
@@ -221,32 +221,42 @@ describe('SavingsRateDialog', () => {
     ])
   })
 
-  it('without debt, puts debt principal after the income as outside the rate', () => {
+  it('without debt, puts debt payments after the income as outside the rate', () => {
     open()
     expect(sectionOrder()).toEqual([
       'Where the savings went',
       'Top income sources',
-      'Where the debt principal went',
+      'Where the debt payments went',
       'What does not count',
     ])
-    const debt = screen.getByRole('region', { name: 'Where the debt principal went' })
+    const debt = screen.getByRole('region', { name: 'Where the debt payments went' })
     expect(debt).toHaveTextContent('Not part of this rate.')
-    expect(rows('Where the debt principal went')).toEqual([
-      'Harborstone Mortgagepayment to a tracked debt$500.00100% of debt principal',
+    expect(rows('Where the debt payments went')).toEqual([
+      'Harborstone Mortgagepayment to a tracked debt$500.00100% of debt payments',
     ])
   })
 
-  it('with debt, names the wider formula and lists debt principal beside the savings', () => {
+  it('with debt, names the wider formula and lists debt payments beside the savings', () => {
     open({ rate: 0.3, withDebt: true })
-    const dialog = screen.getByRole('dialog', { name: 'Savings rate (with debt)' })
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate with debt payments' })
 
     expect(within(dialog).getByText('30.0%')).toBeInTheDocument()
-    expect(within(dialog).getByText('(Saved + Debt principal) ÷ Income')).toBeInTheDocument()
+    expect(within(dialog).getByText('(Saved + Debt payments) ÷ Income')).toBeInTheDocument()
     expect(sectionOrder().slice(0, 2)).toEqual([
       'Where the savings went',
-      'Where the debt principal went',
+      'Where the debt payments went',
     ])
     expect(dialog).not.toHaveTextContent('Not part of this rate.')
+  })
+
+  it('says that saving outside the budget is invisible to the rate', () => {
+    // A paycheck split straight to savings, or a 401(k) deferral, is saving
+    // the rate never sees — a household saving that way read a negative
+    // rate with nothing on the page saying why.
+    open()
+    expect(screen.getByRole('region', { name: 'What does not count' })).toHaveTextContent(
+      /never passes through your budget/
+    )
   })
 
   it('lists the income sources with their share of income', () => {

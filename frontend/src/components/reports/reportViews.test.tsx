@@ -729,43 +729,66 @@ describe('the savings-rate cards open what contributed', () => {
     renderReport(<SavingsRateReport budgetId="b1" />)
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Savings rate 37.5%. Show what contributed' })
+      screen.getByRole('button', { name: 'Savings rate 25.0%. Show what contributed' })
     )
 
-    const dialog = screen.getByRole('dialog', { name: 'Savings rate (with debt)' })
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate' })
     expect(hookCalls.get('useSavingsContributors')?.at(-1)).toEqual([
       'b1',
       '2026-01-01',
       '2026-03-15',
     ])
-    expect(within(dialog).getByText('37.5%')).toBeInTheDocument()
-    expect(within(dialog).getByText('(Saved + Debt principal) ÷ Income')).toBeInTheDocument()
-  })
-
-  it('the tab card without debt opens the plain rate', () => {
-    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
-    renderReport(<SavingsRateReport budgetId="b1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Include debt payments' }))
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Savings rate 25.0%. Show what contributed' })
-    )
-
-    const dialog = screen.getByRole('dialog', { name: 'Savings rate' })
+    expect(within(dialog).getByText('25.0%')).toBeInTheDocument()
     expect(within(dialog).getByText('Saved ÷ Income')).toBeInTheDocument()
     expect(dialog).toHaveTextContent('Not part of this rate.')
+  })
+
+  it('the tab opens without debt payments, as the Overview does', () => {
+    // The tab defaulted to counting them while the Overview did not, so one
+    // month read 4.9% here and 0.0% there.
+    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+    expect(screen.getByRole('button', { name: 'Include debt payments' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    expect(card('Savings rate').value).toBe('25.0%')
+    expect(card('Saved').value).toBe('$1,000.00')
+    expect(card('Debt payments').sub).toBe('not in this rate')
+  })
+
+  it('with debt payments on, every label says so and Saved adds them', () => {
+    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Include debt payments' }))
+
+    expect(card('Savings rate with debt payments').value).toBe('37.5%')
+    // The card read "Saved $1,000" beside a rate that also counted $500 of
+    // debt payments, so its figures did not divide into its rate.
+    expect(card('Saved + debt payments').value).toBe('$1,500.00')
+    expect(card('Debt payments').sub).toBe('in this rate')
+    expect(screen.queryByText('Debt Paid Down')).toBeNull()
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Savings rate with debt payments 37.5%. Show what contributed',
+      })
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate with debt payments' })
+    expect(within(dialog).getByText('37.5%')).toBeInTheDocument()
+    expect(within(dialog).getByText('(Saved + Debt payments) ÷ Income')).toBeInTheDocument()
   })
 
   it('both cards print a negative rate the same way', () => {
     // The Overview clamped to 0.0% with its own formatter; the tab printed it.
     setQuery({ data: { ...dashboard, savings_rate: -0.03 } })
     const { unmount } = renderReport(<OverviewReport budgetId="b1" />)
-    expect(card('Savings Rate').value).toBe('-3.0%')
+    expect(card('Savings rate').value).toBe('-3.0%')
     unmount()
 
-    setQuery({ data: { ...tab, summary: { ...tab.summary, savings_rate_with_debt: -0.03 } } })
+    setQuery({ data: { ...tab, summary: { ...tab.summary, savings_rate: -0.03 } } })
     renderReport(<SavingsRateReport budgetId="b1" />)
-    expect(card('Savings Rate (with debt)').value).toBe('-3.0%')
+    expect(card('Savings rate').value).toBe('-3.0%')
   })
 })
 

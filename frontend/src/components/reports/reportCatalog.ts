@@ -85,9 +85,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'on-budget',
     summary: 'How much of what came in you kept, month by month.',
     counts:
-      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what Savings envelopes that count while money is in the budget came to hold — ÷ income, plus debt principal when included.',
+      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what Savings envelopes that count while money is in the budget came to hold — ÷ income; debt payments only when you include them.',
     leavesOut:
-      'Transfers between budget accounts, spending, investment growth and interest inside tracked accounts.',
+      'Transfers between budget accounts, spending, investment growth and interest inside tracked accounts, and saving that never passes through the budget — a paycheck split to savings, a 401(k) deferral.',
   },
   essentials: {
     scope: 'on-budget',
@@ -101,7 +101,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     summary:
       'Everything committed each month, Essential or committed-but-not-essential, against income.',
     counts:
-      'Categories tagged Essential or Cost of living, plus every debt-principal payment, vs average income.',
+      'Categories tagged Essential or Cost of living, plus every debt payment, vs average income.',
     leavesOut: 'Savings, and untagged spending — that is the Discretionary report.',
   },
   discretionary: {

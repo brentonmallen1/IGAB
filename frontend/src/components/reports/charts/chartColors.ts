@@ -43,6 +43,22 @@ export const COLOR_NEUTRAL = 'var(--chart-neutral)'
 export const COLOR_NET = 'var(--chart-net)'
 export const COLOR_OTHER = 'var(--chart-other)'
 
+/**
+ * Each money flow's colour, by what it is — the same on every tab that draws
+ * it. Income vs Expenses drew Income green and Saved blue; the Savings Rate
+ * tab beside it drew Saved green, so one colour meant two figures a click
+ * apart. Money in is positive, money spent negative, and the two kinds of
+ * money kept are their own hues, never the good-news green.
+ */
+export const FLOW_COLORS = {
+  income: COLOR_POSITIVE,
+  spent: COLOR_NEGATIVE,
+  saved: COLOR_NEUTRAL,
+  debtPayments: CHART_COLORS[3],
+  /** A line drawn over the bars: Net, or the savings rate. */
+  line: COLOR_NET,
+} as const
+
 /** Colour for the series at `index`, cycling once the palette runs out. See
  *  the note above: past the eighth, the legend carries identity, not the hue. */
 export function chartColor(index: number): string {

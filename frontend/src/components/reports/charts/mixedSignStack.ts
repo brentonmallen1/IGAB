@@ -11,7 +11,7 @@
  * loses nothing by taking it.
  *
  * Three charts wrote `stackOffset="sign"` inline, each with its own comment,
- * and a fourth did not: Savings Rate stacks Saved under Debt Paid, and a month
+ * and a fourth did not: Savings Rate stacks Debt payments on Saved, and a month
  * that drew money back out of savings (a negative Saved) drew a positive debt
  * payment below zero. A rule every stacked chart needs is one constant.
  */

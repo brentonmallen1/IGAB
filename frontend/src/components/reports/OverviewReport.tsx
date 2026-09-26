@@ -16,6 +16,8 @@ import { otherFigureNote } from '../../utils/essentialsFigures'
 import { useFormatters } from '../../hooks/useFormatters'
 import { ReportErrorState } from './ReportErrorState'
 import { SavingsRateDialog } from './SavingsRateDialog'
+import { rateFormula } from './savingsRateBreakdown'
+import { savingsRateLabel } from '../../utils/flowLabels'
 import { pct, ratePercent } from './charts/savingsRateView'
 import { burnPriorLine } from './charts/burnRateView'
 import {
@@ -99,14 +101,15 @@ export function OverviewReport({ budgetId }: Props) {
               emergency-fund target is built from. Yearly bills in Long-term expense categories are
               spread over 12 months when that setting is on (Essentials report), and the as-paid
               figure is shown beside it. Shows “—” until something is tagged.{' '}
-              <strong>Savings Rate</strong>: Saved ÷ Income — money moved into savings or
+              <strong>Savings rate</strong>: Saved ÷ Income — money moved into savings or
               investments, or held in a Savings envelope that counts while it’s in the budget, not
-              simply money left over. Shows “—” for a window with no income. Open it to see where
-              the savings went and where the income came from. <strong>Days Until Zero</strong>:
-              cash on hand ÷ daily burn rate — how long the budget’s cash accounts would last at
-              this pace. Cards, loans and tracked investments are out: net worth is not money you
-              can spend next week. It reads 0 when that cash is already at or below zero, and is
-              left out when nothing is being spent.
+              simply money left over. Debt payments are not in it; the Savings Rate report can add
+              them. Shows “—” for a window with no income. Open it to see where the savings went and
+              where the income came from. <strong>Days Until Zero</strong>: cash on hand ÷ daily
+              burn rate — how long the budget’s cash accounts would last at this pace. Cards, loans
+              and tracked investments are out: net worth is not money you can spend next week. It
+              reads 0 when that cash is already at or below zero, and is left out when nothing is
+              being spent.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending
@@ -188,11 +191,11 @@ export function OverviewReport({ budgetId }: Props) {
           <MetricRow>
             <LivingMeansCard data={data} />
             <MetricCard
-              label="Savings Rate"
+              label={savingsRateLabel(false)}
               // "—" rather than 0%: with no income recorded there is nothing to
               // take a percentage of, and 0% reads as "saved nothing".
               value={pct(data.savings_rate)}
-              sub={data.savings_rate === null ? 'No income recorded' : 'Savings / Income'}
+              sub={data.savings_rate === null ? 'No income recorded' : rateFormula(false)}
               details={{
                 label: `Savings rate ${pct(data.savings_rate)}. Show what contributed`,
                 onOpen: () => setSavingsOpen(true),

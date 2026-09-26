@@ -275,7 +275,7 @@ class SankeyNode(ApiModel):
     entity_id: str | None = None
     #: On a spent-mode category node: the activity classes it counted. Its
     #: drill-down lists exactly these, because the three pseudo-nodes
-    #: (Savings, Debt Payments, Uncategorized) share "no category" and differ
+    #: (Savings, Debt payments, Uncategorized) share "no category" and differ
     #: only by class. None on every other node.
     activity_classes: list[str] | None = None
 

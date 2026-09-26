@@ -169,7 +169,7 @@ async def spending_by_category(ctx: ToolContext, args: dict) -> dict:
     result["start_date"] = start.isoformat()
     result["end_date"] = end.isoformat()
     result["covers"] = (
-        "spending, savings and debt principal" if include_savings else "day-to-day spending only"
+        "spending, savings and debt payments" if include_savings else "day-to-day spending only"
     )
     return result
 
