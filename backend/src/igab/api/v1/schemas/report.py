@@ -862,13 +862,28 @@ class LiabilitiesReportItem(ApiModel):
     #: the contract speaks, null without terms. The page said "at current pace"
     #: for both, which a debt with no payment history does not have.
     payoff_basis: Literal["observed", "minimum"] | None
+    #: The verdict's date (`amortization.payoff_verdict`): None when it never
+    #: pays off at that payment, or without terms.
+    payoff_date: date | None
     terms_complete: bool
+    #: Why there is no payoff at the pace actually paid, when there is none
+    #: (`liability_service.pace_missing`): the cell says it instead of "—".
+    pace_missing: Literal["no_terms", "payments_not_linked", "too_little_history"] | None
+    #: The entered payment contradicts the loan's own terms
+    #: (`amortization.terms_check`) — most often escrow folded into it.
+    terms_disagree: bool
 
 
 class LiabilitiesBalancePoint(ApiModel):
     date: date
-    per_liability: dict[str, Decimal]  # keyed by liability id
+    #: Keyed by liability id. A debt is absent before its first point — not
+    #: zero, which drew its arrival as a cliff up from nothing.
+    per_liability: dict[str, Decimal]
     total: Decimal
+    #: What began being counted this month, as owed (positive) and keyed to
+    #: the liability: the net-worth chart's arrivals for these rows.
+    entered: Decimal
+    entries: list[TrackingEntry]
 
 
 class LiabilitiesReportResponse(ApiModel):
@@ -878,6 +893,10 @@ class LiabilitiesReportResponse(ApiModel):
     # how many were left out and why, so a partial total can be labelled as one.
     total_interest_remaining: Decimal
     liabilities_missing_terms: int
+    #: What those rows owe: the caveat is said in dollars.
+    missing_terms_balance: Decimal
+    #: Rows owing anything today.
+    carrying_balance_count: int
     #: Rows whose minimum payment never retires the debt — excluded from the
     #: total above rather than added in at $0 or at fifty years' worth.
     liabilities_never_paying_off: int

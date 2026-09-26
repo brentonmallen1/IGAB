@@ -649,3 +649,144 @@ def future_value_monthly(contribution: Decimal, annual_rate: Decimal, months: in
     for _ in range(months):
         balance = quantize_cents(balance * (1 + monthly_rate)) + contribution
     return quantize_cents(balance)
+
+
+# ─── Verdicts the pages read ─────────────────────────────────────────────────
+
+#: Which payment a payoff verdict is measured at: the pace the household has
+#: actually been paying (`project_payoff`, two months of history at least), or
+#: the contractual minimum when there is no such history.
+PayoffBasis = Literal["observed", "minimum"]
+
+
+@dataclass(frozen=True)
+class PayoffVerdict:
+    """When a debt is paid off, and at which payment that was measured."""
+
+    #: None without terms: there is no schedule to ask.
+    basis: PayoffBasis | None
+    #: None when it never pays off at that payment, or without terms.
+    payoff_date: date | None
+    #: Unknown is not "never": False without terms.
+    never_pays_off: bool
+
+
+def payoff_verdict(
+    live: LiveProjection | None, baseline: AmortizationResult | None
+) -> PayoffVerdict:
+    """The observed pace's verdict when there is one, else the minimum
+    payment's.
+
+    One rule for every page that states a single payoff date. The Liabilities
+    report decided it here while the Liabilities overview, the account's terms
+    header and the payoff pill each re-decided it on the client from
+    `has_live_projection` — three copies of "live, else minimum" beside the
+    server's own, one refactor from disagreeing about which date a debt ends.
+    """
+    if live is not None:
+        return PayoffVerdict(
+            "observed", None if live.never_pays_off else live.payoff_date, live.never_pays_off
+        )
+    if baseline is not None:
+        return PayoffVerdict(
+            "minimum",
+            None if baseline.never_pays_off else baseline.payoff_date,
+            baseline.never_pays_off,
+        )
+    return PayoffVerdict(None, None, False)
+
+
+@dataclass(frozen=True)
+class PaydownGain:
+    """What paying more buys against the minimum: months and interest.
+
+    None in a field is "no finite comparison", never zero. Against a minimum
+    that never retires the debt there is no payoff month to beat and no
+    interest bill to subtract from — the page subtracted the schedule's
+    running total anyway, and a minimum that stopped at its first uncovered
+    month read "$0 of interest" at baseline, so paying more "saved" a negative
+    amount; one capped at fifty years "saved" fifty years of interest.
+    """
+
+    months_sooner: int | None
+    interest_saved: Decimal | None
+
+
+def paydown_gain(baseline: AmortizationResult, faster: AmortizationResult) -> PaydownGain:
+    """`faster` (the what-if schedule) against `baseline` (the minimum's).
+    Both totals read `interest_to_payoff`, so a schedule that never pays off
+    contributes no figure rather than its running total."""
+    base_interest, fast_interest = baseline.interest_to_payoff, faster.interest_to_payoff
+    return PaydownGain(
+        months_sooner=(
+            len(baseline.schedule) - len(faster.schedule)
+            if not baseline.never_pays_off and not faster.never_pays_off
+            else None
+        ),
+        interest_saved=(
+            base_interest - fast_interest
+            if base_interest is not None and fast_interest is not None
+            else None
+        ),
+    )
+
+
+#: How far an entered payment may sit from the level payment its own terms
+#: imply before the terms read as disagreeing. Not zero: a rate entered to two
+#: places, or a lender's rounding, moves a thirty-year payment by well under
+#: this. An escrow-inclusive payment is typically 20–40% above P&I.
+TERMS_TOLERANCE = Decimal("0.02")
+
+
+@dataclass(frozen=True)
+class TermsCheck:
+    """Do the entered terms describe one loan?
+
+    Two readings, from whichever facts are on file. `implied_*`: replay the
+    original principal at the entered rate and payment from origination —
+    the term that payment implies. `level_payment`: the payment the original
+    principal, rate and term imply. When either contradicts the entered
+    payment, the likeliest cause is a payment that includes escrow or
+    insurance — the projections then run faster than the loan does.
+    """
+
+    implied_term_months: int | None
+    implied_never_pays_off: bool | None
+    level_payment: Decimal | None
+    disagree: bool
+
+
+def terms_check(
+    original_principal: Decimal | None,
+    annual_rate: Decimal | None,
+    payment: Decimal | None,
+    term_months: int | None,
+    origination_date: date | None,
+) -> TermsCheck:
+    implied_term: int | None = None
+    implied_never: bool | None = None
+    if (
+        origination_date is not None
+        and original_principal is not None
+        and annual_rate is not None
+        and payment is not None
+    ):
+        implied = amortization_schedule(original_principal, annual_rate, payment, origination_date)
+        implied_never = implied.never_pays_off
+        if not implied.never_pays_off:
+            implied_term = len(implied.schedule)
+    level: Decimal | None = None
+    if (
+        original_principal is not None
+        and original_principal > ZERO
+        and annual_rate is not None
+        and term_months is not None
+        and term_months > 0
+    ):
+        level = level_payment(original_principal, annual_rate, term_months)
+    level_off = (
+        level is not None
+        and payment is not None
+        and abs(payment - level) > max(CENT, level * TERMS_TOLERANCE)
+    )
+    return TermsCheck(implied_term, implied_never, level, bool(implied_never) or level_off)

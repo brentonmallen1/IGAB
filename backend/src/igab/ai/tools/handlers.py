@@ -577,9 +577,12 @@ async def get_debt_status(ctx: ToolContext, args: dict) -> dict:
             "type": item["liability_type"],
             "balance": money(item["current_balance"]),
             "interest_rate": float(item["interest_rate"]) if item["interest_rate"] else None,
-            "payoff_date": (
-                item["live_payoff_date"].isoformat() if item["live_payoff_date"] else None
-            ),
+            # The report's one verdict: at the pace paid when there is one,
+            # else at the minimum. This read the pace's date alone, so a debt
+            # with a month of history had no payoff date here while the
+            # report beside it gave the minimum's.
+            "payoff_date": item["payoff_date"].isoformat() if item["payoff_date"] else None,
+            "payoff_basis": item["payoff_basis"],
             "interest_remaining": (
                 money(item["total_interest_remaining"])
                 if item["total_interest_remaining"] is not None

@@ -17,7 +17,7 @@ negative payment. Balances are always "amount owed", positive.
 """
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -26,9 +26,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Liability
-from igab.domain.dates import add_months, complete_month_window, month_start, month_starts
+from igab.domain.dates import (
+    add_months,
+    clamped_month_end,
+    complete_month_window,
+    month_start,
+    month_starts,
+    report_window,
+)
 from igab.domain.interest import monthly_interest
 from igab.domain.minimum_payment import FIXED, MinimumPaymentRule
+from igab.domain.tracking_start import Entry, place_entries
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -37,13 +45,17 @@ from igab.services.amortization import (
     AmortizationResult,
     LiveProjection,
     PromoOutlook,
+    TermsCheck,
     amortization_schedule,
     amortization_schedule_with_promo,
+    payoff_verdict,
     project_payoff,
     promo_outlook,
     quantize_cents,
+    terms_check,
     typical_recent_payment,
 )
+from igab.services.tracking_start import opening_entries, stated_values
 from igab.utils.clock import today_utc
 
 ZERO = Decimal("0")
@@ -51,11 +63,6 @@ ZERO = Decimal("0")
 PAYMENT_LOOKBACK_MONTHS = 6
 
 BalanceSource = Literal["ledger", "manual", "manual_fallback", "empty", "inverted"]
-
-#: Which payment a payoff verdict is measured at: the pace the household has
-#: actually been paying (`project_payoff`, two months of history at least), or
-#: the contractual minimum when there is no such history.
-PayoffBasis = Literal["observed", "minimum"]
 
 LIABILITY_CLASSIFICATION = "liability"
 
@@ -219,6 +226,41 @@ class LiabilityStatus:
     # Positive rows on the ledger with no partner account over the window —
     # not counted as payments, so the page can say so.
     uncounted_deposits: Decimal = ZERO
+
+
+#: Why a debt has no payoff at the pace actually paid — the reason the
+#: Liabilities report prints where its "At your pace" cell would be "—".
+PaceMissing = Literal["no_terms", "payments_not_linked", "too_little_history"]
+
+
+def pace_missing(status: LiabilityStatus) -> PaceMissing | None:
+    """None when there is a pace to project; otherwise the first thing to fix.
+
+    Terms first: without an APR and minimum no projection exists at any pace.
+    Then deposits typed onto the loan with no paying account — money that
+    looks like payments and is not counted as any (`uncounted_deposits`),
+    so the pace reads short. Otherwise fewer than two months carried a
+    payment (`typical_recent_payment`'s floor).
+    """
+    if status.live is not None:
+        return None
+    if not status.terms_complete:
+        return "no_terms"
+    if status.uncounted_deposits > ZERO:
+        return "payments_not_linked"
+    return "too_little_history"
+
+
+def liability_terms_check(liability: Liability) -> TermsCheck:
+    """`terms_check` over a liability's stored terms: the one reading the
+    liability page and the Liabilities report both state."""
+    return terms_check(
+        liability.original_principal,
+        liability.interest_rate,
+        liability.minimum_payment,
+        liability.term_months,
+        liability.origination_date,
+    )
 
 
 class LiabilityService:
@@ -620,6 +662,32 @@ class LiabilityService:
         owing = [b for b in [await self.get_balance(item) for item in hidden] if b > 0]
         return len(owing), quantize_cents(sum(owing, Decimal("0")))
 
+    async def _arrivals(
+        self, budget_id: uuid.UUID, liabilities: list[Liability], since: date, through: date
+    ) -> list[Entry]:
+        """What began being counted on these debts between `since` and
+        `through`, keyed to the liability and signed as owed (positive) — the
+        net-worth chart's arrivals (`services.tracking_start`) narrowed to
+        this report's rows, so the two mark the same month for the same
+        debt."""
+        session = self.liability_repo.session
+        by_account = {
+            str(item.linked_account_id): item for item in liabilities if item.linked_account_id
+        }
+        manual = {str(item.id): item for item in liabilities if item.linked_account_id is None}
+        stated = [s for s in await stated_values(session, budget_id) if s.id in manual]
+        arrivals: list[Entry] = []
+        for entry in [
+            *await opening_entries(session, budget_id, since, through),
+            *(e for s in stated if (e := s.entry(through)) is not None),
+        ]:
+            owner = by_account.get(entry.id) if entry.kind == "account" else manual.get(entry.id)
+            if owner is not None:
+                arrivals.append(
+                    replace(entry, id=str(owner.id), name=owner.name, amount=-entry.amount)
+                )
+        return arrivals
+
     async def liabilities_report(
         self,
         budget_id: uuid.UUID,
@@ -627,10 +695,13 @@ class LiabilityService:
         liability_type: str | None = None,
         mode: str | None = None,
         as_of: date | None = None,
+        months: int = 12,
     ) -> dict:
         """Cross-liability rollup: per-liability status rows, totals, and a monthly
-        balance-over-time series (forward-filled between sparse points) for
-        the consolidated Liabilities report. No new math — pure aggregation."""
+        balance-over-time series over the report window (`report_window`: the
+        last `months` complete months and this one), forward-filled between
+        sparse points, with what began being counted in each month
+        (`domain.tracking_start`). No new math — pure aggregation."""
         as_of = as_of or today_utc()
         open_ids = {item.id for item in await self.liability_repo.get_all(budget_id)}
         every = await self.liability_repo.get_all(budget_id, include_closed=True)
@@ -651,26 +722,16 @@ class LiabilityService:
 
         items: list[dict] = []
         per_liability_monthly: dict[str, dict[date, Decimal]] = {}
-        current_month = month_start(as_of)
+        window = report_window(as_of, months).axis
+        current_month = window[-1]
 
         for liability in liabilities:
             status = await self.get_status(liability, as_of=as_of)
             baseline = status.baseline
-            # The verdict is the observed pace's when there is one, else the
-            # minimum payment's — and `payoff_basis` says which, because the
-            # page said "at current pace" for both, and a debt with no payment
-            # history has no pace: the minimum was speaking.
-            #
-            # Unknown is not "never". Without terms there is no schedule to ask,
-            # and answering True would assert something about the user's debt
-            # that nobody has told us.
-            basis: PayoffBasis | None
-            if status.live is not None:
-                basis, never = "observed", status.live.never_pays_off
-            elif baseline is not None:
-                basis, never = "minimum", baseline.never_pays_off
-            else:
-                basis, never = None, False
+            # `payoff_basis` says which payment the verdict was measured at,
+            # because the page said "at current pace" for both, and a debt
+            # with no payment history has no pace: the minimum was speaking.
+            verdict = payoff_verdict(status.live, baseline)
             items.append(
                 {
                     "liability_id": liability.id,
@@ -686,9 +747,12 @@ class LiabilityService:
                     # has no interest bill to quote (`interest_to_payoff`).
                     "total_interest_remaining": baseline.interest_to_payoff if baseline else None,
                     "baseline_never_pays_off": baseline.never_pays_off if baseline else False,
-                    "never_pays_off": never,
-                    "payoff_basis": basis,
+                    "never_pays_off": verdict.never_pays_off,
+                    "payoff_basis": verdict.basis,
+                    "payoff_date": verdict.payoff_date,
                     "terms_complete": status.terms_complete,
+                    "pace_missing": pace_missing(status),
+                    "terms_disagree": liability_terms_check(liability).disagree,
                 }
             )
             monthly: dict[date, Decimal] = {}
@@ -714,32 +778,43 @@ class LiabilityService:
         missing_terms = sum(1 for i in items if not i["terms_complete"])
         never_paying = sum(1 for i in items if i["baseline_never_pays_off"])
 
+        # Each window month reads the last point on or before it, history
+        # before the window included — the chart opened on the month the
+        # oldest debt began, whatever range was picked. Before a debt's first
+        # point it is absent, not zero: an arrival is marked, not drawn as a
+        # cliff up from nothing.
+        cutoffs = [clamped_month_end(m, as_of) for m in window]
+        buckets = place_entries(
+            await self._arrivals(budget_id, liabilities, window[0], as_of), cutoffs, window[0]
+        )
         points: list[dict] = []
-        if per_liability_monthly:
-            first_month = min(m for monthly in per_liability_monthly.values() for m in monthly)
-            last_known: dict[str, Decimal] = {}
-            month = first_month
-            while month <= current_month:
-                per_liability: dict[str, Decimal] = {}
-                for key, monthly in per_liability_monthly.items():
-                    if month in monthly:
-                        last_known[key] = monthly[month]
-                    if key in last_known:
-                        per_liability[key] = last_known[key]
-                points.append(
-                    {
-                        "date": month,
-                        "per_liability": per_liability,
-                        "total": sum(per_liability.values(), ZERO),
-                    }
-                )
-                month = add_months(month, 1)
+        # No debt, no series: an empty chart, not a row of zeros.
+        for month, bucket in zip(window if liabilities else [], buckets, strict=False):
+            per_liability: dict[str, Decimal] = {}
+            for key, monthly in per_liability_monthly.items():
+                known = [m for m in monthly if m <= month]
+                if known:
+                    per_liability[key] = monthly[max(known)]
+            points.append(
+                {
+                    "date": month,
+                    "per_liability": per_liability,
+                    "total": sum(per_liability.values(), ZERO),
+                    "entered": sum((e.amount for e in bucket), ZERO),
+                    "entries": [e.__dict__ for e in bucket],
+                }
+            )
 
         return {
             "items": items,
             "total_balance": total_balance,
             "total_interest_remaining": total_interest,
             "liabilities_missing_terms": missing_terms,
+            #: What the rows without terms owe — the caveat in dollars.
+            "missing_terms_balance": sum(
+                (i["current_balance"] for i in items if not i["terms_complete"]), ZERO
+            ),
+            "carrying_balance_count": sum(1 for i in items if i["current_balance"] > ZERO),
             "liabilities_never_paying_off": never_paying,
             "balance_over_time": points,
             #: Owed on accounts closed with a balance still on them. Not in
