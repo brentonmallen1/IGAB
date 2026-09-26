@@ -43,6 +43,7 @@ from igab.domain.activity_class import (
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows
+from igab.domain.cash_projection import history_window, project, zero_filled
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
     clamped_month_end,
@@ -2573,13 +2574,19 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         horizon_days: int = 90,
+        today: date | None = None,
     ) -> dict:
-        """Project future cash balances with uncertainty bands."""
-        import random
+        """Project future cash balances with uncertainty bands — the inputs
+        gathered here, the simulation in `domain.cash_projection`.
 
+        `today` is the reader's (`client_today`). The container's clock is UTC,
+        so of an evening in the Americas `date.today()` is already tomorrow:
+        the path started a day late, and the history ended on a day the reader
+        had not finished.
+        """
         from igab.db.models import ScheduledTransaction
 
-        today = date.today()
+        today = today or date.today()
         end_date = today + timedelta(days=horizon_days)
 
         # 1. Current balance: the budget's CASH (`sum_on_budget_balance` —
@@ -2709,7 +2716,7 @@ class ReportService:
         #
         # **Minus the flows the deterministic layer re-applies.** The two
         # layers have to partition the register: the deterministic events model
-        # the known bills, the sampled buckets model only the variation left
+        # the known bills, the sampled history models only the variation left
         # over. Without the subtraction every scheduled bill and every
         # subscription charge landed in a simulated path TWICE — once sampled
         # out of its own history, once added from `det_by_date` — so p50 and
@@ -2725,112 +2732,81 @@ class ReportService:
         # which dropped every payee-less row — split lines included — the
         # moment one schedule had a payee, and took a subscription payee's
         # unrelated spending out of both layers.
-        hist_start = today - timedelta(days=180)
-        hist_q = (
-            select(Transaction.date, Transaction.amount)
-            .join(Account, Account.id == Transaction.account_id)
-            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                LEAF,
-                Transaction.date >= hist_start,
-                Transaction.date < today,
-                Account.is_closed == False,  # noqa: E712
-                CASH_ACCOUNT,
-                none_of(*projected_schedules, reapplied_by_subscriptions(subscription_payee_ids)),
+        #
+        # Every calendar day of the window, quiet ones included, and only from
+        # the register's first row on (`history_window`, `zero_filled`). The
+        # first row is read over the same accounts but before any exclusion:
+        # it says when the register began, not what is sampled.
+        first_row = (
+            await self.session.execute(
+                select(func.min(Transaction.date))
+                .join(Account, Account.id == Transaction.account_id)
+                .where(
+                    Transaction.budget_id == budget_id,
+                    NOT_DELETED,
+                    POSTED,
+                    Account.is_closed == False,  # noqa: E712
+                    CASH_ACCOUNT,
+                )
             )
-        )
-        hist_rows = (await self.session.execute(hist_q)).all()
-
-        # Group by date and weekday
-        daily_flows: dict[int, list[float]] = {i: [] for i in range(7)}  # weekday buckets
-        if hist_rows:
-            df = pl.DataFrame(
-                {
-                    "date": [r.date for r in hist_rows],
-                    "amount": [float(r.amount) for r in hist_rows],
-                }
+        ).scalar_one_or_none()
+        window = history_window(today, first_row)
+        history: list[Decimal] = []
+        if window is not None:
+            hist_q = (
+                select(Transaction.date, func.sum(Transaction.amount).label("net"))
+                .join(Account, Account.id == Transaction.account_id)
+                .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
+                .where(
+                    Transaction.budget_id == budget_id,
+                    NOT_DELETED,
+                    POSTED,
+                    LEAF,
+                    Transaction.date >= window.start,
+                    Transaction.date <= window.end,
+                    Account.is_closed == False,  # noqa: E712
+                    CASH_ACCOUNT,
+                    none_of(
+                        *projected_schedules, reapplied_by_subscriptions(subscription_payee_ids)
+                    ),
+                    # A starting balance is where an account's counting begins,
+                    # not a flow. Sampled, an account opened inside the window
+                    # was a phantom deposit the size of its whole balance,
+                    # replayed on every path that drew its day.
+                    ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value,
+                )
+                .group_by(Transaction.date)
             )
-            # sort() makes the weekday buckets order-stable: group_by returns
-            # rows in arbitrary order, and the seeded rng.choice() below is
-            # only reproducible when each bucket lists its samples in a fixed
-            # order (same-day calls must return identical projections).
-            daily = df.group_by("date").agg(pl.col("amount").sum().alias("net")).sort("date")
-            for row in daily.iter_rows(named=True):
-                d = row["date"]
-                weekday = d.weekday()
-                daily_flows[weekday].append(row["net"])
+            hist_rows = (await self.session.execute(apply_class_joins(hist_q))).all()
+            history = zero_filled(((r.date, r.net) for r in hist_rows), window)
 
-        # Ensure at least some history for each weekday
-        all_flows = [f for flows in daily_flows.values() for f in flows]
-        for wd in range(7):
-            if not daily_flows[wd]:
-                daily_flows[wd] = all_flows if all_flows else [0.0]
-
-        # 5. Bootstrap simulation
-        n_simulations = 500
-        seed = int(today.toordinal())
-        rng = random.Random(seed)
-
-        # Pre-compute deterministic events by date
+        # 5. The fixed layer's net per day, and the simulation over both.
         det_by_date: dict[date, Decimal] = {}
         for d, _, amt in scheduled_events + subscription_events:
             det_by_date[d] = det_by_date.get(d, Decimal("0")) + amt
 
-        # Run simulations
-        sim_paths: list[list[float]] = []
-        for _ in range(n_simulations):
-            balance = float(start_balance)
-            path = []
-            for offset in range(horizon_days + 1):
-                d = today + timedelta(days=offset)
-                # Add deterministic events
-                det = float(det_by_date.get(d, Decimal("0")))
-                # Sample random daily flow from same weekday
-                weekday = d.weekday()
-                rand_flow = rng.choice(daily_flows[weekday])
-                balance += det + rand_flow
-                path.append(balance)
-            sim_paths.append(path)
+        projection = project(
+            start_balance=start_balance,
+            today=today,
+            horizon_days=horizon_days,
+            history=history,
+            window=window,
+            fixed=det_by_date,
+        )
+        points = [
+            {
+                "date": p.day,
+                "p10": p.p10,
+                "p25": p.p25,
+                "p50": p.p50,
+                "p75": p.p75,
+                "p90": p.p90,
+                "deterministic": p.deterministic,
+            }
+            for p in projection.points
+        ]
 
-        # 6. Compute deterministic-only path
-        det_path: list[Decimal] = []
-        balance = start_balance
-        for offset in range(horizon_days + 1):
-            d = today + timedelta(days=offset)
-            balance += det_by_date.get(d, Decimal("0"))
-            det_path.append(balance)
-
-        # 7. Compute percentiles
-        points = []
-        goes_negative_date: date | None = None
-        for offset in range(horizon_days + 1):
-            d = today + timedelta(days=offset)
-            values = sorted([path[offset] for path in sim_paths])
-            p10 = values[int(n_simulations * 0.10)]
-            p25 = values[int(n_simulations * 0.25)]
-            p50 = values[int(n_simulations * 0.50)]
-            p75 = values[int(n_simulations * 0.75)]
-            p90 = values[int(n_simulations * 0.90)]
-
-            points.append(
-                {
-                    "date": d,
-                    "p10": quantize_cents(Decimal(str(p10))),
-                    "p25": quantize_cents(Decimal(str(p25))),
-                    "p50": quantize_cents(Decimal(str(p50))),
-                    "p75": quantize_cents(Decimal(str(p75))),
-                    "p90": quantize_cents(Decimal(str(p90))),
-                    "deterministic": quantize_cents(det_path[offset]),
-                }
-            )
-
-            if goes_negative_date is None and p50 < 0:
-                goes_negative_date = d
-
-        # 8. Build events list (first 30 days only, for display)
+        # 6. Build events list (first 30 days only, for display)
         events = []
         cutoff = today + timedelta(days=30)
         for d, payee, amt in sorted(scheduled_events):
@@ -2861,7 +2837,8 @@ class ReportService:
             "start_balance": start_balance,
             "points": points,
             "events": events[:20],  # Limit to first 20 events
-            "goes_negative_date": goes_negative_date,
+            "goes_negative_date": projection.goes_negative_date,
+            "p10_negative_date": projection.p10_negative_date,
         }
 
 

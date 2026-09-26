@@ -656,31 +656,40 @@ async def list_scheduled(ctx: ToolContext, args: dict) -> dict:
 async def cash_projection(ctx: ToolContext, args: dict) -> dict:
     """Where the balance goes next, and whether it crosses zero.
 
-    `goes_negative_date` is the whole point of the tool and is served first
-    class rather than left for a model to find by scanning the points: "will
-    I run out" is the question, and a null answer means no, not unknown.
+    The two crossing dates are the whole point of the tool and are served
+    first class rather than left for a model to find by scanning the points:
+    "will I run out" is the question, and a null answer means no, not unknown.
+    `goes_negative_date` is the median path's; `p10_negative_date` the day
+    about 1 path in 10 is below zero — the report's softer warning, so the
+    assistant can say "unlikely, but possible" where the chart does.
+
+    From the user's today, like the chart they see. Events carry `payee`;
+    this read `payee_name`, which no event has, so every upcoming bill was
+    named null.
     """
     try:
         horizon = max(7, min(365, int(args.get("horizon_days", 90))))
     except (TypeError, ValueError):
         horizon = 90
-    report = await ctx.reports.cash_projection(ctx.budget_id, horizon)
-    goes_negative = report.get("goes_negative_date")
+    report = await ctx.reports.cash_projection(ctx.budget_id, horizon, today=ctx.today)
+    goes_negative = report["goes_negative_date"]
+    p10_negative = report["p10_negative_date"]
     return summarize_if_large(
         {
             "horizon_days": horizon,
-            "start_balance": money(report.get("start_balance", 0)),
+            "start_balance": money(report["start_balance"]),
             "goes_negative_date": _iso(goes_negative) if goes_negative else None,
+            "p10_negative_date": _iso(p10_negative) if p10_negative else None,
             "upcoming": [
                 {
-                    "date": _iso(event.get("date")),
-                    "payee": event.get("payee_name") or event.get("description"),
-                    "amount": money(event.get("amount", 0)),
+                    "date": _iso(event["date"]),
+                    "payee": event["payee"],
+                    "amount": money(event["amount"]),
                 }
-                for event in report.get("events", [])
+                for event in report["events"]
             ],
         },
-        keep=("goes_negative_date", "start_balance", "horizon_days"),
+        keep=("goes_negative_date", "p10_negative_date", "start_balance", "horizon_days"),
         max_chars=ctx.result_max_chars,
     )
 
