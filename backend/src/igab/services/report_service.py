@@ -79,7 +79,6 @@ from igab.repositories.txn_filters import (
     PAYEE_OF_RECORD,
     POSTED,
     SPENDING_ROW,
-    SPLIT_PARENT,
     SUBSCRIPTION_CHARGE,
     account_scope,
     category_tagged,
@@ -2692,17 +2691,18 @@ class ReportService:
         # matched on the schedule's payee, which a schedule made in IGAB's
         # editor never has.
         sub_q = (
-            select(
-                Transaction.payee_id,
-                Payee.name.label("payee_name"),
-                func.max(Transaction.date).label("last_date"),
-                func.min(Transaction.date).label("first_date"),
-                func.count(Transaction.id).label("charge_count"),
-                func.avg(Transaction.amount).label("avg_amount"),
+            join_split_parent(
+                select(
+                    Transaction.payee_id,
+                    Payee.name.label("payee_name"),
+                    func.max(Transaction.date).label("last_date"),
+                    func.min(Transaction.date).label("first_date"),
+                    func.count(Transaction.id).label("charge_count"),
+                    func.avg(Transaction.amount).label("avg_amount"),
+                )
             )
             .join(Payee, Payee.id == Transaction.payee_id)
             .join(Account, Account.id == Transaction.account_id)
-            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .where(
                 Transaction.budget_id == budget_id,
                 NOT_DELETED,
@@ -2780,9 +2780,10 @@ class ReportService:
         history: list[Decimal] = []
         if window is not None:
             hist_q = (
-                select(Transaction.date, func.sum(Transaction.amount).label("net"))
+                join_split_parent(
+                    select(Transaction.date, func.sum(Transaction.amount).label("net"))
+                )
                 .join(Account, Account.id == Transaction.account_id)
-                .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
                 .where(
                     Transaction.budget_id == budget_id,
                     NOT_DELETED,
