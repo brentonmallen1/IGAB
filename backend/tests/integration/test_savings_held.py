@@ -317,7 +317,7 @@ async def test_income_or_card_envelope_tagged_savings_holds_nothing(db_session):
 
 
 async def test_sent_out_category_contributes_no_held(db_session):
-    """A sent-out Savings envelope counts its outflows (rule 1), never its
+    """A sent-out Savings envelope counts its outflows (rule 2), never its
     balance: assigning 500 saves nothing, spending 100 saves 100."""
     w = await _world(db_session)
     vacation = await create_category(db_session, w["budget"], w["goals"], "Vacation")

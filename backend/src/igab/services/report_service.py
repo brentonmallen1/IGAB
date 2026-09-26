@@ -2454,8 +2454,10 @@ class ReportService:
 
         # A payday is an INCOME-class inflow of at least PAYDAY_FLOOR into
         # cash. Never onto a card: a card payment whose cash leg was never
-        # paired is an uncategorized credit, which classes INCOME — so every
-        # month the bill was paid read as a second payday.
+        # paired used to class INCOME, so every month the bill was paid read
+        # as a second payday. The classifier no longer calls an unfiled card
+        # credit income (`activity_class`, rule 10); this still keeps out one
+        # someone filed as income — a rebate is not a payday.
         #
         # Not a quantile. This took the P75 of every inflow, which makes a
         # RELATIVE threshold decide which paydays exist: pay varies — overtime,

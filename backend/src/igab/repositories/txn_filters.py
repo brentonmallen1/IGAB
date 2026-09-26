@@ -448,6 +448,27 @@ ON_CARD_ACCOUNT = Transaction.account_id.in_(
 #: envelope: not work to categorize (`NEEDS_CATEGORY`), and not a charge
 #: wrongly filed as income (`CARD_ROW_FILED_AS_INCOME`).
 CARD_LEDGER_CORRECTION = and_(ON_CARD_ACCOUNT, BALANCE_ADJUSTMENT_ROW)
+
+
+def dated_from_budget_start(budget_start_date) -> ColumnElement[bool]:
+    """The row is not older than `budget_start_date`, its account's place in
+    the budget — the one spelling of the comparison, whichever way the column
+    is reached.
+
+    Two readers reach it two ways: `AFTER_BUDGET_START` below through a
+    correlated EXISTS, for queries that select from Transaction alone, and the
+    activity classifier through the account row it already joins
+    (`activity_class._JOINED_INPUTS`), where an EXISTS per row would undo the
+    reason the joins exist. The column differs; the rule about it must not.
+    `tests/integration/class_agreement.py` holds the two readings to each
+    other over every row of a realistic budget.
+
+    NULL — every account until someone answers — passes, and as TRUE rather
+    than UNKNOWN, so the classifier's negation of it is two-valued too.
+    """
+    return or_(budget_start_date.is_(None), Transaction.date >= budget_start_date)
+
+
 #: The row is not older than its account's place in the budget.
 #:
 #: A synced account arrives with whatever history the bank kept, and that
@@ -462,7 +483,11 @@ CARD_LEDGER_CORRECTION = and_(ON_CARD_ACCOUNT, BALANCE_ADJUSTMENT_ROW)
 #: spelling of the date comparison is how the badge and the filter would
 #: come to disagree about the same row.
 #:
-#: NULL `budget_start_date` — every account until someone answers — passes.
+#: The reports read the same comparison (`dated_from_budget_start`): a
+#: pre-start row nobody filed classes `OPENING_BALANCE` (`activity_class`,
+#: rule 4), so a row the register calls opening position is income or
+#: spending in no report either.
+#:
 #: Correlated like `ON_BUDGET_ACCOUNT`, not a bare column comparison: every
 #: caller of `NEEDS_CATEGORY` selects from Transaction alone, and a reference
 #: to `Account.budget_start_date` would quietly add a cross join and multiply
@@ -471,10 +496,7 @@ AFTER_BUDGET_START = (
     select(Account.id)
     .where(
         Account.id == Transaction.account_id,
-        or_(
-            Account.budget_start_date.is_(None),
-            Transaction.date >= Account.budget_start_date,
-        ),
+        dated_from_budget_start(Account.budget_start_date),
     )
     .correlate(Transaction)
     .exists()
@@ -507,7 +529,7 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 )
 
 #: An account whose balance is savings: a live off-budget asset that counts as
-#: savings — the shape above, which is also the account the classifier's rule 4
+#: savings — the shape above, which is also the account the classifier's rule 5
 #: (`domain/activity_class.py`, TRANSFER_TO_TRACKED_ASSET) sends saved money
 #: into. The Savings report lists these under Saved.
 #:
@@ -515,7 +537,7 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 #: already in the envelopes, and the envelopes say what each dollar is for.
 #: Closed accounts stay in — a closed account's past balances were savings —
 #: and the report omits one that held nothing in its window.
-#: `test_savings_report_sections.py` pins that this and rule 4 agree on every
+#: `test_savings_report_sections.py` pins that this and rule 5 agree on every
 #: account shape.
 SAVINGS_ACCOUNT = and_(LIVE_ACCOUNT, EMERGENCY_FUND_ACCOUNT_SHAPE)
 

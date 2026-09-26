@@ -252,7 +252,7 @@ class TestTagsOverrideInference:
         assert reason == ActivityReason.DEFAULT_SPENDING
 
     async def test_a_sinking_fund_transfer_to_a_tracked_account_is_still_saving(self, db_session):
-        """Nothing is lost by dropping the tag from rule 1: a household that
+        """Nothing is lost by dropping the tag from rule 2: a household that
         moves the set-aside into a real savings account still gets SAVINGS,
         from the rule that asks where the money WENT rather than what the
         category is called.
@@ -275,9 +275,9 @@ class TestTagsOverrideInference:
         rather than a surprise.
 
         A categorized leg between two ON-budget accounts matches no transfer
-        rule — rule 5 is gated on the leg being uncategorized, and rules 3 and
-        4 need an off-budget counterpart — so it falls to the spending default.
-        The `long_term_expense` tag used to catch it at rule 1.
+        rule — rule 7 is gated on the leg being uncategorized, and rules 5 and
+        6 need an off-budget counterpart — so it falls to the spending default.
+        The `long_term_expense` tag used to catch it at the Savings rule, rule 2.
 
         It is a narrow shape: `domain/transfers.py` only permits a category on
         a leg whose partner is OFF budget, so a row like this arrives from an

@@ -543,8 +543,14 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
     category to drill by, so each sent "no category" and nothing else, and
     each opened the union of all three. The node now serves the classes it
     counted and the drill lists "no category" by `category_id IS NULL`, not
-    by the register's needs-a-category rule: that rule leaves out a row
-    dated before its account's budget start, which the node still counts.
+    by the register's needs-a-category rule, which asks about work to do
+    rather than money counted — it leaves out a card's reconciliation
+    adjustments, which the node counts as spending.
+
+    A row dated before its account's budget start is in neither. The node
+    used to count it while the register called it opening position; it
+    classes OPENING_BALANCE now (`activity_class`, rule 4), so the node
+    leaves it out and the drill, reading the node's classes, does too.
     """
     services, budget, checking, everyday, groceries, gas = await _setup(db_session)
     brokerage = await create_account(
@@ -563,8 +569,8 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
         db_session, budget, checking, mortgage, "1000.00", TODAY - timedelta(days=3)
     )
     await create_transaction(db_session, budget, checking, "-80.00", TODAY - timedelta(days=3))
-    # Before the account's budget start: opening position to the register's
-    # needs-a-category rule, but money that left all the same.
+    # Before the account's budget start, and nobody filed it: opening
+    # position to the register and to every report.
     await create_transaction(db_session, budget, checking, "-30.00", TODAY - timedelta(days=18))
     await create_transaction(
         db_session, budget, checking, "-60.00", TODAY - timedelta(days=3), category=groceries
@@ -594,4 +600,5 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
             no_category=node["entity_id"] is None,
         )
         assert -total == into[node["id"]], node["name"]
-    assert into[pseudo["Uncategorized"]["id"]] == Decimal("110.00")
+    # The 80 after the start date; the 30 before it was 110 here.
+    assert into[pseudo["Uncategorized"]["id"]] == Decimal("80.00")

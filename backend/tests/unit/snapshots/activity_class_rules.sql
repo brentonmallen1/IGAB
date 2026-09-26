@@ -13,7 +13,7 @@ WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'debt_principal' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND coalesce(counterpart_acct.counts_as_savings, true)) THEN 'savings' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') = 'liability') THEN 'debt_principal' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND transactions.category_id IS NULL AND NOT (own_acct.on_budget = true AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND NOT coalesce(counterpart_acct.counts_as_savings, true))) THEN 'transfer_internal' WHEN (own_acct.on_budget = false AND own_acct.classification != 'liability') THEN 'investment_return' WHEN (own_acct.on_budget = false AND own_acct.classification = 'liability') THEN 'debt_interest' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
+WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'debt_principal' WHEN (own_acct.on_budget = true AND NOT (own_acct.budget_start_date IS NULL OR transactions.date >= own_acct.budget_start_date) AND transactions.category_id IS NULL) THEN 'opening_balance' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND coalesce(counterpart_acct.counts_as_savings, true)) THEN 'savings' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') = 'liability') THEN 'debt_principal' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND transactions.category_id IS NULL AND NOT (own_acct.on_budget = true AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND NOT coalesce(counterpart_acct.counts_as_savings, true))) THEN 'transfer_internal' WHEN (own_acct.on_budget = false AND own_acct.classification != 'liability') THEN 'investment_return' WHEN (own_acct.on_budget = false AND own_acct.classification = 'liability') THEN 'debt_interest' WHEN (own_acct.on_budget = true AND own_acct.classification = 'liability' AND transactions.amount > 0 AND transactions.category_id IS NULL) THEN 'transfer_internal' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_groups.id 
 FROM category_groups 
@@ -33,7 +33,7 @@ WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'tagged_debt' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND coalesce(counterpart_acct.counts_as_savings, true)) THEN 'transfer_to_tracked_asset' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') = 'liability') THEN 'transfer_to_tracked_debt' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND transactions.category_id IS NULL AND NOT (own_acct.on_budget = true AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND NOT coalesce(counterpart_acct.counts_as_savings, true))) THEN 'internal_transfer' WHEN (own_acct.on_budget = false AND own_acct.classification != 'liability') THEN 'tracked_asset_activity' WHEN (own_acct.on_budget = false AND own_acct.classification = 'liability') THEN 'tracked_debt_activity' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
+WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'tagged_debt' WHEN (own_acct.on_budget = true AND NOT (own_acct.budget_start_date IS NULL OR transactions.date >= own_acct.budget_start_date) AND transactions.category_id IS NULL) THEN 'before_budget_start' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND coalesce(counterpart_acct.counts_as_savings, true)) THEN 'transfer_to_tracked_asset' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') = 'liability') THEN 'transfer_to_tracked_debt' WHEN ((transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL) AND transactions.category_id IS NULL AND NOT (own_acct.on_budget = true AND NOT coalesce(counterpart_acct.on_budget, true) AND coalesce(counterpart_acct.classification, 'asset') != 'liability' AND NOT coalesce(counterpart_acct.counts_as_savings, true))) THEN 'internal_transfer' WHEN (own_acct.on_budget = false AND own_acct.classification != 'liability') THEN 'tracked_asset_activity' WHEN (own_acct.on_budget = false AND own_acct.classification = 'liability') THEN 'tracked_debt_activity' WHEN (own_acct.on_budget = true AND own_acct.classification = 'liability' AND transactions.amount > 0 AND transactions.category_id IS NULL) THEN 'unfiled_card_credit' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_groups.id 
 FROM category_groups 
@@ -57,7 +57,11 @@ WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'debt_principal' WHEN ((transactions.transfer_id IS NOT NULL OR (EXISTS (SELECT payees.id 
+WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'debt_principal' WHEN ((SELECT accounts.on_budget 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id) = true AND NOT (EXISTS (SELECT accounts.id 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id AND (accounts.budget_start_date IS NULL OR transactions.date >= accounts.budget_start_date))) AND transactions.category_id IS NULL) THEN 'opening_balance' WHEN ((transactions.transfer_id IS NOT NULL OR (EXISTS (SELECT payees.id 
 FROM payees, transactions 
 WHERE payees.id = transactions.payee_id AND payees.transfer_account_id IS NOT NULL))) AND NOT coalesce((SELECT accounts.on_budget 
 FROM accounts 
@@ -121,7 +125,11 @@ WHERE accounts.id = transactions.account_id) != 'liability') THEN 'investment_re
 FROM accounts, transactions 
 WHERE accounts.id = transactions.account_id) = false AND (SELECT accounts.classification 
 FROM accounts, transactions 
-WHERE accounts.id = transactions.account_id) = 'liability') THEN 'debt_interest' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
+WHERE accounts.id = transactions.account_id) = 'liability') THEN 'debt_interest' WHEN ((SELECT accounts.on_budget 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id) = true AND (SELECT accounts.classification 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id) = 'liability' AND transactions.amount > 0 AND transactions.category_id IS NULL) THEN 'transfer_internal' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_groups.id 
 FROM category_groups 
@@ -145,7 +153,11 @@ WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'tagged_debt' WHEN ((transactions.transfer_id IS NOT NULL OR (EXISTS (SELECT payees.id 
+WHERE tags.system_key IN ('debt_principal') AND tags.is_deleted = false))) THEN 'tagged_debt' WHEN ((SELECT accounts.on_budget 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id) = true AND NOT (EXISTS (SELECT accounts.id 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id AND (accounts.budget_start_date IS NULL OR transactions.date >= accounts.budget_start_date))) AND transactions.category_id IS NULL) THEN 'before_budget_start' WHEN ((transactions.transfer_id IS NOT NULL OR (EXISTS (SELECT payees.id 
 FROM payees, transactions 
 WHERE payees.id = transactions.payee_id AND payees.transfer_account_id IS NOT NULL))) AND NOT coalesce((SELECT accounts.on_budget 
 FROM accounts 
@@ -209,7 +221,11 @@ WHERE accounts.id = transactions.account_id) != 'liability') THEN 'tracked_asset
 FROM accounts, transactions 
 WHERE accounts.id = transactions.account_id) = false AND (SELECT accounts.classification 
 FROM accounts, transactions 
-WHERE accounts.id = transactions.account_id) = 'liability') THEN 'tracked_debt_activity' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
+WHERE accounts.id = transactions.account_id) = 'liability') THEN 'tracked_debt_activity' WHEN ((SELECT accounts.on_budget 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id) = true AND (SELECT accounts.classification 
+FROM accounts, transactions 
+WHERE accounts.id = transactions.account_id) = 'liability' AND transactions.amount > 0 AND transactions.category_id IS NULL) THEN 'unfiled_card_credit' WHEN (transactions.amount > 0 AND transactions.category_id IS NULL OR (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_groups.id 
 FROM category_groups 

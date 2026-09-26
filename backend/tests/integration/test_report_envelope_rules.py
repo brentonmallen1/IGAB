@@ -283,7 +283,7 @@ class TestThePlannedSpendUniverse:
     )
     async def test_kept_here_transfer_to_hysa_counts_against_plan(self, db_session, tag_key, mode):
         """A kept-here savings envelope moving its balance to a tracked HYSA.
-        The row classes SAVINGS by where it went (rule 4), not by the tag, and
+        The row classes SAVINGS by where it went (rule 5), not by the tag, and
         the plan still meant that money to leave the envelope. An Emergency
         fund envelope is kept here by default, and the plan arm must reach it
         although it carries no Savings tag."""

@@ -309,6 +309,7 @@ class TestWhereItSits:
             own_is_liability=True,
             transfer_leg=False,
             starting_balance=True,
+            before_budget_start=False,
             tracked_counterpart=False,
             counterpart_is_liability=False,
             counterpart_counts_as_savings=True,
