@@ -5,7 +5,7 @@
  * where the user asked for payees.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { incomeDrill, resolveGroupBy, useReportStore } from './reportStore'
+import { expensesDrill, incomeDrill, resolveGroupBy, useReportStore } from './reportStore'
 import { thisMonthWindow } from '../utils/dateWindow'
 import { pinTimeZone } from '../test-utils/timeZone'
 
@@ -35,10 +35,34 @@ describe('incomeDrill', () => {
       kind: 'month',
       label: 'Income',
       scope: 'leaf',
-      direction: 'inflow',
       activityClasses: ['income'],
       ...window,
     })
+  })
+
+  it('lists a clawed-back paycheck, which the Income figure nets', () => {
+    // `direction: 'inflow'` dropped it, so the list was larger than the bar.
+    expect(incomeDrill('Income', { startDate: '', endDate: '' }).direction).toBeUndefined()
+  })
+})
+
+describe('expensesDrill', () => {
+  const window = { startDate: '2026-08-01', endDate: '2026-08-31' }
+
+  it('lists the spending-class leaf rows the Expenses figure nets', () => {
+    expect(expensesDrill('Expenses · 2026-08', window)).toEqual({
+      kind: 'month',
+      label: 'Expenses · 2026-08',
+      scope: 'leaf',
+      activityClasses: ['spending'],
+      ...window,
+    })
+  })
+
+  it('keeps the refunds, so the list totals the bar', () => {
+    // Income vs Expenses passed `direction: 'outflow'`: a bar of 15,300 net
+    // opened 19,400 of purchases with the 4,100 of refunds left out.
+    expect(expensesDrill('Expenses', window).direction).toBeUndefined()
   })
 })
 

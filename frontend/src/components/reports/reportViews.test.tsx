@@ -999,6 +999,37 @@ describe('IncomeSourcesReport average', () => {
   })
 })
 
+describe('IncomeExpenseReport drill', () => {
+  it('opens a month’s Expenses with its refunds, so the list totals the row', () => {
+    setQuery({
+      data: {
+        months: [
+          {
+            month: '2026-08-01',
+            income: 6000,
+            expenses: 1530,
+            savings: 0,
+            debt_principal: 0,
+            net: 4470,
+          },
+        ],
+      },
+    })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    fireEvent.click(screen.getByText('2026-08'))
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({
+      label: 'Expenses · 2026-08',
+      scope: 'leaf',
+      activityClasses: ['spending'],
+      startDate: '2026-08-01',
+      endDate: '2026-08-31',
+    })
+    expect(drill?.direction).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+  })
+})
+
 describe('TimelineReport amounts', () => {
   it('keeps the sign, and names money back into a spending envelope', () => {
     setQuery({
