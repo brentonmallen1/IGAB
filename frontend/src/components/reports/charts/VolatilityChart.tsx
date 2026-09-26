@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportMonths, useReportStore } from '../../../stores/reportStore'
+import { planSpentDrill, useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -49,15 +49,9 @@ export function VolatilityReport({ budgetId }: Props) {
   // out and dropped the oldest, so its count and total could not reconcile.
   function drillTo(categoryId: string, name: string) {
     if (!data) return
-    setDrillDown({
-      kind: 'category',
-      label: name,
-      scope: 'leaf',
-      direction: 'outflow',
-      categoryIds: [categoryId],
-      startDate: data.window_start,
-      endDate: data.window_end,
-    })
+    setDrillDown(
+      planSpentDrill(categoryId, name, { startDate: data.window_start, endDate: data.window_end })
+    )
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>

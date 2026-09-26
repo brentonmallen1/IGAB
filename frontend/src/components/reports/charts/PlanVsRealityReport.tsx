@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { useReportMonths, useReportStore } from '../../../stores/reportStore'
+import { planSpentDrill, useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { usePlanVsRealityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -36,15 +36,12 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   }, [data, chronicOnly])
 
   function drillTo(categoryId: string, label: string, startMonth: string, endMonth: string) {
-    setDrillDown({
-      kind: 'category',
-      label,
-      scope: 'leaf',
-      direction: 'outflow',
-      categoryIds: [categoryId],
-      startDate: monthWindow(startMonth.slice(0, 7)).start,
-      endDate: monthWindow(endMonth.slice(0, 7)).end,
-    })
+    setDrillDown(
+      planSpentDrill(categoryId, label, {
+        startDate: monthWindow(startMonth.slice(0, 7)).start,
+        endDate: monthWindow(endMonth.slice(0, 7)).end,
+      })
+    )
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>

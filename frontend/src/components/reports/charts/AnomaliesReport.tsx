@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { LineChart, Line, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { useAnomaliesReport } from '../../../api/reports'
-import { useReportMonths, useReportStore } from '../../../stores/reportStore'
+import { planSpentDrill, useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
@@ -37,15 +37,7 @@ export function AnomaliesReport({ budgetId }: Props) {
     // could total more than the card that opened it.
     const { start: startDate, end: endDate } = monthWindow(a.month)
 
-    setDrillDown({
-      kind: 'category',
-      label: a.category_name,
-      scope: 'leaf',
-      direction: 'outflow',
-      categoryIds: [a.category_id],
-      startDate,
-      endDate,
-    })
+    setDrillDown(planSpentDrill(a.category_id, a.category_name, { startDate, endDate }))
   }
 
   function tooltipContent(a: AnomalyItem): React.ReactNode {

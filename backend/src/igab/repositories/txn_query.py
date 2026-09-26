@@ -46,6 +46,7 @@ from igab.domain.activity_class import (
     apply_class_joins,
 )
 from igab.domain.spending import UNCATEGORIZED
+from igab.repositories.plan_rows import PLAN_SPENT_ROW
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -85,6 +86,9 @@ class TransactionFilters:
     #: rows the Discretionary report totals. A flag rather than a fourth
     #: tier: see there for why it is not a `NecessityTier`.
     discretionary: bool = False
+    #: Only the rows a plan report counts as spent (`plan_rows.PLAN_SPENT_ROW`)
+    #: — both ways, so a figure net of refunds opens a list that totals it.
+    plan_spent: bool = False
     direction: str | None = None
     day_of_week: int | None = None
     cleared: str | None = None
@@ -143,6 +147,11 @@ def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | 
         # spending — a move to savings, a purchase on an off-budget account.
         # No fallback to resolve, so unlike a tier it needs no session.
         where.append(DISCRETIONARY_ROW)
+    if f.plan_spent:
+        # The plan ledger's own rows, not a category's outflows: those left
+        # out its refunds and a savings envelope's transfers out, and listed
+        # an untagged envelope's brokerage transfer it never counted.
+        where.append(PLAN_SPENT_ROW)
     return where
 
 
@@ -271,7 +280,10 @@ def build_where(
             *_relations(f, scope),
             *_state(f),
         ],
-        class_joins=bool(f.activity_classes) or f.necessity_tier is not None or f.discretionary,
+        class_joins=bool(f.activity_classes)
+        or f.necessity_tier is not None
+        or f.discretionary
+        or f.plan_spent,
         payee_join=bool(f.search),
         split_parent_join=f.payee_ids is not None,
     )

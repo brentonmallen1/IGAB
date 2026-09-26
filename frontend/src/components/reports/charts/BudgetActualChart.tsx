@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportScope, useReportStore } from '../../../stores/reportStore'
+import { planSpentDrill, useReportScope, useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -108,15 +108,9 @@ export function BudgetActualReport({ budgetId }: Props) {
   }))
 
   function drillTo(categoryId: string, name: string) {
-    setDrillDown({
-      kind: 'category',
-      label: name,
-      scope: 'leaf',
-      direction: 'outflow',
-      categoryIds: [categoryId],
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-    })
+    setDrillDown(
+      planSpentDrill(categoryId, name, { startDate: filters.startDate, endDate: filters.endDate })
+    )
   }
 
   const barClick = (data: unknown) => {

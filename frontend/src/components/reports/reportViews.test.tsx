@@ -1129,6 +1129,7 @@ describe('VarianceReport cards', () => {
             partial_month: false,
             budget_assigned: 3000,
             moved_in: 0,
+            moved_out: 0,
             planned: 3000,
             actual_spent: 2900,
             monthly_variance: 100,
@@ -1139,6 +1140,7 @@ describe('VarianceReport cards', () => {
             partial_month: true,
             budget_assigned: 3000,
             moved_in: 200,
+            moved_out: 0,
             planned: 3200,
             actual_spent: 1200,
             monthly_variance: 2000,
@@ -1327,11 +1329,15 @@ describe('AnomaliesReport list', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /Dining/ }))
 
-      expect(useReportStore.getState().drillDown).toMatchObject({
+      const drill = useReportStore.getState().drillDown
+      expect(drill).toMatchObject({
         categoryIds: ['c1'],
+        planSpent: true,
         startDate: '2026-09-01',
         endDate: '2026-09-10',
       })
+      // The figure nets refunds; an outflow-only list totalled more than it.
+      expect(drill?.direction).toBeUndefined()
     } finally {
       vi.useRealTimers()
     }
@@ -1470,6 +1476,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-06-01',
             assigned: 100,
             moved_in: 0,
+            moved_out: 0,
             plan: 100,
             spent: 140,
             variance: -40,
@@ -1480,6 +1487,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-07-01',
             assigned: 100,
             moved_in: 0,
+            moved_out: 0,
             plan: 100,
             spent: 90,
             variance: 10,
@@ -1490,6 +1498,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-08-01',
             assigned: 0,
             moved_in: 0,
+            moved_out: 0,
             plan: 0,
             spent: 0,
             variance: 0,
@@ -1501,6 +1510,7 @@ describe('PlanVsRealityReport matrix', () => {
         months_active: 2,
         total_assigned: '200',
         total_moved_in: '0',
+        total_moved_out: '0',
         total_spent: '230',
         avg_overspend: 40.0,
         chronic: true,
@@ -1515,6 +1525,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-06-01',
             assigned: 900,
             moved_in: 0,
+            moved_out: 0,
             plan: 900,
             spent: 900,
             variance: 0,
@@ -1525,6 +1536,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-07-01',
             assigned: 900,
             moved_in: 0,
+            moved_out: 0,
             plan: 900,
             spent: 900.27,
             variance: -0.27,
@@ -1535,6 +1547,7 @@ describe('PlanVsRealityReport matrix', () => {
             month: '2026-08-01',
             assigned: 900,
             moved_in: 0,
+            moved_out: 0,
             plan: 900,
             spent: 900,
             variance: 0,
@@ -1546,6 +1559,7 @@ describe('PlanVsRealityReport matrix', () => {
         months_active: 3,
         total_assigned: '2700',
         total_moved_in: '0',
+        total_moved_out: '0',
         total_spent: '2700.27',
         avg_overspend: '0',
         chronic: false,
@@ -1554,6 +1568,7 @@ describe('PlanVsRealityReport matrix', () => {
     ],
     total_assigned: '2900',
     total_moved_in: '0',
+    total_moved_out: '0',
     total_spent: '2930.27',
     chronic_count: 1,
   }
@@ -1687,6 +1702,7 @@ describe('BudgetActualReport values', () => {
             category_group_name: 'Everyday',
             assigned: 500,
             moved_in: 0,
+            moved_out: 0,
             plan: 500,
             spent: 450,
             variance: 50,
@@ -1696,6 +1712,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '500',
         total_moved_in: '0',
+        total_moved_out: '0',
         total_plan: '500',
         total_spent: '450',
         total_variance: 50,
@@ -1720,6 +1737,7 @@ describe('BudgetActualReport values', () => {
             category_group_name: 'Health',
             assigned: 0,
             moved_in: 2000,
+            moved_out: 0,
             plan: 2000,
             spent: 2000,
             variance: 0,
@@ -1729,6 +1747,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: 0,
         total_moved_in: 2000,
+        total_moved_out: 0,
         total_plan: 2000,
         total_spent: 2000,
         total_variance: 0,
@@ -1737,7 +1756,13 @@ describe('BudgetActualReport values', () => {
     renderReport(<BudgetActualReport budgetId="b1" />)
 
     expect(card('Planned').value).toBe('$2,000.00')
-    expect(screen.getByText('$2,000.00 ($2,000.00 moved in)')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Medical'))
+    const drill = useReportStore.getState().drillDown
+    // The plan ledger's own rows, both ways — the figure is net of refunds.
+    expect(drill).toMatchObject({ categoryIds: ['c1'], planSpent: true, scope: 'leaf' })
+    expect(drill?.direction).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+    expect(screen.getByText('$2,000.00 (assigned $0.00 + moved in $2,000.00)')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Planned' })).toBeInTheDocument()
   })
 
