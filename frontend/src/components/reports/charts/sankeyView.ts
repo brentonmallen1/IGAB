@@ -7,6 +7,7 @@
  * module only picks which of them a drill level shows. */
 import type { CashFlowReport, CategoryPayee } from '../../../types'
 import type { DrillDownContext } from '../../../stores/reportStore'
+import { categoryTarget } from '../drillScope'
 
 /** The served hub every source flows into and every group flows out of. */
 export const HUB = '__budget__'
@@ -295,8 +296,8 @@ export function categoryNodeDrill(
     kind: 'category',
     label: node.name,
     scope: 'leaf',
-    categoryIds: node.entity_id ? [node.entity_id] : undefined,
-    noCategory: node.entity_id ? undefined : true,
+    // `categoryTarget`, the rule every spending chart opens a line by.
+    ...categoryTarget([node.entity_id ?? null]),
     activityClasses: node.activity_classes ?? undefined,
     ...window,
   }
