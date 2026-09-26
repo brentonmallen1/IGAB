@@ -23,7 +23,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { ReportNotes } from '../ReportNotes'
-import { NO_PLAN, varianceHeadline } from './budgetActualView'
+import { NO_PLAN, noPlanLabel, varianceHeadline } from './budgetActualView'
 import { planLabel } from './planLabel'
 
 interface Props {
@@ -132,6 +132,7 @@ export function BudgetActualReport({ budgetId }: Props) {
     subName: c.category_group_name,
     amount: c.spent,
     pct: c.variance_pct,
+    pctAbsent: noPlanLabel(c),
     extra: planLabel(c, formatMoney),
   }))
 

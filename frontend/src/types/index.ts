@@ -1078,8 +1078,9 @@ export interface PlanRealityCell {
   /** The verdict: past the plan by at least $1 and 1% of it. Tint by this,
    *  never by the variance's sign — a few cents over is on plan. */
   over: boolean
-  /** Anything planned or spent: the cells the matrix fills. Served, as the
-   *  count `months_active` reads it. */
+  /** Anything assigned, moved in, moved out or spent (backend
+   *  `PlanMonth.quiet`): the cells the matrix fills. Served, as the count
+   *  `months_active` reads it — never re-derived from plan and spent here. */
   active: boolean
 }
 

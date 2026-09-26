@@ -1907,6 +1907,43 @@ describe('BudgetActualReport values', () => {
     expect(screen.queryByText('0.0%')).toBeNull()
   })
 
+  it('reads a mortgage paid by a principal transfer as a row on plan', () => {
+    // Assigned 1,500, moved out 1,500: plan 0, spent 0. The row used to be
+    // dropped as "$0 / $0", which reads as the mortgage missing; it is a row,
+    // and its % cell says "on plan", not "no plan".
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'm1',
+            category_name: 'Mortgage',
+            category_group_name: 'Housing',
+            assigned: 1500,
+            moved_in: 0,
+            moved_out: 1500,
+            plan: 0,
+            spent: 0,
+            variance: 0,
+            variance_pct: null,
+            overspent: false,
+          },
+        ],
+        total_assigned: 1500,
+        total_moved_in: 0,
+        total_moved_out: 1500,
+        total_plan: 0,
+        total_spent: 0,
+        total_variance: 0,
+        filter_unavailable: false,
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    const cells = cellsOf('Mortgage')
+    expect(cells).toContain('on plan')
+    expect(cells).toContain('$0.00 (assigned $1,500.00 − moved out $1,500.00)')
+    expect(card('Against plan').value).toBe('On plan')
+  })
+
   it('asks for the tags and the saved filter the filter bar offers, not the categories alone', () => {
     useReportStore.getState().setFilters({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
     try {

@@ -24,3 +24,11 @@ export function varianceHeadline(
 
 /** What the % column says for a category with no plan to take a share of. */
 export const NO_PLAN = 'no plan'
+
+/** What the % column says for a row with no plan, from the served verdict: a
+ *  plan fully moved out with nothing spent past it — a mortgage assigned
+ *  1,500 and paid by a 1,500 principal transfer — is "on plan"; spending
+ *  against no plan is "no plan". */
+export function noPlanLabel(item: { overspent: boolean }): string {
+  return item.overspent ? NO_PLAN : 'on plan'
+}

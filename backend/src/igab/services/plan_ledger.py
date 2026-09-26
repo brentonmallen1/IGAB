@@ -59,7 +59,16 @@ class PlanMonth:
 
     @property
     def quiet(self) -> bool:
-        """Nothing planned, moved or spent — the "$0 / $0" a report drops."""
+        """Nothing assigned, moved in, moved out or spent: the one statement of
+        "this row has no activity", which Budget vs Actual reads to drop a
+        category and Plan vs Reality to leave a cell (and a row) empty.
+
+        All four, not the floored plan and spent. Read that way, a Mortgage
+        envelope assigned 1,500 and paid by a 1,500 principal transfer — plan
+        0, spent 0 — vanished from both reports, which reads as the mortgage
+        missing; it is a row that says "assigned 1,500, moved out 1,500, on
+        plan". A drained envelope (a negative assignment) is a row for the
+        same reason."""
         return (
             self.assigned == ZERO
             and self.moved_in == ZERO

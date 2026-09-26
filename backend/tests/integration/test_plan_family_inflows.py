@@ -197,7 +197,7 @@ class TestMoneyMovedOutLowersThePlan:
         await create_transaction(db_session, budget, checking, "-180.00", EARLY, category=fun)
         return budget, fun
 
-    async def test_a_debt_principal_payment_from_an_untagged_envelope_is_on_plan(
+    async def test_a_mortgage_paid_by_principal_is_a_row_on_plan_on_both_reports(
         self, db_session, api_client
     ):
         budget, _, mortgage = await self._mortgage(db_session, api_client.test_user)
@@ -206,17 +206,45 @@ class TestMoneyMovedOutLowersThePlan:
         (point,) = await reports.cumulative_variance(budget.id, months=1)
         pvr = await reports.plan_vs_reality(budget.id, months=3)
 
-        # Planned nothing it did not move out, spent nothing: "$0 / $0" is not
-        # a Budget vs Actual row — it was a 1,500 underspend.
-        assert bva["categories"] == []
+        # Still a row — the owner would read a missing row as the mortgage
+        # missing — and on plan: assigned 1,500, moved out 1,500. It was a
+        # 1,500 underspend.
+        row = _row(bva, mortgage)
+        assert (row["assigned"], row["moved_out"], row["plan"], row["spent"]) == (
+            D("1500"),
+            D("1500"),
+            D("0"),
+            D("0"),
+        )
+        assert (row["variance"], row["overspent"]) == (D("0"), False)
         assert bva["total_variance"] == D("0")
         assert (point["moved_out"], point["planned"], point["monthly_variance"]) == (
             D("1500"),
             D("0"),
             D("0"),
         )
-        # Nor a Plan vs Reality row: no month planned or spent anything.
-        assert str(mortgage.id) not in {c["category_id"] for c in pvr["categories"]}
+        # A Plan vs Reality row too, its month active and on plan.
+        cell = _row(pvr, mortgage)["monthly"][-1]
+        assert (cell["assigned"], cell["moved_out"], cell["plan"], cell["variance"]) == (
+            D("1500"),
+            D("1500"),
+            D("0"),
+            D("0"),
+        )
+        assert (cell["active"], cell["over"]) == (True, False)
+
+    async def test_a_quiet_envelope_is_still_no_row(self, db_session, api_client):
+        """Only nothing at all — assigned, moved in, moved out, spent — drops a
+        row (`PlanMonth.quiet`). An envelope that exists and saw no activity
+        is not a finding on either report."""
+        budget, checking, _, group = await _world(db_session, api_client.test_user)
+        idle = await create_category(db_session, budget, group, "Idle")
+        await create_transaction(db_session, budget, checking, "-10.00", EARLY)
+        reports = ReportService(db_session)
+        bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=3)
+        for body in (bva, pvr):
+            assert str(idle.id) not in {c["category_id"] for c in body["categories"]}
 
     async def test_a_debt_payment_short_of_its_plan_leaves_the_rest(self, db_session, api_client):
         """Plan vs Reality's cell, where the envelope carries a finding: 1,500

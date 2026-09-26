@@ -962,10 +962,11 @@ class ReportService:
         """Each category's plan for the window against what it spent.
 
         The plan is the window's assignments plus money moved into the
-        envelope less money moved out, and spent is net of refunds — `plan_ledger` reads both and
-        `domain.plan` says why. A category that planned nothing and spent
-        nothing is not a row: "$0 / $0" is not a finding, and a drained
-        envelope, floored to no plan, was one of those.
+        envelope less money moved out, and spent is net of refunds —
+        `plan_ledger` reads both and `domain.plan` says why. A category with
+        no activity at all (`PlanMonth.quiet`: nothing assigned, moved or
+        spent) is not a row. One whose plan floors to nothing is: a mortgage
+        paid by a principal transfer is on plan, not missing.
 
         The totals are the served rows summed, so the headline cannot say
         something the rows under it do not (`plan.total_variance`).
@@ -986,7 +987,7 @@ class ReportService:
         for cat in ledger.values():
             t = cat.total()
             outcome = plan_outcome(t.assigned, t.spent, moved_in=t.moved_in, moved_out=t.moved_out)
-            if outcome.plan == zero and t.spent == zero:
+            if t.quiet:
                 continue
             # `overspent` is served so the chart stops deciding it from the
             # raw assignment; `plan` so it never adds moved-in money itself.
@@ -1116,8 +1117,9 @@ class ReportService:
         reads the complete months alone: a month whose assignment is all in
         and whose spending is a week old is neither over nor under yet.
 
-        A category with no active month — nothing planned and nothing spent
-        anywhere in the window, the running month included — is not a row.
+        A category with no active month — nothing assigned, moved or spent
+        anywhere in the window, the running month included (`PlanMonth.quiet`)
+        — is not a row.
         """
         today = reader_today(today)
         window = await budget_window(self.session, budget_id, months, today)
@@ -1145,7 +1147,7 @@ class ReportService:
                 outcome = plan_outcome(
                     cell.assigned, cell.spent, moved_in=cell.moved_in, moved_out=cell.moved_out
                 )
-                active = outcome.plan != zero or cell.spent != zero
+                active = not cell.quiet
                 running = window.is_running(m)
                 shown = shown or active
                 if not running:

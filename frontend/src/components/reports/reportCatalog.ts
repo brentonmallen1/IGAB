@@ -168,7 +168,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     counts:
       'Plan — assigned plus money moved into the envelope, less money moved out — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes.',
     leavesOut:
-      'Card payment envelopes, starting balances, and categories that planned and spent nothing.',
+      'Card payment envelopes, starting balances, and categories with nothing assigned, moved or spent.',
   },
   'category-history': {
     scope: 'categories',

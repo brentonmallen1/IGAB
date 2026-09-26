@@ -399,8 +399,9 @@ class PlanRealityCell(ApiModel):
     #: The verdict — past the plan by a dollar and 1% of it. The cell's tint
     #: reads this, never the variance's sign.
     over: bool
-    #: Anything planned or spent this month: the cells the matrix fills and
-    #: `months_active` counts.
+    #: Anything assigned, moved in, moved out or spent this month
+    #: (`plan_ledger.PlanMonth.quiet`): the cells the matrix fills and
+    #: `months_active` counts. A plan fully moved out is active, and on plan.
     active: bool
 
 
