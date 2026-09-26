@@ -4,6 +4,7 @@ import { usePlanVsRealityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { cellLabel, overspendStyle, planRealityHeadline, worstOverspend } from './planRealityCells'
+import { planLabel } from './planLabel'
 import { monthWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -66,9 +67,10 @@ export function PlanVsRealityReport({ budgetId }: Props) {
         <ReportInfoButton title="Plan vs Reality">
           <p>
             Each cell compares a category&apos;s <strong>plan</strong> for the month — what you
-            assigned, plus any money moved into the envelope, like a transfer from savings — against
-            what you <strong>spent</strong>, net of refunds. Red cells went over plan by at least $1
-            and 1% of it; the deeper the red, the bigger the overrun.
+            assigned, plus money moved into the envelope (a transfer from savings), less money moved
+            out of it (a transfer to a brokerage, a loan payment) — against what you{' '}
+            <strong>spent</strong>, net of refunds. Red cells went over plan by at least $1 and 1%
+            of it; the deeper the red, the bigger the overrun.
           </p>
           <p>
             It deliberately <strong>ignores carryover</strong>: a category living on last
@@ -111,6 +113,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                 }
                 row.total_assigned = c.total_assigned
                 row.total_moved_in = c.total_moved_in
+                row.total_moved_out = c.total_moved_out
                 row.total_spent = c.total_spent
                 row.months_over = c.months_over
                 row.chronic = c.chronic
@@ -213,10 +216,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                     {cat.monthly.map((cell) => {
                       const running = isRunning(cell.month)
                       const ym = reportMonthLabel(cell.month, running, formatMonthShort)
-                      const planned =
-                        cell.moved_in !== 0
-                          ? `planned ${formatMoney(cell.plan)} (assigned ${formatMoney(cell.assigned)} + moved in ${formatMoney(cell.moved_in)})`
-                          : `planned ${formatMoney(cell.plan)}`
+                      const planned = `planned ${planLabel(cell, formatMoney)}`
                       return (
                         <td
                           key={cell.month}

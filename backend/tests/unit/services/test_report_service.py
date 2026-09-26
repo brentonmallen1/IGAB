@@ -365,6 +365,7 @@ class TestBudgetVsActual:
             "categories": [],
             "total_assigned": D("0"),
             "total_moved_in": D("0"),
+            "total_moved_out": D("0"),
             "total_plan": D("0"),
             "total_spent": D("0"),
             "total_variance": D("0"),

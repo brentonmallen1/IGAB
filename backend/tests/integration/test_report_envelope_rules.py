@@ -271,11 +271,13 @@ class TestThePlannedSpendUniverse:
     they counted nothing — and its chronic flag feeds the Guide."""
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
-        """Out of an UNTAGGED envelope. The class is what excludes it. A
-        savings category — tagged Savings or Emergency fund, in either mode —
-        is the one exception: the same shape out of one does count against its
-        plan, pinned by `test_kept_here_transfer_to_hysa_counts_against_plan`
-        and `TestASavingsTaggedEnvelope`."""
+        """Out of an UNTAGGED envelope. The class is what excludes it from
+        spent; it lowers the plan instead (money moved out, `plan_effect`), so
+        the 500 plan is 300 and nothing of it was spent. A savings category —
+        tagged Savings or Emergency fund, in either mode — is the one
+        exception: the same shape out of one is spent against its plan,
+        pinned by `test_kept_here_transfer_to_hysa_counts_against_plan` and
+        `TestASavingsTaggedEnvelope`."""
         services, budget, checking, group, cat = await _world(db_session)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
@@ -293,7 +295,8 @@ class TestThePlannedSpendUniverse:
         pvr = await reports.plan_vs_reality(budget.id, months=1)
 
         assert variance[-1]["actual_spent"] == D("0")
-        assert variance[-1]["monthly_variance"] == D("500.00")
+        assert variance[-1]["moved_out"] == D("200.00")
+        assert variance[-1]["monthly_variance"] == D("300.00")
         assert bva["total_spent"] == D("0")
         assert _running_spent(pvr) == D("0")
 

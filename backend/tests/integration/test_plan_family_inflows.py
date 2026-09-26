@@ -163,6 +163,199 @@ class TestMoneyMovedInRaisesThePlan:
         assert (row["moved_in"], row["plan"], row["spent"]) == (D("0"), D("0"), D("40"))
 
 
+class TestMoneyMovedOutLowersThePlan:
+    """The mirror (owner's call, 2026-09-26): money moved out of an envelope
+    and not spent lowers its plan. Read as nothing, a Mortgage envelope paid
+    by a principal transfer read underspent by the whole payment every month,
+    and a brokerage transfer read as money left unspent."""
+
+    async def _mortgage(self, db_session, user):
+        """1,500 assigned to an envelope nobody tagged Debt principal, paid by
+        a 1,500 principal transfer to the tracked loan."""
+        budget, checking, _, group = await _world(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="loan", on_budget=False
+        )
+        mortgage = await create_category(db_session, budget, group, "Mortgage")
+        await create_budget_assignment(db_session, budget, mortgage, THIS_MONTH, "1500.00")
+        await create_transfer(
+            db_session, budget, checking, loan, "1500.00", EARLY, category=mortgage
+        )
+        return budget, checking, mortgage
+
+    async def _brokerage(self, db_session, user):
+        """600 assigned, 400 of it sent to a brokerage, 180 spent."""
+        budget, checking, _, group = await _world(db_session, user)
+        brokerage = await create_account(
+            db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+        )
+        fun = await create_category(db_session, budget, group, "Fun Money")
+        await create_budget_assignment(db_session, budget, fun, THIS_MONTH, "600.00")
+        await create_transfer(
+            db_session, budget, checking, brokerage, "400.00", EARLY, category=fun
+        )
+        await create_transaction(db_session, budget, checking, "-180.00", EARLY, category=fun)
+        return budget, fun
+
+    async def test_a_debt_principal_payment_from_an_untagged_envelope_is_on_plan(
+        self, db_session, api_client
+    ):
+        budget, _, mortgage = await self._mortgage(db_session, api_client.test_user)
+        reports = ReportService(db_session)
+        bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
+        (point,) = await reports.cumulative_variance(budget.id, months=1)
+        pvr = await reports.plan_vs_reality(budget.id, months=3)
+
+        # Planned nothing it did not move out, spent nothing: "$0 / $0" is not
+        # a Budget vs Actual row — it was a 1,500 underspend.
+        assert bva["categories"] == []
+        assert bva["total_variance"] == D("0")
+        assert (point["moved_out"], point["planned"], point["monthly_variance"]) == (
+            D("1500"),
+            D("0"),
+            D("0"),
+        )
+        # Nor a Plan vs Reality row: no month planned or spent anything.
+        assert str(mortgage.id) not in {c["category_id"] for c in pvr["categories"]}
+
+    async def test_a_debt_payment_short_of_its_plan_leaves_the_rest(self, db_session, api_client):
+        """Plan vs Reality's cell, where the envelope carries a finding: 1,500
+        assigned, 1,500 moved out, 60 spent on a late fee — 60 over."""
+        budget, checking, mortgage = await self._mortgage(db_session, api_client.test_user)
+        await create_transaction(db_session, budget, checking, "-60.00", EARLY, category=mortgage)
+        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
+
+        cell = _row(pvr, mortgage)["monthly"][-1]
+        assert (cell["assigned"], cell["moved_out"], cell["plan"], cell["variance"]) == (
+            D("1500"),
+            D("1500"),
+            D("0"),
+            D("-60"),
+        )
+
+    async def test_a_brokerage_transfer_leaves_the_rest_of_the_plan(self, db_session, api_client):
+        budget, fun = await self._brokerage(db_session, api_client.test_user)
+        reports = ReportService(db_session)
+        bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
+        (point,) = await reports.cumulative_variance(budget.id, months=1)
+        pvr = await reports.plan_vs_reality(budget.id, months=3)
+
+        row = _row(bva, fun)
+        assert (row["assigned"], row["moved_out"], row["plan"]) == (D("600"), D("400"), D("200"))
+        # Not spent: saving is not spending. 20 left, where it read 420.
+        assert (row["spent"], row["variance"], row["overspent"]) == (D("180"), D("20"), False)
+        assert bva["total_moved_out"] == D("400")
+        assert (point["moved_out"], point["planned"], point["actual_spent"]) == (
+            D("400"),
+            D("200"),
+            D("180"),
+        )
+        cat = _row(pvr, fun)
+        assert cat["monthly"][-1]["moved_out"] == D("400")
+        # The running month is in no total.
+        assert (cat["total_moved_out"], pvr["total_moved_out"]) == (D("0"), D("0"))
+
+    async def test_plan_vs_reality_totals_carry_it_over_complete_months(
+        self, db_session, api_client
+    ):
+        budget, checking, _, group = await _world(db_session, api_client.test_user)
+        brokerage = await create_account(
+            db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+        )
+        fun = await create_category(db_session, budget, group, "Fun Money")
+        await create_budget_assignment(db_session, budget, fun, back(1), "600.00")
+        await create_transfer(
+            db_session, budget, checking, brokerage, "400.00", back(1), category=fun
+        )
+        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
+        assert (_row(pvr, fun)["total_moved_out"], pvr["total_moved_out"]) == (
+            D("400"),
+            D("400"),
+        )
+
+    async def test_moving_out_more_than_was_planned_floors_at_no_plan(self, db_session, api_client):
+        """A carried balance drained into a brokerage with nothing assigned
+        this month: no plan — never a negative plan that 30 of spending would
+        overrun by 2,030."""
+        budget, checking, _, group = await _world(db_session, api_client.test_user)
+        brokerage = await create_account(
+            db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+        )
+        rainy = await create_category(db_session, budget, group, "Rainy Day")
+        await create_transfer(
+            db_session, budget, checking, brokerage, "2000.00", EARLY, category=rainy
+        )
+        await create_transaction(db_session, budget, checking, "-30.00", EARLY, category=rainy)
+
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
+
+        row = _row(bva, rainy)
+        assert (row["moved_out"], row["plan"], row["spent"], row["variance"]) == (
+            D("2000"),
+            D("0"),
+            D("30"),
+            D("-30"),
+        )
+
+    async def test_a_savings_envelope_outflow_is_still_spent_not_moved_out(
+        self, db_session, api_client
+    ):
+        """The exception stands, stated once in `plan_effect`: the plan meant
+        a savings envelope's money to leave, so its outflow is spent."""
+        budget, checking, hysa, group = await _world(db_session, api_client.test_user)
+        savings = await create_category(db_session, budget, group, "Vacation Savings")
+        await tag_with_system_tags(db_session, savings, "savings")
+        await create_budget_assignment(db_session, budget, savings, THIS_MONTH, "500.00")
+        await create_transfer(db_session, budget, checking, hysa, "200.00", EARLY, category=savings)
+
+        row = _row(
+            await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY), savings
+        )
+        assert (row["moved_out"], row["plan"], row["spent"]) == (D("0"), D("500"), D("200"))
+
+    async def test_category_history_serves_it(self, db_session, api_client):
+        budget, fun = await self._brokerage(db_session, api_client.test_user)
+        await db_session.commit()
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/category-history",
+            params={"category_id": str(fun.id), "months": 3},
+        )
+        assert r.status_code == 200, r.text
+        latest = r.json()["months"][-1]
+        assert (money(latest["moved_out"]), money(latest["spent"])) == (D("400"), D("180"))
+
+    async def test_the_endpoints_serve_it(self, db_session, api_client):
+        budget, _ = await self._brokerage(db_session, api_client.test_user)
+        await db_session.commit()
+        base = f"/api/v1/{budget.id}/reports"
+        bva = await api_client.get(
+            f"{base}/budget-actual",
+            params={"start_date": THIS_MONTH.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        variance = await api_client.get(f"{base}/variance", params={"months": 3})
+        pvr = await api_client.get(f"{base}/plan-vs-reality", params={"months": 3})
+        for r in (bva, variance, pvr):
+            assert r.status_code == 200, r.text
+        assert money(bva.json()["categories"][0]["moved_out"]) == D("400")
+        assert money(bva.json()["total_moved_out"]) == D("400")
+        assert money(variance.json()["points"][-1]["moved_out"]) == D("400")
+        assert money(pvr.json()["categories"][0]["monthly"][-1]["moved_out"]) == D("400")
+        assert "total_moved_out" in pvr.json()
+
+    async def test_the_assistant_is_told_it(self, db_session, api_client):
+        from igab.ai.tools import handlers
+        from igab.ai.tools.context import build_tool_context
+
+        budget, _ = await self._brokerage(db_session, api_client.test_user)
+        ctx = await build_tool_context(db_session, budget.id, TODAY)
+        result = await handlers.budget_vs_actual(
+            ctx, {"start_date": THIS_MONTH.isoformat(), "end_date": TODAY.isoformat()}
+        )
+        (row,) = result["rows"]
+        assert (row["moved_out"], row["planned"], row["variance"]) == (400.0, 200.0, 20.0)
+        assert result["total_moved_out"] == 400.0
+
+
 class TestACardEnvelopeIsNotAPlan:
     """A card's envelope plans paydown, never spending: counted as a plan it
     was assigned and never spent, a phantom underspend on Budget vs Actual and

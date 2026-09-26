@@ -183,10 +183,12 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
             "category": c["category_name"],
             "group": c["category_group_name"],
             "assigned": money(c["assigned"]),
-            # Money moved into the envelope raises its plan; `planned` is
-            # what `variance` is measured against, so the assistant never
-            # compares a bill paid from a savings transfer with `assigned`.
+            # Money moved into the envelope raises its plan and money moved
+            # out lowers it; `planned` is what `variance` is measured
+            # against, so the assistant never compares a bill paid from a
+            # savings transfer, or a debt payment, with `assigned`.
             "moved_in": money(c["moved_in"]),
+            "moved_out": money(c["moved_out"]),
             "planned": money(c["plan"]),
             "spent": money(c["spent"]),
             "variance": money(c["variance"]),
@@ -195,6 +197,8 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     ]
     result = clip(rows)
     result["total_assigned"] = money(data["total_assigned"])
+    result["total_moved_in"] = money(data["total_moved_in"])
+    result["total_moved_out"] = money(data["total_moved_out"])
     result["total_planned"] = money(data["total_plan"])
     result["total_spent"] = money(data["total_spent"])
     # The report's headline, so the assistant cannot quote a raw

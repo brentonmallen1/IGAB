@@ -8,6 +8,7 @@ function cell(month: string, variance: number, over = variance <= -1): PlanReali
     month,
     assigned: 100,
     moved_in: 0,
+    moved_out: 0,
     plan: 100,
     spent: 100 - variance,
     variance,
@@ -31,6 +32,7 @@ function category(
     months_active: monthly.length,
     total_assigned: 0,
     total_moved_in: 0,
+    total_moved_out: 0,
     total_spent: 0,
     avg_overspend: overs.length ? -overs.reduce((s, m) => s + m.variance, 0) / overs.length : 0,
     chronic: false,
@@ -48,6 +50,7 @@ function report(categories: PlanRealityCategory[], running = '2026-09-01') {
     categories,
     total_assigned: 0,
     total_moved_in: 0,
+    total_moved_out: 0,
     total_spent: 0,
     chronic_count: categories.filter((c) => c.chronic).length,
   } satisfies PlanRealityReport

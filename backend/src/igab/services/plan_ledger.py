@@ -9,10 +9,11 @@ three dropped every row filed INTO an envelope. A transfer from savings that
 paid a medical bill read as the whole bill overspent, on all three at once,
 while the budget page showed the envelope on plan.
 
-So the rows are read once, here, and what each does to the plan is
-`domain.plan.plan_effect`. Category History, Volatility and Anomalies read
-the same `spent`, so "spent" in a category means one thing on every report
-that shows it beside a plan or measures its swing.
+So the rows are read once, here, and what each does to the plan — spent,
+moved in, moved out, or nothing — is `domain.plan.plan_effect`. Category
+History, Volatility and Anomalies read the same `spent`, so "spent" in a
+category means one thing on every report that shows it beside a plan or
+measures its swing.
 
 Orchestration only: two queries and a fold. The rule is `plan_effect`; the
 row shape is `txn_filters.PLAN_LEDGER_ROW`; the envelope rules are
@@ -33,7 +34,7 @@ from igab.db.models import BudgetAssignment, Category, CategoryGroup, Transactio
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.domain.dates import ReportWindow, month_starts
 from igab.domain.money import quantize_cents
-from igab.domain.plan import plan_effect
+from igab.domain.plan import NO_EFFECT, plan_effect
 from igab.repositories.category_filters import (
     BUDGETED_ENVELOPE,
     IS_SAVINGS_CATEGORY,
@@ -52,12 +53,19 @@ class PlanMonth:
 
     assigned: Decimal = ZERO
     moved_in: Decimal = ZERO
+    #: Non-negative: money moved out of the envelope that was not spent.
+    moved_out: Decimal = ZERO
     spent: Decimal = ZERO
 
     @property
     def quiet(self) -> bool:
         """Nothing planned, moved or spent — the "$0 / $0" a report drops."""
-        return self.assigned == ZERO and self.moved_in == ZERO and self.spent == ZERO
+        return (
+            self.assigned == ZERO
+            and self.moved_in == ZERO
+            and self.moved_out == ZERO
+            and self.spent == ZERO
+        )
 
 
 @dataclass
@@ -78,6 +86,7 @@ class PlanCategory:
         for cell in self.months.values():
             out.assigned += cell.assigned
             out.moved_in += cell.moved_in
+            out.moved_out += cell.moved_out
             out.spent += cell.spent
         return out
 
@@ -184,13 +193,14 @@ async def plan_ledger(
         effect = plan_effect(
             Decimal(str(r.amount)), r.cls, savings_envelope=bool(r.savings_envelope)
         )
-        if effect.spent == ZERO and effect.moved_in == ZERO:
+        if effect == NO_EFFECT:
             continue
         cell = entry(r.category_id, r.category_name, r.group_name, r.sinking).month(
             _as_date(r.month)
         )
         cell.spent += effect.spent
         cell.moved_in += effect.moved_in
+        cell.moved_out += effect.moved_out
     return ledger
 
 
@@ -208,11 +218,12 @@ class LedgerRow(NamedTuple):
 
 @dataclass(frozen=True)
 class SpentSeries:
-    """One category's spent and moved-in money over a month list, and its
+    """One category's spent and moved money over a month list, and its
     average spent over the list's complete months."""
 
     spent: list[Decimal]
     moved_in: list[Decimal]
+    moved_out: list[Decimal]
     average_spent: Decimal
     months_averaged: int
 
@@ -254,6 +265,7 @@ async def spent_series(
     return SpentSeries(
         spent=[c.spent for c in cells],
         moved_in=[c.moved_in for c in cells],
+        moved_out=[c.moved_out for c in cells],
         average_spent=average,
         months_averaged=len(complete),
     )

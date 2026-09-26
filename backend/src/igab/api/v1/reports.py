@@ -423,6 +423,7 @@ async def budget_actual_report(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_moved_in=data["total_moved_in"],
+        total_moved_out=data["total_moved_out"],
         total_plan=data["total_plan"],
         total_spent=data["total_spent"],
         total_variance=data["total_variance"],
@@ -445,6 +446,7 @@ async def plan_vs_reality_report(
         categories=[PlanRealityCategory.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_moved_in=data["total_moved_in"],
+        total_moved_out=data["total_moved_out"],
         total_spent=data["total_spent"],
         chronic_count=data["chronic_count"],
     )
@@ -658,15 +660,17 @@ async def category_history_report(
             activity=activity,
             spent=spent_in_month,
             moved_in=moved_in,
+            moved_out=moved_out,
             available=None if series.in_system_group else available,
         )
-        for month, assigned, activity, available, spent_in_month, moved_in in zip(
+        for month, assigned, activity, available, spent_in_month, moved_in, moved_out in zip(
             month_list,
             series.assigned,
             series.activity,
             series.available,
             spent.spent,
             spent.moved_in,
+            spent.moved_out,
             strict=True,
         )
     ]

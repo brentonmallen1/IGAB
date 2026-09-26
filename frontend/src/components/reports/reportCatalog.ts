@@ -166,9 +166,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'categories',
     summary: "Each category's plan against what it spent.",
     counts:
-      'Plan — assigned plus money moved into the envelope — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes.',
+      'Plan — assigned plus money moved into the envelope, less money moved out — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes.',
     leavesOut:
-      'Card payment envelopes, starting balances, and categories that planned and spent nothing. Money moved out of an envelope lowers its plan.',
+      'Card payment envelopes, starting balances, and categories that planned and spent nothing.',
   },
   'category-history': {
     scope: 'categories',
@@ -176,12 +176,13 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     counts:
       "The budget page's assigned, activity and available; Spent is net of refunds, as the plan reports count it.",
     leavesOut:
-      'Money moved into the envelope is not spending; the average leaves out the month in progress.',
+      'Money moved into or out of the envelope is not spending; the average leaves out the month in progress.',
   },
   variance: {
     scope: 'categories',
     summary: 'The running total of plan minus spent.',
-    counts: "Each month's category plans — assigned plus money moved in — vs spent net of refunds.",
+    counts:
+      "Each month's category plans — assigned plus money moved in, less money moved out — vs spent net of refunds.",
     leavesOut: 'Card payment envelopes and starting balances.',
   },
   volatility: {
@@ -239,7 +240,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'categories',
     summary: "Each month's plan against that month's spending, ignoring carryover.",
     counts:
-      'Plan — assigned plus money moved in — vs spent net of refunds, per category-month. Over means past the plan by $1 and 1%.',
+      'Plan — assigned plus money moved in, less money moved out — vs spent net of refunds, per category-month. Over means past the plan by $1 and 1%.',
     leavesOut: 'Carryover from earlier months, and card payment envelopes.',
   },
   anomalies: {

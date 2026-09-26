@@ -341,8 +341,12 @@ class BudgetActualItem(ApiModel):
     #: Money moved into the envelope — a transfer from savings, a deposit
     #: filed to it (`domain.plan.plan_effect`). It raises the plan.
     moved_in: Decimal
-    #: `assigned + moved_in`, floored at zero: what `variance` is measured
-    #: against. Served so the chart never adds the two itself.
+    #: Money moved out of the envelope and not spent — a transfer to a
+    #: brokerage, a principal payment from an untagged envelope. It lowers the
+    #: plan. Non-negative.
+    moved_out: Decimal
+    #: `assigned + moved_in - moved_out`, floored at zero: what `variance` is
+    #: measured against. Served so the chart never adds them itself.
     plan: Decimal
     #: Net of refunds. Negative only when refunds beat the spending.
     spent: Decimal
@@ -358,6 +362,7 @@ class BudgetActualResponse(ApiModel):
     categories: list[BudgetActualItem]
     total_assigned: Decimal
     total_moved_in: Decimal
+    total_moved_out: Decimal
     #: The rows' plans summed; `total_plan - total_spent == total_variance`.
     total_plan: Decimal
     total_spent: Decimal
@@ -378,7 +383,9 @@ class PlanRealityCell(ApiModel):
     month: date
     assigned: Decimal
     moved_in: Decimal
-    #: `assigned + moved_in` floored at zero (`domain.plan.plan_outcome`).
+    moved_out: Decimal
+    #: `assigned + moved_in - moved_out` floored at zero
+    #: (`domain.plan.plan_outcome`).
     plan: Decimal
     spent: Decimal
     variance: Decimal
@@ -399,6 +406,7 @@ class PlanRealityCategory(ApiModel):
     months_active: int
     total_assigned: Decimal
     total_moved_in: Decimal
+    total_moved_out: Decimal
     total_spent: Decimal
     avg_overspend: Decimal
     #: `domain.plan.is_chronic`. The Guide's checkup reads this flag.
@@ -417,6 +425,7 @@ class PlanRealityResponse(ApiModel):
     categories: list[PlanRealityCategory]
     total_assigned: Decimal
     total_moved_in: Decimal
+    total_moved_out: Decimal
     total_spent: Decimal
     chronic_count: int
 
@@ -433,6 +442,7 @@ class VariancePoint(ApiModel):
     partial_month: bool
     budget_assigned: Decimal
     moved_in: Decimal
+    moved_out: Decimal
     #: The month's category plans summed, each floored at zero:
     #: `planned - actual_spent == monthly_variance`.
     planned: Decimal
@@ -1300,9 +1310,12 @@ class CategoryHistoryMonth(ApiModel):
     assigned: Decimal
     activity: Decimal
     #: Spent as every plan report counts it (`services/plan_ledger.py`): net
-    #: of refunds, and not the money moved in, which `activity` nets away.
+    #: of refunds, and not the money moved in or out, which `activity` nets
+    #: away.
     spent: Decimal
     moved_in: Decimal
+    #: Non-negative: money moved out and not spent (`domain.plan.plan_effect`).
+    moved_out: Decimal
     #: None for an income category: "Income categories do not hold money", so
     #: their `available` is a lifetime carryover the budget page never draws.
     #: Their monthly activity is meaningful and is still served. None too for
