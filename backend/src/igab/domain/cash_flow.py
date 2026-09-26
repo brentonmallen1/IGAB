@@ -22,11 +22,13 @@ Net that missed Income vs Expenses' by everything the gross sums left out.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
 from igab.domain.activity_class import ActivityClass
+from igab.domain.spending import UNCATEGORIZED as UNCATEGORIZED_NAME
+from igab.domain.spending import spent
 
 HUB = "__budget__"
 #: Income sources drawn by name; the rest are one "Other income" node, so the
@@ -48,7 +50,16 @@ CLASS_BRANCH: dict[str, tuple[str, str]] = {
     ActivityClass.SAVINGS.value: ("__savings__", "To savings accounts"),
     ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
 }
-UNCATEGORIZED = ("__uncategorized__", "Uncategorized")
+#: What spent mode reads besides spending: income on the left, and the two
+#: class trunks on the right — the classes Income vs Expenses' `net`
+#: subtracts beside spending (`money_moves.flows`). Spending itself is not
+#: here: it is `ReportService._spending_rows`, the rows every spending report
+#: counts. No other class reaches the hub. A card credit nobody filed
+#: (TRANSFER_INTERNAL, `activity_class` rule 10) was read with everything
+#: else and drawn as "Other money in", so Net ran over Income vs Expenses' by
+#: every unfiled refund on a card.
+HUB_CLASSES: tuple[str, ...] = (ActivityClass.INCOME.value, *CLASS_BRANCH)
+UNCATEGORIZED = ("__uncategorized__", UNCATEGORIZED_NAME)
 #: An income source that nets negative in the window (a clawed-back pay, a
 #: negative adjustment filed to Ready to Assign): money that left, on the right.
 INCOME_REVERSED = ("__income_reversed__", "Income reversed")
@@ -182,13 +193,13 @@ def _draw_right(
             # that net to an inflow (a return with nothing bought this window)
             # are what makes the drawn payees wider than the category, and
             # that difference is served beside them so the level balances.
-            spent = {p: -v for p, v in line.payees.items() if v < 0}
-            top, rest = _ranked(spent, PAYEES_SHOWN)
+            bought = {p: -v for p, v in line.payees.items() if v < 0}
+            top, rest = _ranked(bought, PAYEES_SHOWN)
             listed = [{"name": payee_names[p], "total": v} for p, v in top]
             if rest > 0:
                 listed.append({"name": "Other payees", "total": rest})
             category_payees[node] = listed
-            returned = sum(spent.values(), Decimal(0)) + line.net
+            returned = sum(bought.values(), Decimal(0)) + line.net
             if returned > 0:
                 category_returns[node] = {
                     "name": inflow_label(gid, line.classes),
@@ -271,10 +282,12 @@ class _Tally:
                 line.payees[key] = line.payees.get(key, Decimal(0)) + value
 
 
-def spent_diagram(rows: Sequence[FlowRow]) -> dict:
+def spent_diagram(rows: Sequence[FlowRow], spending_classes: Collection[str]) -> dict:
     """The spent-mode diagram, net, from leaf rows (no split parents, no
-    starting balances). `net` is money in less money out — Income vs
-    Expenses' `net` over the same rows."""
+    starting balances): the spending rows every spending report counts, whose
+    classes are `spending_classes` (`counted_classes`, which widens on an
+    account selection), and the `HUB_CLASSES` rows. `net` is money in less
+    money out — Income vs Expenses' `net` over the same rows."""
     d = _Diagram()
     d.node(HUB, "Budget", "budget")
     tally = _Tally()
@@ -307,11 +320,8 @@ def spent_diagram(rows: Sequence[FlowRow]) -> dict:
     money_in = sum(earned.values(), Decimal(0)) + sum(inflows.values(), Decimal(0))
     _balance(d, money_in, drawn, LEFT_OVER)
 
-    def class_net(cls: ActivityClass) -> Decimal:
-        return -sum(
-            (r.amount for r in rows if not r.is_income and r.activity_class == cls.value),
-            Decimal(0),
-        )
+    def class_net(classes: Collection[str]) -> Decimal:
+        return spent(r.amount for r in rows if not r.is_income and r.activity_class in classes)
 
     return {
         # Nothing moved: no diagram, not a lone hub.
@@ -319,9 +329,9 @@ def spent_diagram(rows: Sequence[FlowRow]) -> dict:
         "links": d.links,
         "total_income": total_income,
         "total_expense": drawn,
-        "total_spending": class_net(ActivityClass.SPENDING),
-        "total_savings": class_net(ActivityClass.SAVINGS),
-        "total_debt_principal": class_net(ActivityClass.DEBT_PRINCIPAL),
+        "total_spending": class_net(spending_classes),
+        "total_savings": class_net({ActivityClass.SAVINGS.value}),
+        "total_debt_principal": class_net({ActivityClass.DEBT_PRINCIPAL.value}),
         "total_assigned": None,
         "net": money_in - drawn,
         "category_payees": category_payees,

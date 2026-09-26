@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.domain.activity_class import basis_is_chosen
 from igab.domain.dates import complete_month_window, history_index, month_starts
 from igab.domain.money import quantize_cents
+from igab.domain.spending import UNCATEGORIZED
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
@@ -288,7 +289,7 @@ async def essentials_summary(
             key,
             {
                 "category_id": r.category_id,
-                "name": r.category_name or "Uncategorized",
+                "name": r.category_name or UNCATEGORIZED,
                 "group_name": r.group_name,
                 "total": Decimal("0"),
                 "months_with_spend": 0,

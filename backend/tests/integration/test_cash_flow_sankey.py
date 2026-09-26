@@ -657,3 +657,57 @@ async def test_net_is_income_vs_expenses_net_for_the_same_window(db_session):
     assert sankey["net"] == Decimal("1220.00")
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
     assert links[("__budget__", "g___left_over__")] == Decimal("1220.00")
+
+
+class TestSpentModeReadsTheOneSpendingDefinition:
+    """Spent mode's spending is `ReportService._spending_rows` — the rows the
+    Breakdown, Trends and every other spending report count — and its other
+    lines are the classes Income vs Expenses nets. It used to read every
+    flow row but openings and sort them by class itself, and two gaps
+    followed from that second reading."""
+
+    async def test_an_unfiled_card_credit_is_not_money_in(self, db_session):
+        """A credit on a card with no category is the card being paid down
+        (`activity_class`, rule 10) and no report counts it. The diagram drew
+        it as "Other money in", so its Net ran 50 over Income vs Expenses'."""
+        services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+        card = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card", on_budget=True
+        )
+        employer = await create_payee(db_session, budget, "Northwind Payserv")
+        start = TODAY.replace(day=1)
+        await create_transaction(db_session, budget, checking, "1000.00", start, payee=employer)
+        await create_transaction(db_session, budget, card, "-300.00", start, category=groceries)
+        await create_transaction(db_session, budget, card, "50.00", start)
+
+        reports = ReportService(db_session)
+        sankey = await reports.cash_flow_sankey(budget.id, start, TODAY, mode="spent")
+        (month,) = await reports.income_vs_expense(budget.id, months=1, today=TODAY)
+
+        assert sankey["net"] == month["net"] == Decimal("700.00")
+        assert "Other money in" not in {n["name"] for n in sankey["nodes"]}
+
+    async def test_an_account_selection_counts_what_the_breakdown_counts(self, db_session):
+        """Picking a tracked account widens what counts as spending — its fees
+        class `investment_return` (`counted_classes`). The Breakdown counted
+        the 10 fee and the diagram's Spending did not, over the same scope."""
+        services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+        brokerage = await create_account(
+            db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+        )
+        start = TODAY.replace(day=1)
+        await create_transaction(db_session, budget, checking, "-200.00", start, category=groceries)
+        await create_transaction(db_session, budget, checking, "-40.00", start)
+        await create_transaction(db_session, budget, brokerage, "-10.00", start)
+
+        reports = ReportService(db_session)
+        scope = [checking.id, brokerage.id]
+        sankey = await reports.cash_flow_sankey(
+            budget.id, start, TODAY, mode="spent", account_ids=scope
+        )
+        lines, total, _ = await reports.spending_grouped(budget.id, start, TODAY, account_ids=scope)
+
+        assert sankey["total_spending"] == total == Decimal("250.00")
+        into = {link["target"]: link["value"] for link in sankey["links"]}
+        by_name = {n["name"]: into[n["id"]] for n in sankey["nodes"] if n["type"] == "category"}
+        assert by_name == {line["name"]: line["total"] for line in lines}

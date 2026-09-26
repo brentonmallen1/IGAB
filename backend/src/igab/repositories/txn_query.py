@@ -45,6 +45,7 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
 )
+from igab.domain.spending import UNCATEGORIZED
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -311,12 +312,12 @@ GROUPABLE: dict[str, Dimension] = {
         description="Monday … Sunday.",
     ),
     "category": Dimension(
-        func.coalesce(Category.name, "Uncategorized"),
+        func.coalesce(Category.name, UNCATEGORIZED),
         needs=("category",),
         description="Envelope name.",
     ),
     "category_group": Dimension(
-        func.coalesce(CategoryGroup.name, "Uncategorized"),
+        func.coalesce(CategoryGroup.name, UNCATEGORIZED),
         needs=("category", "category_group"),
         description="The group an envelope sits in.",
     ),

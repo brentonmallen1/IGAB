@@ -51,7 +51,13 @@ from igab.domain.burn_rate import (
     burn_windows,
     days_until_zero,
 )
-from igab.domain.cash_flow import AssignedRow, FlowRow, budgeted_diagram, spent_diagram
+from igab.domain.cash_flow import (
+    HUB_CLASSES,
+    AssignedRow,
+    FlowRow,
+    budgeted_diagram,
+    spent_diagram,
+)
 
 # Aliased: `report_basics.history_window` is the per-month reports' window;
 # this one is the projection sampler's whole-week stretch of days.
@@ -851,6 +857,16 @@ class ReportService:
     ) -> dict:
         """Actual transactions, net (`domain.cash_flow.spent_diagram`).
 
+        **Spending is `_spending_rows`** — the one definition every spending
+        report reads, so a category's node is the Breakdown's line for it, the
+        Uncategorized node its Uncategorized line, and `total_spending` its
+        total, over the same account scope. The rest of the diagram is the
+        `HUB_CLASSES` rows — income, money moved to savings, debt principal —
+        the classes Income vs Expenses nets beside spending; the two reads are
+        disjoint by class. This read every flow row but openings and sorted
+        them itself: an unfiled card credit reached the hub as "Other money
+        in", and a fee on a selected brokerage was a node but not Spending.
+
         ONE row shape for every branch — income, outflow, drawn: LEAF.
         Income used to come from PARENT rows while expenses came from leaves,
         and a split straddles the two: +1,000 of pay and -300 of fees is a
@@ -863,6 +879,7 @@ class ReportService:
         (+500 into checking) is not income. Income is INCOME_ROW, which
         budgeted mode reads too.
         """
+        found = await self._spending_rows(budget_id, start_date, end_date, account_ids=account_ids)
         q = (
             join_split_parent(
                 select(
@@ -890,27 +907,45 @@ class ReportService:
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 CASH_FLOW_ROW,
-                # Neither income in nor an outflow off the budget node.
-                NOT_OPENING_BALANCE,
+                ACTIVITY_CLASS.in_(HUB_CLASSES),
             )
         )
         q, _ = account_scope(q, account_ids)
         rows = (await self.session.execute(apply_class_joins(q))).all()
+
+        def opt(value) -> str | None:
+            return str(value) if value else None
+
         return spent_diagram(
             [
                 FlowRow(
                     amount=Decimal(r.amount),
                     activity_class=r.activity_class,
                     is_income=bool(r.is_income),
-                    payee_id=str(r.payee_id) if r.payee_id else None,
+                    payee_id=opt(r.payee_id),
                     payee_name=r.payee_name,
-                    category_id=str(r.category_id) if r.category_id else None,
+                    category_id=opt(r.category_id),
                     category_name=r.category_name,
-                    group_id=str(r.group_id) if r.group_id else None,
+                    group_id=opt(r.group_id),
                     group_name=r.group_name,
                 )
                 for r in rows
             ]
+            + [
+                FlowRow(
+                    amount=Decimal(r.amount),
+                    activity_class=r.cls,
+                    is_income=False,
+                    payee_id=opt(r.payee_id),
+                    payee_name=r.payee_name,
+                    category_id=opt(r.id),
+                    category_name=r.name,
+                    group_id=opt(r.group_id),
+                    group_name=r.group_name,
+                )
+                for r in found.counted
+            ],
+            found.classes,
         )
 
     # ─── Budget vs Actual ─────────────────────────────────────────────────────
