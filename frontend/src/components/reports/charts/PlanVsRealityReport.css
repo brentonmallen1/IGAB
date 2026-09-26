@@ -8,6 +8,18 @@
   font-size: var(--font-size-sm);
 }
 
+/* The category column stays put while the months scroll under it: on a phone
+   only two or three months fit, and a column of bare figures with no name
+   beside them is unreadable. It paints the section's own surface so the
+   months slide under it rather than showing through. */
+.plan-reality__cat-header,
+.plan-reality__cat-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+}
+
 .plan-reality__cat-header {
   text-align: left;
   padding: 6px var(--spacing-sm);
@@ -20,6 +32,7 @@
 }
 
 .plan-reality__month-header {
+  vertical-align: bottom;
   padding: 6px 4px;
   color: var(--text-muted);
   font-weight: 600;
@@ -28,6 +41,20 @@
   white-space: nowrap;
   min-width: 60px;
   border-bottom: 1px solid var(--border-color);
+}
+
+/* The running month's column is month-to-date. */
+.plan-reality__so-far {
+  display: block;
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* Explains an over-plan row with no Chronic flag; not a warning. */
+.plan-reality__badge--quiet {
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .plan-reality__over-header {
@@ -121,4 +148,29 @@
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* A phone fits the name column and two or three months; the name column gives
+   up width first, and its long names ellipsize rather than push the months off. */
+@media (max-width: 768px) {
+  .plan-reality__cat-header {
+    min-width: 112px;
+  }
+
+  .plan-reality__cat-cell {
+    max-width: 128px;
+    overflow: hidden;
+  }
+
+  .plan-reality__cat-btn {
+    max-width: 112px;
+  }
+
+  /* Under the name, not beside it: beside it the badge ran out of the sticky
+     column and over the months scrolling beneath. */
+  .plan-reality__cat-cell .plan-reality__badge {
+    display: block;
+    width: max-content;
+    margin: 2px 0 0;
+  }
 }

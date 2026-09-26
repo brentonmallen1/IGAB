@@ -98,7 +98,9 @@ export function BudgetActualReport({ budgetId }: Props) {
     fullName: c.category_name,
     categoryId: c.category_id,
     group: c.category_group_name,
-    Assigned: c.assigned,
+    // The served plan — assigned plus money moved in, floored. Drawing the
+    // raw assignment put a 2,000 bill paid from savings beside a zero bar.
+    Planned: c.plan,
     Spent: c.spent,
     overspent: c.overspent,
   }))
@@ -134,7 +136,10 @@ export function BudgetActualReport({ budgetId }: Props) {
     subName: c.category_group_name,
     amount: c.spent,
     pct: c.variance_pct,
-    extra: `Assigned: ${formatMoney(c.assigned)}`,
+    extra:
+      c.moved_in !== 0
+        ? `${formatMoney(c.plan)} (${formatMoney(c.moved_in)} moved in)`
+        : formatMoney(c.plan),
   }))
 
   return (
@@ -143,13 +148,14 @@ export function BudgetActualReport({ budgetId }: Props) {
         <h2 className="report-section__title">Budget vs Actual</h2>
         <ReportInfoButton title="Budget vs Actual">
           <p>
-            Compares how much you <strong>assigned</strong> to each category versus how much you
-            actually <strong>spent</strong> in the selected date range.
+            Compares each category&apos;s <strong>plan</strong> — what you assigned, plus money
+            moved into the envelope — with what you <strong>spent</strong> in the selected dates,
+            net of refunds.
           </p>
           <p>
-            <strong>Green bars</strong> = under budget. <strong>Red bars</strong> = over budget
-            (spent more than assigned). Moving money out of an envelope lowers its plan; it is not
-            overspending.
+            <strong>Green bars</strong> = within plan. <strong>Red bars</strong> = over it by at
+            least $1 and 1%. Moving money out of an envelope lowers its plan, and moving money in —
+            a transfer from savings, a deposit filed to it — raises it; neither is spending.
           </p>
           <p>
             Use the <em>Overspent only</em> filter to focus on problem categories, and{' '}
@@ -180,6 +186,8 @@ export function BudgetActualReport({ budgetId }: Props) {
                 category: c.category_name,
                 group: c.category_group_name,
                 assigned: c.assigned,
+                moved_in: c.moved_in,
+                planned: c.plan,
                 spent: c.spent,
                 variance: c.variance,
                 variance_pct: c.variance_pct,
@@ -198,8 +206,8 @@ export function BudgetActualReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {headline && data && (
           <MetricRow>
-            <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
-            <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
+            <MetricCard label="Planned" value={formatMoney(data.total_plan)} />
+            <MetricCard label="Spent" value={formatMoney(data.total_spent)} sub="net of refunds" />
             <MetricCard label={headline.label} value={headline.value} warning={headline.over} />
           </MetricRow>
         )}
@@ -238,7 +246,7 @@ export function BudgetActualReport({ budgetId }: Props) {
                 />
                 <Legend />
                 <Bar
-                  dataKey="Assigned"
+                  dataKey="Planned"
                   fill={COLOR_NEUTRAL}
                   radius={[0, 2, 2, 0]}
                   barSize={10}
@@ -270,6 +278,8 @@ export function BudgetActualReport({ budgetId }: Props) {
                 label: 'categories',
               }}
               amountLabel="Spent"
+              pctLabel="vs plan"
+              extraLabel="Planned"
               pctAbsent={NO_PLAN}
               onRowClick={(row) => drillTo(row.id, row.name)}
             />

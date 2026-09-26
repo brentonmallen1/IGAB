@@ -43,6 +43,11 @@ interface Props {
   pctAbsent?: string
   onRowClick?: (row: DrillDownRow) => void
   amountLabel?: string
+  /** The % and extra columns' headers. They were always "%" and "Extra",
+   *  which named nothing: Volatility's two columns are a swing and a σ, and
+   *  a reader had to guess which was which. */
+  pctLabel?: string
+  extraLabel?: string
 }
 
 export function DrillDownTable({
@@ -52,6 +57,8 @@ export function DrillDownTable({
   pctAbsent = '—',
   onRowClick,
   amountLabel = 'Amount',
+  pctLabel = '%',
+  extraLabel = 'Extra',
 }: Props) {
   const { formatMoney } = useFormatters()
   if (rows.length === 0) return null
@@ -72,12 +79,12 @@ export function DrillDownTable({
             </th>
             {rows.some((r) => r.pct !== undefined) && (
               <th scope="col" className="ddt__num">
-                %
+                {pctLabel}
               </th>
             )}
             {rows.some((r) => r.extra) && (
               <th scope="col" className="ddt__num">
-                Extra
+                {extraLabel}
               </th>
             )}
           </tr>
