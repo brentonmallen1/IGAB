@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain.dates import add_months
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
@@ -238,3 +239,163 @@ async def test_a_closed_account_that_was_paid_off_says_nothing(db_session):
     report = await svc.liabilities_report(budget.id)
     assert report["closed_with_balance_count"] == 0
     assert report["closed_with_balance_total"] == Decimal("0")
+
+
+# ─── A debt that never pays off ──────────────────────────────────────────────
+
+
+async def _three_debts(db_session):
+    """Three stated debts with no payment history, so the minimum speaks for
+    each: one it never touches, one it barely covers, one it clears.
+
+    - Sapphire Visa: $10,000 at 24% — $200.00 of interest a month — on a
+      $100.00 minimum. Never.
+    - Harborstone Mortgage: $100,000 at 6% — $500.00 a month — on $500.01.
+      A cent of principal a month: the 600-month cap ends it, never paid.
+    - Jane Doe Loan: $1,000 at 12% on $400.00. Three payments and $18.26
+      of interest (`test_amortization.TestHandComputedSchedule`).
+    """
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    for name, balance, rate, minimum in (
+        ("Sapphire Visa", "10000.00", "24", "100.00"),
+        ("Harborstone Mortgage", "100000.00", "6", "500.01"),
+        ("Jane Doe Loan", "1000.00", "12", "400.00"),
+    ):
+        await create_liability(
+            db_session,
+            budget,
+            name,
+            manual_balance=Decimal(balance),
+            interest_rate=Decimal(rate),
+            minimum_payment=Decimal(minimum),
+        )
+    return make_liability_service(db_session, services), budget
+
+
+async def test_a_debt_the_minimum_never_pays_off_has_no_interest_bill(db_session):
+    """It read "Interest left $0.00" and added $0 to Interest Remaining; the
+    barely-covered one added fifty years of interest instead. Neither is what
+    is left, and `project_payoff` already said so for the observed pace."""
+    svc, budget = await _three_debts(db_session)
+
+    report = await svc.liabilities_report(budget.id, as_of=TODAY)
+    by_name = {i["name"]: i for i in report["items"]}
+
+    for never in ("Sapphire Visa", "Harborstone Mortgage"):
+        item = by_name[never]
+        assert item["total_interest_remaining"] is None, never
+        assert item["baseline_payoff_date"] is None
+        assert item["baseline_never_pays_off"] is True
+        assert item["never_pays_off"] is True
+        assert item["terms_complete"] is True
+
+    cleared = by_name["Jane Doe Loan"]
+    assert cleared["total_interest_remaining"] == Decimal("18.26")
+    assert cleared["baseline_never_pays_off"] is False
+    assert cleared["never_pays_off"] is False
+
+    # The headline is the one finite bill, and says what it left out.
+    assert report["total_interest_remaining"] == Decimal("18.26")
+    assert report["liabilities_never_paying_off"] == 2
+    assert report["liabilities_missing_terms"] == 0
+
+
+async def test_without_payment_history_the_verdict_is_the_minimums(db_session):
+    """No payments on record, so there is no pace: the verdict is the
+    minimum's, and the page must not call it "current pace"."""
+    svc, budget = await _three_debts(db_session)
+
+    report = await svc.liabilities_report(budget.id, as_of=TODAY)
+
+    assert {i["name"]: i["payoff_basis"] for i in report["items"]} == {
+        "Sapphire Visa": "minimum",
+        "Harborstone Mortgage": "minimum",
+        "Jane Doe Loan": "minimum",
+    }
+
+
+async def test_with_a_pace_the_verdict_is_the_pace_and_the_interest_the_minimums(db_session):
+    """Two months of $100 drops on a $10,000 card at 24%: the pace never
+    covers the $200 of monthly interest, while its $300 minimum would. The
+    verdict is the pace's ("at current pace" is true here); the interest,
+    like the headline it adds into, is the minimum's — finite."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    card = await create_liability(
+        db_session,
+        budget,
+        "Sapphire Visa",
+        manual_balance=Decimal("10000.00"),
+        interest_rate=Decimal("24"),
+        minimum_payment=Decimal("300.00"),
+    )
+    this_month = TODAY.replace(day=1)
+    for months_back, balance in ((3, "10200.00"), (2, "10100.00"), (1, "10000.00")):
+        await create_liability_snapshot(
+            db_session, card, add_months(this_month, -months_back), Decimal(balance)
+        )
+    svc = make_liability_service(db_session, services)
+
+    (item,) = (await svc.liabilities_report(budget.id, as_of=TODAY))["items"]
+
+    assert item["payoff_basis"] == "observed"
+    assert item["never_pays_off"] is True
+    assert item["live_payoff_date"] is None
+    assert item["baseline_never_pays_off"] is False
+    assert item["baseline_payoff_date"] is not None
+    assert item["total_interest_remaining"] is not None
+    assert item["total_interest_remaining"] > Decimal("0")
+
+
+async def test_no_terms_is_no_verdict(db_session):
+    """Unknown is not "never", and it is not a basis either."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await create_liability(
+        db_session,
+        budget,
+        "Jane Doe Loan",
+        manual_balance=Decimal("500.00"),
+        interest_rate=None,
+        minimum_payment=None,
+    )
+    svc = make_liability_service(db_session, services)
+
+    report = await svc.liabilities_report(budget.id, as_of=TODAY)
+    (item,) = report["items"]
+
+    assert item["payoff_basis"] is None
+    assert item["never_pays_off"] is False
+    assert item["baseline_never_pays_off"] is False
+    assert item["total_interest_remaining"] is None
+    assert report["liabilities_missing_terms"] == 1
+    assert report["liabilities_never_paying_off"] == 0
+
+
+async def test_the_served_report_carries_the_count_and_the_basis(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    await create_liability(
+        db_session,
+        budget,
+        "Sapphire Visa",
+        manual_balance=Decimal("10000.00"),
+        interest_rate=Decimal("24"),
+        minimum_payment=Decimal("100.00"),
+    )
+
+    resp = await api_client.get(
+        f"/api/v1/{budget.id}/reports/liabilities", params={"client_today": TODAY.isoformat()}
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    (item,) = body["items"]
+    assert item["total_interest_remaining"] is None
+    assert item["payoff_basis"] == "minimum"
+    assert item["baseline_never_pays_off"] is True
+    assert body["liabilities_never_paying_off"] == 1
+    assert Decimal(str(body["total_interest_remaining"])) == Decimal("0")

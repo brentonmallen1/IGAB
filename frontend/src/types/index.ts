@@ -870,9 +870,17 @@ export interface LiabilitiesReportItem {
   interest_rate: number | null
   baseline_payoff_date: string | null
   live_payoff_date: string | null
-  /** Null when the terms are unset — no schedule, so no interest to project */
+  /** At the minimum payment. Null when the terms are unset, and when the
+   *  minimum never retires the debt — there is no interest bill to quote
+   *  (backend `AmortizationResult.interest_to_payoff`). */
   total_interest_remaining: number | null
+  /** The minimum-payment schedule never retires the debt. */
+  baseline_never_pays_off: boolean
+  /** The payoff verdict, measured at `payoff_basis`. */
   never_pays_off: boolean
+  /** What that verdict was measured at: the pace actually paid, or the
+   *  minimum when there is no payment history. Null without terms. */
+  payoff_basis: 'observed' | 'minimum' | null
   terms_complete: boolean
 }
 
@@ -885,10 +893,12 @@ export interface LiabilitiesBalancePoint {
 export interface LiabilitiesReport {
   items: LiabilitiesReportItem[]
   total_balance: number
-  /** Sums only the rows whose terms are known */
+  /** Sums only the rows with a finite interest bill */
   total_interest_remaining: number
-  /** How many rows were left out of that total */
+  /** Rows left out of that total for want of terms */
   liabilities_missing_terms: number
+  /** Rows left out of it because their minimum never retires the debt */
+  liabilities_never_paying_off: number
   balance_over_time: LiabilitiesBalancePoint[]
   /** Owed on accounts closed with a balance still on them, excluded from
    *  `total_balance`. Net worth counts it, so the page says so rather than

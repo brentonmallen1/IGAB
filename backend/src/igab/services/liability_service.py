@@ -52,6 +52,11 @@ PAYMENT_LOOKBACK_MONTHS = 6
 
 BalanceSource = Literal["ledger", "manual", "manual_fallback", "empty", "inverted"]
 
+#: Which payment a payoff verdict is measured at: the pace the household has
+#: actually been paying (`project_payoff`, two months of history at least), or
+#: the contractual minimum when there is no such history.
+PayoffBasis = Literal["observed", "minimum"]
+
 LIABILITY_CLASSIFICATION = "liability"
 
 
@@ -651,15 +656,21 @@ class LiabilityService:
         for liability in liabilities:
             status = await self.get_status(liability, as_of=as_of)
             baseline = status.baseline
+            # The verdict is the observed pace's when there is one, else the
+            # minimum payment's — and `payoff_basis` says which, because the
+            # page said "at current pace" for both, and a debt with no payment
+            # history has no pace: the minimum was speaking.
+            #
             # Unknown is not "never". Without terms there is no schedule to ask,
             # and answering True would assert something about the user's debt
             # that nobody has told us.
+            basis: PayoffBasis | None
             if status.live is not None:
-                never = status.live.never_pays_off
+                basis, never = "observed", status.live.never_pays_off
             elif baseline is not None:
-                never = baseline.never_pays_off
+                basis, never = "minimum", baseline.never_pays_off
             else:
-                never = False
+                basis, never = None, False
             items.append(
                 {
                     "liability_id": liability.id,
@@ -670,8 +681,13 @@ class LiabilityService:
                     "interest_rate": liability.interest_rate,
                     "baseline_payoff_date": baseline.payoff_date if baseline else None,
                     "live_payoff_date": status.live.payoff_date if status.live else None,
-                    "total_interest_remaining": baseline.total_interest if baseline else None,
+                    # At the minimum payment, like the headline it adds into —
+                    # and None when the minimum never retires the debt, which
+                    # has no interest bill to quote (`interest_to_payoff`).
+                    "total_interest_remaining": baseline.interest_to_payoff if baseline else None,
+                    "baseline_never_pays_off": baseline.never_pays_off if baseline else False,
                     "never_pays_off": never,
+                    "payoff_basis": basis,
                     "terms_complete": status.terms_complete,
                 }
             )
@@ -682,10 +698,11 @@ class LiabilityService:
             per_liability_monthly[str(liability.id)] = monthly
 
         total_balance = sum((i["current_balance"] for i in items), ZERO)
-        # Only rows with terms contribute interest, so the total is a floor
-        # rather than a full figure whenever some are unset. `missing_terms`
-        # travels with it so the report can say so instead of quietly
-        # under-reporting — a balance is still a balance either way.
+        # Only rows with a finite interest bill contribute, so the total is a
+        # floor rather than a full figure whenever a row has no terms or never
+        # pays off at its minimum. Both counts travel with it so the report can
+        # say so instead of quietly under-reporting — a balance is still a
+        # balance either way.
         total_interest = sum(
             (
                 i["total_interest_remaining"]
@@ -695,6 +712,7 @@ class LiabilityService:
             ZERO,
         )
         missing_terms = sum(1 for i in items if not i["terms_complete"])
+        never_paying = sum(1 for i in items if i["baseline_never_pays_off"])
 
         points: list[dict] = []
         if per_liability_monthly:
@@ -722,6 +740,7 @@ class LiabilityService:
             "total_balance": total_balance,
             "total_interest_remaining": total_interest,
             "liabilities_missing_terms": missing_terms,
+            "liabilities_never_paying_off": never_paying,
             "balance_over_time": points,
             #: Owed on accounts closed with a balance still on them. Not in
             #: `total_balance` — it is in net worth, and the page says so
