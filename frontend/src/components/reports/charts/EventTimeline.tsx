@@ -13,7 +13,7 @@ import './EventTimeline.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
 import { activityClassTone } from '../../../utils/activityClassTone'
-import { dotSize, largestMagnitude, newestFirst } from './timelineView'
+import { dotSize, largestMagnitude, newestFirst, timelineChip } from './timelineView'
 import { TIMELINE_LIMITS } from './reportControls'
 
 interface Props {
@@ -73,8 +73,9 @@ export function TimelineReport({ budgetId }: Props) {
           <p>
             <strong>Red dots</strong> are spending; <strong>green dots</strong> are income. Money
             moved into savings or used to pay down a tracked debt gets its own colour and a label —
-            it left your budget, but it isn't spending. Transactions alternate left/right for
-            readability. Hover any dot for full details.
+            it left your budget, but it isn't spending. Amounts keep their sign: money out is
+            negative, and money back into a spending category is marked <strong>Refund</strong>.
+            Transactions alternate left/right for readability. Hover any dot for full details.
           </p>
           <ReportScopeNote report="timeline" />
         </ReportInfoButton>
@@ -133,12 +134,13 @@ export function TimelineReport({ budgetId }: Props) {
               const tone = activityClassTone(tx.activity_class)
               const size = dotSize(amt, largestAmt)
               const side = i % 2 === 0 ? 'left' : 'right'
+              const chip = timelineChip(tx)
               return (
                 <div key={tx.id} className={`timeline__event timeline__event--${side}`}>
                   <div
                     className={`timeline__dot timeline__dot--${tone}`}
                     style={{ width: size, height: size }}
-                    title={`${tx.date} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(Math.abs(amt))}`}
+                    title={`${tx.date} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(amt)}`}
                   />
                   <div
                     className={`timeline__card timeline__card--${side} ${tx.payee_name && payeeIdByName.has(tx.payee_name) ? 'timeline__card--clickable' : ''}`}
@@ -150,12 +152,10 @@ export function TimelineReport({ budgetId }: Props) {
                       <div className="timeline__category">{tx.category_name}</div>
                     )}
                     <div className={`timeline__amount timeline__amount--${tone}`}>
-                      {formatMoney(Math.abs(amt))}
-                      {/* Label served with the row, so a class added later
-                        cannot silently lose its chip here. */}
-                      {tx.activity_class !== 'spending' && (
-                        <span className="timeline__class">{tx.activity_label}</span>
-                      )}
+                      {/* Signed: the tone is the class's, so without the
+                        sign a refund read as a purchase of the same size. */}
+                      {formatMoney(amt)}
+                      {chip && <span className="timeline__class">{chip}</span>}
                     </div>
                     {tx.memo && <div className="timeline__memo">{tx.memo}</div>}
                   </div>

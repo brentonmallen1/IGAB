@@ -29,6 +29,7 @@ from igab.db.models import (
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     INCOME_ROW,
+    NOT_OPENING_BALANCE,
     ActivityClass,
     apply_class_joins,
     counted_class_filter,
@@ -934,12 +935,8 @@ class ReportService:
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 CASH_FLOW_ROW,
-                # A starting balance is where an account's counting begins, not
-                # money that flowed: neither income in nor an outflow off the
-                # budget node. Left in, a card's opening debt was an
-                # "Uncategorized" expense branch here after every spending
-                # report had stopped counting it.
-                ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value,
+                # Neither income in nor an outflow off the budget node.
+                NOT_OPENING_BALANCE,
             )
         )
         q, _ = account_scope(q, account_ids)
@@ -2094,6 +2091,9 @@ class ReportService:
                 # Timeline is parent-centric: one entry per real purchase.
                 PARENT_ROW,
                 CASH_FLOW_ROW,
+                # Every class is drawn, but an opening is not a transaction
+                # anybody made.
+                NOT_OPENING_BALANCE,
             )
         )
         # `in_category_scope`, not `scoped`: a split parent carries no

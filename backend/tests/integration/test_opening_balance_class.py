@@ -478,6 +478,23 @@ class TestTheReportsThisMonth:
         assert len(rows) == 1
         assert openings[0].id not in {r.id for r in rows}
 
+    async def test_the_timeline_draws_no_opening(self, db_session):
+        """The timeline draws every class, so it has to leave openings out by
+        name: a card's opening debt was its "Largest Transaction" card, and a
+        checking account's opening deposit sat beside the paycheck."""
+        budget, openings = await _household(db_session, _today())
+        today = _today()
+        rows = await ReportService(db_session).large_transactions(
+            budget.id, today.replace(day=1), today
+        )
+        assert sorted(D(str(r["amount"])) for r in rows) == [
+            D("-400.00"),
+            D("-150.00"),
+            D("3000.00"),
+        ]
+        assert {r["id"] for r in rows}.isdisjoint({str(o.id) for o in openings})
+        assert all(r["payee_name"] != STARTING_BALANCE_PAYEE for r in rows)
+
 
 def _last_month() -> date:
     """Day 6 of last month: inside the last complete month whatever today is."""

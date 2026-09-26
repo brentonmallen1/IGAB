@@ -728,6 +728,17 @@ INCOME_ROW = and_(
     ACTIVITY_CLASS == ActivityClass.INCOME.value,
 )
 
+#: Every row but an account's starting balance, for a report that lists or
+#: draws rows of every class rather than counting a chosen few. Apply
+#: `apply_class_joins` with it.
+#:
+#: A starting balance is where an account's counting begins, not money that
+#: moved. The class-counting reports leave it out by never asking for it; the
+#: two that take every class have to say so. The Cash Flow Sankey drew a card's
+#: opening debt as an "Uncategorized" expense branch, and the Event Timeline
+#: made a card's -9,200 opening its "Largest Transaction".
+NOT_OPENING_BALANCE = ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value
+
 
 # ─── The previous implementation, kept as a test oracle ──────────────────────
 #

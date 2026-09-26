@@ -999,6 +999,44 @@ describe('IncomeSourcesReport average', () => {
   })
 })
 
+describe('TimelineReport amounts', () => {
+  it('keeps the sign, and names money back into a spending envelope', () => {
+    setQuery({
+      data: {
+        transactions: [
+          {
+            id: 't1',
+            date: '2026-08-14',
+            amount: 5000,
+            payee_name: 'Harborstone Roofing',
+            category_name: 'Home Repair',
+            memo: null,
+            activity_class: 'spending',
+            activity_label: 'Spending',
+          },
+          {
+            id: 't2',
+            date: '2026-08-10',
+            amount: -250,
+            payee_name: 'Corner Market',
+            category_name: 'Groceries',
+            memo: null,
+            activity_class: 'spending',
+            activity_label: 'Spending',
+          },
+        ],
+        class_excluded: [],
+        filter_unavailable: false,
+      },
+    })
+    renderReport(<TimelineReport budgetId="b1" />)
+    const refund = screen.getByText('Harborstone Roofing').closest('.timeline__card')!
+    expect(refund.querySelector('.timeline__amount')?.textContent).toBe('$5,000.00Refund')
+    const purchase = screen.getByText('Corner Market').closest('.timeline__card')!
+    expect(purchase.querySelector('.timeline__amount')?.textContent).toBe('-$250.00')
+  })
+})
+
 describe('SpendingTrendsReport legend', () => {
   it('lists the stack in order, Other last, in its own key rather than recharts’', () => {
     // Twelve categories: ten named, two in Other. recharts' <Legend> sorted
