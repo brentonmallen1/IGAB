@@ -23,6 +23,7 @@ import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { incomeSourceCount, otherIncome } from './incomeSourcesView'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
 
 interface Props {
   budgetId: string
@@ -111,13 +112,8 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                 data={chartData}
                 margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 // A payee's month can be negative — a reconciliation
-                // adjustment filed to Ready to Assign is income by class. With
-                // recharts' default offset ("none") that segment is drawn
-                // downwards from the top of the one below it, painting over it
-                // and leaving the bar's top at the month's gross rather than
-                // its net. "sign" puts negative segments below the axis, where
-                // they read as what they are.
-                stackOffset="sign"
+                // adjustment filed to Ready to Assign is income by class.
+                {...MIXED_SIGN_STACK}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />

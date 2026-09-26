@@ -20,6 +20,7 @@ import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NET, chartColor } from './chartColors'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
@@ -96,16 +97,13 @@ export function AccountCompositionReport({ budgetId }: Props) {
           <div className="reports-empty">No account data available.</div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            {/* stackOffset="sign" is load-bearing: the default ("none")
-                accumulates mixed signs naively, so a negative series walked
-                the stack back DOWN and the debt band rendered inside the
-                asset band — the exact opposite of the subtitle's promise.
-                Sign-based is also the correct rule: an overdrawn checking
-                account genuinely belongs below the line, which splitting by
-                classification would get wrong. */}
+            {/* Debt balances are negative: without the sign offset the debt
+                band walked the stack back down and rendered inside the asset
+                band. By sign rather than by classification, because an
+                overdrawn checking account genuinely belongs below the line. */}
             <ComposedChart
               data={chartData}
-              stackOffset="sign"
+              {...MIXED_SIGN_STACK}
               margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
