@@ -73,7 +73,7 @@ export function treemapGroups(items: readonly Item[]): Map<string, TreemapGroup>
     const gid = groupKey(item)
     let g = map.get(gid)
     if (!g) {
-      g = { name: item.parent_name ?? 'Other', total: 0, colorIdx: map.size, children: [] }
+      g = { name: item.parent_name, total: 0, colorIdx: map.size, children: [] }
       map.set(gid, g)
       members.set(gid, [])
     }

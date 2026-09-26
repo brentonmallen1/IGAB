@@ -23,7 +23,7 @@ interface SpendingGroupItemLike {
   name: string
   total: string | number
   parent_id: string | null
-  parent_name: string | null
+  parent_name: string
 }
 
 interface PayeeItemLike {
@@ -102,7 +102,7 @@ export function buildParetoItems(
       } else {
         map.set(gid, {
           id: gid,
-          name: item.parent_name ?? 'Uncategorized',
+          name: item.parent_name,
           total: Number(item.total),
           members: [item.id],
         })

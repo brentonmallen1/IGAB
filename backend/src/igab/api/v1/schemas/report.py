@@ -493,7 +493,11 @@ class SpendingGroupItem(ApiModel):
     #: categories a view has not placed. Typing it as a UUID made that last
     #: case a 500 the moment a view left anything unplaced.
     parent_id: str | None
-    parent_name: str | None
+    #: Always named — the Uncategorized line's group is
+    #: `domain.spending.UNCATEGORIZED` — so the page never names a group
+    #: itself. It was optional, and three charts each chose a name for a null
+    #: the server never sent: "Uncategorized", "Other" and "Ungrouped".
+    parent_name: str
     total: Decimal
     count: int
     pct: float

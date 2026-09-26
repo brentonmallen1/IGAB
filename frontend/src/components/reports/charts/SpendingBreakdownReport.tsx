@@ -51,7 +51,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
     const items = data?.groups ?? []
     for (const it of items) {
       const key = it.parent_id ?? '__none__'
-      const g = by.get(key) ?? { key, name: it.parent_name ?? 'Ungrouped', total: 0, items: [] }
+      const g = by.get(key) ?? { key, name: it.parent_name, total: 0, items: [] }
       g.total += it.total
       g.items.push(it)
       by.set(key, g)
@@ -105,7 +105,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
             reportId="spending-breakdown"
             getRows={() =>
               (data.groups ?? []).map((it) => ({
-                group: it.parent_name ?? '',
+                group: it.parent_name,
                 category: it.name,
                 total: it.total,
                 pct: it.pct,

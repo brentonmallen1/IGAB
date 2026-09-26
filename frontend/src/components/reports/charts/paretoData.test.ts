@@ -44,21 +44,6 @@ describe('buildParetoItems', () => {
     expect(grandTotal).toBe(1000)
   })
 
-  it('group mode buckets parentless categories as Uncategorized', () => {
-    const orphan = [{ id: 'c9', name: 'Misc', total: '50', parent_id: null, parent_name: null }]
-    const { sorted } = buildParetoItems('group', orphan, '0', undefined)
-    expect(sorted).toEqual([
-      {
-        id: '__none__',
-        name: 'Uncategorized',
-        total: 50,
-        groupKey: '__none__',
-        groupName: null,
-        members: ['c9'],
-      },
-    ])
-  })
-
   it('the served Uncategorized line is a bar that opens by "no category"', () => {
     // The grouped rollup used to leave uncategorized spending out; it is a
     // line of its own now, served with no id.

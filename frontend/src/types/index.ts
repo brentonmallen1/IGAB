@@ -1154,7 +1154,9 @@ export interface SpendingGroupItem {
   id: string | null
   name: string
   parent_id: string | null
-  parent_name: string | null
+  /** Always named, the Uncategorized line's group too (server
+   *  `domain/spending.py`): the page never names a group itself. */
+  parent_name: string
   total: number
   count: number
   pct: number

@@ -134,7 +134,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             getRows={() =>
               items.map((item) => ({
                 category: item.name,
-                group: item.parent_name ?? '',
+                group: item.parent_name,
                 total: item.total,
                 pct: item.pct,
                 count: item.count,
