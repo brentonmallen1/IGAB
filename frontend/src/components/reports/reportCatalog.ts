@@ -149,10 +149,10 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'cash-flow': {
     scope: 'on-budget-filterable',
-    summary: 'A Sankey of income flowing into spending, spent or budgeted.',
+    summary: 'Where the money went: what came in, and where it went, spent or budgeted.',
     counts:
-      'Income into spending by group, with a debt trunk and a To savings accounts trunk of money moved to savings — not what envelopes hold.',
-    leavesOut: 'Transfers between budget accounts.',
+      'Income, refunds, money drawn from savings and borrowing on the left; spending by group, money moved to savings accounts and debt payments on the right — each net, with Left over or Shortfall making the two sides equal.',
+    leavesOut: 'Transfers between budget accounts, and starting balances.',
   },
   projection: {
     scope: 'cash-projection',
@@ -228,8 +228,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   subscriptions: {
     scope: 'on-budget',
     summary: 'What your subscriptions cost, monthly and annually.',
-    counts: 'Charges in Subscription-tagged categories, per category and per payee.',
-    leavesOut: 'Untagged categories and the month in progress.',
+    counts:
+      'Charges less refunds in Subscription-tagged categories over the last 12 complete months, per category and per service.',
+    leavesOut: 'Untagged categories, and services with no charge for one and a half cycles.',
   },
   'plan-reality': {
     scope: 'categories',

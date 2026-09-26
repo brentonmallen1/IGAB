@@ -817,13 +817,16 @@ async def subscriptions_report(
     today: ReaderToday,
     months: ReportMonths = 12,
 ) -> SubscriptionsReportResponse:
-    """Recurring charges filed to categories tagged 'subscription', by category."""
+    """Recurring charges filed to categories tagged 'subscription', by category,
+    with what each service costs a year (`domain.subscriptions`)."""
     data = await subscriptions_report_data(report_svc.session, budget_id, months, today)
     return SubscriptionsReportResponse(
         subscriptions=[SubscriptionCategory.model_validate(s) for s in data["subscriptions"]],
         summary=SubscriptionsSummary.model_validate(data["summary"]),
         months=data["months"],
-        months_averaged=data["months_averaged"],
+        monthly_totals=data["monthly_totals"],
+        year_start=data["year_start"],
+        year_end=data["year_end"],
     )
 
 

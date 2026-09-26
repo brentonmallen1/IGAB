@@ -170,9 +170,17 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
         "33.33"
     )
 
-    # Flow conservation: budget outflows account for every expense dollar
-    budget_outflows = sum(v for (src, _), v in links.items() if src == "__budget__")
-    assert budget_outflows == sankey["total_expense"]
+    # Flow conservation: the groups account for every expense dollar, and
+    # what was not spent is Left over — so the two sides of the hub balance.
+    groups = sum(
+        v for (src, dst), v in links.items() if src == "__budget__" and dst != "g___left_over__"
+    )
+    assert groups == sankey["total_expense"]
+    assert links[("__budget__", "g___left_over__")] == Decimal("3000.00") - Decimal("583.33")
+    into = sum(v for (_, dst), v in links.items() if dst == "__budget__")
+    out = sum(v for (src, _), v in links.items() if src == "__budget__")
+    assert into == out
+    assert sankey["net"] == Decimal("3000.00") - Decimal("583.33")
 
     names = {n["id"]: n["name"] for n in sankey["nodes"]}
     assert names["g___uncategorized__"] == "Uncategorized"
@@ -223,7 +231,7 @@ async def test_spent_mode_account_filter(db_session):
     assert sankey["total_expense"] == Decimal("50.00")
 
 
-async def test_budgeted_mode_draws_positive_assignments_only(db_session):
+async def test_budgeted_mode_nets_assignments_per_category(db_session):
     services, budget, checking, everyday, groceries, gas = await _setup(db_session)
     dining = await create_category(db_session, budget, everyday, "Dining")
     zeroed = await create_category(db_session, budget, everyday, "Zeroed")
@@ -251,9 +259,14 @@ async def test_budgeted_mode_draws_positive_assignments_only(db_session):
     assert sankey["total_expense"] == Decimal("700.00")
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
     assert links[("__budget__", f"g_{everyday.id}")] == Decimal("700.00")
-    assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("500.00")
-    assert links[(f"g_{everyday.id}", f"c_{gas.id}")] == Decimal("200.00")
-    assert len(links) == 3
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{groceries.id}")] == Decimal("500.00")
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{gas.id}")] == Decimal("200.00")
+    # Dining's -50 is re-planned money (it gave up what another took), and
+    # the rest came out of Ready to Assign: 700 = 650 + 50.
+    assert links[("drawn_replanned", "__budget__")] == Decimal("50.00")
+    assert links[("drawn_ready_to_assign", "__budget__")] == Decimal("650.00")
+    assert sankey["total_assigned"] == Decimal("650.00")
+    assert len(links) == 5
     assert sankey["category_payees"] == {}
 
 
@@ -276,7 +289,7 @@ async def test_budgeted_mode_account_filter_applies_to_income(db_session):
     # Assignment flows are budget-level and stay unfiltered
     assert sankey["total_expense"] == Decimal("500.00")
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
-    assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("500.00")
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{groceries.id}")] == Decimal("500.00")
 
 
 async def test_budgeted_mode_sums_across_months(db_session):
@@ -291,7 +304,7 @@ async def test_budgeted_mode_sums_across_months(db_session):
 
     assert sankey["total_expense"] == Decimal("1000.00")
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
-    assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("1000.00")
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{groceries.id}")] == Decimal("1000.00")
 
 
 async def test_budgeted_mode_counts_income_by_class_not_sign(db_session):
@@ -575,6 +588,11 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
     await create_transaction(
         db_session, budget, checking, "-60.00", TODAY - timedelta(days=3), category=groceries
     )
+    # A refund: the node is net, so its drill lists the refund too — an
+    # outflow-only drill totalled 60 under a 45 node.
+    await create_transaction(
+        db_session, budget, checking, "15.00", TODAY - timedelta(days=2), category=groceries
+    )
 
     sankey = await ReportService(db_session).cash_flow_sankey(budget.id, START, TODAY, mode="spent")
     into = {link["target"]: link["value"] for link in sankey["links"]}
@@ -592,7 +610,6 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
             start_date=START,
             end_date=TODAY,
             scope="leaf",
-            direction="outflow",
             posted_only=True,
             cash_flow_only=True,
             activity_classes=node["activity_classes"],
@@ -602,3 +619,41 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
         assert -total == into[node["id"]], node["name"]
     # The 80 after the start date; the 30 before it was 110 here.
     assert into[pseudo["Uncategorized"]["id"]] == Decimal("80.00")
+    assert into[f"c_{everyday.id}_{groceries.id}"] == Decimal("45.00")
+
+
+async def test_net_is_income_vs_expenses_net_for_the_same_window(db_session):
+    """The Net card disagreed with Income vs Expenses over the same month:
+    spent mode dropped refunds, money drawn back out of savings and new
+    borrowing, and the client subtracted gross outflows from income. Both now
+    read one netting — each class's signed total."""
+    services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+    hysa = await create_account(
+        db_session, budget, "Cascade Point HYSA", account_type="savings", on_budget=False
+    )
+    card_loan = await create_account(
+        db_session, budget, "Harborstone Auto Loan", account_type="loan", on_budget=False
+    )
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    start = TODAY.replace(day=1)
+    await create_transaction(db_session, budget, checking, "4000.00", start, payee=employer)
+    await create_transaction(db_session, budget, checking, "-900.00", start, category=groceries)
+    await create_transaction(db_session, budget, checking, "120.00", start, category=groceries)
+    await create_transaction(db_session, budget, checking, "-300.00", start, category=gas)
+    await create_transfer(db_session, budget, checking, hysa, "1500.00", start)
+    await create_transfer(db_session, budget, hysa, checking, "400.00", start)
+    await create_transfer(db_session, budget, checking, card_loan, "600.00", start)
+
+    reports = ReportService(db_session)
+    sankey = await reports.cash_flow_sankey(budget.id, start, TODAY, mode="spent")
+    (month,) = await reports.income_vs_expense(budget.id, months=1, today=TODAY)
+
+    assert sankey["net"] == month["net"]
+    assert sankey["total_income"] == month["income"]
+    assert sankey["total_spending"] == month["expenses"]
+    assert sankey["total_savings"] == month["savings_moved"] == Decimal("1100.00")
+    assert sankey["total_debt_principal"] == month["debt_principal"]
+    # 4000 − 1080 − 1100 − 600.
+    assert sankey["net"] == Decimal("1220.00")
+    links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
+    assert links[("__budget__", "g___left_over__")] == Decimal("1220.00")

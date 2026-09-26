@@ -1,28 +1,29 @@
 import { Fragment, useState, useMemo, useRef } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useSubscriptionsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
+import { ChartLegend } from './ChartLegend'
 import { ReportRangeSelect } from './rangeSelect'
-import { useReportMonths } from '../../../stores/reportStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { averagedSinceEachFirstCharge } from './averagedOver'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
+import { stackTrends } from './spendingTrends'
+import {
+  activeCard,
+  annualSub,
+  basisNote,
+  cadenceLabel,
+  serviceDrill,
+  subscriptionTrendRows,
+} from './subscriptionsView'
+import './SubscriptionsReport.css'
 
 interface Props {
   budgetId: string
@@ -32,27 +33,24 @@ export function SubscriptionsReport({ budgetId }: Props) {
   const { formatMoney, formatDate, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
+  const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Which series the legend points at: the palette repeats past eight.
+  const [highlight, setHighlight] = useState<string | null>(null)
   const { data, isLoading, isError, error, refetch } = useSubscriptionsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const subscriptions = useMemo(() => data?.subscriptions ?? [], [data])
-  const summary = data?.summary
-  const monthLabels = useMemo(() => data?.months ?? [], [data])
-
-  const chartData = useMemo(() => {
-    if (!monthLabels.length || !subscriptions.length) return []
-
-    return monthLabels.map((monthStr, idx) => {
-      const entry: Record<string, string | number> = { month: formatMonthShort(monthStr) }
-
-      for (const sub of subscriptions) {
-        entry[sub.category_name] = sub.monthly_amounts[idx] ?? 0
-      }
-
-      return entry
-    })
-  }, [monthLabels, subscriptions, formatMonthShort])
+  // Ten categories by name and an Other band, so every bar stands at its
+  // month's served total — the chart stacked the ten largest and dropped the
+  // rest, under recharts' own legend of chips.
+  const stacked = useMemo(
+    () =>
+      data
+        ? stackTrends(data, subscriptionTrendRows(data.subscriptions), formatMonthShort)
+        : { rows: [], series: [] },
+    [data, formatMonthShort]
+  )
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
@@ -60,6 +58,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const hasData = subscriptions.length > 0
+  const summary = data?.summary
+  const active = summary ? activeCard(summary) : null
 
   return (
     <div className="report-section surface">
@@ -67,23 +67,26 @@ export function SubscriptionsReport({ budgetId }: Props) {
         <h2 className="report-section__title">Subscriptions</h2>
         <ReportInfoButton title="Subscriptions">
           <p>
-            This report shows every charge filed to a category you&apos;ve tagged{' '}
-            <strong>Subscription</strong>, one line per category. Open a row to see which services
-            inside it are charging.
+            Every charge filed to a category you&apos;ve tagged <strong>Subscription</strong>, one
+            line per category. Open a row to see the services inside it; click a service to list its
+            charges.
           </p>
           <p>
-            To track subscriptions, open the category they are filed to (Streaming, Software…) on
-            the Budget page and add the Subscription tag in the panel that opens. The tag is a
-            reserved system tag and cannot be deleted.
+            <strong>Annual</strong> is what each service charged over the last 12 complete months,
+            less refunds — whatever range you pick, which moves only the chart.{' '}
+            <strong>Monthly</strong> is Annual ÷ 12. Two kinds of service are projected instead,
+            from their latest charge: one first charged within the year (latest charge × the charges
+            a year its cadence makes — a single charge has no cadence yet, so it counts once), and
+            one whose new price has been charged twice (the year&apos;s charges at the new price).
           </p>
           <p>
-            <strong>Monthly (effective)</strong> spreads each subscription's cost over the COMPLETE
-            months since its first charge — a quarterly $30 subscription reads as about $10/mo. The
-            month in progress is left out of the window, or every figure here would read at its
-            lowest on the 2nd of the month and <strong>Annual</strong> would multiply that by
-            twelve. A category&apos;s Monthly is the sum of the services inside it, and the figure
-            at the top is the sum of the categories, so every row adds up to the one above it.{' '}
-            <strong>Per Charge</strong> is the typical amount of a single charge.
+            A service with no charge for one and a half cycles — two weeks late on a monthly bill,
+            six months on a yearly one — is <strong>stopped</strong>: still listed, counted in
+            nothing. Cash Projection stops projecting it by the same rule.
+          </p>
+          <p>
+            To track subscriptions, open the category they are filed to on the Budget page and add
+            the Subscription tag.
           </p>
           <ReportScopeNote report="subscriptions" />
         </ReportInfoButton>
@@ -97,21 +100,23 @@ export function SubscriptionsReport({ budgetId }: Props) {
               subscriptions.flatMap((s) => [
                 {
                   category: s.category_name,
-                  payee: '',
-                  avg_monthly: s.avg_monthly,
-                  avg_per_charge: s.avg_per_charge,
-                  total: s.total,
-                  transaction_count: s.transaction_count,
-                  last_charge: s.last_charge_date ?? '',
+                  service: '',
+                  basis: '',
+                  cadence: '',
+                  latest_charge: '',
+                  monthly: s.monthly,
+                  annual: s.annual,
+                  last_charge: s.last_charge_date,
                 },
-                ...s.payees.map((p) => ({
+                ...s.services.map((v) => ({
                   category: s.category_name,
-                  payee: p.payee_name,
-                  avg_monthly: p.avg_monthly,
-                  avg_per_charge: p.avg_per_charge,
-                  total: p.total,
-                  transaction_count: p.transaction_count,
-                  last_charge: p.last_charge_date ?? '',
+                  service: v.payee_name,
+                  basis: v.basis,
+                  cadence: cadenceLabel(v),
+                  latest_charge: v.latest_charge,
+                  monthly: v.monthly,
+                  annual: v.annual,
+                  last_charge: v.last_charge_date,
                 })),
               ])
             }
@@ -120,7 +125,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
         </div>
       </div>
 
-      {!hasData ? (
+      {!hasData || !data || !summary || !active ? (
         <div className="reports-empty">
           <p>No subscriptions tracked yet.</p>
           <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
@@ -133,24 +138,24 @@ export function SubscriptionsReport({ budgetId }: Props) {
           <MetricRow>
             <MetricCard
               label="Monthly"
-              value={formatMoney(summary?.total_monthly ?? 0)}
-              sub={data ? averagedSinceEachFirstCharge(data.months_averaged) : 'effective'}
+              value={formatMoney(summary.total_monthly)}
+              sub="Annual ÷ 12"
             />
             <MetricCard
               label="Annual"
-              value={formatMoney(summary?.total_annual ?? 0)}
-              sub="projected"
+              value={formatMoney(summary.total_annual)}
+              sub={annualSub(summary)}
             />
-            <MetricCard
-              label="Active"
-              value={String(summary?.active_count ?? 0)}
-              sub="subscriptions"
-            />
+            <MetricCard label="Active" value={active.value} sub={active.sub} />
           </MetricRow>
 
           <div className="report-chart" style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <BarChart
+                data={stacked.rows}
+                {...MIXED_SIGN_STACK}
+                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis
                   dataKey="month"
@@ -165,9 +170,9 @@ export function SubscriptionsReport({ budgetId }: Props) {
                   tickLine={false}
                 />
                 <Tooltip
-                  content={({ active, payload, label }) => (
+                  content={({ active: on, payload, label }) => (
                     <ChartTooltip
-                      active={active}
+                      active={on}
                       payload={payload?.map((p) => ({
                         name: String(p.name ?? ''),
                         value: Number(p.value ?? 0),
@@ -175,46 +180,58 @@ export function SubscriptionsReport({ budgetId }: Props) {
                         fill: p.fill,
                       }))}
                       label={String(label ?? '')}
+                      showTotal
                       formatter={formatMoney}
                     />
                   )}
                 />
-                <Legend />
-                {subscriptions.slice(0, 10).map((sub, idx) => (
+                {stacked.series.map((s) => (
                   <Bar
-                    key={sub.category_id}
-                    dataKey={sub.category_name}
+                    key={s.key}
+                    dataKey={s.key}
+                    name={s.name}
                     stackId="stack"
-                    fill={chartColor(idx)}
+                    fill={s.color}
+                    fillOpacity={highlight && highlight !== s.name ? 0.25 : 1}
+                    isAnimationActive={false}
                   />
                 ))}
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <ChartLegend
+            series={stacked.series.map((s) => ({
+              name: s.name,
+              color: s.color,
+              value: formatMoney(s.total),
+            }))}
+            active={highlight}
+            onHover={setHighlight}
+          />
 
           <table className="report-table">
             <caption className="sr-only">
-              Recurring charges by category, expandable to the payees inside each one
+              What each subscription costs, by category, expandable to the services inside
             </caption>
             <thead>
               <tr>
                 <th scope="col" style={{ textAlign: 'left' }}>
                   Category
                 </th>
-                <th scope="col" style={{ textAlign: 'right' }}>
-                  Per Charge
+                <th scope="col" style={{ textAlign: 'left' }}>
+                  Every
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
-                  Monthly (effective)
+                  Latest
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
-                  Total
+                  Monthly
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
-                  Charges
+                  Annual
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
-                  Last Charge
+                  Last charge
                 </th>
               </tr>
             </thead>
@@ -242,27 +259,54 @@ export function SubscriptionsReport({ budgetId }: Props) {
                           <span className="subs-report__group">{sub.group_name}</span>
                         </button>
                       </td>
-                      <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_per_charge)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_monthly)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatMoney(sub.total)}</td>
-                      <td style={{ textAlign: 'right' }}>{sub.transaction_count}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        {sub.last_charge_date ? formatDate(sub.last_charge_date) : '—'}
+                      <td />
+                      <td />
+                      <td className="tabular" style={{ textAlign: 'right' }}>
+                        {formatMoney(sub.monthly)}
                       </td>
+                      <td className="tabular" style={{ textAlign: 'right' }}>
+                        {formatMoney(sub.annual)}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{formatDate(sub.last_charge_date)}</td>
                     </tr>
                     {open &&
-                      sub.payees.map((p) => (
-                        <tr key={p.payee_id ?? '__none__'} className="subs-report__payee">
-                          <td>{p.payee_name}</td>
-                          <td style={{ textAlign: 'right' }}>{formatMoney(p.avg_per_charge)}</td>
-                          <td style={{ textAlign: 'right' }}>{formatMoney(p.avg_monthly)}</td>
-                          <td style={{ textAlign: 'right' }}>{formatMoney(p.total)}</td>
-                          <td style={{ textAlign: 'right' }}>{p.transaction_count}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            {p.last_charge_date ? formatDate(p.last_charge_date) : '—'}
-                          </td>
-                        </tr>
-                      ))}
+                      sub.services.map((v) => {
+                        const drill = serviceDrill(sub, v, data)
+                        const note = basisNote(v)
+                        return (
+                          <tr
+                            key={v.payee_id ?? '__none__'}
+                            className={`subs-report__service${v.basis === 'stopped' ? ' is-stopped' : ''}`}
+                          >
+                            <td>
+                              {drill ? (
+                                <button
+                                  type="button"
+                                  className="subs-report__drill"
+                                  onClick={() => setDrillDown(drill)}
+                                  aria-label={`List charges from ${v.payee_name}`}
+                                >
+                                  {v.payee_name}
+                                </button>
+                              ) : (
+                                v.payee_name
+                              )}
+                              {note && <span className="subs-report__note">{note}</span>}
+                            </td>
+                            <td>{cadenceLabel(v)}</td>
+                            <td className="tabular" style={{ textAlign: 'right' }}>
+                              {formatMoney(v.latest_charge)}
+                            </td>
+                            <td className="tabular" style={{ textAlign: 'right' }}>
+                              {formatMoney(v.monthly)}
+                            </td>
+                            <td className="tabular" style={{ textAlign: 'right' }}>
+                              {formatMoney(v.annual)}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>{formatDate(v.last_charge_date)}</td>
+                          </tr>
+                        )
+                      })}
                   </Fragment>
                 )
               })}

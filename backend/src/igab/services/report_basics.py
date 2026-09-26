@@ -17,7 +17,6 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, TypedDict
 
-import polars as pl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +43,7 @@ from igab.domain.money import quantize_cents
 from igab.domain.money_moves import flows
 from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
 from igab.domain.spending import UNCATEGORIZED, spent
+from igab.domain.subscriptions import Basis, service_cost
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
@@ -461,129 +461,97 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     return rows
 
 
-class RecurringSpend(TypedDict):
-    """What a recurring line costs, whoever or whatever it is attached to.
-    One shape for a category and for a payee inside one, so it is written
-    once and applied at both levels.
+class SubscriptionServiceRow(TypedDict):
+    """One service — a payee inside a Subscription-tagged category — and what
+    it costs a year (`domain.subscriptions.service_cost`)."""
 
-    One figure is not a second walk over the category's rows: `avg_monthly`
-    on a category is the SUM of its payees' (see `subscriptions_report`), so
-    the nested table adds up. Everything else here is the same arithmetic at
-    both levels."""
-
-    monthly_amounts: list[Decimal]
-    total: Decimal
-    avg_monthly: Decimal
-    avg_per_charge: Decimal
-    last_charge_date: date | None
-    transaction_count: int
-
-
-class SubscriptionPayeeRow(RecurringSpend):
     payee_id: str | None
     payee_name: str
+    basis: str
+    annual: Decimal
+    monthly: Decimal
+    interval_days: int
+    cadence: str
+    cadence_assumed: bool
+    latest_charge: Decimal
+    first_charge_date: date
+    last_charge_date: date
+    charges_in_year: int
+    refunded_in_year: Decimal
 
 
-class SubscriptionRow(RecurringSpend):
+class SubscriptionRow(TypedDict):
     category_id: str
     category_name: str
     group_name: str
-    #: The services inside the envelope, biggest first. The category is the
-    #: headline because the tag is on categories; the payees are how you find
-    #: which one grew.
-    payees: list[SubscriptionPayeeRow]
+    #: The sum of its services' Annual; Monthly is that ÷ 12.
+    annual: Decimal
+    monthly: Decimal
+    #: Net charges per month of the chosen range, for the chart. The range
+    #: decides only this: Annual reads its own year whatever the picker says.
+    monthly_amounts: list[Decimal]
+    total: Decimal
+    last_charge_date: date
+    #: The services inside the envelope, costliest first. The category is the
+    #: headline because the tag is on categories; the services are how you
+    #: find which one grew — and which one stopped.
+    services: list[SubscriptionServiceRow]
 
 
-def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSpend:
-    """The per-line arithmetic, for a category or one payee inside it.
-
-    avg_monthly is the monthly burden: the total spread over the months
-    since the FIRST charge of THIS frame, not the average charged month — a
-    quarterly $30 subscription costs about $10/mo, not $30/mo. Which is why a
-    category's figure is the sum of its payees' rather than this function's
-    answer for the whole envelope: one divisor per envelope would start every
-    service at the envelope's oldest charge and lose the newest one. See
-    `subscriptions_report`.
-
-    "About", deliberately. The window's end can fall mid-cycle, and then the
-    last charge is counted whole while only part of the period it pays for is
-    in the divisor: the same quarterly $30 reads $10.00, $10.91 or $12.00 by
-    phase. The overstatement is bounded by one cycle's missing months and
-    shrinks as the history grows; a cadence-aware divisor would remove it and
-    has not been chosen. Pinned per phase in test_subscriptions_report.
-
-    `month_list` is complete months only (`complete_month_window`). Counting a
-    running month whole put a subscription's effective cost at its lowest on
-    the 2nd of every month — then `total_annual` multiplied that by twelve.
-    """
-    by_month = frame.group_by("month").agg(pl.col("amount").sum().alias("monthly_total"))
-    monthly_amounts: list[Decimal] = []
-    for m in month_list:
-        row = by_month.filter(pl.col("month") == m)
-        monthly_amounts.append(
-            Decimal(str(round(row["monthly_total"][0], 4))) if len(row) else Decimal("0")
-        )
-
-    total = sum(monthly_amounts, Decimal("0"))
-    txn_count = len(frame)
-    first_charged = next((i for i, a in enumerate(monthly_amounts) if a > 0), None)
-    if first_charged is not None:
-        avg_monthly = sum(monthly_amounts[first_charged:], Decimal("0")) / (
-            len(monthly_amounts) - first_charged
-        )
-    else:
-        avg_monthly = Decimal("0")
-    return {
-        "monthly_amounts": monthly_amounts,
-        "total": total,
-        "avg_monthly": quantize_cents(avg_monthly),
-        "avg_per_charge": quantize_cents(total / txn_count if txn_count else Decimal("0")),
-        "last_charge_date": max(frame["date"].to_list()) if txn_count else None,
-        "transaction_count": txn_count,
-    }
+def _net_by_month(
+    rows: Iterable[tuple[date, Decimal]], month_list: Sequence[date]
+) -> list[Decimal]:
+    """Net cost per month of `month_list`: charges less refunds, positive."""
+    by_month: dict[date, Decimal] = {}
+    for d, amount in rows:
+        key = d.replace(day=1)
+        by_month[key] = by_month.get(key, Decimal(0)) - amount
+    return [by_month.get(m, Decimal(0)) for m in month_list]
 
 
 async def subscriptions_report(
     session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
 ) -> dict:
-    """Recurring charges: every posted outflow filed to a category tagged
-    Subscription, grouped BY CATEGORY, with the payees inside each one.
+    """Recurring charges: every posted row filed to a category tagged
+    Subscription, grouped BY CATEGORY, with the services (payees) inside.
 
     The tag is on categories (repositories/tag_repo.py
-    CATEGORY_ONLY_SYSTEM_KEYS). Drawing one line per payee made the tag
-    merely a filter and left the envelope — the thing actually tagged, and
-    the thing a budget is made of — unnamed. The payees are still here,
-    nested, because "which service grew" is the next question after
-    "which envelope grew".
+    CATEGORY_ONLY_SYSTEM_KEYS), so the envelope is the line and the payees are
+    the detail — "which service grew" is the next question after "which
+    envelope grew".
 
-    Note what avg_monthly means at each level: per payee it is a service's
-    cost, spread over the complete months since that service's first charge;
-    per category it is the envelope's recurring burn rate, which is the SUM
-    of the services inside it. The summary's total_monthly is in turn the sum
-    of the categories, so every figure on the page is the payee rows added up
-    and the nested table agrees with its own headline.
+    **What a service costs is `domain.subscriptions.service_cost`**, over the
+    last 12 complete months whatever the range picker says: Annual is what
+    that year charged, net of refunds; only a service younger than the year,
+    or one whose price changed, is projected from its latest charge; one that
+    `has_stopped` is listed and counts in nothing. Every service's whole
+    history is read, because its age and cadence are not properties of any
+    window. The range decides only the chart.
 
-    Dividing at category level instead — the envelope's total over the months
-    since the ENVELOPE's first charge — quietly dropped a service that
-    started later: Streaming charged $15 for three complete months, gaining a
-    $10 service in the last one, read $18.33 beside payee rows of $15.00 and
-    $10.00, and the summary was short by the newcomer. Pinned in
-    test_subscriptions_report.
+    Annual adds up: category = its services, summary = its categories. Each
+    level's Monthly is its own Annual ÷ 12, so a Monthly column may differ
+    from its rows' sum by rounding cents, never more.
     """
     from igab.repositories.tag_repo import TagRepository
+
+    today = reader_today(today)
+    year_start, year_end = complete_month_window(today, 12)
 
     empty = {
         "subscriptions": [],
         "summary": {
             "total_monthly": Decimal("0"),
             "total_annual": Decimal("0"),
-            "active_count": 0,
+            "charged_categories": 0,
+            "tagged_categories": 0,
+            "new_this_month": 0,
+            "projected_services": 0,
+            "stopped_services": 0,
         },
         "months": [],
-        # Nothing is tagged, so no months were measured. Zero rather than the
-        # window length: the field says what the averages divided by, and
-        # there are none.
-        "months_averaged": 0,
+        "monthly_totals": [],
+        "year_start": year_start,
+        "year_end": year_end,
     }
 
     tag_repo = TagRepository(session)
@@ -591,13 +559,14 @@ async def subscriptions_report(
     if not tagged:
         return empty
 
-    # N COMPLETE months — the meaning every averaging report gives `months`
-    # (`history_window`). This took N calendar months through today and
-    # averaged the N−1 complete ones, so Subscriptions and Cost of Living read
-    # one month fewer than Essentials over the same setting.
-    start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
+    # The chart's axis: N COMPLETE months, the meaning every month-windowed
+    # report gives `months` (`history_window`).
+    start_date, end_date = await history_window(session, budget_id, months, today)
     month_list = month_starts(start_date, end_date)
 
+    # Every signed row, not only outflows: refunds net (the reports around
+    # this one report net, and a refunded charge was never a cost). No lower
+    # date bound — see the docstring.
     q = (
         select(
             Transaction.category_id,
@@ -616,81 +585,108 @@ async def subscriptions_report(
             category_tagged("subscription"),
             NOT_DELETED,
             POSTED,
-            Transaction.amount < 0,  # outflows only
-            Transaction.date >= start_date,
-            Transaction.date <= end_date,
+            Transaction.date <= today,
             LEAF,
             ON_BUDGET_ACCOUNT,
         )
     )
     rows = (await session.execute(q)).all()
-    if not rows:
-        return {**empty, "months": month_list}
 
-    # category_tagged guarantees category_id is not null, so there is no
-    # "no category" sentinel to keep here — only payee can be missing.
-    df = pl.DataFrame(
-        {
-            "category_id": [str(r.category_id) for r in rows],
-            "category_name": [r.category_name for r in rows],
-            "group_name": [r.group_name for r in rows],
-            "payee_id": [_payee_key(r.payee_id) for r in rows],
-            "payee_name": [r.payee_name or NO_PAYEE for r in rows],
-            "month": [r.date.replace(day=1) for r in rows],
-            "date": [r.date for r in rows],
-            "amount": [abs(float(r.amount)) for r in rows],
-        }
-    )
+    # category -> payee key -> signed rows; the names ride along.
+    by_category: dict[str, dict[str, list[tuple[date, Decimal]]]] = {}
+    category_names: dict[str, tuple[str, str]] = {}
+    payee_names: dict[str, str] = {}
+    for r in rows:
+        cid = str(r.category_id)
+        key = _payee_key(r.payee_id)
+        by_category.setdefault(cid, {}).setdefault(key, []).append((r.date, Decimal(r.amount)))
+        category_names[cid] = (r.category_name, r.group_name)
+        payee_names[key] = r.payee_name or NO_PAYEE
 
     subscriptions: list[SubscriptionRow] = []
-    for category_id in df["category_id"].unique().to_list():
-        in_category = df.filter(pl.col("category_id") == category_id)
-
-        payees: list[SubscriptionPayeeRow] = []
-        for payee_id in in_category["payee_id"].unique().to_list():
-            for_payee = in_category.filter(pl.col("payee_id") == payee_id)
-            payees.append(
+    new_this_month = projected = stopped = 0
+    for cid, by_payee in by_category.items():
+        services: list[SubscriptionServiceRow] = []
+        shown_rows: list[tuple[date, Decimal]] = []
+        for key, payee_rows in by_payee.items():
+            cost = service_cost(payee_rows, year_start=year_start, year_end=year_end, today=today)
+            if cost is None:
+                continue
+            # A service that stopped before both the chart and the year began
+            # is history, not a subscription: listing every cancelled service
+            # ever would bury the live ones.
+            if cost.basis is Basis.STOPPED and cost.last_charge_date < min(start_date, year_start):
+                continue
+            new_this_month += cost.new_this_month
+            projected += cost.is_projected
+            stopped += cost.basis is Basis.STOPPED
+            shown_rows.extend(payee_rows)
+            services.append(
                 {
-                    "payee_id": None if payee_id == _NO_PAYEE_KEY else payee_id,
-                    "payee_name": for_payee["payee_name"][0],
-                    **_recurring_spend(for_payee, month_list),
+                    "payee_id": None if key == _NO_PAYEE_KEY else key,
+                    "payee_name": payee_names[key],
+                    "basis": cost.basis.value,
+                    "annual": cost.annual,
+                    "monthly": cost.monthly,
+                    "interval_days": cost.interval_days,
+                    "cadence": cost.cadence.value,
+                    "cadence_assumed": cost.cadence_assumed,
+                    "latest_charge": cost.latest_charge,
+                    "first_charge_date": cost.first_charge_date,
+                    "last_charge_date": cost.last_charge_date,
+                    "charges_in_year": cost.charges_in_year,
+                    "refunded_in_year": cost.refunded_in_year,
                 }
             )
-        payees.sort(key=lambda p: p["total"], reverse=True)
-
-        envelope = _recurring_spend(in_category, month_list)
-        # Monthly rolls up from the rows beneath it; see the docstring for the
-        # figure a shared divisor lost. The sum is of the CENT-quantized payee
-        # figures, so the column adds up as drawn rather than to within a cent
-        # of it.
-        envelope["avg_monthly"] = sum((p["avg_monthly"] for p in payees), Decimal("0"))
-
+        if not services:
+            continue
+        # Live first, costliest first; stopped ones sink to the bottom.
+        services.sort(key=lambda s: (s["basis"] == Basis.STOPPED, -s["annual"], s["payee_name"]))
+        in_range = [(d, a) for d, a in shown_rows if start_date <= d <= end_date]
+        monthly_amounts = _net_by_month(in_range, month_list)
+        annual = sum((s["annual"] for s in services), Decimal(0))
+        name, group = category_names[cid]
         subscriptions.append(
             {
-                "category_id": category_id,
-                "category_name": in_category["category_name"][0],
-                "group_name": in_category["group_name"][0],
-                "payees": payees,
-                **envelope,
+                "category_id": cid,
+                "category_name": name,
+                "group_name": group,
+                "annual": annual,
+                "monthly": quantize_cents(annual / 12),
+                "monthly_amounts": monthly_amounts,
+                "total": sum(monthly_amounts, Decimal(0)),
+                "last_charge_date": max(s["last_charge_date"] for s in services),
+                "services": services,
             }
         )
 
-    subscriptions.sort(key=lambda x: x["total"], reverse=True)
-
-    total_monthly = sum((s["avg_monthly"] for s in subscriptions), Decimal("0"))
+    subscriptions.sort(key=lambda s: (-s["annual"], -s["total"], s["category_name"]))
+    total_annual = sum((s["annual"] for s in subscriptions), Decimal(0))
     return {
         "subscriptions": subscriptions,
         "summary": {
-            "total_monthly": quantize_cents(total_monthly),
-            "total_annual": quantize_cents(total_monthly * 12),
-            "active_count": len(subscriptions),
+            "total_annual": total_annual,
+            "total_monthly": quantize_cents(total_annual / 12),
+            # "Active" was a count of categories with any charge in the range,
+            # stopped services and all, under a label that read as services.
+            # Now it says what it counts: N of M tagged categories charged.
+            "charged_categories": sum(
+                1 for s in subscriptions if any(v["basis"] != Basis.STOPPED for v in s["services"])
+            ),
+            "tagged_categories": len(tagged),
+            "new_this_month": new_this_month,
+            "projected_services": projected,
+            "stopped_services": stopped,
         },
         "months": month_list,
-        #: The window's complete months: the most an effective-monthly figure
-        #: divides by, since each SERVICE divides by the months since its own
-        #: first charge and the category and summary figures are sums of
-        #: those. Still a bound, not the divisor of anything on the page.
-        "months_averaged": len(month_list),
+        # Every listed category's month, summed: what a stacked chart that
+        # draws ten categories and an Other band must stand at.
+        "monthly_totals": [
+            sum((s["monthly_amounts"][i] for s in subscriptions), Decimal(0))
+            for i in range(len(month_list))
+        ],
+        "year_start": year_start,
+        "year_end": year_end,
     }
 
 

@@ -64,8 +64,9 @@
 
 .sankey-legend {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 16px;
+  gap: 8px 16px;
   margin-top: 12px;
 }
 

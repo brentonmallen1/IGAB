@@ -45,6 +45,7 @@ from igab.domain.activity_class import (
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows, days_until_zero
+from igab.domain.cash_flow import AssignedRow, FlowRow, budgeted_diagram, spent_diagram
 
 # Aliased: `report_basics.history_window` is the per-month reports' window;
 # this one is the projection sampler's whole-week stretch of days.
@@ -149,16 +150,6 @@ class ChronicCategory(TypedDict):
 #: varying wage discards three quarters of them. A floor only has to be low
 #: enough to catch a real wage and high enough to ignore a refund.
 PAYDAY_FLOOR = Decimal("200")
-
-
-#: Inflow that is not income: money drawn back out of savings, or borrowed.
-#: Labelled from the budget's point of view — "where did this money come from"
-#: — rather than by the class name, which describes the outflow direction.
-_DRAWDOWN_LABELS: dict[str, str] = {
-    ActivityClass.SAVINGS.value: "Drawn from savings",
-    ActivityClass.DEBT_PRINCIPAL.value: "Borrowed",
-    ActivityClass.INVESTMENT_RETURN.value: "Investment gains",
-}
 
 
 class SpendingRows(NamedTuple):
@@ -798,14 +789,13 @@ class ReportService:
         end_date: date,
         account_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        """Sankey based on budget assignments (no payee data).
+        """Budget assignments over the window, netted per category
+        (`domain.cash_flow.budgeted_diagram`). No payees.
 
         Assignments belong to the budget, not to accounts, so the account
         filter applies only to the transaction-derived income total.
         """
         months = month_starts(start_date, end_date)
-
-        # Get budget assignments with category/group info
         q = (
             select(
                 BudgetAssignment.category_id,
@@ -836,100 +826,19 @@ class ReportService:
         income_q = apply_class_joins(income_q.select_from(Transaction))
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
-        if not rows:
-            return {
-                "nodes": [],
-                "links": [],
-                "total_income": total_income,
-                "total_expense": Decimal("0"),
-                # Budgeted mode never claims the split, empty or not.
-                "total_spending": None,
-                "total_savings": None,
-                "total_debt_principal": None,
-                "category_payees": {},
-                "group_categories": {},
-            }
-
-        # Aggregate by category and group
-        group_totals: dict[str, float] = {}
-        cat_totals: dict[str, float] = {}
-        cat_to_group: dict[str, tuple[str, str]] = {}
-        cat_names: dict[str, str] = {}
-
-        for r in rows:
-            if r.assigned <= 0:
-                continue
-            cat_id = str(r.category_id)
-            gid = str(r.group_id)
-            gname = r.group_name or "Unknown"
-
-            group_totals[gid] = group_totals.get(gid, 0) + float(r.assigned)
-            cat_totals[cat_id] = cat_totals.get(cat_id, 0) + float(r.assigned)
-            cat_to_group[cat_id] = (gid, gname)
-            cat_names[cat_id] = r.category_name or cat_id
-
-        total_budgeted = sum(group_totals.values())
-
-        nodes: list[dict] = []
-        links: list[dict] = []
-        node_ids: dict[str, int] = {}
-
-        def get_node(nid: str, name: str, ntype: str) -> int:
-            if nid not in node_ids:
-                node_ids[nid] = len(nodes)
-                nodes.append({"id": nid, "name": name, "type": ntype})
-            return node_ids[nid]
-
-        get_node("__budget__", "Budget", "budget")
-
-        # Groups
-        for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
-            gname = next((v[1] for k, v in cat_to_group.items() if v[0] == gid), gid)
-            get_node(f"g_{gid}", gname, "category_group")
-            links.append(
-                {
-                    "source": "__budget__",
-                    "target": f"g_{gid}",
-                    "value": Decimal(str(round(total, 4))),
-                }
-            )
-
-        # Categories
-        group_to_cats: dict[str, list[str]] = {}
-        for cat_id, (gid, _) in cat_to_group.items():
-            group_to_cats.setdefault(gid, []).append(cat_id)
-            get_node(f"c_{cat_id}", cat_names.get(cat_id, cat_id), "category")
-            links.append(
-                {
-                    "source": f"g_{gid}",
-                    "target": f"c_{cat_id}",
-                    "value": Decimal(str(round(cat_totals[cat_id], 4))),
-                }
-            )
-
-        # Group categories for tooltip
-        group_categories: dict[str, list[dict]] = {}
-        for gid, cats in group_to_cats.items():
-            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, 0))[:10]
-            group_categories[f"g_{gid}"] = [
-                {"name": cat_names.get(c, c), "total": Decimal(str(round(cat_totals.get(c, 0), 4)))}
-                for c in top10
-            ]
-
-        return {
-            "nodes": [{"id": n["id"], "name": n["name"], "type": n["type"]} for n in nodes],
-            "links": links,
-            "total_income": total_income,
-            "total_expense": Decimal(str(round(total_budgeted, 4))),
-            # Assignments carry no activity class, so this mode has no split to
-            # report. None, not zero: "not claimed here" rather than "nothing
-            # was spent".
-            "total_spending": None,
-            "total_savings": None,
-            "total_debt_principal": None,
-            "category_payees": {},  # No payees in budgeted mode
-            "group_categories": group_categories,
-        }
+        return budgeted_diagram(
+            [
+                AssignedRow(
+                    category_id=str(r.category_id),
+                    category_name=r.category_name or str(r.category_id),
+                    group_id=str(r.group_id),
+                    group_name=r.group_name or "Unknown",
+                    assigned=Decimal(r.assigned),
+                )
+                for r in rows
+            ],
+            total_income,
+        )
 
     async def _cash_flow_spent(
         self,
@@ -938,18 +847,28 @@ class ReportService:
         end_date: date,
         account_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        """Sankey based on actual transactions (includes payee data)."""
+        """Actual transactions, net (`domain.cash_flow.spent_diagram`).
+
+        ONE row shape for every branch — income, outflow, drawn: LEAF.
+        Income used to come from PARENT rows while expenses came from leaves,
+        and a split straddles the two: +1,000 of pay and -300 of fees is a
+        +700 parent, so income read 700 and the -300 was subtracted twice.
+        LEAF loses nothing — a plain transaction is both a parent row and a
+        leaf — and drops precisely the split parent, whose amount is its legs
+        restated.
+
+        Split by activity class, not by sign: a withdrawal FROM a brokerage
+        (+500 into checking) is not income. Income is INCOME_ROW, which
+        budgeted mode reads too.
+        """
         q = (
             join_split_parent(
                 select(
-                    Transaction.id,
                     Transaction.amount,
                     # A split leg created in the app carries no payee: the parent
                     # names where the money came from, as in payee_analysis.
                     PAYEE_OF_RECORD.label("payee_id"),
                     Transaction.category_id,
-                    Transaction.transfer_id,
-                    Transaction.is_split,
                     Payee.name.label("payee_name"),
                     Category.name.label("category_name"),
                     CategoryGroup.id.label("group_id"),
@@ -965,6 +884,7 @@ class ReportService:
                 Transaction.budget_id == budget_id,
                 NOT_DELETED,
                 POSTED,
+                LEAF,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 CASH_FLOW_ROW,
@@ -973,261 +893,23 @@ class ReportService:
             )
         )
         q, _ = account_scope(q, account_ids)
-        q = apply_class_joins(q)
-        rows = (await self.session.execute(q)).all()
-
-        if not rows:
-            return {
-                "nodes": [],
-                "links": [],
-                "total_income": Decimal("0"),
-                "total_expense": Decimal("0"),
-                "total_spending": Decimal("0"),
-                "total_savings": Decimal("0"),
-                "total_debt_principal": Decimal("0"),
-                "category_payees": {},
-                "group_categories": {},
-            }
-
-        # ONE row shape for every branch — income, outflow, drawn: LEAF.
-        #
-        # Income used to come from PARENT rows while expenses came from leaves,
-        # and a split straddles the two. A split whose legs are +1,000 of pay
-        # and -300 of fees nets +700; the parent is uncategorized and positive,
-        # so it classified INCOME and contributed 700 to income — while the
-        # -300 leg contributed 300 to expense. The outflow was subtracted
-        # twice, once inside the parent's net and once on its own, and the
-        # diagram's income read 700 where the household earned 1,000.
-        #
-        # LEAF loses nothing: a plain transaction is both a parent row and a
-        # leaf, so every ordinary inflow still counts. What it drops is
-        # precisely the split parent, whose amount is its legs restated.
-        #
-        # Split by activity class, not by amount sign. Sign said a withdrawal
-        # FROM a brokerage (+500 into checking) was income, which disagreed
-        # with income_vs_expense over the same window and left the savings
-        # branch missing the draw. Income is INCOME_ROW, which budgeted mode
-        # reads too; everything else that moved money out is outflow.
-        leaves = [r for r in rows if not r.is_split]
-        income_rows = [r for r in leaves if r.is_income]
-        expense_rows = [r for r in leaves if r.amount < 0 and not r.is_income]
-
-        total_income = sum((r.amount for r in income_rows), Decimal("0"))
-        # Everything leaving the budget. Kept as one figure because the links
-        # off the budget node must sum to it — that flow conservation is what
-        # makes the diagram readable, and it holds however the branches split.
-        total_expense = abs(sum((r.amount for r in expense_rows), Decimal("0")))
-
-        def _class_total(cls: ActivityClass) -> Decimal:
-            return abs(
-                sum(
-                    (r.amount for r in expense_rows if r.activity_class == cls.value),
-                    Decimal("0"),
+        rows = (await self.session.execute(apply_class_joins(q))).all()
+        return spent_diagram(
+            [
+                FlowRow(
+                    amount=Decimal(r.amount),
+                    activity_class=r.activity_class,
+                    is_income=bool(r.is_income),
+                    payee_id=str(r.payee_id) if r.payee_id else None,
+                    payee_name=r.payee_name,
+                    category_id=str(r.category_id) if r.category_id else None,
+                    category_name=r.category_name,
+                    group_id=str(r.group_id) if r.group_id else None,
+                    group_name=r.group_name,
                 )
-            )
-
-        total_spending = _class_total(ActivityClass.SPENDING)
-        total_savings = _class_total(ActivityClass.SAVINGS)
-        total_debt_principal = _class_total(ActivityClass.DEBT_PRINCIPAL)
-
-        nodes: list[dict] = []
-        links: list[dict] = []
-        node_ids: dict[str, int] = {}
-
-        def get_node(nid: str, name: str, ntype: str, **extra) -> int:
-            if nid not in node_ids:
-                node_ids[nid] = len(nodes)
-                nodes.append({"id": nid, "name": name, "type": ntype, **extra})
-            return node_ids[nid]
-
-        get_node("__budget__", "Budget", "budget")
-
-        # Income: payees -> budget.
-        #
-        # The key and the display name are built in ONE pass. They used to be
-        # derived twice, and the two derivations disagreed: the key fell back
-        # to `payee_name or "Unknown Income"` while the lookup fell back to
-        # `payee_name` alone, so an income row with no payee at all matched
-        # nothing and the `next(..., pid)` default shipped the internal key —
-        # "inc_Unknown Income" — as the node's name, and into the CSV export
-        # with it.
-        income_by_payee: dict[str, Decimal] = {}
-        income_names: dict[str, str] = {}
-        for r in income_rows:
-            pname = r.payee_name or "Unknown Income"
-            pid = f"inc_{r.payee_id or pname}"
-            income_by_payee[pid] = income_by_payee.get(pid, Decimal("0")) + r.amount
-            income_names[pid] = pname
-
-        for pid, total in sorted(income_by_payee.items(), key=lambda x: -x[1])[:15]:
-            get_node(pid, income_names[pid], "income_payee")
-            links.append(
-                {
-                    "source": pid,
-                    "target": "__budget__",
-                    "value": total,
-                }
-            )
-
-        # Money coming back INTO the budget that is not income: drawing on a
-        # brokerage, or borrowing. By amount sign these read as income, which
-        # overstated earnings and disagreed with income_vs_expense; dropping
-        # them instead would silently break flow conservation. They get their
-        # own inflow trunk so the diagram stays honest either way. Leaves, like
-        # income: read off parent rows, a split's +500 savings leg sat inside
-        # a parent that is never drawn, and counted nowhere at all.
-        drawn_by_class: dict[str, Decimal] = {}
-        for r in leaves:
-            if r.amount > 0 and r.activity_class in _DRAWDOWN_LABELS:
-                drawn_by_class[r.activity_class] = (
-                    drawn_by_class.get(r.activity_class, Decimal("0")) + r.amount
-                )
-
-        for cls, total in sorted(drawn_by_class.items(), key=lambda x: -x[1]):
-            nid = f"drawn_{cls}"
-            get_node(nid, _DRAWDOWN_LABELS[cls], "income_payee")
-            links.append({"source": nid, "target": "__budget__", "value": total})
-
-        # Expenses: budget -> category group -> category -> top payees.
-        # Uncategorized spending flows through its own pseudo group/category so
-        # the links always sum to total_expense (flow conservation).
-        # Keyed by (group, category), not category alone: with savings on its
-        # own branch, one category can legitimately appear under two trunks —
-        # ordinary spending in its real group, and a savings transfer filed to
-        # the same category under Savings. Keying by category would collapse
-        # them and break flow conservation.
-        group_totals: dict[str, Decimal] = {}
-        cat_totals: dict[tuple[str, str], Decimal] = {}
-        group_names: dict[str, str] = {}
-        cat_names: dict[tuple[str, str], str] = {}
-        payee_by_cat: dict[tuple[str, str], dict[str, Decimal]] = {}
-        classes_by_cat: dict[tuple[str, str], set[str]] = {}
-
-        # Saving and paying down debt leave the budget but are not spending, so
-        # they get their own branch off the budget node instead of sitting
-        # inside an expense group where they read as consumption. The real
-        # categories still hang beneath, so the detail is unchanged — only
-        # which trunk they belong to.
-        CLASS_BRANCH = {
-            # "To savings accounts", not "Savings": this chart is money-moved
-            # — SAVINGS-class rows — and a kept-here envelope's held balance
-            # never left the budget, so it is not on this trunk. The Savings
-            # Rate tab's "Saved" adds it; this label must not claim to be that
-            # figure (`test_sankey_spent_mode_is_money_moved`).
-            ActivityClass.SAVINGS.value: ("__savings__", "To savings accounts"),
-            ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
-        }
-
-        for r in expense_rows:
-            branch = CLASS_BRANCH.get(r.activity_class)
-            if r.category_id:
-                cat_id = str(r.category_id)
-                cname = r.category_name or cat_id
-                if branch:
-                    gid, gname = branch
-                else:
-                    gid = str(r.group_id) if r.group_id else "__uncategorized__"
-                    gname = r.group_name or "Uncategorized"
-            elif branch:
-                gid, gname = branch
-                cat_id, cname = gid, gname
-            else:
-                cat_id = "__uncategorized__"
-                gid = "__uncategorized__"
-                gname = "Uncategorized"
-                cname = "Uncategorized"
-
-            slot = (gid, cat_id)
-            group_totals[gid] = group_totals.get(gid, Decimal("0")) + abs(r.amount)
-            cat_totals[slot] = cat_totals.get(slot, Decimal("0")) + abs(r.amount)
-            group_names[gid] = gname
-            cat_names[slot] = cname
-            classes_by_cat.setdefault(slot, set()).add(r.activity_class)
-
-            pname = r.payee_name or "Unknown"
-            pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
-            payee_by_cat.setdefault(slot, {})
-            payee_by_cat[slot][pid] = payee_by_cat[slot].get(pid, Decimal("0")) + abs(r.amount)
-
-        for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
-            get_node(f"g_{gid}", group_names.get(gid, gid), "category_group")
-            links.append(
-                {
-                    "source": "__budget__",
-                    "target": f"g_{gid}",
-                    "value": total,
-                }
-            )
-
-        payee_names: dict[str, str] = {}
-        for r in expense_rows:
-            pname = r.payee_name or "Unknown"
-            pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
-            payee_names[pid] = pname
-
-        group_to_cats: dict[str, list[tuple[str, str]]] = {}
-
-        category_payees: dict[str, list[dict]] = {}
-        for slot, cat_payees in payee_by_cat.items():
-            gid, cat_id = slot
-            # Keyed by (group, category) so one category can appear under both
-            # its own group and the savings/debt trunk. The composite is a
-            # display key only — `entity_id` is what a drill-down needs, and
-            # parsing it back out of the id sent a non-UUID to the API.
-            node_id = f"c_{gid}_{cat_id}"
-            group_to_cats.setdefault(gid, []).append(slot)
-            # `entity_id` is None for a pseudo-category — the Savings and
-            # Debt Payments trunks, and the Uncategorized bucket. It used to
-            # carry the sentinel string, which the client then sent as a
-            # category id: `__uncategorized__` is not a UUID, so the drill-down
-            # 400s. Cost of Living already learned this and drills its
-            # Uncategorized bar by "no category" instead.
-            #
-            # `activity_classes` is what this node counted, served because the
-            # drill must list exactly that. The three pseudo-nodes all drill
-            # by "no category" and differ ONLY by class — without it each one
-            # opened the union of all three — and a real category sitting
-            # under its own group and the savings trunk is two nodes of one
-            # id that differ the same way.
-            get_node(
-                node_id,
-                cat_names[slot],
-                "category",
-                entity_id=None if cat_id.startswith("__") else cat_id,
-                activity_classes=sorted(classes_by_cat[slot]),
-            )
-            links.append(
-                {
-                    "source": f"g_{gid}",
-                    "target": node_id,
-                    "value": cat_totals[slot],
-                }
-            )
-            top10 = sorted(cat_payees.items(), key=lambda x: -x[1])[:10]
-            category_payees[node_id] = [
-                {"name": payee_names.get(pid, "Unknown"), "total": ptotal} for pid, ptotal in top10
+                for r in rows
             ]
-
-        group_categories: dict[str, list[dict]] = {}
-        for gid, slots in group_to_cats.items():
-            top10 = sorted(slots, key=lambda sl: -cat_totals.get(sl, Decimal("0")))[:10]
-            group_categories[f"g_{gid}"] = [
-                {"name": cat_names.get(sl, sl[1]), "total": cat_totals.get(sl, Decimal("0"))}
-                for sl in top10
-            ]
-
-        return {
-            # Every node carries every key; only category nodes fill the last two.
-            "nodes": [{"entity_id": None, "activity_classes": None, **n} for n in nodes],
-            "links": links,
-            "total_income": total_income,
-            "total_expense": total_expense,
-            "total_spending": total_spending,
-            "total_savings": total_savings,
-            "total_debt_principal": total_debt_principal,
-            "category_payees": category_payees,
-            "group_categories": group_categories,
-        }
+        )
 
     # ─── Budget vs Actual ─────────────────────────────────────────────────────
 
