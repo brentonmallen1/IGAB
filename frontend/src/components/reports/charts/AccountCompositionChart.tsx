@@ -32,7 +32,7 @@ interface Props {
 
 export function AccountCompositionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useAccountCompositionReport(budgetId, months)
@@ -48,7 +48,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
   const typeKeys = [...new Set(points.flatMap((p) => Object.keys(p.balances)))].sort()
   const labelFor = (key: string) => accountTypeLabel(key, typeRows)
   const chartData = points.map((p) => ({
-    date: p.date.slice(0, 7),
+    date: formatMonthShort(p.date),
     Net: Number(p.net_worth),
     ...Object.fromEntries(typeKeys.map((k) => [labelFor(k), Number(p.balances[k] ?? 0)])),
   }))

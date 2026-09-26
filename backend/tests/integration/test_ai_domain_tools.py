@@ -95,7 +95,8 @@ class TestNetWorth:
 
         result = await handlers.get_net_worth(await _ctx(db_session, budget), {"months": 3})
 
-        assert len(result["months"]) == 3
+        # Three complete month-ends, then today (`ReportWindow`).
+        assert len(result["months"]) == 4
         assert result["latest"] is not None
         assert {"month", "assets", "liabilities", "net_worth"} <= set(result["months"][0])
 
@@ -105,8 +106,9 @@ class TestNetWorth:
         await db_session.flush()
         result = await handlers.get_net_worth(await _ctx(db_session, budget), {"months": "lots"})
         # Falls back rather than raising: a wrong range is visible on the
-        # call, an error is not readable by the person who asked.
-        assert len(result["months"]) == 12
+        # call, an error is not readable by the person who asked. Twelve
+        # complete months and today.
+        assert len(result["months"]) == 13
 
 
 class TestScheduled:
@@ -234,7 +236,8 @@ class TestReports:
         budget = await create_budget(db_session, user, "Household")
         await db_session.flush()
         result = await handlers.burn_rate(await _ctx(db_session, budget), {"months": 4})
-        assert len(result["months"]) == 4
+        # Four complete months, then the running month's point.
+        assert len(result["months"]) == 5
         assert {"month", "rolling_30", "prior_60"} <= set(result["months"][0])
 
     async def test_anomalies_are_the_report_s_own_rule(self, db_session):

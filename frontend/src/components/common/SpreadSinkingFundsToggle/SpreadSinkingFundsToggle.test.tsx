@@ -26,13 +26,13 @@ beforeEach(() => {
 describe('SpreadSinkingFundsToggle', () => {
   it('shows the stored setting, with the hint as its description', () => {
     settings.data = { spread_sinking_funds: false }
-    render(<SpreadSinkingFundsToggle budgetId="b1" />)
+    render(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={1} />)
     expect(toggle()).not.toBeChecked()
     expect(toggle()).toHaveAccessibleDescription(/Long-term expense categories count as a twelfth/)
   })
 
   it('writes the flipped setting on click', async () => {
-    render(<SpreadSinkingFundsToggle budgetId="b1" />)
+    render(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={1} />)
     expect(toggle()).toBeChecked()
     await userEvent.click(toggle())
     expect(settings.mutate).toHaveBeenCalledWith(
@@ -43,7 +43,7 @@ describe('SpreadSinkingFundsToggle', () => {
 
   it('toggles from the keyboard', async () => {
     settings.data = { spread_sinking_funds: false }
-    render(<SpreadSinkingFundsToggle budgetId="b1" />)
+    render(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={1} />)
     await userEvent.tab()
     expect(toggle()).toHaveFocus()
     await userEvent.keyboard(' ')
@@ -52,11 +52,26 @@ describe('SpreadSinkingFundsToggle', () => {
 
   it('cannot be flipped before the setting has loaded or while it saves', () => {
     settings.data = undefined
-    const { rerender } = render(<SpreadSinkingFundsToggle budgetId="b1" />)
+    const { rerender } = render(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={1} />)
     expect(toggle()).toBeDisabled()
     settings.data = { spread_sinking_funds: true }
     settings.isPending = true
-    rerender(<SpreadSinkingFundsToggle budgetId="b1" />)
+    rerender(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={1} />)
     expect(toggle()).toBeDisabled()
+  })
+
+  it('says there is nothing to spread instead of offering a switch that changes nothing', () => {
+    // No Essential category is a Long-term expense: as paid and spread are
+    // the same figure, so a switch between them would move nothing.
+    render(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={0} />)
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/No Essential category is also a Long-term expense/)
+    ).toBeInTheDocument()
+  })
+
+  it('shows the switch where the count is not known', () => {
+    render(<SpreadSinkingFundsToggle budgetId="b1" longTermEssentials={null} />)
+    expect(toggle()).toBeInTheDocument()
   })
 })

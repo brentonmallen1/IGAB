@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
-import { thisMonthWindow } from '../utils/dateWindow'
+import { lastMonthWindow } from '../utils/dateWindow'
 
 export type ReportTab =
   | 'overview'
@@ -451,7 +451,7 @@ interface ReportState {
 }
 
 function defaultFilters(): ReportFilters {
-  const { start, end } = thisMonthWindow()
+  const { start, end } = lastMonthWindow()
   return {
     startDate: start,
     endDate: end,
@@ -464,6 +464,9 @@ function defaultFilters(): ReportFilters {
     viewId: null,
   }
 }
+
+/** What the store keeps between visits (`partialize`). */
+type PersistedReports = Pick<ReportState, 'activeTab' | 'filters' | 'rangeMonths' | 'navFavorites'>
 
 export const useReportStore = create<ReportState>()(
   persist(
@@ -490,6 +493,19 @@ export const useReportStore = create<ReportState>()(
     }),
     {
       name: PERSIST_KEYS.reports,
+      // 1: the default window became the last complete month. A stored range
+      // is dates, not a preset, so without this a "This Month" stored before
+      // the change would stay the running month on every visit.
+      version: 1,
+      // What it returns may still miss fields; `merge` below fills them.
+      migrate: (persisted, version) => {
+        const saved = (persisted ?? {}) as PersistedReports
+        if (version < 1 && saved.filters) {
+          const { start, end } = lastMonthWindow()
+          return { ...saved, filters: { ...saved.filters, startDate: start, endDate: end } }
+        }
+        return saved
+      },
       partialize: (s) => ({
         activeTab: s.activeTab,
         filters: s.filters,

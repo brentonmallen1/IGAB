@@ -38,7 +38,14 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     class_magnitude,
 )
-from igab.domain.dates import complete_month_window, complete_months, month_starts
+from igab.domain.dates import (
+    ReportWindow,
+    complete_month_window,
+    complete_months_within,
+    month_start,
+    month_starts,
+    report_window,
+)
 from igab.domain.money import quantize_cents
 from igab.domain.money_moves import flows
 from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
@@ -71,24 +78,38 @@ def _payee_key(payee_id: uuid.UUID | None) -> str:
     return str(payee_id) if payee_id else _NO_PAYEE_KEY
 
 
+async def budget_window(
+    session: AsyncSession, budget_id: uuid.UUID, months: int, today: date
+) -> ReportWindow:
+    """What "the last `months` months" means for this budget on the reader's
+    `today`: that many complete months, never reaching before the budget's
+    first transaction, and the running month beside them (`ReportWindow`).
+
+    `domain.dates.report_window` is the arithmetic and says why the running
+    month is never one of the N; this supplies where the history starts,
+    which only the database knows. Every report with a month window reads it
+    — the averaging ones through `history_window`, the series ones directly.
+    """
+    earliest = await TransactionRepository(session).earliest_date(budget_id)
+    return report_window(today, months, earliest)
+
+
 async def history_window(
     session: AsyncSession, budget_id: uuid.UUID, months: int, today: date
 ) -> tuple[date, date]:
-    """The last `months` complete months before the reader's `today`, never
-    reaching before this budget's first transaction: the window of every
-    report that averages per month.
+    """The complete months of `budget_window` as (first day, last day): the
+    window of every report that averages per month. Empty (start after end)
+    when the history starts this month.
 
-    `complete_month_window` is the arithmetic and says why the clamp matters;
-    this supplies where the history starts, which only the database knows.
-    Volatility, seasonality and anomalies read it. Income by Source, Cost of
-    Living, Discretionary, Subscriptions and the Essentials table called the
-    arithmetic without the history, so "All time" — which counts the running
-    month the window leaves out — asked for one month before the first
-    transaction, and every average divided by a month nobody recorded: three
-    complete months of history, averaged over four, read a quarter low.
+    Income by Source, Cost of Living, Discretionary, Subscriptions and the
+    Essentials table called the arithmetic without the history, so "All
+    time" — which counts the running month the window leaves out — asked for
+    one month before the first transaction, and every average divided by a
+    month nobody recorded: three complete months of history, averaged over
+    four, read a quarter low.
     """
-    earliest = await TransactionRepository(session).earliest_date(budget_id)
-    return complete_month_window(today, months, earliest)
+    window = await budget_window(session, budget_id, months, today)
+    return window.start, window.complete_end
 
 
 async def spending_trends(
@@ -110,12 +131,14 @@ async def spending_trends(
     route. Months with nothing spent are zero, never missing, so every
     series is the same length as `months`.
 
-    **The average divides by complete months only** (`complete_months`),
-    served with how many there were. The page divided the window's total by
-    every month on the axis, the running one included, so on the 3rd of a
-    month the "Average / month" sat a third of a month low. `latest_complete`
-    says whether the last month on the axis is one of them, so the page can
-    call it "so far" rather than "Latest month".
+    **The average divides by complete months only**: `avg_monthly` divides
+    by the months the range holds whole and that are over
+    (`complete_months_within`), `months_averaged` of them; the running month
+    is drawn, named as `running_month` so the page calls it "so far", and
+    never averaged. It divided the window's total by every month drawn, so on
+    the default "this year" range a few days of the new month counted as a
+    month of spending, and on the 3rd of a month the "Average / month" sat a
+    third of a month low.
     """
     today = reader_today(today)
     months = month_starts(start_date.replace(day=1), end_date)
@@ -144,16 +167,20 @@ async def spending_trends(
     monthly_totals = [
         sum((e["monthly"][i] for e in ordered), Decimal("0")) for i in range(len(months))
     ]
-    averaged = complete_months(start_date, end_date, today)
-    averaged_total = sum((monthly_totals[index[m]] for m in averaged), Decimal("0"))
+    averaged = [index[m] for m in complete_months_within(start_date, end_date, today)]
+    running = month_start(today)
     return {
         "months": months,
         "series": ordered,
         "monthly_totals": monthly_totals,
         "total": sum(monthly_totals, Decimal("0")),
-        "monthly_average": (quantize_cents(averaged_total / len(averaged)) if averaged else None),
+        "avg_monthly": (
+            quantize_cents(sum((monthly_totals[i] for i in averaged), Decimal("0")) / len(averaged))
+            if averaged
+            else None
+        ),
         "months_averaged": len(averaged),
-        "latest_complete": bool(months) and months[-1] in averaged,
+        "running_month": running if running in index else None,
         "class_excluded": class_excluded_note(found.excluded, scoped=bool(category_ids)) or [],
         "counted_classes": found.classes,
     }
@@ -912,6 +939,18 @@ async def cost_of_living(
     income = await income_by_source(session, budget_id, months, today)
     avg_income = income["avg_monthly"]
     avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
+    # Discretionary over the same window, the Discretionary report's own rows
+    # (`DISCRETIONARY_ROW`), so the verdict can lay take-home out whole:
+    # committed, discretionary, and what was left over. None untagged, as that
+    # report serves it — "outside Cost of living" would be everything.
+    disc_rows, disc_basis = await repo.discretionary_by_category_month(
+        budget_id, start_date, end_date
+    )
+    avg_discretionary: Decimal | None = None
+    if basis_is_chosen(disc_basis):
+        avg_discretionary = _as_costs(((r.month, r.total) for r in disc_rows), month_list)[
+            "avg_monthly"
+        ]
     avg_essentials: Decimal | None = None
     if essentials_known:
         # Outflows are negative in the ledger; a cost reads positive here, the
@@ -940,6 +979,7 @@ async def cost_of_living(
         "avg_monthly_cost_of_living": avg_cost_of_living,
         "avg_monthly_essentials": avg_essentials,
         "avg_monthly_income": avg_income,
+        "avg_monthly_discretionary": avg_discretionary,
         "basis": basis,
         #: False when nothing is tagged, so the page can say the figure is
         #: every category rather than a chosen few.
@@ -1023,6 +1063,7 @@ async def discretionary(
             "avg_monthly": None,
             "monthly_totals": [],
             "spending_total": None,
+            "cost_of_living_total": None,
             "groups": [],
         }
 
@@ -1068,12 +1109,20 @@ async def discretionary(
     whole = _as_costs(((r.month, r.total) for r in rows), month_list)
     by_month = await svc._monthly_class_totals(budget_id, start_date, end_date)
     spending = sum((flows(by_month.get(m, {})).spending for m in month_list), Decimal("0"))
+    # The wide tier over the same window — Cost of Living's own figure — so
+    # the page can say how the two tiers and spending fit: Cost of living +
+    # Discretionary is all spending plus the debt payments Cost of living
+    # counts by class, which Discretionary (spending only) never can.
+    col_signed, _ = await svc.txns.essential_spend(
+        budget_id, start_date, end_date, tier=NecessityTier.COST_OF_LIVING
+    )
     return {
         **served,
         "total": whole["total"],
         "avg_monthly": whole["avg_monthly"],
         "monthly_totals": [quantize_cents(a) for a in whole["monthly_amounts"]],
         "spending_total": quantize_cents(spending),
+        "cost_of_living_total": quantize_cents(Decimal("0") - col_signed),
         "groups": groups,
     }
 

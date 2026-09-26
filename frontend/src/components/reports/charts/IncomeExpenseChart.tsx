@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import {
   Bar,
+  Cell,
   ComposedChart,
   CartesianGrid,
   Legend,
@@ -22,6 +23,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
+import { reportMonthLabel, RUNNING_MONTH_OPACITY } from '../../../utils/reportMonths'
 import { DrillDownTable } from '../DrillDownTable'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
@@ -37,7 +39,7 @@ interface Props {
 
 export function IncomeExpenseReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
@@ -49,37 +51,44 @@ export function IncomeExpenseReport({ budgetId }: Props) {
    *  and totals the bar that opened it. */
   function drillTo(month: string, figure: 'income' | 'expenses') {
     if (!data) return
-    const ym = month.slice(0, 7)
-    const window = monthWindow(ym)
+    const window = monthWindow(month)
     const range = { startDate: window.start, endDate: window.end }
+    const label = formatMonthShort(month)
     setDrillDown(
       figure === 'income'
-        ? incomeDrill(`Income · ${ym}`, range)
-        : expensesDrill(`Expenses · ${ym}`, range, data.expense_classes)
+        ? incomeDrill(`Income · ${label}`, range)
+        : expensesDrill(`Expenses · ${label}`, range, data.expense_classes)
     )
   }
 
   const monthBarClick = (figure: 'income' | 'expenses') => (data: unknown) => {
-    const d = data as { month?: string; payload?: { month?: string } }
-    const month = d.month ?? d.payload?.month
+    const d = data as { iso?: string; payload?: { iso?: string } }
+    const month = d.iso ?? d.payload?.iso
     if (month) drillTo(month, figure)
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
-  const chartData = (data?.months ?? []).map((m) => ({
-    month: m.month.slice(0, 7),
+  const rows = data?.months ?? []
+  // The running month is drawn — lighter, and "so far" — so its partial
+  // figures never read as a finished month beside the others.
+  const chartData = rows.map((m) => ({
+    iso: m.month,
+    month: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
+    partial: m.partial_month,
     Income: m.income,
     Expenses: m.expenses,
     // Saved (moved + held) plus debt paid down; `net` stays money-moved.
     Saved: m.savings + m.debt_principal,
-    Net: m.net,
+    // No line point for the running month: a line joins it to the finished
+    // months as if it were one. Its bars say "so far"; the table has its net.
+    Net: m.partial_month ? null : m.net,
   }))
 
-  const tableRows = (data?.months ?? []).map((m) => ({
+  const tableRows = rows.map((m) => ({
     id: m.month,
-    name: m.month.slice(0, 7),
+    name: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
     // Positive is spending, under a column headed Expenses. A month whose
     // refunds exceeded its spending is negative and now READS negative: the
     // table used to abs() this, so "we got $40 back" drew as "we spent $40".
@@ -110,6 +119,10 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             Months where the Net line is above zero mean you spent less than you earned. Below zero,
             you ran a deficit that month.
           </p>
+          <p>
+            The picker&apos;s months are complete months. The month in progress is drawn after them,
+            lighter and marked <em>so far</em>: its pay and bills are still arriving.
+          </p>
           <ReportScopeNote report="income-expense" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
@@ -117,8 +130,9 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           <ReportExportButton
             reportId="income-expense"
             getRows={() =>
-              (data?.months ?? []).map((m) => ({
+              rows.map((m) => ({
                 month: m.month.slice(0, 7),
+                partial_month: m.partial_month,
                 income: m.income,
                 expenses: m.expenses,
                 savings: m.savings,
@@ -157,15 +171,27 @@ export function IncomeExpenseReport({ budgetId }: Props) {
                 radius={[2, 2, 0, 0]}
                 cursor="pointer"
                 onClick={monthBarClick('income')}
-              />
+              >
+                {chartData.map((d) => (
+                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
+                ))}
+              </Bar>
               <Bar
                 dataKey="Expenses"
                 fill={COLOR_NEGATIVE}
                 radius={[2, 2, 0, 0]}
                 cursor="pointer"
                 onClick={monthBarClick('expenses')}
-              />
-              <Bar dataKey="Saved" fill={COLOR_NEUTRAL} radius={[2, 2, 0, 0]} />
+              >
+                {chartData.map((d) => (
+                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
+                ))}
+              </Bar>
+              <Bar dataKey="Saved" fill={COLOR_NEUTRAL} radius={[2, 2, 0, 0]}>
+                {chartData.map((d) => (
+                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
+                ))}
+              </Bar>
               <Line
                 dataKey="Net"
                 stroke={COLOR_NET}

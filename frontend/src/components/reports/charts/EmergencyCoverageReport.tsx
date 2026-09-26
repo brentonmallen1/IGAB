@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import { useEmergencyCoverageReport } from '../../../api/reports'
 import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
-import { otherFigureNote } from '../../../utils/essentialsFigures'
+import { otherFigureNote, spreadsBills } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
@@ -27,6 +27,7 @@ import { COLOR_NET, COLOR_POSITIVE, COLOR_NEUTRAL } from './chartColors'
 import {
   carriedFlatFrom,
   coverageTrend,
+  coverageTrendPhrase,
   monthsCovered,
   monthsTick,
   monthsToTarget,
@@ -35,6 +36,7 @@ import {
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { GuideTabLink } from '../../guide/GuideTabLink'
+import { monthRange, throughMonth } from '../../../utils/reportMonths'
 import './EmergencyCoverageReport.css'
 
 interface Props {
@@ -56,7 +58,7 @@ interface Props {
  * numbers are two pages that can disagree.
  */
 export function EmergencyCoverageReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   // The second chart plots money. Its axis printed raw numbers — no currency
   // and no privacy mask — beside a tooltip and cards that both read $••••.
   const moneyAxis = useMoneyAxis()
@@ -73,7 +75,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
   const trend = coverageTrend(data.series)
   const toTarget = monthsToTarget(data.series)
   const chart = data.series.map((p) => ({
-    month: p.month.slice(0, 7),
+    month: formatMonthShort(p.month),
     Covered: p.coverage_months,
     Fund: p.fund_balance,
     [`${low}-month target`]: p.target_low,
@@ -82,6 +84,14 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
   const carriedFrom = carriedFlatFrom(data.series)
   const other = otherFigureNote(data.essentials, formatMoney)
   const fundTotal = data.fund.total
+  // The chart is complete months, so it ends last month: said on its titles,
+  // beside cards that read today's fund.
+  const through = throughMonth(data.series.at(-1)?.month, formatMonthShort)
+  const averaged = monthRange(
+    data.essentials.window_start,
+    data.essentials.window_end,
+    formatMonthShort
+  )
 
   return (
     <div className="coverage-report">
@@ -91,9 +101,10 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
           <ReportInfoButton title="Emergency Fund">
             <p>
               How many months of <strong>essential</strong> spending your emergency fund would
-              cover. Coverage is the fund divided by a trailing three-month average of essentials —
-              the same 90-day window the Guide’s target uses, so this page and the roadmap cannot
-              tell different stories about the same household.
+              cover. Coverage is the fund divided by the essentials figure — the average of the last
+              three complete months, the one the Guide’s target uses — so this page and the roadmap
+              cannot tell different stories about the same household. Each month on the charts reads
+              the same figure as of that month; the newest point is the headline.
             </p>
             <p>
               With <strong>Spread yearly bills over 12 months</strong> on, bills in categories
@@ -108,7 +119,8 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               cent. That is why the second chart draws the band per month rather than as one line.
             </p>
             <p>
-              The roadmap suggests {low}–{high} months once expensive debt is gone.
+              The roadmap suggests {low}–{high} months once expensive debt is gone: the{' '}
+              <strong>{low}-month</strong> and <strong>{high}-month targets</strong>.
             </p>
             <p>
               <GuideTabLink tab="aside" anchor="emergency-fund">
@@ -134,7 +146,12 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
           </div>
         </div>
 
-        {data.tagged && <SpreadSinkingFundsToggle budgetId={budgetId} />}
+        {data.tagged && (
+          <SpreadSinkingFundsToggle
+            budgetId={budgetId}
+            longTermEssentials={data.long_term_essentials}
+          />
+        )}
 
         {!data.tagged ? (
           <div className="coverage-report__empty">
@@ -160,11 +177,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               <MetricCard
                 label="Covered"
                 value={data.coverage_months === null ? '—' : `${data.coverage_months} months`}
-                sub={
-                  trend
-                    ? `${trend.delta >= 0 ? '+' : ''}${trend.delta} months over ${trend.months} months`
-                    : undefined
-                }
+                sub={trend ? coverageTrendPhrase(trend) : undefined}
                 accent={where === 'within' || where === 'above'}
                 warning={where === 'below'}
               />
@@ -201,9 +214,12 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
             <EmergencyFundCounting budgetId={budgetId} />
 
             <p className="coverage-report__note">
-              Coverage is the fund divided by a trailing three-month average of essential spending —{' '}
-              {formatMoney(data.essentials.monthly)}/month over the Guide’s 90-day window
-              {data.essentials.spread_on ? ', with yearly bills spread over 12 months' : ''}
+              Coverage is the fund divided by what a lean month costs —{' '}
+              {formatMoney(data.essentials.monthly)}/month, the average of{' '}
+              {averaged ?? 'the last three complete months'}
+              {spreadsBills(data.essentials, data.long_term_essentials)
+                ? ', with yearly bills spread over 12 months'
+                : ''}
               {other && ` (${other})`}. The{' '}
               <Link to="/reports?tab=essentials">Essentials report</Link> breaks that figure down by
               category.
@@ -211,13 +227,15 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                 <>
                   {' '}
                   The self-reported part of your fund ({formatMoney(data.external_amount ?? 0)}) is
-                  carried flat from {formatMonth(carriedFrom)}: IGAB cannot know what another bank
-                  held before then.
+                  carried flat from {formatMonthShort(carriedFrom)}: IGAB cannot know what another
+                  bank held before then.
                 </>
               )}
             </p>
 
-            <h3 className="coverage-report__chart-title">Months covered</h3>
+            <h3 className="coverage-report__chart-title">
+              Months covered{through ? `, ${through}` : ''}
+            </h3>
             <div className="coverage-report__chart">
               <ResponsiveContainer width="100%" height={240}>
                 <ComposedChart data={chart}>
@@ -257,7 +275,9 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               </ResponsiveContainer>
             </div>
 
-            <h3 className="coverage-report__chart-title">Fund against a moving target</h3>
+            <h3 className="coverage-report__chart-title">
+              Fund against a moving target{through ? `, ${through}` : ''}
+            </h3>
             <div className="coverage-report__chart">
               <ResponsiveContainer width="100%" height={240}>
                 <ComposedChart data={chart}>
@@ -309,7 +329,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               <tbody>
                 {data.series.map((p) => (
                   <tr key={p.month}>
-                    <th scope="row">{formatMonth(p.month)}</th>
+                    <th scope="row">{formatMonthShort(p.month)}</th>
                     <td>{formatMoney(p.fund_balance)}</td>
                     <td>{formatMoney(p.essentials)}</td>
                     <td>{p.coverage_months === null ? '—' : `${p.coverage_months}`}</td>

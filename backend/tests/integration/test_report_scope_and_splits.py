@@ -6,7 +6,7 @@ the wrong order they cancel each other out. That is why unit coverage of each
 piece passed while the composition was broken.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES
@@ -172,14 +172,17 @@ class TestSplitLegsClassifyIndividually:
 
     async def test_burn_rate_counts_only_the_spending_leg(self, db_session):
         budget = await self._split_world(db_session)
-        points = await ReportService(db_session).burn_rate(budget.id, months=1)
+        # Read tomorrow: the burn ends yesterday (`burn_as_of`).
+        points = await ReportService(db_session).burn_rate(
+            budget.id, months=1, today=TODAY + timedelta(days=1)
+        )
         assert points[-1]["rolling_30"] == Decimal("100.00")
 
     async def test_burn_rate_agrees_with_the_leaf_reports(self, db_session):
         budget = await self._split_world(db_session)
         svc = ReportService(db_session)
         _, leaf_total = await svc.spending_by_category(budget.id, MONTH_START, TODAY)
-        points = await svc.burn_rate(budget.id, months=1)
+        points = await svc.burn_rate(budget.id, months=1, today=TODAY + timedelta(days=1))
         assert points[-1]["rolling_30"] == leaf_total, (
             "parent-row and leaf reports must not disagree about one transaction"
         )

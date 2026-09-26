@@ -41,7 +41,7 @@ type SortKey = 'balance' | 'rate' | 'baseline' | 'live' | 'interest'
 
 export function LiabilitiesReport({ budgetId }: Props) {
   const navigate = useNavigate()
-  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonth, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [modeFilter, setModeFilter] = useState<string | null>(null)
@@ -97,7 +97,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   const closedCount = data?.closed_with_balance_count ?? 0
   const closedOwed = formatMoney(data?.closed_with_balance_total ?? 0)
   const chartPoints = (data?.balance_over_time ?? []).map((p) => {
-    const point: Record<string, number | string> = { date: p.date.slice(0, 7) }
+    const point: Record<string, number | string> = { date: formatMonthShort(p.date) }
     for (const item of data?.items ?? []) {
       point[item.name] = Number(p.per_liability[item.liability_id] ?? 0)
     }

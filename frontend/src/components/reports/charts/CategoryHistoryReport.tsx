@@ -23,12 +23,19 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { averagedOver } from './averagedOver'
+import { averagedOver, completeMonths } from './averagedOver'
 import { ChartLegend } from './ChartLegend'
 import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL } from './chartColors'
 import { historySpentColor } from './categoryHistoryView'
 import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
+import {
+  completeMonthRows,
+  monthRange,
+  reportMonthLabel,
+  RUNNING_MONTH_OPACITY,
+} from '../../../utils/reportMonths'
+import { fromCents, sumToCents } from '../../../utils/money'
 
 interface Props {
   budgetId: string
@@ -38,7 +45,7 @@ interface Props {
  *  budget page's own assigned, activity and available, and the plan
  *  reports' Spent. */
 export function CategoryHistoryReport({ budgetId }: Props) {
-  const { formatMoney, formatMoneyOrDash, formatMonth, formatMonthShort } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(320)
   const storedId = useReportStore((s) => s.historyCategoryId)
@@ -61,7 +68,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   const chartData = useMemo(
     () =>
       (data?.months ?? []).map((m) => ({
-        month: formatMonthShort(m.month),
+        month: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
         Assigned: m.assigned,
         Spent: m.spent,
         // Null for an income category: no line rather than a false one.
@@ -76,8 +83,15 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   const latestAvailable = rows[rows.length - 1]?.available ?? null
   const availableNow = formatMoneyOrDash(latestAvailable)
 
-  const spent = rows.reduce((sum, m) => sum + m.spent, 0)
-  const assigned = rows.reduce((sum, m) => sum + m.assigned, 0)
+  // The cards read complete months only: the running month's plan is all in
+  // from the 1st while its spending arrives over the month, and adding it in
+  // read every category low at the start of a month. The average is served,
+  // over the same complete months.
+  const complete = completeMonthRows(rows)
+  const spent = fromCents(sumToCents(complete.map((m) => m.spent)))
+  const assigned = fromCents(sumToCents(complete.map((m) => m.assigned)))
+  const covered = monthRange(complete[0]?.month, complete.at(-1)?.month, formatMonthShort)
+  const over = covered ?? `over ${completeMonths(complete.length)}`
   const anyMovedIn = rows.some((m) => m.moved_in !== 0)
 
   return (
@@ -93,6 +107,10 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             <strong>Spent</strong> is net of refunds and leaves out money moved into the envelope —
             a transfer from savings is not spending, though Activity nets it. It is the figure the
             plan reports count. A Spent bar turns red in a month the envelope ended overspent.
+          </p>
+          <p>
+            The totals and the average cover the picker&apos;s complete months. The month in
+            progress is drawn after them, marked <em>so far</em>.
           </p>
           <ReportScopeNote report="category-history" />
         </ReportInfoButton>
@@ -114,6 +132,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             getRows={() =>
               rows.map((m) => ({
                 month: m.month,
+                partial_month: m.partial_month,
                 assigned: m.assigned,
                 moved_in: m.moved_in,
                 spent: m.spent,
@@ -137,16 +156,8 @@ export function CategoryHistoryReport({ budgetId }: Props) {
       ) : data ? (
         <div ref={captureRef} className="report-capture">
           <MetricRow>
-            <MetricCard
-              label="Assigned"
-              value={formatMoney(assigned)}
-              sub={`over ${months} months`}
-            />
-            <MetricCard
-              label="Spent (net of refunds)"
-              value={formatMoney(spent)}
-              sub={`over ${months} months`}
-            />
+            <MetricCard label="Assigned" value={formatMoney(assigned)} sub={over} />
+            <MetricCard label="Spent (net of refunds)" value={formatMoney(spent)} sub={over} />
             <MetricCard
               label="Average spent"
               value={data.months_averaged > 0 ? formatMoney(data.average_spent) : '—'}
@@ -180,10 +191,18 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                     />
                   )}
                 />
-                <Bar dataKey="Assigned" fill={COLOR_NEUTRAL} />
+                <Bar dataKey="Assigned" fill={COLOR_NEUTRAL}>
+                  {rows.map((m) => (
+                    <Cell key={m.month} fillOpacity={m.partial_month ? RUNNING_MONTH_OPACITY : 1} />
+                  ))}
+                </Bar>
                 <Bar dataKey="Spent" fill={CHART_COLORS[0]}>
                   {rows.map((m) => (
-                    <Cell key={m.month} fill={historySpentColor(m.available)} />
+                    <Cell
+                      key={m.month}
+                      fill={historySpentColor(m.available)}
+                      fillOpacity={m.partial_month ? RUNNING_MONTH_OPACITY : 1}
+                    />
                   ))}
                 </Bar>
                 <Line
@@ -237,7 +256,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             <tbody>
               {rows.map((m) => (
                 <tr key={m.month}>
-                  <td>{formatMonth(m.month)}</td>
+                  <td>{reportMonthLabel(m.month, m.partial_month, formatMonthShort)}</td>
                   <td style={{ textAlign: 'right' }}>{formatMoney(m.assigned)}</td>
                   {anyMovedIn && <td style={{ textAlign: 'right' }}>{formatMoney(m.moved_in)}</td>}
                   <td style={{ textAlign: 'right' }}>{formatMoney(m.spent)}</td>

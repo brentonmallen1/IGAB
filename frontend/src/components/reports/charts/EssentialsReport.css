@@ -109,6 +109,41 @@
   border-top: 1px solid var(--edge);
 }
 
+/* The headline card's second line: the other essentials figure. */
+.essentials-report__sub-line {
+  display: block;
+}
+
+/* The reserve targets, one line under the cards: the headline times a count,
+   so arithmetic rather than four more figures competing for the eye. */
+.essentials-report__targets {
+  margin: var(--spacing-sm) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.essentials-report__targets-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: var(--spacing-xs);
+}
+
+/* The roadmap's range: weight, not colour — accent is for state. */
+.essentials-report__target--range {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.essentials-report__targets-note {
+  color: var(--text-muted);
+}
+
+.essentials-report__chart-key {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
 /* Tagged Essential, nothing spent in this window. Present — absence is what
    made the report look capped at five — but not competing with the rows that
    cost something. */

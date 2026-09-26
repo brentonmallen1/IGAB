@@ -92,14 +92,14 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   essentials: {
     scope: 'on-budget',
     summary:
-      'What a lean month costs; the headline is the last 90 days ÷ 3, with yearly Long-term expense bills spread over 12 months when that is on.',
+      'What a lean month costs; the headline is the last three complete months averaged, with yearly Long-term expense bills spread over 12 months when that is on.',
     counts: 'Spending and debt payments in categories tagged Essential.',
     leavesOut: 'Money that counts as saved, and everything not tagged Essential.',
   },
   'cost-of-living': {
     scope: 'on-budget',
     summary:
-      'Everything committed each month, in Essential and Non-essential tiers, against income.',
+      'Everything committed each month, Essential or committed-but-not-essential, against income.',
     counts:
       'Categories tagged Essential or Cost of living, plus every debt-principal payment, vs average income.',
     leavesOut: 'Savings, and untagged spending — that is the Discretionary report.',
@@ -118,7 +118,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     summary: 'How many months of essentials your emergency fund would cover.',
     counts:
       'The fund balance ÷ a three-month average of essentials (yearly Long-term expense bills spread over 12 months when that is on), against a 3–6 month target.',
-    leavesOut: 'Non-essential spending — the target is a lean month, not a normal one.',
+    leavesOut:
+      'Committed spending that is not Essential — the target is a lean month, not a normal one.',
   },
   'income-expense': {
     scope: 'on-budget',

@@ -12,13 +12,12 @@ paper.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from igab.domain.dates import add_months, month_end, month_start
+from igab.domain.dates import add_months, history_index, month_end, month_start
 from igab.guide.concepts import trailing_average
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.emergency_coverage import (
     EmergencyCoverageService,
     coverage_months,
-    history_index,
 )
 from igab.services.essentials import essentials_summary
 
@@ -294,12 +293,13 @@ class TestTheAverageStartsWithTheHistory:
         assert point["essentials"] == Decimal("300.00")
         assert point["coverage_months"] == Decimal("3.0")
 
-    async def test_a_young_budgets_newest_point_and_headline_diverge_by_design(self, db_session):
-        """The deliberate divergence, pinned. History began last month, with
-        $1,000 of essentials and a $2,000 fund. The newest point divides by
-        the one month that exists — 2.0 months of runway — while the headline,
-        the Guide's 90 days ÷ 3, reads 6.0. Bounded: at most a factor of
-        three, and gone once three complete months exist."""
+    async def test_a_young_budgets_newest_point_is_the_headline(self, db_session):
+        """History began last month, with $1,000 of essentials and a $2,000
+        fund. The newest point divides by the one month that exists — 2.0
+        months of runway — and so does the headline: both are
+        `essentials_at` over the same months. They diverged by design once,
+        the headline a rolling ninety days ÷ 3 reading 6.0 beside a chart
+        reading 2.0."""
         budget = await self._budget(
             db_session,
             history_from=MONTHS[5] + timedelta(days=1),
@@ -312,6 +312,5 @@ class TestTheAverageStartsWithTheHistory:
         [point] = report["series"]
         assert point["essentials"] == Decimal("1000.00")
         assert point["coverage_months"] == Decimal("2.0")
-        assert report["essentials"].monthly == Decimal("333.33")
-        assert report["coverage_months"] == Decimal("6.0")
-        assert point["essentials"] <= report["essentials"].monthly * 3 + Decimal("0.01")
+        assert report["essentials"].monthly == point["essentials"]
+        assert report["coverage_months"] == point["coverage_months"]

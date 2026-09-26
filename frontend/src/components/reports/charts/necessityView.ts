@@ -14,6 +14,7 @@
  * then rendering them as a verdict would be dressing a guess as advice. They
  * are deliberately coarse, and the copy says "rule of thumb" out loud.
  */
+import { fromCents, toCents } from '../../../utils/money'
 import { shareOfTotal } from '../drillDownTotals'
 
 /** Ordered worst-to-best so a caller can compare standings. */
@@ -124,4 +125,78 @@ export function nonEssentialSpend(costOfLiving: number, essentials: number | nul
  */
 export function necessityShare(part: number | null, whole: number): number | null {
   return part === null ? null : shareOfTotal(part, whole)
+}
+
+/**
+ * True when the two tiers are the same figure: everything committed is
+ * Essential. Then the Essentials and "Committed, not essential" cards only
+ * restate the Cost of living card and a zero, so the page shows one card.
+ * Compared in whole cents — the served averages are cent-rounded.
+ */
+export function tiersAreEqual(costOfLiving: number, essentials: number | null): boolean {
+  return essentials !== null && toCents(costOfLiving) === toCents(essentials)
+}
+
+/** Take-home laid out whole: what is committed, what was chosen, what is left. */
+export interface TakeHomeSplit {
+  committed: number
+  discretionary: number
+  /** Take-home less both; negative when more went out than came in. */
+  leftOver: number
+  /** Whole percentages of take-home. `leftOverPct` is the remainder of the
+   *  other two, so the three always add to 100 as printed. */
+  committedPct: number
+  discretionaryPct: number
+  leftOverPct: number
+}
+
+/**
+ * The verdict's second line: Cost of living + Discretionary + left over
+ * against take-home, so a reader sees where all of it went rather than one
+ * ratio. Null without take-home to divide, or without a discretionary figure
+ * (nothing tagged — the Discretionary report serves none either).
+ *
+ * In whole cents, and "left over" is take-home less the other two rather than
+ * a fourth served figure: savings, and anything that is neither spending nor
+ * a debt payment, is what it holds.
+ */
+export function takeHomeSplit(
+  income: number,
+  committed: number,
+  discretionary: number | null
+): TakeHomeSplit | null {
+  if (discretionary === null || !(toCents(income) > 0)) return null
+  const incomeCents = toCents(income)
+  const committedCents = toCents(committed)
+  const discretionaryCents = toCents(discretionary)
+  const leftCents = incomeCents - committedCents - discretionaryCents
+  const committedPct = Math.round((committedCents / incomeCents) * 100)
+  const discretionaryPct = Math.round((discretionaryCents / incomeCents) * 100)
+  return {
+    committed: fromCents(committedCents),
+    discretionary: fromCents(discretionaryCents),
+    leftOver: fromCents(leftCents),
+    committedPct,
+    discretionaryPct,
+    leftOverPct: 100 - committedPct - discretionaryPct,
+  }
+}
+
+/** The split as one sentence: "Of $5,000.00 take-home a month: $3,000.00
+ *  committed (60%) · $1,200.00 discretionary (24%) · $800.00 left over (16%)".
+ *  A negative remainder is said as the shortfall it is. */
+export function takeHomeLine(
+  income: number,
+  split: TakeHomeSplit,
+  formatMoney: (amount: number) => string
+): string {
+  const left =
+    split.leftOver < 0
+      ? `${formatMoney(-split.leftOver)} more than came in (${split.leftOverPct}%)`
+      : `${formatMoney(split.leftOver)} left over (${split.leftOverPct}%)`
+  return (
+    `Of ${formatMoney(income)} take-home a month: ` +
+    `${formatMoney(split.committed)} committed (${split.committedPct}%) · ` +
+    `${formatMoney(split.discretionary)} discretionary (${split.discretionaryPct}%) · ${left}`
+  )
 }

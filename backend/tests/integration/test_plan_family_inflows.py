@@ -195,7 +195,9 @@ class TestOverHasATolerance:
     async def _mortgage(self, db_session, user, over_by: str):
         budget, checking, _, group = await _world(db_session, user)
         mortgage = await create_category(db_session, budget, group, "Mortgage")
-        for n in (0, 1, 2):
+        # Three complete months and the running one: only complete months
+        # are held to the tolerance (`ReportWindow`).
+        for n in (0, 1, 2, 3):
             await create_budget_assignment(db_session, budget, mortgage, back(n), "1500.00")
             paid = D("1500.00") + D(over_by)
             await create_transaction(
@@ -249,7 +251,7 @@ class TestASinkingFundIsNeverChronic:
         await tag_with_system_tags(db_session, premium, "long_term_expense")
         for n in (0, 1, 2, 3, 4, 5):
             await create_budget_assignment(db_session, budget, premium, back(n), "100.00")
-        for n in (0, 2, 4):
+        for n in (1, 3, 5):
             await create_transaction(
                 db_session, budget, checking, "-300.00", back(n), category=premium
             )
@@ -271,7 +273,7 @@ class TestASinkingFundIsNeverChronic:
         checking = await create_account(db_session, budget, "Second Checking")
         group = await create_category_group(db_session, budget, "Fun")
         dining = await create_category(db_session, budget, group, "Dining Out")
-        for n in (0, 1, 2):
+        for n in (1, 2, 3):
             await create_transaction(
                 db_session, budget, checking, "-40.00", back(n), category=dining
             )
@@ -394,6 +396,7 @@ class TestVarianceIsThePlanMatrixSummed:
             assert point["planned"] == sum((c["plan"] for c in column), D("0"))
             assert point["planned"] - point["actual_spent"] == point["monthly_variance"]
         # Last month: the drain is no plan (not -300) and Dining is 50 over.
-        assert variance[1]["monthly_variance"] == D("-50")
-        # This month: 80 moved in, 100 spent.
-        assert variance[2]["monthly_variance"] == D("-20")
+        assert variance[-2]["monthly_variance"] == D("-50")
+        # This month, drawn but not in the drift: 80 moved in, 100 spent.
+        assert variance[-1]["monthly_variance"] == D("-20")
+        assert variance[-1]["cumulative_variance"] is None

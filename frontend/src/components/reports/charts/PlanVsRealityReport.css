@@ -43,13 +43,6 @@
   border-bottom: 1px solid var(--border-color);
 }
 
-/* The running month's column is month-to-date. */
-.plan-reality__so-far {
-  display: block;
-  font-weight: 400;
-  font-style: italic;
-}
-
 /* Explains an over-plan row with no Chronic flag; not a warning. */
 .plan-reality__badge--quiet {
   background: color-mix(in srgb, var(--text-muted) 12%, transparent);
@@ -148,6 +141,13 @@
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The month in progress: month-to-date cells, counted in no verdict. Italic
+   rather than faded, so its figures keep their contrast in every theme. */
+.plan-reality__month-header--running,
+.plan-reality__cell--running {
+  font-style: italic;
 }
 
 /* A phone fits the name column and two or three months; the name column gives

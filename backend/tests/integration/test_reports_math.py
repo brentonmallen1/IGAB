@@ -262,7 +262,11 @@ async def test_days_until_zero_divides_cash_not_net_worth(db_session):
     )
     await create_transaction(db_session, budget, mortgage, "-280000.00", TODAY)
 
-    metrics = await reports.dashboard_metrics(budget.id, TODAY.replace(day=1), TODAY)
+    # Read tomorrow: the burn ends yesterday (`burn_as_of`), so today's rows
+    # are in it then.
+    metrics = await reports.dashboard_metrics(
+        budget.id, TODAY.replace(day=1), TODAY, TODAY + timedelta(days=1)
+    )
 
     # cash 2,400 ÷ (600 burn / 30 days) = 120 days.
     assert metrics["days_until_zero"] == 120.0
@@ -283,7 +287,9 @@ async def test_card_debt_does_not_shrink_the_runway_pot(db_session):
         db_session, budget, card, "-2900.00", TODAY - timedelta(days=100), category=gas
     )
 
-    metrics = await reports.dashboard_metrics(budget.id, TODAY.replace(day=1), TODAY)
+    metrics = await reports.dashboard_metrics(
+        budget.id, TODAY.replace(day=1), TODAY, TODAY + timedelta(days=1)
+    )
 
     # cash 2,700 ÷ (300 / 30) = 270 days; net worth here is −200, which the
     # old numerator reported as no runway.

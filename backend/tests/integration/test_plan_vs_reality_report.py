@@ -3,6 +3,12 @@
 The report deliberately ignores envelope carryover — it measures monthly plan
 discipline. A category coasting on January's surplus is still over-plan in
 February if nothing was assigned in February.
+
+"N months" is N complete months and the running month beside them (D5,
+`domain.dates.ReportWindow`): the running month's cells are drawn, and no
+verdict or total counts them. The window starts no earlier than the budget's
+first transaction, so tests that need the whole window anchor the history with
+an uncategorized row, which the plan never counts.
 """
 
 from datetime import date
@@ -45,12 +51,19 @@ def _cell(cat, month: date):
     return next(m for m in cat["monthly"] if m["month"] == month.isoformat())
 
 
+async def _history_from(db_session, budget, account, months_back: int) -> None:
+    """Start the budget's history `months_back` months ago with a row the plan
+    never counts (uncategorized), so the window is not clamped short."""
+    await create_transaction(db_session, budget, account, "-1.00", _months_back(months_back))
+
+
 async def test_monthly_matrix_and_totals(api_client, db_session):
     budget = await create_budget(db_session, api_client.test_user)
     account = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Everyday")
     groceries = await create_category(db_session, budget, group, "Groceries")
 
+    await _history_from(db_session, budget, account, 6)
     m1, m0 = _months_back(1), THIS_MONTH
     await create_budget_assignment(db_session, budget, groceries, m1, "200.00")
     await create_transaction(
@@ -60,26 +73,29 @@ async def test_monthly_matrix_and_totals(api_client, db_session):
     await create_transaction(db_session, budget, account, "-130.00", m0, category=groceries)
 
     body = await _fetch(api_client, budget.id, months=6)
-    assert len(body["months"]) == 6
-    assert body["months"][-1] == m0.isoformat()
+    # Six complete months, then the running one.
+    assert len(body["months"]) == 7
+    assert body["months"][-1] == body["running_month"] == m0.isoformat()
 
     cat = _cat(body, groceries.id)
     prev = _cell(cat, m1)
     assert D(prev["assigned"]) == D("200.00")
     assert D(prev["spent"]) == D("150.00")
     assert D(prev["variance"]) == D("50.00")
+    # The running month's cell is drawn, month-to-date...
     cur = _cell(cat, m0)
     assert D(cur["variance"]) == D("-30.00")
     # Empty months are zero-filled so the frontend gets a full grid
     empty = _cell(cat, _months_back(4))
     assert (D(empty["assigned"]), D(empty["spent"])) == (D("0"), D("0"))
 
-    assert cat["months_active"] == 2
-    assert cat["months_over"] == 1
-    assert D(cat["total_assigned"]) == D("300.00")
-    assert D(cat["total_spent"]) == D("280.00")
-    assert D(body["total_assigned"]) == D("300.00")
-    assert D(body["total_spent"]) == D("280.00")
+    # ...and counted in no verdict or total: those are the complete months'.
+    assert cat["months_active"] == 1
+    assert cat["months_over"] == 0
+    assert D(cat["total_assigned"]) == D("200.00")
+    assert D(cat["total_spent"]) == D("150.00")
+    assert D(body["total_assigned"]) == D("200.00")
+    assert D(body["total_spent"]) == D("150.00")
 
 
 async def test_carryover_is_ignored_by_design(api_client, db_session):
@@ -98,24 +114,28 @@ async def test_carryover_is_ignored_by_design(api_client, db_session):
 
     body = await _fetch(api_client, budget.id, months=6)
     entry = _cat(body, cat.id)
-    assert entry["months_over"] == 2  # the two months with spending but no assignment
+    # Last month spent with no assignment; this month did too, but it is
+    # still running and is no verdict yet.
+    assert entry["months_over"] == 1
+    assert D(_cell(entry, _months_back(0))["variance"]) == D("-50.00")
     assert D(_cell(entry, _months_back(2))["variance"]) == D("250.00")
     assert D(_cell(entry, _months_back(1))["variance"]) == D("-50.00")
 
 
 async def test_chronic_flag_threshold(api_client, db_session):
-    """Over in 3 of the last 6 months → chronic; 2 of 6 → not."""
+    """Over in 3 of the last 6 complete months → chronic; 2 of 6 → not, and
+    the running month is not a third: it is not over yet."""
     budget = await create_budget(db_session, api_client.test_user)
     account = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Everyday")
     chronic_cat = await create_category(db_session, budget, group, "Dining")
     occasional = await create_category(db_session, budget, group, "Hobbies")
 
-    for n in (0, 1, 2):
+    for n in (1, 2, 3):
         await create_transaction(
             db_session, budget, account, "-40.00", _months_back(n), category=chronic_cat
         )
-    for n in (0, 1):
+    for n in (0, 1, 2):
         await create_transaction(
             db_session, budget, account, "-40.00", _months_back(n), category=occasional
         )
@@ -155,13 +175,12 @@ async def test_excludes_system_and_uncategorized(api_client, db_session):
     groceries = await create_category(db_session, budget, group, "Groceries")
     income_cat = await create_category(db_session, budget, income_group, "Ready to Assign")
 
-    await create_transaction(db_session, budget, account, "-60.00", THIS_MONTH, category=groceries)
+    last = _months_back(1)
+    await create_transaction(db_session, budget, account, "-60.00", last, category=groceries)
+    await create_transaction(db_session, budget, account, "3000.00", last, category=income_cat)
+    await create_transaction(db_session, budget, account, "-45.00", last)  # uncategorized
     await create_transaction(
-        db_session, budget, account, "3000.00", THIS_MONTH, category=income_cat
-    )
-    await create_transaction(db_session, budget, account, "-45.00", THIS_MONTH)  # uncategorized
-    await create_transaction(
-        db_session, budget, account, "-99.00", THIS_MONTH, category=groceries, is_deleted=True
+        db_session, budget, account, "-99.00", last, category=groceries, is_deleted=True
     )
 
     body = await _fetch(api_client, budget.id, months=6)
@@ -174,12 +193,14 @@ async def test_months_window_bounds(api_client, db_session):
     account = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Everyday")
     cat = await create_category(db_session, budget, group, "Groceries")
+    await _history_from(db_session, budget, account, 14)
     await create_transaction(db_session, budget, account, "-10.00", _months_back(8), category=cat)
 
     body = await _fetch(api_client, budget.id, months=6)
     assert body["categories"] == []  # activity is outside the 6-month window
     body = await _fetch(api_client, budget.id, months=12)
-    assert len(_cat(body, cat.id)["monthly"]) == 12
+    # Twelve complete months and the running one.
+    assert len(_cat(body, cat.id)["monthly"]) == 13
 
     # 48 months used to be a 422 here and nowhere else: this report carried a
     # 24-month ceiling of its own while seven siblings had none. The ceiling is
@@ -240,8 +261,11 @@ async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, 
     group = await create_category_group(db_session, budget, "Goals")
     cat_obj = await create_category(db_session, budget, group, "Car Repairs")
 
-    await create_budget_assignment(db_session, budget, cat_obj, _months_back(0), "-300.00")
-    await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=cat_obj)
+    last = _months_back(1)
+    await create_budget_assignment(db_session, budget, cat_obj, last, "-300.00")
+    await create_transaction(
+        db_session, budget, checking, "-120.00", last.replace(day=10), category=cat_obj
+    )
     await db_session.commit()
 
     body = await _fetch(api_client, budget.id, months=6)
@@ -250,7 +274,7 @@ async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, 
     assert cat["months_over"] == 1
     # Over by 120 against a floored plan of 0 — not by 420 against -300.
     assert D(cat["avg_overspend"]) == D("120.00")
-    assert D(_cell(cat, _months_back(0))["variance"]) == D("-120.00")
+    assert D(_cell(cat, last)["variance"]) == D("-120.00")
 
 
 class TestBudgetVsActualGivesTheSameVerdict:

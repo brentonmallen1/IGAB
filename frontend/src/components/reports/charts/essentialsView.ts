@@ -24,8 +24,8 @@ export function shareOfLeanMonth(monthlyAverage: number, monthlyTotalAverage: nu
 
 /**
  * The most expensive month in the window — the stress case a reserve built
- * on the 90-day headline has to survive. Null when no month saw spending:
- * "the worst month cost $0" is not a claim worth a card.
+ * on the headline has to survive. Null when no month saw spending: "the
+ * worst month cost $0" is not a claim worth a card.
  */
 export function worstMonth(series: MonthTotal[]): MonthTotal | null {
   let worst: MonthTotal | null = null
@@ -33,6 +33,18 @@ export function worstMonth(series: MonthTotal[]): MonthTotal | null {
     if (m.total > 0 && (worst === null || m.total > worst.total)) worst = m
   }
   return worst
+}
+
+/**
+ * How far the worst month ran over the headline, as a whole percentage — the
+ * Worst month card's point: "18% over a typical month". Its sub-line read
+ * "Sep 2025 — ×6 reserve: $X", a reserve nobody sizes from one bad month.
+ * Null when the headline is not positive (nothing to be over) or the worst
+ * month did not exceed it.
+ */
+export function worstOverHeadline(worstTotal: number, headline: number): number | null {
+  if (!(headline > 0) || worstTotal <= headline) return null
+  return Math.round(((worstTotal - headline) / headline) * 100)
 }
 
 /**

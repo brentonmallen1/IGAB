@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { necessityReading, necessityShare, nonEssentialSpend } from './necessityView'
+import {
+  necessityReading,
+  necessityShare,
+  nonEssentialSpend,
+  takeHomeLine,
+  takeHomeSplit,
+  tiersAreEqual,
+} from './necessityView'
 
 describe('necessityReading', () => {
   it('says nothing rather than guessing when there is no income', () => {
@@ -85,5 +92,53 @@ describe('necessityShare', () => {
 
   it('reads 100 when the part is the whole of it', () => {
     expect(necessityShare(500, 500)).toBe(100)
+  })
+})
+
+describe('tiersAreEqual', () => {
+  it('is true when everything committed is Essential, to the cent', () => {
+    expect(tiersAreEqual(1800, 1800)).toBe(true)
+    expect(tiersAreEqual(1800, 1799.99)).toBe(false)
+  })
+
+  it('is false while nothing is tagged Essential', () => {
+    expect(tiersAreEqual(1800, null)).toBe(false)
+  })
+})
+
+describe('takeHomeSplit', () => {
+  const money = (n: number) => `$${n.toFixed(2)}`
+
+  it('lays take-home out as committed, discretionary and left over', () => {
+    const split = takeHomeSplit(5000, 3000, 1200)
+    expect(split).toEqual({
+      committed: 3000,
+      discretionary: 1200,
+      leftOver: 800,
+      committedPct: 60,
+      discretionaryPct: 24,
+      leftOverPct: 16,
+    })
+    expect(takeHomeLine(5000, split!, money)).toBe(
+      'Of $5000.00 take-home a month: $3000.00 committed (60%) · $1200.00 discretionary (24%) · $800.00 left over (16%)'
+    )
+  })
+
+  it('says a shortfall as one, not as a negative left over', () => {
+    const split = takeHomeSplit(3000, 2800, 500)!
+    expect(split.leftOver).toBe(-300)
+    expect(takeHomeLine(3000, split, money)).toMatch(/\$300\.00 more than came in \(-10%\)$/)
+  })
+
+  it('prints percentages that add to 100 when each rounds', () => {
+    // 1/3 each: 33 + 33 + 34.
+    const split = takeHomeSplit(3, 1, 1)!
+    expect(split.committedPct + split.discretionaryPct + split.leftOverPct).toBe(100)
+  })
+
+  it('is unknown with no take-home or no discretionary figure', () => {
+    expect(takeHomeSplit(0, 100, 50)).toBeNull()
+    expect(takeHomeSplit(-10, 100, 50)).toBeNull()
+    expect(takeHomeSplit(5000, 3000, null)).toBeNull()
   })
 })

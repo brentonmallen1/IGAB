@@ -337,8 +337,8 @@ class TestSpendingTrendsAveragesCompleteMonths:
             api_client, budget, "spending-trends", start_date="2026-01-01", end_date="2026-03-18"
         )
         assert body["months_averaged"] == 2
-        assert money(body["monthly_average"]) == Decimal("160.00")
-        assert body["latest_complete"] is False
+        assert money(body["avg_monthly"]) == Decimal("160.00")
+        assert body["running_month"] == "2026-03-01"
 
     async def test_a_range_cut_mid_month_averages_only_its_whole_months(
         self, db_session, api_client
@@ -348,8 +348,9 @@ class TestSpendingTrendsAveragesCompleteMonths:
             api_client, budget, "spending-trends", start_date="2026-01-15", end_date="2026-02-28"
         )
         assert body["months_averaged"] == 1
-        assert money(body["monthly_average"]) == Decimal("30.00")
-        assert body["latest_complete"] is True
+        assert money(body["avg_monthly"]) == Decimal("30.00")
+        # It ends before the running month, so none is drawn "so far".
+        assert body["running_month"] is None
 
     async def test_no_complete_month_is_no_average(self, db_session, api_client):
         budget, _ = await _household(db_session, api_client)
@@ -357,7 +358,7 @@ class TestSpendingTrendsAveragesCompleteMonths:
             api_client, budget, "spending-trends", start_date="2026-03-01", end_date="2026-03-18"
         )
         assert body["months_averaged"] == 0
-        assert body["monthly_average"] is None
+        assert body["avg_monthly"] is None
 
 
 class TestDayPatternsAveragesPerCalendarDay:

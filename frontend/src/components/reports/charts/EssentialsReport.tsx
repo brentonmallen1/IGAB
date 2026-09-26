@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import { useEssentialsReport } from '../../../api/reports'
 import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
-import { otherFigureNote } from '../../../utils/essentialsFigures'
+import { otherFigureNote, spreadsBills } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -25,7 +25,8 @@ import { ReportRangeSelect } from './rangeSelect'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NET } from './chartColors'
-import { columnTotal, shareOfLeanMonth, worstMonth } from './essentialsView'
+import { columnTotal, shareOfLeanMonth, worstMonth, worstOverHeadline } from './essentialsView'
+import { monthRange } from '../../../utils/reportMonths'
 import { completeMonths } from './averagedOver'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 import './EssentialsReport.css'
@@ -40,15 +41,15 @@ interface Props {
  * what a reserve of one, three, six or twelve months of it would be.
  *
  * One figure, three readers: the headline here is the Guide's
- * essential-expenses signal (rolling 90 days ÷ 3, with Long-term expense bills
- * spread over twelve months when the budget's setting is on — the number its
- * emergency-fund target is built from) and the Overview card's. Both figures
+ * essential-expenses signal (the last three complete months, with Long-term
+ * expense bills spread over twelve months when the budget's setting is on —
+ * the number its emergency-fund target is built from) and the Overview card's. Both figures
  * are served; the one the setting does not pick is shown beside it. The table
  * averages complete months instead, so a partial current month cannot drag
  * every category down. Nothing self-reported from the Guide appears here.
  */
 export function EssentialsReport({ budgetId }: Props) {
-  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useEssentialsReport(budgetId, months)
@@ -66,8 +67,14 @@ export function EssentialsReport({ budgetId }: Props) {
   const headline = data.essentials.monthly
   const other = otherFigureNote(data.essentials, formatMoney)
   const worst = worstMonth(data.monthly_series)
+  const spreading = spreadsBills(data.essentials, data.long_term_essentials)
+  const worstOver = worst ? worstOverHeadline(worst.total, headline) : null
+  // The months the headline averages, named wherever it is quoted.
+  const headlineMonths =
+    monthRange(data.essentials.window_start, data.essentials.window_end, formatMonthShort) ??
+    'the last 3 complete months'
   const monthData = data.monthly_series.map((m) => ({
-    month: m.month.slice(0, 7),
+    month: formatMonthShort(m.month),
     Spent: m.total,
   }))
 
@@ -81,17 +88,20 @@ export function EssentialsReport({ budgetId }: Props) {
               Spending in categories tagged <strong>Essential</strong> — the things you could not
               cut in an emergency. The narrower of the two necessity tiers: the Cost of Living
               report adds what is committed but sheddable, and shows the difference. The headline is
-              the last 90 days averaged per month, the same figure the Guide’s emergency-fund target
-              uses; the table averages the last {averagedMonths}.
+              the last three complete months averaged — the same figure the Guide’s emergency-fund
+              target uses — so a monthly bill is in it three times whatever the day; the table
+              averages the last {averagedMonths}.
             </p>
             <p>
               With <strong>Spread yearly bills over 12 months</strong> on, bills in categories
-              tagged Long-term expense count as a twelfth of the last year’s a month instead of when
-              they were paid, so an annual premium does not inflate one quarter and vanish from the
-              next. Both figures are shown; the chart and the table stay as paid.
+              tagged Long-term expense count as a twelfth of the last twelve complete months’ a
+              month instead of when they were paid, so an annual premium does not inflate one
+              quarter and vanish from the next. Both figures are shown; the chart and the table stay
+              as paid. With no Essential category tagged Long-term expense there is nothing to
+              spread, and the switch is replaced by a note saying so.
             </p>
             <p>
-              A reserve is that monthly figure times the months you want covered. The roadmap
+              A target is that monthly figure times the months you want covered. The roadmap
               suggests {rangeLow}–{rangeHigh} months once expensive debt is gone.
             </p>
             <p>
@@ -123,7 +133,12 @@ export function EssentialsReport({ budgetId }: Props) {
           </div>
         </div>
 
-        {data.tagged && <SpreadSinkingFundsToggle budgetId={budgetId} />}
+        {data.tagged && (
+          <SpreadSinkingFundsToggle
+            budgetId={budgetId}
+            longTermEssentials={data.long_term_essentials}
+          />
+        )}
 
         {!data.tagged ? (
           <div className="essentials-report__empty">
@@ -143,20 +158,13 @@ export function EssentialsReport({ budgetId }: Props) {
               <MetricCard
                 label="Essentials / month"
                 value={formatMoney(headline)}
-                sub={other ?? '90-day average'}
+                sub={
+                  <>
+                    {headlineMonths} average
+                    {other && <span className="essentials-report__sub-line">{other}</span>}
+                  </>
+                }
               />
-              {data.reserve.map((r) => {
-                const inRange = r.months >= rangeLow && r.months <= rangeHigh
-                return (
-                  <MetricCard
-                    key={r.months}
-                    label={`${r.months}-month reserve`}
-                    value={formatMoney(r.amount)}
-                    sub={inRange ? 'Roadmap range' : r.months === 1 ? 'Starter buffer' : undefined}
-                    accent={inRange}
-                  />
-                )
-              })}
               <MetricCard
                 label="Saved so far"
                 value={formatMoneyOrDash(data.emergency_fund.total)}
@@ -171,12 +179,37 @@ export function EssentialsReport({ budgetId }: Props) {
                 <MetricCard
                   label="Worst month"
                   value={formatMoney(worst.total)}
-                  sub={`${formatMonth(worst.month)} — ×${rangeHigh} reserve: ${formatMoney(
-                    worst.total * rangeHigh
-                  )}`}
+                  sub={
+                    worstOver === null
+                      ? `${formatMonthShort(worst.month)} · no month ran over the headline`
+                      : `${formatMonthShort(worst.month)} · ${worstOver}% over the headline`
+                  }
                 />
               )}
             </MetricRow>
+            {/* The reserve sizes on one line rather than four cards: they are
+                the headline times a count, and four cards of arithmetic
+                crowded out the three figures that are not. */}
+            <p className="essentials-report__targets">
+              <span className="essentials-report__targets-label">Targets</span>
+              {data.reserve.map((r, i) => {
+                const inRange = r.months >= rangeLow && r.months <= rangeHigh
+                return (
+                  <span
+                    key={r.months}
+                    className={inRange ? 'essentials-report__target--range' : undefined}
+                  >
+                    {i > 0 && ' · '}
+                    {r.months} {r.months === 1 ? 'month' : 'months'}{' '}
+                    <span className="tabular">{formatMoney(r.amount)}</span>
+                  </span>
+                )
+              })}
+              <span className="essentials-report__targets-note">
+                {' '}
+                — the roadmap suggests {rangeLow}–{rangeHigh}
+              </span>
+            </p>
             <div className="essentials-report__note">
               <EmergencyFundCounting budgetId={budgetId} />
             </div>
@@ -187,10 +220,10 @@ export function EssentialsReport({ budgetId }: Props) {
 
             {/* Two windows on one screen, deliberately (see
                 essentials_summary's docstring): the headline is the Guide's
-                rolling 90 days ÷ 3; the table averages complete months so a
-                partial month cannot drag every category down. Two different
-                "per month" figures with no explanation read as a bug, so the
-                gap is said here rather than only in the info panel. */}
+                last three complete months; the table averages the picker's.
+                Two different "per month" figures with no explanation read as
+                a bug, so the gap is said here rather than only in the info
+                panel. */}
             <p className="essentials-report__note">
               Every category tagged <strong>Essential</strong> is listed, including any with no
               spending in this window — those read zero rather than going missing.
@@ -198,9 +231,9 @@ export function EssentialsReport({ budgetId }: Props) {
 
             <p className="essentials-report__note">
               The table averages the last <strong>{averagedMonths}</strong> (
-              {formatMoney(data.monthly_total_average)}/mo); the headline is the rolling 90 days
-              {data.essentials.spread_on ? ', with yearly bills spread over 12 months' : ''}. The
-              two differ when recent spending has shifted.
+              {formatMoney(data.monthly_total_average)}/mo); the headline averages {headlineMonths}
+              {spreading ? ', with yearly bills spread over 12 months' : ''}. The two differ when
+              recent spending has shifted.
             </p>
 
             <div className="essentials-report__table-wrap">
@@ -316,7 +349,7 @@ export function EssentialsReport({ budgetId }: Props) {
                     stroke={COLOR_NET}
                     strokeDasharray="6 3"
                     label={{
-                      value: `Per month: ${formatMoney(headline)}`,
+                      value: `Essentials / month: ${formatMoney(headline)}`,
                       position: 'insideTopRight',
                       fill: 'var(--text-secondary)',
                       fontSize: 11,
@@ -325,6 +358,11 @@ export function EssentialsReport({ budgetId }: Props) {
                   <Bar dataKey="Spent" fill={CHART_COLORS[0]} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              <p className="essentials-report__chart-key">
+                Bars: each complete month as paid. Dashed line: the headline, the average of{' '}
+                {headlineMonths}
+                {spreading ? ' with yearly bills spread' : ''}.
+              </p>
             </div>
           </div>
         )}

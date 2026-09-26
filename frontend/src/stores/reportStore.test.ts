@@ -12,7 +12,8 @@ import {
   resolveGroupBy,
   useReportStore,
 } from './reportStore'
-import { thisMonthWindow } from '../utils/dateWindow'
+import { lastMonthWindow } from '../utils/dateWindow'
+import { PERSIST_KEYS } from './persistKeys'
 import { pinTimeZone } from '../test-utils/timeZone'
 
 describe('resolveGroupBy', () => {
@@ -108,27 +109,47 @@ describe('resetFilters ahead of Greenwich', () => {
     vi.useRealTimers()
   })
 
-  it('starts the default window on the 1st of the local month', () => {
+  it('defaults to the last complete month, on the local 1st too', () => {
+    // A month in progress is half a month: the Overview opened on "This
+    // Month" and read "105% over income" with one paycheck of two in.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 8, 1, 0, 30))
 
     useReportStore.getState().resetFilters()
 
     const { startDate, endDate } = useReportStore.getState().filters
-    expect(startDate).toBe('2026-09-01')
-    expect(endDate).toBe('2026-09-01')
+    expect(startDate).toBe('2026-08-01')
+    expect(endDate).toBe('2026-08-31')
   })
 
-  it("is the same value as the date picker's This Month preset", () => {
+  it("is the same value as the date picker's Last Month preset", () => {
     // The picker highlights a preset by string equality; a third spelling of
-    // "this month" that drifted would leave the default matching no preset.
+    // "last month" that drifted would leave the default matching no preset.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 8, 17, 12, 0))
 
     useReportStore.getState().resetFilters()
 
     const { startDate, endDate } = useReportStore.getState().filters
-    expect({ start: startDate, end: endDate }).toEqual(thisMonthWindow())
-    expect(thisMonthWindow()).toEqual({ start: '2026-09-01', end: '2026-09-17' })
+    expect({ start: startDate, end: endDate }).toEqual(lastMonthWindow())
+    expect(lastMonthWindow()).toEqual({ start: '2026-08-01', end: '2026-08-31' })
+  })
+
+  it('moves a range stored before the default changed onto the new default once', async () => {
+    // A stored range is dates, not a preset: "This Month" saved last week
+    // would otherwise stay a running month on every visit.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 17, 12, 0))
+    localStorage.setItem(
+      PERSIST_KEYS.reports,
+      JSON.stringify({
+        state: { filters: { startDate: '2026-09-01', endDate: '2026-09-10' } },
+        version: 0,
+      })
+    )
+    await useReportStore.persist.rehydrate()
+    const { startDate, endDate } = useReportStore.getState().filters
+    expect({ startDate, endDate }).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' })
+    localStorage.removeItem(PERSIST_KEYS.reports)
   })
 })

@@ -53,6 +53,22 @@ async def _world(db_session):
     return services, budget, checking, group, cat
 
 
+def _running_spent(pvr: dict) -> Decimal:
+    """What Plan vs Reality drew as spent this month. The month is running,
+    so its cells are drawn and its figures left out of the complete-month
+    totals (D5, `domain.dates.ReportWindow`); the planned-spend universe these
+    tests pin is read off the cells."""
+    return sum(
+        (
+            cell["spent"]
+            for c in pvr["categories"]
+            for cell in c["monthly"]
+            if cell["month"] == pvr["running_month"]
+        ),
+        D("0"),
+    )
+
+
 async def _soft_delete_group(db_session, group):
     """The reachable anomaly: the group row is soft-deleted while its
     categories stay live. `UNDER_DELETED_GROUP` is the check that reports it,
@@ -279,7 +295,7 @@ class TestThePlannedSpendUniverse:
         assert variance[-1]["actual_spent"] == D("0")
         assert variance[-1]["monthly_variance"] == D("500.00")
         assert bva["total_spent"] == D("0")
-        assert pvr["total_spent"] == D("0")
+        assert _running_spent(pvr) == D("0")
 
     @pytest.mark.parametrize(
         ("tag_key", "mode"),
@@ -314,7 +330,7 @@ class TestThePlannedSpendUniverse:
         assert variance[-1]["actual_spent"] == D("200.00")
         assert variance[-1]["monthly_variance"] == D("300.00")
         assert bva["total_spent"] == D("200.00")
-        assert pvr["total_spent"] == D("200.00")
+        assert _running_spent(pvr) == D("200.00")
 
     async def test_tracking_account_activity_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -332,7 +348,7 @@ class TestThePlannedSpendUniverse:
 
         assert variance[-1]["actual_spent"] == D("0")
         assert bva["total_spent"] == D("0")
-        assert pvr["total_spent"] == D("0")
+        assert _running_spent(pvr) == D("0")
 
     async def test_a_system_group_row_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -350,7 +366,7 @@ class TestThePlannedSpendUniverse:
 
         assert variance[-1]["actual_spent"] == D("0")
         assert bva["total_spent"] == D("0")
-        assert pvr["total_spent"] == D("0")
+        assert _running_spent(pvr) == D("0")
 
     async def test_a_refund_reduces_spent(self, db_session):
         """Once a pinned divergence: `amount < 0` in the row shape meant a
@@ -369,7 +385,7 @@ class TestThePlannedSpendUniverse:
 
         assert variance[-1]["actual_spent"] == D("70.00")
         assert bva["total_spent"] == D("70.00")
-        assert pvr["total_spent"] == D("70.00")
+        assert _running_spent(pvr) == D("70.00")
 
     async def test_every_report_spends_the_same_universe(self, db_session):
         """The consolidation itself: over a register that trips every
@@ -397,25 +413,32 @@ class TestThePlannedSpendUniverse:
         # The 100 spent less the 30 refunded; nothing else counts.
         assert variance[-1]["actual_spent"] == D("70.00")
         assert bva["total_spent"] == D("70.00")
-        assert pvr["total_spent"] == D("70.00")
+        assert _running_spent(pvr) == D("70.00")
 
 
 async def _tagged_envelope(db_session, key: str, name: str):
-    """One envelope carrying one system tag, 195 assigned last month and this
-    month, and 390 paid out of it today. Dates are read at run time, so a
-    month rollover between collection and run cannot move the window."""
+    """One envelope carrying one system tag, 195 assigned in each of the last
+    two complete months, and 390 paid out of it last month — complete months
+    only, which is all a plan verdict reads (D5). The budget's history starts
+    with the first assignment's month (an uncategorized row the plan never
+    counts), so the window is not clamped short. Dates are read at run time,
+    so a month rollover between collection and run cannot move the window.
+
+    Returns (budget, the first month, the day after the payout)."""
     services, budget, checking, group, _ = await _world(db_session)
     await seed_system_tags(db_session, budget.id)
     tags = TagRepository(db_session)
     envelope = await create_category(db_session, budget, group, name)
     await tags.set_category_tags(envelope.id, [(await tags.get_system_tag(budget.id, key)).id])
-    today = date.today()
-    this_month = today.replace(day=1)
+    this_month = date.today().replace(day=1)
     last_month = add_months(this_month, -1)
+    first_month = add_months(this_month, -2)
+    await create_transaction(db_session, budget, checking, "-1.00", first_month)
+    await create_budget_assignment(db_session, budget, envelope, first_month, "195.00")
     await create_budget_assignment(db_session, budget, envelope, last_month, "195.00")
-    await create_budget_assignment(db_session, budget, envelope, this_month, "195.00")
-    await create_transaction(db_session, budget, checking, "-390.00", today, category=envelope)
-    return budget, last_month, today
+    paid = last_month + timedelta(days=9)
+    await create_transaction(db_session, budget, checking, "-390.00", paid, category=envelope)
+    return budget, first_month, paid
 
 
 class TestASinkingFundsBillIsPlannedSpend:
@@ -428,10 +451,10 @@ class TestASinkingFundsBillIsPlannedSpend:
     against it alone passed on the old rule."""
 
     async def test_budget_vs_actual_counts_the_payout(self, db_session):
-        budget, last_month, today = await _tagged_envelope(
+        budget, first_month, paid = await _tagged_envelope(
             db_session, "long_term_expense", "Property Tax"
         )
-        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, first_month, paid)
 
         assert bva["total_assigned"] == D("390.00")
         assert bva["total_spent"] == D("390.00")
@@ -440,11 +463,13 @@ class TestASinkingFundsBillIsPlannedSpend:
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
         variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
 
-        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+        # The two complete months, then the running one — drawn, not drifted.
+        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance[:2]] == [
             (D("195.00"), D("0")),
             (D("195.00"), D("390.00")),
         ]
-        assert variance[-1]["cumulative_variance"] == D("0")
+        assert variance[1]["cumulative_variance"] == D("0")
+        assert variance[-1]["partial_month"] is True
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
@@ -483,10 +508,10 @@ class TestASavingsTaggedEnvelope:
     the other two read 0."""
 
     async def test_budget_vs_actual_counts_the_payout(self, db_session):
-        budget, last_month, today = await _tagged_envelope(
+        budget, first_month, paid = await _tagged_envelope(
             db_session, "savings", "Vacation Savings"
         )
-        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, first_month, paid)
 
         assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("390.00"))
 
@@ -496,11 +521,13 @@ class TestASavingsTaggedEnvelope:
 
         # 195 put by and unspent, then 195 put by and 390 taken out: the plan
         # closes at zero instead of carrying a +390 surplus forever.
-        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+        # The two complete months, then the running one — drawn, not drifted.
+        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance[:2]] == [
             (D("195.00"), D("0")),
             (D("195.00"), D("390.00")),
         ]
-        assert variance[-1]["cumulative_variance"] == D("0")
+        assert variance[1]["cumulative_variance"] == D("0")
+        assert variance[-1]["partial_month"] is True
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
@@ -523,12 +550,14 @@ class TestASavingsTaggedEnvelope:
         """The other half of the bound: the Breakdown and the Overview's Top
         Spending card read `SPENDING_ROW` plus the counted classes, not the
         plan universe, so the 390 does not appear there."""
-        budget, last_month, today = await _tagged_envelope(
+        budget, first_month, paid = await _tagged_envelope(
             db_session, "savings", "Vacation Savings"
         )
         rows, total = await ReportService(db_session).spending_by_category(
-            budget.id, last_month, today
+            budget.id, first_month, paid
         )
 
-        assert total == D("0")
+        # The 1.00 is the uncategorized row that starts the history, which
+        # the Breakdown counts as its Uncategorized line; the 390 is not there.
+        assert total == D("1.00")
         assert [r for r in rows if r["name"] == "Vacation Savings"] == []

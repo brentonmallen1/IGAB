@@ -183,7 +183,7 @@ class TestTheCheckupIsNotSecondGuessed:
         """Off means off. Empty findings rendered as "nothing wrong" would
         invent a clean bill of health nobody issued."""
 
-        async def disabled(budget_id, *, stamp=False):
+        async def disabled(budget_id, *, stamp=False, today=None):
             return {"enabled": False, "metrics": [], "findings": []}
 
         monkeypatch.setattr(ctx.guide, "checkup", disabled)
@@ -196,7 +196,7 @@ class TestTheCheckupIsNotSecondGuessed:
         asked in the chat is not the user running their health report."""
         seen: dict = {}
 
-        async def spy(budget_id, *, stamp=False):
+        async def spy(budget_id, *, stamp=False, today=None):
             seen["stamp"] = stamp
             return {"enabled": True, "as_of": TODAY, "metrics": [], "findings": []}
 

@@ -9,9 +9,10 @@ Pure: fixed inputs in, figures out.
 """
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
-from igab.guide.concepts import EssentialsWindows, emergency_fund_target, essentials_monthly
+from igab.guide.concepts import emergency_fund_target, essentials_at
 
 #: Essential spending in a month without the bill, and the yearly bill filed to
 #: a Long-term expense category. Round, so the page can be checked on paper.
@@ -36,30 +37,32 @@ class SpreadExample:
     goal_spread: Decimal
 
 
+def _year(bill_month: int | None) -> tuple[list[date], list[Decimal], list[Decimal]]:
+    """Twelve invented complete months of everyday essentials, with the
+    yearly bill landing in month `bill_month` (0 = oldest), or nowhere —
+    the shape `services.essentials.essential_months` reads (magnitudes)."""
+    months = [date(2025, m, 1) for m in range(1, 13)]
+    totals = [EXAMPLE_MONTHLY_ESSENTIALS] * 12
+    sinking = [Decimal("0")] * 12
+    if bill_month is not None:
+        totals[bill_month] += EXAMPLE_YEARLY_BILL
+        sinking[bill_month] = EXAMPLE_YEARLY_BILL
+    return months, totals, sinking
+
+
 def spread_example() -> SpreadExample:
     """$2,000 a month of essentials and a $2,400 yearly bill, both ways.
 
-    The windows are what `TransactionRepository.essential_windows` would read
-    (outflows negative): three months of everyday essentials over 90 days,
-    with the bill inside those 90 days or not, and the bill once in the year.
+    Twelve complete months, read at the newest (`essentials_at`): the bill
+    inside the last three months, or earlier in the year.
     """
-    everyday = -EXAMPLE_MONTHLY_ESSENTIALS * 3
-    bill = -EXAMPLE_YEARLY_BILL
-    after_bill = essentials_monthly(
-        EssentialsWindows(recent=everyday + bill, recent_sinking=bill, year_sinking=bill),
-        spread_on=True,
-    )
-    otherwise = essentials_monthly(
-        EssentialsWindows(recent=everyday, recent_sinking=Decimal("0"), year_sinking=bill),
-        spread_on=True,
-    )
+    after_bill = essentials_at(*_year(11), 11, spread_on=True)
+    otherwise = essentials_at(*_year(2), 11, spread_on=True)
     if after_bill.spread != otherwise.spread:
         # Spread is the point of the example: it reads the same either way.
         raise AssertionError("the spread figure moved with the bill's date")
-    share = essentials_monthly(
-        EssentialsWindows(recent=Decimal("0"), recent_sinking=Decimal("0"), year_sinking=bill),
-        spread_on=True,
-    ).spread
+    months, _, sinking = _year(2)
+    share = essentials_at(months, [Decimal("0")] * 12, sinking, 11, spread_on=True).spread
     return SpreadExample(
         as_paid_after_bill=after_bill.as_paid,
         as_paid_otherwise=otherwise.as_paid,

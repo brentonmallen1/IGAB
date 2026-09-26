@@ -41,7 +41,7 @@ function category(
 
 const MONTHS = ['2026-07-01', '2026-08-01', '2026-09-01']
 
-function report(categories: PlanRealityCategory[], running: string | null = '2026-09-01') {
+function report(categories: PlanRealityCategory[], running = '2026-09-01') {
   return {
     months: MONTHS,
     running_month: running,
@@ -118,11 +118,6 @@ describe('planRealityHeadline', () => {
     // August, not September: the running month is not "last month".
     expect(h.lastMonth).toEqual({ month: '2026-08-01', over: 2 })
     expect(h.worst).toEqual({ name: 'Dining Out', monthsOver: 3, monthsActive: 3 })
-  })
-
-  it('takes the newest month when none is running', () => {
-    const h = planRealityHeadline(report([], null))
-    expect(h.lastMonth).toEqual({ month: '2026-09-01', over: 0 })
   })
 
   it('breaks a tie on months over by the larger overrun', () => {

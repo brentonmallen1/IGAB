@@ -16,8 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from igab.domain.burn_rate import LOOKBACK_DAYS, LOOKBACK_MONTHS
-from igab.domain.dates import trailing_start
+from igab.domain.dates import month_end
 from igab.domain.money import quantize_cents
 
 
@@ -172,111 +171,54 @@ FULL_EMERGENCY_FUND_MONTHS_HIGH = 6
 #: quietly, whether it is still true. IGAB cannot refresh a number it was told,
 #: so the age of the claim is part of the claim.
 STALE_EXTERNAL_MONTHS = 12
-#: How far back "what a lean month costs" looks — the Guide's essentials
-#: signal and the Overview's essentials card share it, so the emergency-fund
-#: target and the card can never quote different months. It is the burn rate's
-#: whole lookback (`domain.burn_rate`: its thirty days and the sixty before),
-#: so the Overview's Essentials and burn cards read one span of days. It was a
-#: second `90` beside the burn's own, and the two windows had already come
-#: apart by a day once (`dates.trailing_start`).
-ESSENTIALS_WINDOW_DAYS = LOOKBACK_DAYS
-#: The essentials window said in months: what its total is divided by, and how
-#: many months a monthly series averages for the same figure. Derived with the
-#: days from one month length, so the pair cannot disagree.
-TRAILING_MONTHS = LOOKBACK_MONTHS
-
-
-def essentials_since(today: date) -> date:
-    """The first day of the essentials window: `ESSENTIALS_WINDOW_DAYS` days
-    ending today, both included. It was `today - 90` in the Guide and the
-    report alike — 91 days beside the Overview's 90-day burn window."""
-    return trailing_start(today, ESSENTIALS_WINDOW_DAYS)
-
-
-def essentials_per_month(window_total: Decimal) -> Decimal:
-    """A total over the essentials window as a monthly figure — ninety days
-    is three months. The Guide's target and the Overview card each divided
-    for themselves."""
-    return quantize_cents(abs(window_total) / TRAILING_MONTHS)
+#: How many COMPLETE months "what a lean month costs" averages — the Guide's
+#: essential-expenses signal and through it the emergency-fund target, the
+#: Overview card, the Essentials report and the Emergency Fund report all read
+#: this one figure (`essentials_at`).
+#:
+#: It was the last ninety days ÷ 3, through today. A monthly bill moves a
+#: rolling ninety days by a whole payment the day it enters and again the day
+#: it leaves, so a household whose complete months sat between $3,700 and
+#: $4,200 read anywhere from $3,100 to $4,900 over a year — the mortgage alone
+#: jumped it by $750 overnight — and the emergency-fund target swung six times
+#: that with it. Three complete months hold every monthly bill exactly three
+#: times, whatever day it is.
+ESSENTIALS_MONTHS = 3
 
 
 #: Months a sinking fund's bills are spread over. A yearly bill is the reason
 #: the tag exists, and a year is the one period every such bill recurs within.
+#: Twelve complete months hold a yearly bill paid on the same date exactly
+#: once.
 SPREAD_MONTHS = 12
-#: How far back the sinking-fund part of the essentials figure looks: 365 days
-#: ending today, both included, through the same `trailing_start` the 90-day
-#: window uses — so the two windows end on the same day and are spelled one
-#: way. Days rather than calendar months for the same reason the 90-day window
-#: is days: it slides daily instead of jumping on the 1st. A yearly bill paid on
-#: the same date each year lands in it exactly once — last year's payment is
-#: day 366.
-SINKING_WINDOW_DAYS = 365
-
-
-def sinking_since(today: date) -> date:
-    """The first day of the sinking-fund window: `SINKING_WINDOW_DAYS` days
-    ending today, both included."""
-    return trailing_start(today, SINKING_WINDOW_DAYS)
-
-
-@dataclass(frozen=True)
-class EssentialsWindows:
-    """Signed sums of essential spending (outflows are negative).
-
-    `recent` is every essential row over the 90-day window; `recent_sinking`
-    is the part of it filed to a sinking fund; `year_sinking` is sinking-fund
-    rows over the 365-day window.
-    """
-
-    recent: Decimal
-    recent_sinking: Decimal
-    year_sinking: Decimal
 
 
 @dataclass(frozen=True)
 class EssentialsMonthly:
     """What a lean month costs, both ways.
 
-    `as_paid` is the 90-day figure as the bills landed; `spread` swaps the
-    sinking-fund bills in those 90 days for a twelfth of the year's. Both are
-    always served; `spread_on` (the budget's setting) says which one the
-    targets, runway and reserve read — `monthly`.
+    `as_paid` is the three-complete-month average as the bills landed;
+    `spread` swaps the sinking-fund bills in those months for a twelfth of the
+    last twelve months'. Both are always served; `spread_on` (the budget's
+    setting) says which one the targets, runway and reserve read — `monthly`.
     """
 
     as_paid: Decimal
     spread: Decimal
     spread_on: bool
+    #: The first and last day of the complete months `as_paid` averages — so
+    #: every surface can say which months it is quoting. None when there is
+    #: no history to average yet.
+    window_start: date | None = None
+    window_end: date | None = None
 
     @property
     def monthly(self) -> Decimal:
         return self.spread if self.spread_on else self.as_paid
 
 
-def essentials_monthly(windows: EssentialsWindows, *, spread_on: bool) -> EssentialsMonthly:
-    """The essentials figure as paid and spread.
-
-    As paid: the 90-day total ÷ 3 (`essentials_per_month`). Spread: the
-    non-sinking part of the 90 days ÷ 3, plus the year's sinking-fund bills ÷
-    12. A $2,400 yearly premium is $200 a month whether it was paid last week
-    or eight months ago; as paid it is $800 a month for one quarter and nothing
-    for the other three. With no sinking-fund rows the two agree to the cent.
-
-    **A budget younger than a year under-reads** the spread part: a bill it has
-    not seen yet is not in the sum, and the divisor is twelve regardless. That
-    is the honest bound — dividing by the months that exist would turn one
-    premium into a monthly bill of its full size.
-    """
-    non_sinking = (windows.recent - windows.recent_sinking) / TRAILING_MONTHS
-    spread = non_sinking + windows.year_sinking / SPREAD_MONTHS
-    return EssentialsMonthly(
-        as_paid=essentials_per_month(windows.recent),
-        spread=quantize_cents(abs(spread)),
-        spread_on=spread_on,
-    )
-
-
 def trailing_average(
-    totals: list[Decimal], index: int, window: int = TRAILING_MONTHS, *, first_data: int = 0
+    totals: list[Decimal], index: int, window: int = ESSENTIALS_MONTHS, *, first_data: int = 0
 ) -> Decimal:
     """Mean of the `window` months ending at `index`, over what exists.
 
@@ -286,18 +228,11 @@ def trailing_average(
     then walks back.
 
     `first_data` is the index of the first month the budget has any history
-    for (`emergency_coverage.history_index`). Months before it are not months a
+    for (`domain.dates.history_index`). Months before it are not months a
     household spent nothing — they are months the budget did not exist — and
     averaging their zeros in did exactly what the paragraph above warns against
     from the other direction: a young budget's chart opened at 6.0 months of
     runway, because two thirds of its denominator was a period with no data.
-
-    **The one deliberate divergence.** The headline (the served essentials
-    figure) is the Guide's, 90 days divided by three whatever the budget's
-    age. For a budget with under three complete months of history, the newest
-    point here divides by the months that exist and the headline still by
-    three, so the two differ — by at most a factor of three, and only until the
-    third complete month. Pinned in `test_emergency_coverage.py`.
     """
     start = max(first_data, index - window + 1)
     span = totals[start : index + 1]
@@ -307,23 +242,63 @@ def trailing_average(
 def spread_average(
     totals: list[Decimal], sinking: list[Decimal], index: int, *, first_data: int = 0
 ) -> Decimal:
-    """A month's essentials denominator with sinking-fund bills spread.
+    """A month's essentials figure with sinking-fund bills spread.
 
     `totals` and `sinking` are monthly magnitudes, oldest first; `sinking` is
     the part of each month's total filed to a sinking fund. The rest takes the
     trailing three-month average, cut at the history exactly as
     `trailing_average` is; the sinking part is the twelve months ending at
-    `index` divided by twelve — the month-shaped twin of `essentials_monthly`.
+    `index` divided by twelve. A $2,400 yearly premium is $200 a month whether
+    it was paid last month or eight months ago; as paid it is $800 a month for
+    one quarter and nothing for the other three. With no sinking-fund rows the
+    two agree to the cent.
 
     The twelve-month part is **not** cut at `first_data`: the months before the
     history hold zeros, and dividing by twelve anyway is what spreading means.
-    The same bound as the headline — a budget younger than a year under-reads
-    bills it has not seen.
+    **A budget younger than a year under-reads** it — a bill it has not seen yet
+    is not in the sum — and that is the honest bound: dividing by the months
+    that exist would turn one premium into a monthly bill of its full size.
     """
     rest = [t - s for t, s in zip(totals, sinking, strict=True)]
     year = sinking[max(0, index - SPREAD_MONTHS + 1) : index + 1]
     spread = sum(year, Decimal("0")) / SPREAD_MONTHS
     return quantize_cents(trailing_average(rest, index, first_data=first_data) + spread)
+
+
+def essentials_at(
+    months: list[date],
+    totals: list[Decimal],
+    sinking: list[Decimal],
+    index: int,
+    *,
+    first_data: int = 0,
+    spread_on: bool,
+) -> EssentialsMonthly:
+    """What a lean month costs as of the complete month at `index` — THE
+    essentials figure, as paid and spread.
+
+    One function for the headline and every point of a series: the Guide's
+    target, the Overview card, the Essentials report and the Emergency Fund
+    headline read it at the newest complete month, and the Emergency Fund
+    chart reads it at each of its months. The headline used to be a rolling
+    ninety days ÷ 3 beside a chart of three-complete-month averages, so the
+    newest point and the card over it disagreed by design; now the card IS
+    the newest point.
+
+    `months` (first of each month), `totals` and `sinking` are complete months
+    only, oldest first, the money as positive magnitudes. With no history at
+    `index` (a budget whose history starts this month) both figures are zero
+    and the window is None: nothing has been measured yet.
+    """
+    first = max(first_data, index - ESSENTIALS_MONTHS + 1)
+    measured = 0 <= first <= index < len(months)
+    return EssentialsMonthly(
+        as_paid=trailing_average(totals, index, first_data=first_data),
+        spread=spread_average(totals, sinking, index, first_data=first_data),
+        spread_on=spread_on,
+        window_start=months[first] if measured else None,
+        window_end=month_end(months[index]) if measured else None,
+    )
 
 
 def emergency_fund_target(essentials_monthly: Decimal, months: int) -> Decimal:

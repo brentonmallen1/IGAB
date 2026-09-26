@@ -16,6 +16,7 @@ describe('Cumulative Variance', () => {
   it('lists plan, spent, the month and the running total in its tooltip', () => {
     const rows = varianceTooltipRows({
       month: '2026-08-01',
+      partial_month: false,
       budget_assigned: 900,
       moved_in: 100,
       planned: 1000,
@@ -29,6 +30,20 @@ describe('Cumulative Variance', () => {
       ['Over plan', 150],
       ['Running total', -400],
     ])
+  })
+
+  it('has no running total for the running month, which is not in the drift', () => {
+    const rows = varianceTooltipRows({
+      month: '2026-09-01',
+      partial_month: true,
+      budget_assigned: 900,
+      moved_in: 0,
+      planned: 900,
+      actual_spent: 300,
+      monthly_variance: 600,
+      cumulative_variance: null,
+    })
+    expect(rows.map((r) => r.name)).toEqual(['Planned', 'Spent', 'Under plan'])
   })
 })
 

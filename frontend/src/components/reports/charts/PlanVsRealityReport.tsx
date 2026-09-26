@@ -10,6 +10,7 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { reportMonthLabel } from '../../../utils/reportMonths'
 import './PlanVsRealityReport.css'
 
 interface Props {
@@ -49,13 +50,14 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const allMonths = data?.months ?? []
-  const running = data?.running_month ?? null
+  // The running month's cells are month-to-date: drawn, marked "so far", and
+  // counted in no verdict or total (served — `running_month`).
+  const isRunning = (month: string) => month === data?.running_month
   let categories = data?.categories ?? []
   if (chronicOnly) categories = categories.filter((c) => c.chronic)
 
   const maxOver = worstOverspend(categories)
   const headline = data ? planRealityHeadline(data) : null
-  const monthLabel = (m: string) => formatMonthShort(m)
 
   return (
     <div className="report-section surface">
@@ -74,8 +76,12 @@ export function PlanVsRealityReport({ budgetId }: Props) {
           </p>
           <p>
             Over plan in <strong>3 of the last 6 months</strong> is chronic. Sinking funds
-            (Long-term expense) never are — paying the bill they saved for is the plan working. The
-            newest month is still being written, and says &ldquo;so far&rdquo;.
+            (Long-term expense) never are — paying the bill they saved for is the plan working.
+          </p>
+          <p>
+            The totals, the chronic flag and the Over column count complete months only. The month
+            in progress is the last column, marked <em>so far</em>: its plan is in, its spending is
+            still arriving.
           </p>
           <ReportScopeNote report="plan-reality" />
         </ReportInfoButton>
@@ -128,7 +134,9 @@ export function PlanVsRealityReport({ budgetId }: Props) {
             <MetricCard
               label="Over last month"
               value={headline.lastMonth ? String(headline.lastMonth.over) : '—'}
-              sub={headline.lastMonth ? `in ${monthLabel(headline.lastMonth.month)}` : undefined}
+              sub={
+                headline.lastMonth ? `in ${formatMonthShort(headline.lastMonth.month)}` : undefined
+              }
             />
             <MetricCard
               label="Worst"
@@ -158,9 +166,12 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                     Category
                   </th>
                   {allMonths.map((m) => (
-                    <th scope="col" key={m} className="plan-reality__month-header">
-                      {monthLabel(m)}
-                      {m === running && <span className="plan-reality__so-far">so far</span>}
+                    <th
+                      scope="col"
+                      key={m}
+                      className={`plan-reality__month-header${isRunning(m) ? ' plan-reality__month-header--running' : ''}`}
+                    >
+                      {reportMonthLabel(m, isRunning(m), formatMonthShort)}
                     </th>
                   ))}
                   <th scope="col" className="plan-reality__over-header">
@@ -200,8 +211,8 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                       )}
                     </td>
                     {cat.monthly.map((cell) => {
-                      const ym = monthLabel(cell.month)
-                      const soFar = cell.month === running ? ' so far' : ''
+                      const running = isRunning(cell.month)
+                      const ym = reportMonthLabel(cell.month, running, formatMonthShort)
                       const planned =
                         cell.moved_in !== 0
                           ? `planned ${formatMoney(cell.plan)} (assigned ${formatMoney(cell.assigned)} + moved in ${formatMoney(cell.moved_in)})`
@@ -213,10 +224,14 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                             'plan-reality__cell',
                             cell.active ? 'plan-reality__cell--clickable' : '',
                             cell.active && cell.over ? 'plan-reality__cell--over' : '',
-                            cell.active && !cell.over ? 'plan-reality__cell--under' : '',
+                            // The running month is neither over nor under yet.
+                            cell.active && !cell.over && !running
+                              ? 'plan-reality__cell--under'
+                              : '',
+                            running ? 'plan-reality__cell--running' : '',
                           ].join(' ')}
                           style={cell.active ? overspendStyle(cell, maxOver) : undefined}
-                          title={`${cat.category_name} · ${ym}${soFar} — ${planned}, spent ${formatMoney(cell.spent)}`}
+                          title={`${cat.category_name} · ${ym} — ${planned}, spent ${formatMoney(cell.spent)}`}
                           onClick={
                             cell.active
                               ? () =>

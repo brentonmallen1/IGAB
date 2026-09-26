@@ -5,6 +5,9 @@ import {
   discretionaryMonthDrill,
   discretionaryRows,
   discretionaryShare,
+  perMonth,
+  tierSum,
+  tierSumLine,
 } from './discretionaryView'
 
 // The household the backend suite builds (test_discretionary.py), over one
@@ -141,5 +144,51 @@ describe('discretionaryMonthDrill', () => {
       startDate: '2025-02-01',
       endDate: '2025-02-28',
     })
+  })
+})
+
+describe('perMonth', () => {
+  it('is a window total over its months, to the cent', () => {
+    expect(perMonth(2900, 2)).toBe(1450)
+    expect(perMonth(1000, 3)).toBe(333.33)
+  })
+
+  it('is unknown with no total or no month', () => {
+    expect(perMonth(null, 2)).toBeNull()
+    expect(perMonth(2900, 0)).toBeNull()
+  })
+})
+
+describe('tierSum', () => {
+  const served = {
+    total: 725,
+    spending_total: 2900,
+    cost_of_living_total: 3000,
+    months_averaged: 2,
+  }
+
+  it('is spending plus the debt payments Cost of living counts by class', () => {
+    const sum = tierSum(served)!
+    expect(sum).toEqual({
+      costOfLiving: 1500,
+      discretionary: 362.5,
+      spending: 1450,
+      debtPayments: 412.5,
+    })
+    // It adds up as printed.
+    expect(sum.costOfLiving + sum.discretionary).toBe(sum.spending + sum.debtPayments)
+    expect(tierSumLine(sum, (n) => `$${n.toFixed(2)}`)).toBe(
+      'Cost of living $1500.00 + Discretionary $362.50 = $1450.00 spent + $412.50 debt payments, a month'
+    )
+  })
+
+  it('reads no debt payments when the tiers are all spending', () => {
+    expect(tierSum({ ...served, cost_of_living_total: 2175 })!.debtPayments).toBe(0)
+  })
+
+  it('is unknown untagged, or with no month', () => {
+    expect(tierSum({ ...served, cost_of_living_total: null })).toBeNull()
+    expect(tierSum({ ...served, total: null })).toBeNull()
+    expect(tierSum({ ...served, months_averaged: 0 })).toBeNull()
   })
 })

@@ -48,7 +48,7 @@ export function SeasonalityReport({ budgetId }: Props) {
 
   function drillTo(categoryId: string | null, categoryName: string, month: string) {
     if (!data) return
-    const window = monthWindow(month.slice(0, 7))
+    const window = monthWindow(month)
     setDrillDown({
       kind: 'category',
       label: `${categoryName} · ${formatMonthShort(month)}`,

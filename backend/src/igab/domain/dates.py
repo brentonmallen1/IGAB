@@ -15,6 +15,7 @@ try/except around a calendar edge.
 """
 
 import calendar
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 
@@ -77,23 +78,70 @@ def month_starts(start: date, end: date) -> list[date]:
     return months
 
 
-def report_months(today: date, months: int) -> list[date]:
-    """The `months` month buckets ending with `today`'s month, oldest first:
-    the axis of a report that draws a SERIES — net worth, burn rate, plan
-    discipline, a category's history — whose newest point is "now".
+def months_ending(month: date, months: int) -> list[date]:
+    """The `months` month buckets ending with `month`'s, oldest first.
 
-    Not `complete_month_window`, which is for a per-month AVERAGE and so
-    leaves the running month out. A series draws it, clamped to today
-    (`clamped_month_end`). Which window a report reads is its choice; the
-    arithmetic is here.
-
-    Exactly `months` buckets. The rule was spelled at a dozen call sites, and
-    two drifted to `months + 1` — subtract the count, then include the current
-    month too — so Savings and Subscriptions drew a thirteenth, empty column on
-    the default twelve and divided their averages by it.
+    Calendar arithmetic only — NOT a report window. A report's "N months" is
+    `report_window`, which never counts the running month among its N. This
+    is for a rule that genuinely means "this month and the ones before it",
+    like the wishlist's fallback pace over assigned money, where the current
+    month's assignment is a plan, not a partial measurement.
     """
-    current = month_start(today)
+    current = month_start(month)
     return [add_months(current, -i) for i in range(months - 1, -1, -1)]
+
+
+@dataclass(frozen=True)
+class ReportWindow:
+    """What "the last N months" means on every report: N COMPLETE months,
+    and the running month beside them, never among them.
+
+    One "12 months" picker gave some reports twelve complete months (Income by
+    Source, Volatility), others eleven complete plus the running one (Income
+    vs Expenses, Savings Rate, Variance, Plan vs Reality, Category History),
+    and Anomalies thirteen. Savings Rate's headline flipped from +0.8% over
+    complete months to -1.8% because a few days of a new month rode in it: the
+    pay had not landed, the bills had. So a window names its complete months
+    and its running month separately, and a report that draws the running
+    month draws it apart — labelled "so far" — and never adds it to an
+    average, a total or a headline.
+
+    `complete` may be empty: a budget whose history starts this month has no
+    complete month yet (`complete_month_window`'s clamp).
+    """
+
+    complete: tuple[date, ...]
+    running: date
+
+    @property
+    def axis(self) -> list[date]:
+        """Every month a series draws: the complete ones, then the running one."""
+        return [*self.complete, self.running]
+
+    @property
+    def start(self) -> date:
+        """The first day any query for this window reads."""
+        return self.complete[0] if self.complete else self.running
+
+    @property
+    def complete_end(self) -> date:
+        """The last day of the last complete month — where a headline stops."""
+        return self.running - timedelta(days=1)
+
+    def is_running(self, month: date) -> bool:
+        return month_start(month) == self.running
+
+
+def report_window(today: date, months: int, history_from: date | None = None) -> ReportWindow:
+    """The last `months` complete months before `today`, and `today`'s month.
+
+    `complete_month_window` is the arithmetic, and its history clamp applies:
+    a month before the budget's first transaction is a month nobody recorded,
+    not a month of zeros. `report_basics.history_window` supplies the history
+    from the database.
+    """
+    start, end = complete_month_window(today, months, history_from)
+    return ReportWindow(tuple(month_starts(start, end)), month_start(today))
 
 
 def clamped_month_end(month: date, today: date) -> date:
@@ -141,6 +189,42 @@ def complete_month_window(
     if history_from is not None:
         start = max(start, month_start(history_from))
     return start, current - timedelta(days=1)
+
+
+def complete_months_within(start: date, end: date, today: date) -> list[date]:
+    """The months a date range holds WHOLE and that are over by `today`: the
+    months a per-month average over an arbitrary range may divide by.
+
+    For the reports whose window is a date range rather than "N months"
+    (Spending Trends). A range from the 15th, or one ending on today, draws
+    its first and last months partial; averaging them in as months spreads
+    half a month across a whole one — the same fault `ReportWindow` removes
+    from the month-windowed reports.
+    """
+    running = month_start(today)
+    return [
+        m for m in month_starts(start, end) if m >= start and month_end(m) <= end and m < running
+    ]
+
+
+def history_index(months: list[date], history_from: date | None) -> int:
+    """The index of the first month in `months` the budget has history for.
+
+    From the budget's first transaction — `earliest_date`, the start "All
+    time" counts from — not from the first month with essentials spending.
+    That was the first version, and it is a second answer to "when does this
+    budget begin": a real month in which nothing essential was spent read as a
+    month before the budget existed, so a household whose first Essential bill
+    landed in March had March averaged alone instead of with the two quiet
+    months before it.
+
+    A budget with no transactions has no history to cut from: 0. One whose
+    history starts after every month listed: `len(months)`.
+    """
+    if history_from is None:
+        return 0
+    start = month_start(history_from)
+    return next((i for i, m in enumerate(months) if m >= start), len(months))
 
 
 def trailing_start(today: date, days: int) -> date:
@@ -207,21 +291,3 @@ def weekday_counts(start: date, end: date) -> list[int]:
     for i in range(rest):
         counts[(start.weekday() + i) % 7] += 1
     return counts
-
-
-def complete_months(start: date, end: date, today: date) -> list[date]:
-    """The months wholly inside [start, end] that are over by `today`, oldest
-    first — what a per-month average over a range the reader picked may
-    divide by.
-
-    `complete_month_window` answers this for a report that picks its own
-    window; this is for a range whose ends can fall mid-month. 1 January to
-    today, on 26 September, holds eight complete months and a running ninth:
-    dividing its total by nine spread 26 days of September across a whole
-    month and read every month low.
-    """
-    return [
-        m
-        for m in month_starts(start, end)
-        if m >= start and month_end(m) <= end and month_end(m) < today
-    ]

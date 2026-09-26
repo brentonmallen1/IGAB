@@ -57,7 +57,9 @@ describe('MeansTrendCard', () => {
   it('reads the pooled three months, the direction and the count', () => {
     render(<MeansTrendCard months={SIX} />)
 
-    expect(card()).toEqual({ value: 'Keeping 11%', sub: '3-month average · up from 6%' })
+    // The earlier pool said the way the value is: "was keeping 6%", not a
+    // signed "up from 6%" beside a value in words.
+    expect(card()).toEqual({ value: 'Keeping 11%', sub: 'over 3 months · was keeping 6%' })
     expect(screen.getByText('Keeping 11%')).toHaveClass('means-standing--below')
     // January to April and June are below; May is at (4% over).
     expect(
@@ -81,13 +83,14 @@ describe('MeansTrendCard', () => {
         ]}
       />
     )
-    expect(card()).toEqual({ value: 'Short 4%', sub: '3-month average · up from −10%' })
+    // It read "Short 4% / up from −10%"; now the before is a reading too.
+    expect(card()).toEqual({ value: 'Short 4%', sub: 'over 3 months · was short 10%' })
     expect(screen.getByText('Short 4%')).toHaveClass('means-standing--at')
   })
 
   it('has only the average when there is nothing before it', () => {
     render(<MeansTrendCard months={SIX.slice(3)} />)
-    expect(card().sub).toBe('3-month average')
+    expect(card().sub).toBe('over 3 months')
   })
 
   it('needs a month with income before it reads anything', () => {

@@ -17,8 +17,9 @@ state. The old walk also ignored the import anchor, so every YNAB-imported
 budget was wrong from its first month.
 
 `total_inflow` counts only positive assignments in the window. The window for
-`months=N` is N entries; it used to be N+1, so "All time (18 months)" drew 19
-columns with an empty leader and divided the average inflow by 19.
+`months=N` is N complete months and the running one (`ReportWindow`, D5),
+never reaching before the budget's history: "All time" once drew an empty
+leading column and divided the average inflow by it.
 """
 
 from datetime import date
@@ -124,7 +125,7 @@ async def test_balances_carry_prior_history_then_accumulate_monthly(db_session):
     # long_term_expense categories belong in the report too
     await create_budget_assignment(db_session, budget, lt, months_ago(0), "250.00")
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
 
     assert data["months"] == [months_ago(2), months_ago(1), months_ago(0)]
     by_name = {c["category_name"]: c for c in _rows(data)}
@@ -165,7 +166,7 @@ async def test_negative_assignment_reduces_balance_but_not_inflow(db_session):
     await create_budget_assignment(db_session, budget, fund, months_ago(1), "500.00")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "-300.00")
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
 
     row = _rows(data)[0]
     assert row["monthly_balances"] == [
@@ -200,7 +201,7 @@ async def test_pending_and_deleted_excluded_split_child_counted(db_session):
         db_session, budget, checking, "-5.00", months_ago(0), category=fund, is_deleted=True
     )
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
 
     row = _rows(data)[0]
     # Only the split child's -20 is real posted activity
@@ -212,7 +213,7 @@ async def test_no_tagged_categories_is_empty(db_session):
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
 
     assert data == {
         "saved": {
@@ -251,7 +252,7 @@ async def test_a_month_that_overspent_hands_zero_to_the_next(db_session):
     await create_budget_assignment(db_session, budget, fund, months_ago(1), "300.00")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "300.00")
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
     row = _rows(data)[0]
 
     # -200 is absorbed by TBA, so the next month opens at 0, not at -200.
@@ -277,7 +278,7 @@ async def test_an_overspend_before_the_window_is_floored_where_it_happened(db_se
     await create_transaction(db_session, budget, checking, "-300.00", months_ago(5), category=fund)
     await create_budget_assignment(db_session, budget, fund, months_ago(4), "500.00")
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
     row = _rows(data)[0]
 
     assert row["monthly_balances"] == [Decimal("500.00")] * 3
@@ -306,7 +307,7 @@ async def test_current_balance_equals_the_budget_pages_available(db_session):
     await create_transaction(db_session, budget, checking, "-90.00", months_ago(1), category=fund)
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "175.00")
 
-    report = await savings_report(db_session, budget.id, months=6)
+    report = await savings_report(db_session, budget.id, months=5)
 
     assert _rows(report)[0]["current_balance"] == await _page_available(
         db_session, budget, fund, TODAY
@@ -328,7 +329,7 @@ async def test_a_row_later_this_month_moves_the_balance_as_it_moves_the_page(db_
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "500.00")
     await create_transaction(db_session, budget, checking, "-120.00", last_day, category=fund)
 
-    report = await savings_report(db_session, budget.id, months=3)
+    report = await savings_report(db_session, budget.id, months=2)
 
     assert _rows(report)[0]["current_balance"] == Decimal("380.00")
     assert _rows(report)[0]["current_balance"] == await _page_available(
@@ -350,7 +351,7 @@ async def test_activity_on_an_off_budget_account_moves_neither_figure(db_session
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "500.00")
     await create_transaction(db_session, budget, tracked, "-120.00", months_ago(0), category=fund)
 
-    report = await savings_report(db_session, budget.id, months=3)
+    report = await savings_report(db_session, budget.id, months=2)
     grid = await make_services(db_session).budgets.get_category_balance(fund.id, TODAY)
 
     # The off-budget row is not budget activity: 500, not 380.
@@ -372,7 +373,7 @@ async def test_a_soft_deleted_envelope_is_not_a_row(db_session):
     gone.is_deleted = True
     await db_session.flush()
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
 
     assert [c["category_name"] for c in _rows(data)] == ["House Deposit"]
     assert data["on_the_way"]["total"] == Decimal("200.00")
@@ -406,7 +407,7 @@ async def test_a_deleted_envelopes_drain_does_not_hang_on_a_live_sibling(db_sess
     gone.is_deleted = True
     await db_session.flush()
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
 
     assert data["months"] == [months_ago(2), months_ago(1), months_ago(0)]
     assert len(_rows(data)) == (1 if live_sibling else 0)
@@ -417,14 +418,15 @@ async def test_a_deleted_envelopes_drain_does_not_hang_on_a_live_sibling(db_sess
 
 
 async def test_the_window_has_exactly_the_months_asked_for(db_session):
-    """`months=N` is N buckets. It used to be N+1, so the picker's
-    "All time (N months)" drew a leading empty column.
+    """`months=N` is N complete months, then the running one — the meaning
+    every report's "N months" has (D5). No history here (an assignment is
+    not a transaction), so nothing clamps it.
     """
     budget, checking, group, tag_repo = await _setup(db_session)
     fund = await _tagged_category(db_session, budget, group, tag_repo, "Vacation", "savings")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "600.00")
 
-    data = await savings_report(db_session, budget.id, months=6)
+    data = await savings_report(db_session, budget.id, months=5)
 
     assert len(data["months"]) == 6
     assert data["months"] == [months_ago(n) for n in range(5, -1, -1)]
@@ -445,7 +447,7 @@ async def test_an_imported_budget_walks_back_from_ynabs_figure(db_session):
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "50.00")
     await _anchor(db_session, budget, months_ago(2), {fund.id: Decimal("1000.00")})
 
-    data = await savings_report(db_session, budget.id, months=6)
+    data = await savings_report(db_session, budget.id, months=5)
     row = _rows(data)[0]
 
     # 1000 at the import, 200 a month before it; then the anchored months.
@@ -475,7 +477,7 @@ async def test_an_envelope_whose_history_cannot_reach_ynabs_figure_starts_late(d
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "50.00")
     await _anchor(db_session, budget, months_ago(2), {fund.id: Decimal("100.00")})
 
-    data = await savings_report(db_session, budget.id, months=6)
+    data = await savings_report(db_session, budget.id, months=5)
 
     assert _rows(data)[0]["monthly_balances"] == [
         None,
@@ -510,7 +512,7 @@ async def test_a_card_refund_reads_as_the_budget_page_does(db_session):
     )
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "40.00")
 
-    data = await savings_report(db_session, budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=2)
     row = _rows(data)[0]
 
     # Before: [-100, 100, 140].

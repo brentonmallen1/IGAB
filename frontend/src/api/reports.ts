@@ -286,6 +286,9 @@ export function useVolatilityReport(budgetId: string | null, months = 12, amorti
 
 export interface SavingsRateMonth {
   month: string
+  /** The running month, month-to-date: drawn apart and labelled "so far",
+   *  never in `summary` (backend `ReportWindow`). */
+  partial_month: boolean
   income: number
   spending: number
   /** Saved: `savings_moved + savings_held` (backend `domain/savings.py`). */
@@ -302,8 +305,9 @@ export interface SavingsRateMonth {
 
 export interface SavingsRateReport {
   months: SavingsRateMonth[]
-  /** The dates `summary` covers — the first month's start through today.
-   *  The savings-rate dialog asks for the contributors of exactly this. */
+  /** The dates `summary` covers — the complete months only, through the last
+   *  day of last month (start after end when there are none). The
+   *  savings-rate dialog asks for the contributors of exactly this. */
   start_date: string
   end_date: string
   summary: {

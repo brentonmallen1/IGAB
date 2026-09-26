@@ -6,6 +6,12 @@ import './SpreadSinkingFundsToggle.css'
 
 interface Props {
   budgetId: string | null
+  /** How many Essential categories are also Long-term expense (served by the
+   *  Essentials and Emergency Fund reports). With none, spreading has nothing
+   *  to spread: the switch would change no figure, so it is replaced by a
+   *  sentence saying why. Null where the count is not known (the Guide's
+   *  sizer, whose figure may be read from bound categories): the switch shows. */
+  longTermEssentials: number | null
 }
 
 /**
@@ -19,12 +25,22 @@ interface Props {
  * name; the hint is linked by `aria-describedby` rather than put inside the
  * label, where it would become part of the name.
  */
-export function SpreadSinkingFundsToggle({ budgetId }: Props) {
+export function SpreadSinkingFundsToggle({ budgetId, longTermEssentials }: Props) {
   const id = useId()
   const hintId = `${id}-hint`
   const { data } = useReportSettings(budgetId)
   const setSettings = useSetReportSettings(budgetId)
   const checked = data?.spread_sinking_funds ?? true
+
+  if (longTermEssentials === 0) {
+    return (
+      <p className="spread-toggle__hint spread-toggle--none">
+        No Essential category is also a Long-term expense, so there are no yearly bills to spread
+        over 12 months: every figure here is as paid. Tag a yearly bill&apos;s category Long-term
+        expense and a switch to spread it appears.
+      </p>
+    )
+  }
 
   return (
     <div className="spread-toggle">

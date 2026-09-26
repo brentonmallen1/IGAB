@@ -2,29 +2,31 @@
 
 The Guide's essential-expenses signal (and through it the emergency-fund
 target, the starter cushion, the checkup and the sizer), the Overview card, the
-Essentials report and the Emergency Fund report's headline all read
-`essentials_figures`. The arithmetic is `guide.concepts.essentials_monthly`;
-the rows are `TransactionRepository.essential_windows`; the budget's
+Essentials report and the Emergency Fund report — its headline and every point
+of its chart — all read `essential_months`. The arithmetic is
+`guide.concepts.essentials_at`; the rows are
+`TransactionRepository.essential_spend_by_category_month`; the budget's
 spread-sinking-funds setting is `report_settings`. Nothing else composes the
 three, so no surface can quote a figure measured another way.
 """
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.domain.activity_class import basis_is_chosen
-from igab.domain.dates import month_starts
+from igab.domain.dates import complete_month_window, history_index, month_starts
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
+    SPREAD_MONTHS,
     EssentialsMonthly,
-    essentials_monthly,
+    essentials_at,
 )
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.emergency_fund import emergency_fund
@@ -33,54 +35,139 @@ from igab.services.report_day import reader_today
 from igab.services.report_settings import spread_sinking_funds
 
 
+@dataclass(frozen=True)
+class EssentialMonths:
+    """Essential spending per COMPLETE month, oldest first, ending last month
+    — everything `essentials_at` needs, read once.
+
+    `points` months are answerable (the newest `points`); the eleven before
+    them are the lead-in the twelve-month spread reads. `basis` says how the
+    rows were scoped (`TransactionRepository._necessity_scope`).
+    """
+
+    months: list[date]
+    totals: list[Decimal]
+    sinking: list[Decimal]
+    first_data: int
+    spread_on: bool
+    basis: str
+
+    def at(self, index: int) -> EssentialsMonthly:
+        return essentials_at(
+            self.months,
+            self.totals,
+            self.sinking,
+            index,
+            first_data=self.first_data,
+            spread_on=self.spread_on,
+        )
+
+    @property
+    def latest(self) -> EssentialsMonthly:
+        """The figure as of the last complete month — the headline."""
+        return self.at(len(self.months) - 1)
+
+
+#: Months before the first answerable one that a figure still reads: the
+#: twelve-month spread needs the eleven before it (the three-month average
+#: needs only two of them).
+LEAD_IN_MONTHS = SPREAD_MONTHS - 1
+
+
+async def essential_months(
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    today: date,
+    *,
+    points: int = 1,
+    bound: Sequence[uuid.UUID] | None = None,
+) -> EssentialMonths:
+    """The last `points` complete months before the reader's `today`, with
+    their lead-in, as `essentials_at` reads them.
+
+    `bound` is the categories the household pointed the Guide's signal at; the
+    reports pass none and read the tags.
+    """
+    start, end = complete_month_window(today, points + LEAD_IN_MONTHS)
+    months = month_starts(start, end)
+    repo = TransactionRepository(session)
+    rows, basis = await repo.essential_spend_by_category_month(budget_id, start, end, bound)
+    series = monthly_series(rows, months)
+    return EssentialMonths(
+        months=months,
+        totals=[row["total"] for row in series],
+        sinking=[row["sinking_total"] for row in series],
+        first_data=history_index(months, await repo.earliest_date(budget_id)),
+        spread_on=await spread_sinking_funds(session, budget_id),
+        basis=basis,
+    )
+
+
 async def essentials_figures(
     session: AsyncSession,
     budget_id: uuid.UUID,
     today: date,
     bound: Sequence[uuid.UUID] | None = None,
 ) -> tuple[EssentialsMonthly, str]:
-    """Both essentials figures for `today`, which one the budget reads, and the
-    basis that scoped them (`TransactionRepository._necessity_scope`).
+    """Both essentials figures as of the reader's `today`, and the basis that
+    scoped them — what the Guide's signal quotes."""
+    months = await essential_months(session, budget_id, today, bound=bound)
+    return months.latest, months.basis
 
-    `bound` is the categories the household pointed the Guide's signal at; the
-    reports pass none and read the tags.
+
+async def reported_months(
+    session: AsyncSession, budget_id: uuid.UUID, today: date, *, points: int = 1
+) -> tuple[EssentialMonths, bool]:
+    """`essential_months` as the reports read it — by the tags, never the
+    Guide's bound categories — and whether anything is tagged.
+
+    Untagged, every month is zero: the "all" fallback is burn rate, and a
+    second card saying the same number would mislead.
     """
-    windows, basis = await TransactionRepository(session).essential_windows(budget_id, today, bound)
-    spread_on = await spread_sinking_funds(session, budget_id)
-    return essentials_monthly(windows, spread_on=spread_on), basis
+    months = await essential_months(session, budget_id, today, points=points)
+    if basis_is_chosen(months.basis):
+        return months, True
+    zeros = [Decimal("0")] * len(months.months)
+    return replace(months, totals=zeros, sinking=list(zeros)), False
 
 
 async def reported_essentials(
     session: AsyncSession, budget_id: uuid.UUID, today: date
 ) -> tuple[EssentialsMonthly, bool]:
-    """(both essentials figures, anything tagged?) — what the reports quote.
-
-    The reports read the tags and never the Guide's bound categories. Untagged,
-    the figures are zeros: the "all" fallback is burn rate, and a second card
-    saying the same number would mislead.
-    """
-    figures, basis = await essentials_figures(session, budget_id, today)
-    if basis_is_chosen(basis):
-        return figures, True
-    return replace(figures, as_paid=Decimal("0"), spread=Decimal("0")), False
+    """(both essentials figures, anything tagged?) — what the reports quote."""
+    months, tagged = await reported_months(session, budget_id, today)
+    return months.latest, tagged
 
 
-async def essentials_headline(session: AsyncSession, budget_id: uuid.UUID, today: date) -> dict:
+async def essentials_headline(
+    session: AsyncSession, budget_id: uuid.UUID, today: date, *, points: int = 1
+) -> dict:
     """The figures no window moves: the Guide's lean month, the reserves it
     implies, the emergency fund and how many lean months it covers.
 
     Shared by the Essentials report and Emergency Coverage, which quotes this
     runway rather than recomputing it — one figure, so the two reports cannot
     disagree about coverage. `today` is the reader's, as the Overview card's is.
+    `series` is the months the headline was read from, `points` of them
+    answerable, so the Emergency Fund chart draws its points from the same read
+    and its newest point IS the headline.
     """
-    essentials, tagged = await reported_essentials(session, budget_id, today)
+    months, tagged = await reported_months(session, budget_id, today, points=points)
+    essentials = months.latest
     headline = essentials.monthly
     # What the household chose to count — read whatever the Guide tracks, so
     # dismissing the Guide's step never blanks the report.
     fund = await emergency_fund(session, budget_id, today=today)
+    tagged_categories = await TransactionRepository(session).essential_tagged_categories(budget_id)
     return {
         "tagged": tagged,
         "essentials": essentials,
+        "series": months,
+        "tagged_categories": tagged_categories,
+        #: How many Essential categories are also Long-term expense. With
+        #: none, spreading has nothing to spread: the toggle is hidden and the
+        #: page says why rather than offering a switch that changes nothing.
+        "long_term_essentials": sum(1 for c in tagged_categories if c.sinking),
         "reserve": [
             {"months": n, "amount": quantize_cents(headline * n)}
             for n in (1, FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH, 12)
@@ -137,12 +224,12 @@ async def essentials_summary(
 ) -> dict:
     """What a lean month costs, and what a reserve of N months would be.
 
-    The headline (`essentials`) is the Guide's figure — rolling 90 days
-    ÷ 3 — so the Overview card, this report and the roadmap's target quote
-    one number. The per-category table averages over `months` COMPLETE
-    months of this budget's history instead (`history_window`): a partial
-    current month would drag every average down. That divergence is
-    deliberate and pinned by test.
+    The headline (`essentials`) is the Guide's figure — the last three
+    complete months (`essentials_at`) — so the Overview card, this report and
+    the roadmap's target quote one number. The per-category table averages
+    over the `months` complete months the picker chose instead
+    (`history_window`), which on the default twelve is a longer view of the
+    same kind of month; the two agree when spending is flat.
 
     The table divides by the months it read, `months_averaged`. It divided by
     `months` — the setting, not the window — and never clamped to the
@@ -156,6 +243,8 @@ async def essentials_summary(
 
     head = await essentials_headline(session, budget_id, today)
     rows = await essential_rows(session, budget_id, window_start, window_end, tagged=head["tagged"])
+    tagged_categories = head.pop("tagged_categories")
+    head.pop("series")
     base = {
         **head,
         "months": months,
@@ -185,7 +274,7 @@ async def essentials_summary(
     # categories that happened to have transactions", which sorted by total
     # is indistinguishable from a top-N — the report showed 5 of 8 and
     # looked capped.
-    for tagged_cat in await txns.essential_tagged_categories(budget_id):
+    for tagged_cat in tagged_categories:
         by_category[str(tagged_cat.id)] = {
             "category_id": tagged_cat.id,
             "name": tagged_cat.name,

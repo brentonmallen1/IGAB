@@ -21,3 +21,13 @@ export function otherFigureNote(
   const asPaid = `${formatMoney(figures.as_paid)}/mo as paid`
   return figures.spread_on ? `${spread} · ${asPaid}` : `${asPaid} · ${spread}`
 }
+
+/**
+ * Whether a page may say "with yearly bills spread over 12 months": the
+ * setting is on AND some Essential category is a Long-term expense. The
+ * setting defaults on, so without the second half every page said it spread
+ * bills a household does not have.
+ */
+export function spreadsBills(figures: EssentialsFigures, longTermEssentials: number): boolean {
+  return figures.spread_on && longTermEssentials > 0
+}

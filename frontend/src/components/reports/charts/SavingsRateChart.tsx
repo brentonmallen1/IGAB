@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import {
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Legend,
   Line,
@@ -27,6 +28,12 @@ import { SavingsRateDialog } from '../SavingsRateDialog'
 import { SAVED_DEFINITION } from '../savingsRateBreakdown'
 import { pct, RATE_SERIES, ratePercent, savingsRateTooltipWith } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
+import {
+  completeMonthRows,
+  monthRange,
+  reportMonthLabel,
+  RUNNING_MONTH_OPACITY,
+} from '../../../utils/reportMonths'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 
 interface Props {
@@ -35,7 +42,7 @@ interface Props {
 
 export function SavingsRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const savingsRateTooltip = savingsRateTooltipWith(formatMoney)
   const months = useReportMonths()
@@ -52,14 +59,21 @@ export function SavingsRateReport({ budgetId }: Props) {
   const rateKey = withDebt ? 'savings_rate_with_debt' : 'savings_rate'
 
   const chartData = rows.map((m) => ({
-    date: m.month.slice(0, 7),
+    iso: m.month,
+    date: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
+    partial: m.partial_month,
     Saved: Number(m.savings),
     'Debt Paid': Number(m.debt_principal),
     Spent: Number(m.spending),
     // null leaves a gap in the line rather than dropping it to zero, which
-    // would read as "saved nothing" in a month with no income at all.
-    [RATE_SERIES]: m[rateKey] === null ? null : ratePercent(m[rateKey]),
+    // would read as "saved nothing" in a month with no income at all. The
+    // running month has no rate either: its bills are in and its pay may not
+    // be, so a mid-month rate is the calendar talking — its bars say so far.
+    [RATE_SERIES]: m[rateKey] === null || m.partial_month ? null : ratePercent(m[rateKey]),
   }))
+  // The summary is the complete months alone, served; the card says which.
+  const complete = completeMonthRows(rows)
+  const covered = monthRange(complete[0]?.month, complete.at(-1)?.month, formatMonthShort)
 
   const hasAnything = rows.some(
     (m) => Number(m.income) !== 0 || Number(m.savings) !== 0 || Number(m.debt_principal) !== 0
@@ -93,6 +107,11 @@ export function SavingsRateReport({ budgetId }: Props) {
             same as saving none of it.
           </p>
           <p>
+            The headline covers the picker&apos;s complete months. The month in progress is drawn
+            after them, lighter and marked <em>so far</em>, with no rate: until its pay has landed a
+            partial month&apos;s rate says more about the calendar than about saving.
+          </p>
+          <p>
             Open the rate to see where the savings went, what paid down debt and where the income
             came from.
           </p>
@@ -120,6 +139,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             getRows={() =>
               rows.map((m) => ({
                 month: m.month,
+                partial_month: m.partial_month,
                 income: Number(m.income),
                 spending: Number(m.spending),
                 savings: Number(m.savings),
@@ -141,6 +161,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             <MetricCard
               label={withDebt ? 'Savings Rate (with debt)' : 'Savings Rate'}
               value={pct(summary[rateKey])}
+              sub={covered ?? undefined}
               details={{
                 label: `Savings rate ${pct(summary[rateKey])}. Show what contributed`,
                 onOpen: () => setContributorsOpen(true),
@@ -203,9 +224,19 @@ export function SavingsRateReport({ budgetId }: Props) {
                 isAnimationActive={false}
               />
               <Legend />
-              <Bar yAxisId="money" dataKey="Saved" stackId="kept" fill={COLOR_POSITIVE} />
-              <Bar yAxisId="money" dataKey="Debt Paid" stackId="kept" fill={COLOR_NEUTRAL} />
-              <Bar yAxisId="money" dataKey="Spent" fill={COLOR_NEGATIVE} />
+              {(
+                [
+                  ['Saved', COLOR_POSITIVE, 'kept'],
+                  ['Debt Paid', COLOR_NEUTRAL, 'kept'],
+                  ['Spent', COLOR_NEGATIVE, undefined],
+                ] as const
+              ).map(([key, fill, stackId]) => (
+                <Bar key={key} yAxisId="money" dataKey={key} stackId={stackId} fill={fill}>
+                  {chartData.map((d) => (
+                    <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
+                  ))}
+                </Bar>
+              ))}
               <Line
                 yAxisId="rate"
                 type="monotone"

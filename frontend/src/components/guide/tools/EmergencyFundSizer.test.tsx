@@ -25,7 +25,14 @@ import { EmergencyFundSizer } from './EmergencyFundSizer'
 const response = (over: Partial<EmergencyFundResponse>): EmergencyFundResponse => ({
   months: 3,
   monthly_contribution: 0,
-  essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+  essentials: {
+    as_paid: 2800,
+    spread: 2200,
+    spread_on: true,
+    monthly: 2200,
+    window_start: '2026-06-01',
+    window_end: '2026-08-31',
+  },
   current: 1000,
   target: 6600,
   gap: 5600,
@@ -58,7 +65,14 @@ describe('EmergencyFundSizer essentials', () => {
 
   it('shows one figure when the two agree', () => {
     plan.data = response({
-      essentials: { as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 },
+      essentials: {
+        as_paid: 2000,
+        spread: 2000,
+        spread_on: true,
+        monthly: 2000,
+        window_start: '2026-06-01',
+        window_end: '2026-08-31',
+      },
     })
     renderSizer()
     const essentials = screen.getByText('Essential spending, per month').nextElementSibling

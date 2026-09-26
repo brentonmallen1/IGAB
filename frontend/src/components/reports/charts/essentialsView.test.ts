@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columnTotal, shareOfLeanMonth, worstMonth } from './essentialsView'
+import { columnTotal, shareOfLeanMonth, worstMonth, worstOverHeadline } from './essentialsView'
 
 describe('shareOfLeanMonth', () => {
   it('is the share of the lean-month total, not of the largest category', () => {
@@ -44,5 +44,18 @@ describe('columnTotal', () => {
 
   it('is zero for an empty table', () => {
     expect(columnTotal([])).toBe(0)
+  })
+})
+
+describe('worstOverHeadline', () => {
+  it('is how far the worst month ran over the headline, whole percent', () => {
+    expect(worstOverHeadline(2500, 2000)).toBe(25)
+    expect(worstOverHeadline(2001, 2000)).toBe(0)
+  })
+
+  it('is null when no month ran over, or there is no headline', () => {
+    expect(worstOverHeadline(2000, 2000)).toBeNull()
+    expect(worstOverHeadline(1500, 2000)).toBeNull()
+    expect(worstOverHeadline(1500, 0)).toBeNull()
   })
 })

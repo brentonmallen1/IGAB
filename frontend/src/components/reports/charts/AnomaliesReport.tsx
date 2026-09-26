@@ -26,7 +26,7 @@ export function AnomaliesReport({ budgetId }: Props) {
     threshold
   )
   const { setDrillDown } = useReportStore()
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
 
   const anomalies = useMemo(() => data?.anomalies ?? [], [data])
   const groups = useMemo(() => groupByMonthNewestFirst(anomalies), [anomalies])
@@ -113,10 +113,10 @@ export function AnomaliesReport({ budgetId }: Props) {
                   whether it is still being written. `partial_month` is the
                   server's — see AnomalyItem in types/index.ts. */}
               <h3 className="anomalies-group__label">
-                {formatMonth(month)}
-                {items[0].partial_month && (
-                  <span className="anomalies-group__partial">so far this month</span>
-                )}
+                {formatMonthShort(month)}
+                {/* "Sep 26 so far", as `reportMonthLabel` says it everywhere
+                    else; a span so the caveat is not set as a heading. */}
+                {items[0].partial_month && <span className="anomalies-group__partial">so far</span>}
               </h3>
               {items.map((a) => (
                 <button

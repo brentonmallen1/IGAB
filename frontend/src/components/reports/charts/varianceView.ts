@@ -25,6 +25,9 @@ export function varianceTooltipRows(
       value: Math.abs(p.monthly_variance),
       color: varianceBarColor(p.monthly_variance),
     },
-    { name: 'Running total', value: p.cumulative_variance },
+    // None on the running month: it is drawn, but not in the drift.
+    ...(p.cumulative_variance === null
+      ? []
+      : [{ name: 'Running total', value: p.cumulative_variance }]),
   ]
 }

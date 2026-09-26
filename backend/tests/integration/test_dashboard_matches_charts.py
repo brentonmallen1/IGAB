@@ -28,6 +28,8 @@ from .factories import (
 
 TODAY = date.today()
 MONTH_START = TODAY.replace(day=1)
+#: The day the newest burn ends: yesterday (`domain.burn_rate.burn_as_of`).
+AS_OF = TODAY - timedelta(days=1)
 
 
 @pytest.fixture(autouse=True)
@@ -73,14 +75,14 @@ class TestBurnRate:
                 budget,
                 checking,
                 amount,
-                TODAY - timedelta(days=days_back),
+                AS_OF - timedelta(days=days_back),
                 category=category,
                 cleared="cleared",
             )
         await db_session.flush()
 
         service = ReportService(db_session)
-        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
+        card = await service.dashboard_metrics(budget.id, AS_OF.replace(day=1), TODAY)
         chart = await service.burn_rate(budget.id, months=1)
 
         assert card["burn_rate_30"] == chart[-1]["rolling_30"] == Decimal("180.00")
@@ -133,10 +135,10 @@ class TestBurnRate:
         fund = await create_category(db_session, budget, group, "Car Replacement")
         await tags.set_category_tags(fund.id, [savings_tag.id])
         await create_transaction(
-            db_session, budget, checking, "-100.00", TODAY, category=category, cleared="cleared"
+            db_session, budget, checking, "-100.00", AS_OF, category=category, cleared="cleared"
         )
         await create_transaction(
-            db_session, budget, checking, "-250.00", TODAY, category=fund, cleared="cleared"
+            db_session, budget, checking, "-250.00", AS_OF, category=fund, cleared="cleared"
         )
         await db_session.flush()
 
@@ -233,14 +235,14 @@ class TestTheBurnWindowsAreTheSameWindow:
 
     async def test_a_spend_31_days_back_is_in_neither(self, db_session):
         budget, checking, category = await _budget_with_checking(db_session)
-        # Day 30 is inside a thirty-day window counting today as day 1;
-        # day 31 is outside it. The card used to count day 31.
+        # Day 30 is inside a thirty-day window counting yesterday as day 1
+        # (`burn_as_of`); day 31 is outside it. The card used to count day 31.
         await create_transaction(
             db_session,
             budget,
             checking,
             "-500.00",
-            TODAY - timedelta(days=30),
+            AS_OF - timedelta(days=30),
             category=category,
             cleared="cleared",
         )
@@ -249,7 +251,7 @@ class TestTheBurnWindowsAreTheSameWindow:
             budget,
             checking,
             "-100.00",
-            TODAY - timedelta(days=5),
+            AS_OF - timedelta(days=5),
             category=category,
             cleared="cleared",
         )
@@ -263,7 +265,7 @@ class TestTheBurnWindowsAreTheSameWindow:
         assert _burn_from_chart(chart) == Decimal("100.00")
 
     async def test_a_spend_90_days_back_is_in_neither(self, db_session):
-        """The far edge of the same fix: day 90 counting today as day 1 is the
+        """The far edge of the same fix: day 90 counting yesterday as day 1 is the
         prior window's oldest day, day 91 is outside it. The card once ran
         `today - 90`, ninety-one days, and counted a row the chart left out."""
         budget, checking, category = await _budget_with_checking(db_session)
@@ -273,7 +275,7 @@ class TestTheBurnWindowsAreTheSameWindow:
                 budget,
                 checking,
                 amount,
-                TODAY - timedelta(days=days_back),
+                AS_OF - timedelta(days=days_back),
                 category=category,
                 cleared="cleared",
             )
@@ -338,10 +340,11 @@ class TestBurnAgainstThePriorSixtyDays:
 
 
 class TestTheReadersToday:
-    """Both figures end "today", and the browser's today is not the server's
-    near midnight. Seeded one day past the server's clock, a charge dated the
-    reader's today is in the thirty days only when the reader's date is sent,
-    and a charge on the server's day 30 has moved to the reader's prior sixty."""
+    """Both figures end the day before "today" (`burn_as_of`), and the
+    browser's today is not the server's near midnight. With the reader a day
+    ahead, a charge dated the server's today is the reader's yesterday — in the
+    thirty days only when the reader's date is sent — and a charge on the
+    server's day 30 has moved to the reader's prior sixty."""
 
     async def test_client_today_moves_both_windows(self, api_client, db_session):
         user = api_client.test_user
@@ -351,7 +354,7 @@ class TestTheReadersToday:
         category = await create_category(db_session, budget, group, "Groceries")
         tomorrow = TODAY + timedelta(days=1)
         await create_transaction(
-            db_session, budget, checking, "-250.00", tomorrow, category=category, cleared="cleared"
+            db_session, budget, checking, "-250.00", TODAY, category=category, cleared="cleared"
         )
         # Day 30 for the server, still recent; day 31, the prior window's
         # newest, for the reader.
@@ -360,7 +363,7 @@ class TestTheReadersToday:
             budget,
             checking,
             "-600.00",
-            TODAY - timedelta(days=29),
+            TODAY - timedelta(days=30),
             category=category,
             cleared="cleared",
         )
