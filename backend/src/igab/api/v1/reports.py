@@ -335,11 +335,15 @@ async def net_worth_report(
     today: ReaderToday,
     months: ReportMonths = 12,
 ) -> NetWorthResponse:
-    data = await report_svc.net_worth_history(budget_id, months, today)
-    return NetWorthResponse(
-        points=[NetWorthPoint.model_validate(p) for p in data],
-        unmanaged_liability_total=data[-1]["unmanaged_liability_total"] if data else Decimal("0"),
-        asset_value_total=data[-1]["asset_value_total"] if data else Decimal("0"),
+    data = await report_svc.net_worth(budget_id, months, today)
+    points = data["points"]
+    return NetWorthResponse.model_validate(
+        {
+            **data,
+            "points": [NetWorthPoint.model_validate(p) for p in points],
+            "unmanaged_liability_total": points[-1]["unmanaged_liability_total"],
+            "asset_value_total": points[-1]["asset_value_total"],
+        }
     )
 
 
@@ -353,7 +357,8 @@ async def account_composition_report(
 ) -> AccountCompositionResponse:
     data = await report_svc.account_composition(budget_id, months, today)
     return AccountCompositionResponse(
-        points=[AccountCompositionPoint.model_validate(p) for p in data]
+        points=[AccountCompositionPoint.model_validate(p) for p in data["points"]],
+        series=data["series"],
     )
 
 

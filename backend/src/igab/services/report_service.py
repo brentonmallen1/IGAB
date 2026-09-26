@@ -14,16 +14,12 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
     Account,
-    Asset,
-    AssetValueSnapshot,
     BudgetAssignment,
     BudgetView,
     BudgetViewGroup,
     BudgetViewPlacement,
     Category,
     CategoryGroup,
-    Liability,
-    LiabilityBalanceSnapshot,
     Payee,
     Transaction,
 )
@@ -77,8 +73,17 @@ from igab.domain.money_moves import Figures, figures, flows
 from igab.domain.plan import CHRONIC_WINDOW, is_chronic, plan_outcome, total_variance
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.spending import UNCATEGORIZED, spent
+from igab.domain.tracking_start import (
+    Entry,
+    StatedValue,
+    entered,
+    is_stale,
+    like_for_like,
+    stated_total,
+)
 from igab.domain.view_arrangement import arrange_by_view
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.account_type_repo import AccountTypeRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
@@ -123,6 +128,7 @@ from igab.services.report_stats import (
     weekday_rollup,
 )
 from igab.services.savings_held import held_between, held_by_month
+from igab.services.tracking_start import entries_by_point, last_moved, stated_values
 
 # Report payload shapes.
 #
@@ -170,6 +176,15 @@ class ChronicCategory(TypedDict):
 #: varying wage discards three quarters of them. A floor only has to be low
 #: enough to catch a real wage and high enough to ignore a refund.
 PAYDAY_FLOOR = Decimal("200")
+
+
+class BalanceSheets(NamedTuple):
+    """`ReportService._balance_sheets`: a sheet per cutoff, what entered each
+    point's stretch, and the stated values the sheets read."""
+
+    sheets: list[dict]
+    entries: list[list[Entry]]
+    stated: list[StatedValue]
 
 
 class SpendingRows(NamedTuple):
@@ -410,8 +425,17 @@ class ReportService:
         # had already drifted. An empty budget takes the same path: it had a
         # short-circuit of its own that restated the composition, set prev to
         # "now", and so drew a 0.0% change the chart beside it contradicted.
-        prev_sheet, now_sheet = await self._balance_sheets(budget_id, [prev_end, today], today)
+        #
+        # Its change is like-for-like, the Net Worth report's headline rule:
+        # less what began being counted since the "before". Linking accounts
+        # and first valuing a house inside the range read "+225.5%" here, for
+        # a household whose like-for-like year was slightly down.
+        both = await self._balance_sheets(
+            budget_id, [prev_end, today], today, since=prev_end + timedelta(days=1)
+        )
+        prev_sheet, now_sheet = both.sheets
         net_worth, net_worth_prev = now_sheet["net_worth"], prev_sheet["net_worth"]
+        net_worth_entered = entered(both.entries[1])
 
         # Every figure below reads the activity-class partition, not the sign
         # of the amount. The dashboard summarises the report tabs, so it has to
@@ -490,6 +514,10 @@ class ReportService:
         return {
             "net_worth": net_worth,
             "net_worth_prev": net_worth_prev,
+            "net_worth_entered": net_worth_entered,
+            "net_worth_change": like_for_like(
+                [net_worth_prev, net_worth], [Decimal("0"), net_worth_entered]
+            ),
             "burn_rate_30": now_burn.recent,
             "burn_rate_prior_60": now_burn.prior,
             "essentials": essentials if essentials_tagged else None,
@@ -507,135 +535,24 @@ class ReportService:
 
     # ─── Net Worth History ────────────────────────────────────────────────────
 
-    async def _unmanaged_liabilities(
-        self, budget_id: uuid.UUID
-    ) -> tuple[Decimal, dict[uuid.UUID, list[tuple[date, Decimal]]]]:
-        """Current total owed on unmanaged liabilities, plus each liability's
-        snapshot series for historical step-function lookups.
-
-        Unmanaged liabilities have no Account — without this bucket they'd
-        silently vanish from net worth. Managed liabilities are already
-        counted through their linked account and must NOT be added here
-        (that would double-count them)."""
-        liabilities = (
-            await self.session.execute(
-                select(Liability.id, Liability.manual_balance).where(
-                    Liability.budget_id == budget_id,
-                    Liability.is_deleted == False,  # noqa: E712
-                    Liability.linked_account_id.is_(None),
-                )
-            )
-        ).all()
-        if not liabilities:
-            return Decimal("0"), {}
-        current_total = sum(
-            (max(Decimal("0"), item.manual_balance or Decimal("0")) for item in liabilities),
-            Decimal("0"),
-        )
-        liability_ids = [item.id for item in liabilities]
-        snaps = (
-            await self.session.execute(
-                select(
-                    LiabilityBalanceSnapshot.liability_id,
-                    LiabilityBalanceSnapshot.date,
-                    LiabilityBalanceSnapshot.balance,
-                )
-                .where(LiabilityBalanceSnapshot.liability_id.in_(liability_ids))
-                .order_by(LiabilityBalanceSnapshot.date)
-            )
-        ).all()
-        series: dict[uuid.UUID, list[tuple[date, Decimal]]] = {item.id: [] for item in liabilities}
-        for s in snaps:
-            series[s.liability_id].append((s.date, s.balance))
-        return current_total, series
-
-    @staticmethod
-    def _unmanaged_total_at(
-        series: dict[uuid.UUID, list[tuple[date, Decimal]]], as_of: date
-    ) -> Decimal:
-        """Step function: each liability's latest snapshot on or before as_of.
-        A liability with no snapshot yet contributes nothing — before tracking
-        began there is no honest number to show."""
-        total = Decimal("0")
-        for points in series.values():
-            latest: Decimal | None = None
-            for point_date, balance in points:
-                if point_date <= as_of:
-                    latest = balance
-                else:
-                    break
-            if latest is not None and latest > 0:
-                total += latest
-        return total
-
-    @staticmethod
-    def _asset_total_at(
-        series: dict[uuid.UUID, list[tuple[date, Decimal]]], as_of: date
-    ) -> Decimal:
-        """The asset side of `_unmanaged_total_at`, same rule: each asset's
-        latest point on or before as_of, nothing before its first point — a
-        June appraisal must not rewrite January."""
-        return ReportService._unmanaged_total_at(series, as_of)
-
-    async def _asset_values(
-        self, budget_id: uuid.UUID
-    ) -> tuple[Decimal, dict[uuid.UUID, list[tuple[date, Decimal]]]]:
-        """Current total of stated asset values, plus each asset's snapshot
-        series — the symmetric `+` beside `_unmanaged_liabilities`' `−`.
-
-        A stated value is self-reported and moves net worth UP, the dangerous
-        direction — which is why it enters through the same dated step
-        function as a stated debt, contributes nothing before its first
-        point, and carries `value_as_of` everywhere it is shown. If a told-us
-        debt counts (manual_balance always has), a told-us asset must too, or
-        net worth is systematically pessimistic: a mortgage with no house
-        reads as a household underwater."""
-        assets = (
-            await self.session.execute(
-                select(Asset.id, Asset.manual_value).where(
-                    Asset.budget_id == budget_id,
-                    Asset.is_deleted == False,  # noqa: E712
-                )
-            )
-        ).all()
-        if not assets:
-            return Decimal("0"), {}
-        current_total = sum(
-            (max(Decimal("0"), item.manual_value or Decimal("0")) for item in assets),
-            Decimal("0"),
-        )
-        asset_ids = [item.id for item in assets]
-        snaps = (
-            await self.session.execute(
-                select(
-                    AssetValueSnapshot.asset_id,
-                    AssetValueSnapshot.date,
-                    AssetValueSnapshot.value,
-                )
-                .where(AssetValueSnapshot.asset_id.in_(asset_ids))
-                .order_by(AssetValueSnapshot.date)
-            )
-        ).all()
-        series: dict[uuid.UUID, list[tuple[date, Decimal]]] = {item.id: [] for item in assets}
-        for snap in snaps:
-            series[snap.asset_id].append((snap.date, snap.value))
-        return current_total, series
-
     async def _balance_sheets(
-        self, budget_id: uuid.UUID, as_of: list[date], today: date
-    ) -> list[dict]:
+        self, budget_id: uuid.UUID, as_of: list[date], today: date, since: date
+    ) -> BalanceSheets:
         """The balance sheet (`balance_sheet`) at the end of each day in
-        `as_of`, ascending — net worth's one rule. The Overview card asks it
-        for two days, the chart for every month end.
+        `as_of`, ascending — net worth's one rule — with what began being
+        counted in each point's stretch (`tracking_start.place_entries`, the
+        first stretch starting at `since`). The Overview card asks it for two
+        days, the chart for every month end.
 
         Clamped to the reader's `today`: a month end still ahead is not net
         worth yet, and money that has not moved is not in it. On today, stated
         debts and asset values read their current figures; before it, each
-        reads its step function and contributes nothing before its first point.
-        `today` is the caller's and never read here: this read the server's
-        clock while the Overview card asked for the reader's day, so every
-        evening west of UTC the card's "now" missed the clamp's, and its stated
-        debts and asset values fell back to their step functions.
+        reads its step function (`StatedValue.at`) and contributes nothing
+        before its first point. `today` is the caller's and never read here:
+        this read the server's clock while the Overview card asked for the
+        reader's day, so every evening west of UTC the card's "now" missed the
+        clamp's, and its stated debts and asset values fell back to their step
+        functions.
         """
         cutoffs = [min(day, today) for day in as_of]
         accounts = (
@@ -646,15 +563,19 @@ class ReportService:
             )
         ).all()
         balances = await self.accounts.balances_through(budget_id, cutoffs)
-        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
-        asset_now, asset_series = await self._asset_values(budget_id)
-        sheets = []
-        for i, cutoff in enumerate(cutoffs):
-            now = cutoff == today
-            unmanaged = unmanaged_now if now else self._unmanaged_total_at(unmanaged_series, cutoff)
-            asset_total = asset_now if now else self._asset_total_at(asset_series, cutoff)
-            sheets.append(balance_sheet(accounts, balances, i, asset_total, unmanaged))
-        return sheets
+        stated = await stated_values(self.session, budget_id)
+        sheets = [
+            balance_sheet(
+                accounts,
+                balances,
+                i,
+                stated_total(stated, "stated_asset", cutoff, today),
+                stated_total(stated, "manual_debt", cutoff, today),
+            )
+            for i, cutoff in enumerate(cutoffs)
+        ]
+        entries = await entries_by_point(self.session, budget_id, cutoffs, since, today, stated)
+        return BalanceSheets(sheets, entries, stated)
 
     async def net_worth_history(
         self,
@@ -663,17 +584,85 @@ class ReportService:
         today: date | None = None,
     ) -> list[dict]:
         """Net worth at the end of each of the last `months` complete months,
-        then today (`report_window`). An empty register needs no branch of its
+        then today (`report_window`), each point carrying what entered it
+        (`entered`, `entries`). An empty register needs no branch of its
         own: stated assets and unmanaged debts still stand on every point.
 
         Not clamped to the first transaction, as the flow reports are: a
         balance exists before the register does — a stated asset, a debt
         recorded by hand — and a month-end with nothing in it is a real zero,
         not an unrecorded month."""
+        return (await self.net_worth(budget_id, months, today))["points"]
+
+    async def net_worth(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+        today: date | None = None,
+    ) -> dict:
+        """The Net Worth report: its points (`net_worth_history`), the change
+        over them both as drawn and like-for-like (`tracking_start.like_for_like`
+        — less what began being counted after the first point), the stated
+        values with their dates, and the balances that have not moved in
+        `STALE_AFTER_DAYS`.
+
+        The headline is the like-for-like change. A year in which accounts
+        were linked and a house first valued read +$620k on the chart and was
+        slightly down; the raw change is served beside it so the page can say
+        how the two differ."""
         today = reader_today(today)
         grid = report_window(today, months).axis
-        sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid], today)
-        return [{"date": month, **sheet} for month, sheet in zip(grid, sheets, strict=True)]
+        drawn = await self._balance_sheets(
+            budget_id, [_month_end(m) for m in grid], today, since=grid[0]
+        )
+        arrived = [entered(bucket) for bucket in drawn.entries]
+        values: list[Decimal] = [sheet["net_worth"] for sheet in drawn.sheets]
+        points = [
+            {"date": month, **sheet, "entered": total, "entries": [e.__dict__ for e in bucket]}
+            for month, sheet, bucket, total in zip(
+                grid, drawn.sheets, drawn.entries, arrived, strict=True
+            )
+        ]
+        return {
+            "points": points,
+            "change": values[-1] - values[0],
+            "like_for_like_change": like_for_like(values, arrived),
+            "entered_total": sum(arrived[1:], Decimal("0")),
+            "stated_values": [
+                {"kind": s.kind, "id": s.id, "name": s.name, "value": s.current, "as_of": s.as_of}
+                for s in drawn.stated
+                if s.current > 0
+            ],
+            "stale_balances": await self._stale_balances(
+                budget_id, points[-1], drawn.stated, today
+            ),
+        }
+
+    async def _stale_balances(
+        self, budget_id: uuid.UUID, now: dict, stated: list[StatedValue], today: date
+    ) -> list[dict]:
+        """Every figure in today's net worth that has not moved in
+        `STALE_AFTER_DAYS`: an account holding a balance whose newest row is
+        that old, and a stated value whose newest point is. Flat on the chart
+        means unknown here, not unchanged, and the page says which lines."""
+        held = {a["account_id"]: a for a in now["accounts"] if a["balance"] != 0}
+        moved = await last_moved(self.session, [uuid.UUID(i) for i in held], today)
+        stale = [
+            {
+                "kind": "account",
+                "id": account_id,
+                "name": account["account_name"],
+                "last_changed": moved.get(uuid.UUID(account_id)),
+            }
+            for account_id, account in held.items()
+            if is_stale(moved.get(uuid.UUID(account_id)), today)
+        ]
+        stale += [
+            {"kind": s.kind, "id": s.id, "name": s.name, "last_changed": s.as_of}
+            for s in stated
+            if s.current > 0 and is_stale(s.as_of, today)
+        ]
+        return sorted(stale, key=lambda s: (s["last_changed"] or date.min, s["name"]))
 
     # ─── Account Composition ─────────────────────────────────────────────────
 
@@ -682,32 +671,48 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
         today: date | None = None,
-    ) -> list[dict]:
+    ) -> dict:
+        """Net worth's points by account type, plus two bands for what no
+        account holds — stated asset values above zero, debts with no account
+        below — so the stack sums to the Net line. It floated above the stack
+        by the house's value, with a footnote saying so.
+
+        `series` is every type a live account has, in the registry's order,
+        whether or not the window holds a row of it: the chart colours a
+        series by its place here, and a colour that moved when a range
+        dropped a type named a different account type on each range."""
         history = await self.net_worth_history(budget_id, months, today)
-        # Series per type key actually present (custom types included) —
-        # every point carries every key so the chart's series stay aligned.
-        all_types = sorted(
-            {snap["account_type"] for point in history for snap in point["accounts"]}
-        )
-        results = []
+        present = {
+            a.account_type
+            for a in (
+                await self.session.execute(
+                    select(Account.account_type).where(Account.budget_id == budget_id, LIVE_ACCOUNT)
+                )
+            ).all()
+        } | {snap["account_type"] for point in history for snap in point["accounts"]}
+        registry = [t.key for t in await AccountTypeRepository(self.session).get_all(budget_id)]
+        series = [k for k in registry if k in present] + sorted(present - set(registry))
+        points = []
         for point in history:
-            by_type: dict[str, Decimal] = {t: Decimal("0") for t in all_types}
+            by_type: dict[str, Decimal] = {t: Decimal("0") for t in series}
             for snap in point["accounts"]:
                 by_type[snap["account_type"]] += snap["balance"]
-            results.append(
+            points.append(
                 {
                     "date": point["date"],
                     "balances": by_type,
-                    # The net trend the stacked areas add up to — history
-                    # already computed it, and the chart re-deriving it from
-                    # the visible series would silently disagree the moment
-                    # anything (an unmanaged debt, a stated asset value) is
-                    # in net worth but not in the per-account snapshots.
+                    "stated_assets": point["asset_value_total"],
+                    "manual_debts": -point["unmanaged_liability_total"],
+                    # History already computed it; the chart re-deriving it
+                    # from the visible series would disagree the moment a
+                    # figure were in net worth and in no band.
                     "net_worth": point["net_worth"],
                     "asset_value_total": point["asset_value_total"],
+                    "entered": point["entered"],
+                    "entries": point["entries"],
                 }
             )
-        return results
+        return {"points": points, "series": series}
 
     # ─── Burn Rate ────────────────────────────────────────────────────────────
 

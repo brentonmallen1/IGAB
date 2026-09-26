@@ -853,6 +853,12 @@ INCOME_ROW = and_(
 #: sampled an account opened inside its history as a deposit of its balance.
 NOT_OPENING_BALANCE = ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value
 
+#: Its complement: the rows through which an account arrived in the register —
+#: its Starting Balance, and the unfiled history from before its budget start.
+#: What the balance charts mark as "started tracking" (`domain.tracking_start`)
+#: and leave out of a like-for-like change. Apply `apply_class_joins` with it.
+OPENING_BALANCE_ROW = ACTIVITY_CLASS == ActivityClass.OPENING_BALANCE.value
+
 
 # ─── The previous implementation, kept as a test oracle ──────────────────────
 #

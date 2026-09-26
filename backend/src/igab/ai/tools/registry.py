@@ -290,11 +290,13 @@ TOOLS: tuple[ToolSpec, ...] = (
         name="get_net_worth",
         description=(
             "Assets minus debts at each of the last months' ends. Use this for "
-            "net worth, whether it is going up, and what it is made of."
+            "net worth and what it is made of; answer whether it is going up "
+            "from change_like_for_like, which leaves out accounts being linked "
+            "and values first entered (a month's started_tracking)."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.get_net_worth,
-        delegates_to="ReportService.net_worth_history",
+        delegates_to="ReportService.net_worth",
     ),
     ToolSpec(
         name="list_scheduled",

@@ -153,6 +153,12 @@ class DashboardMetrics(ApiModel):
     # because the next reader will use it.
     net_worth: Decimal
     net_worth_prev: Decimal
+    #: What began being counted between `net_worth_prev`'s day and today —
+    #: accounts arriving with their opening balances, stated values first
+    #: entered (`domain.tracking_start`) — and the change less it, the
+    #: card's figure. The change as drawn is `net_worth - net_worth_prev`.
+    net_worth_entered: Decimal
+    net_worth_change: Decimal
     #: Net spending over the trailing thirty days ending today, and over the
     #: sixty days before them per thirty days (`domain.burn_rate`). The two
     #: share no day; the card's percent change is composed on the client.
@@ -200,6 +206,20 @@ class AccountSnapshot(ApiModel):
     balance: Decimal
 
 
+class TrackingEntry(ApiModel):
+    """Something that began being counted in a point's stretch
+    (`domain.tracking_start.Entry`): an account arriving with its opening
+    balance, or a stated value or manual debt at its first dated point."""
+
+    kind: Literal["account", "stated_asset", "manual_debt"]
+    id: uuid.UUID
+    name: str
+    #: Its first day in the stretch.
+    day: date
+    #: Signed as net worth reads it: a card's opening debt is negative.
+    amount: Decimal
+
+
 class NetWorthPoint(ApiModel):
     date: date
     total_assets: Decimal
@@ -212,12 +232,49 @@ class NetWorthPoint(ApiModel):
     # broken out for the same footnote: in the net line, not in any series.
     asset_value_total: Decimal = Decimal("0")
     accounts: list[AccountSnapshot]
+    #: What entered net worth in the stretch this point closes, and what it
+    #: was — required: the chart marks these months, and a path that forgot
+    #: them would draw an arrival as growth.
+    entered: Decimal
+    entries: list[TrackingEntry]
+
+
+class StatedValueOut(ApiModel):
+    """A figure told rather than added up, with the day it was last true."""
+
+    kind: Literal["stated_asset", "manual_debt"]
+    id: uuid.UUID
+    name: str
+    value: Decimal
+    #: None for a debt typed in with no dated balance.
+    as_of: date | None
+
+
+class StaleBalance(ApiModel):
+    """A figure in today's net worth that has not moved in
+    `tracking_start.STALE_AFTER_DAYS` days."""
+
+    kind: Literal["account", "stated_asset", "manual_debt"]
+    id: uuid.UUID
+    name: str
+    #: None when nothing says when it was last true.
+    last_changed: date | None
 
 
 class NetWorthResponse(ApiModel):
     points: list[NetWorthPoint]
     unmanaged_liability_total: Decimal = Decimal("0")
     asset_value_total: Decimal = Decimal("0")
+    #: Newest point less oldest, as drawn.
+    change: Decimal
+    #: The same, less what began being counted after the oldest point
+    #: (`tracking_start.like_for_like`) — the headline. None with no points.
+    like_for_like_change: Decimal | None
+    #: What began being counted after the oldest point: `change` less
+    #: `like_for_like_change`.
+    entered_total: Decimal
+    stated_values: list[StatedValueOut]
+    stale_balances: list[StaleBalance]
 
 
 # ─── Account Composition ──────────────────────────────────────────────────────
@@ -225,19 +282,27 @@ class NetWorthResponse(ApiModel):
 
 class AccountCompositionPoint(ApiModel):
     date: date
-    # Balance per account-type key present in the budget (custom types
-    # included) — the type set is per-budget, so it can't be a fixed schema
+    # Balance per account-type key in `series` (custom types included) — the
+    # type set is per-budget, so it can't be a fixed schema
     balances: dict[str, Decimal]
+    #: The bands no account holds, so the stack sums to `net_worth`: stated
+    #: asset values (positive) and debts with no account (negative).
+    stated_assets: Decimal
+    manual_debts: Decimal
     # Required, not optional: the chart draws this as the net trend line, and
     # a path that forgot it would draw a flat zero over real data.
     net_worth: Decimal
-    # The stated-asset share of that net line — the amount by which it floats
-    # above the visible account stack; footnoted when non-zero.
     asset_value_total: Decimal
+    #: As on the Net Worth point: what entered in this point's stretch.
+    entered: Decimal
+    entries: list[TrackingEntry]
 
 
 class AccountCompositionResponse(ApiModel):
     points: list[AccountCompositionPoint]
+    #: Every account type a live account has, registry order — a series'
+    #: colour is its place here, so it holds across ranges.
+    series: list[str]
 
 
 # ─── Burn Rate ────────────────────────────────────────────────────────────────
