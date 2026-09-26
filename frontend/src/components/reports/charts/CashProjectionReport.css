@@ -1,0 +1,42 @@
+/* The "If income stopped" card's second line: the choice it was read at. */
+.cash-projection__sub-line {
+  display: block;
+  font-size: var(--font-size-xs);
+}
+
+/* The two pickers for the "If income stopped" line: what a month costs and
+   what money counts. They wrap as whole groups on a phone, so a label never
+   sits at the end of one line with its buttons on the next. */
+.cash-projection__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm) var(--spacing-md);
+  margin: var(--spacing-sm) 0 var(--spacing-md);
+}
+
+.cash-projection__pickers-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cash-projection__picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.cash-projection__picker-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-right: var(--spacing-xs);
+}
+
+/* A choice with no figure — nothing tagged, no fund chosen — stays in place,
+   so the row does not reshuffle between budgets, and reads as unavailable. */
+.cash-projection__picker .report-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

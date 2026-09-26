@@ -48,11 +48,11 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   overview: {
     scope: 'overview',
     summary:
-      'A snapshot: savings rate, expenses, burn rate, days until zero, essentials, your means and its trend.',
+      'A snapshot: savings rate, expenses, burn rate, runway, essentials, your means and its trend.',
     counts:
-      'Savings rate is savings ÷ income; days until zero is cash ÷ daily burn; your means is spending plus debt payments against income, and its trend reads the last 12 complete months.',
+      'Savings rate is savings ÷ income; runway is how long checking and the emergency fund last on Essentials if income stopped, with what the credit cards owe paid first; your means is spending plus debt payments against income, and its trend reads the last 12 complete months.',
     leavesOut:
-      'Transfers between budget accounts, and investment growth — cards, loans and investments are not cash on hand.',
+      'Transfers between budget accounts, and investment growth — loans and investments are not money you can spend next week.',
   },
   'net-worth': {
     scope: 'all-accounts',
@@ -117,7 +117,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'emergency-fund',
     summary: 'How many months of essentials your emergency fund would cover.',
     counts:
-      'The fund balance ÷ a three-month average of essentials (yearly Long-term expense bills spread over 12 months when that is on), against a 3–6 month target.',
+      'The fund, less what your credit cards owe, ÷ a three-month average of essentials (yearly Long-term expense bills spread over 12 months when that is on), against a 3–6 month target. The charts show the fund alone over time.',
     leavesOut:
       'Committed spending that is not Essential — the target is a lean month, not a normal one.',
   },
@@ -157,10 +157,11 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   projection: {
     scope: 'cash-projection',
-    summary: 'Where your cash balance lands if things carry on, as a range of likely paths.',
+    summary:
+      'Where your cash balance lands if things carry on, as a range of likely paths — and how long your money lasts if income stopped.',
     counts:
-      'Your recent cash in and out — paychecks included — replayed a few weeks at a time, plus scheduled transactions and subscriptions, on cash accounts.',
-    leavesOut: 'Credit cards, off-budget accounts, and starting balances.',
+      'Your recent cash in and out — paychecks included — replayed a few weeks at a time, plus scheduled transactions and subscriptions, on cash accounts. The If income stopped line spends the money you pick, cards paid first, at the spending you pick.',
+    leavesOut: 'Credit cards and off-budget accounts from the likely paths, and starting balances.',
   },
   'budget-actual': {
     scope: 'categories',

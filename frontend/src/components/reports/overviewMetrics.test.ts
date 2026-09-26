@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  daysUntilZeroCard,
-  essentialsReserve,
-  netWorthDelta,
-  periodHeading,
-  roundedDaysUntilZero,
-  spendingDelta,
-} from './overviewMetrics'
+import { netWorthDelta, periodHeading, runwayFallback, spendingDelta } from './overviewMetrics'
 import { formatDayMonthWithOptions, formatMonthShortWithOptions } from '../../utils/dates'
 
 describe('periodHeading', () => {
@@ -44,32 +37,27 @@ describe('periodHeading', () => {
   })
 })
 
-describe('daysUntilZeroCard', () => {
-  it('states the runway in whole days', () => {
-    expect(daysUntilZeroCard(45.6)).toEqual({
-      value: '46d',
-      sub: 'Cash at current 30-day burn',
-      overdrawn: false,
-    })
+describe('runwayFallback', () => {
+  it('says nothing when the card read its default', () => {
+    expect(runwayFallback({ fund_chosen: true, essentials_known: true })).toBeNull()
   })
 
-  it('shows the card at 0 when cash is already gone, and says so', () => {
-    // The server served None here and the card hid.
-    expect(daysUntilZeroCard(0)).toEqual({
-      value: '0 days',
-      sub: 'Overdrawn: cash is at or below zero',
-      overdrawn: true,
-    })
-    expect(daysUntilZeroCard('0.0')?.overdrawn).toBe(true)
+  it('says why the money fell back to checking', () => {
+    expect(runwayFallback({ fund_chosen: false, essentials_known: true })).toBe(
+      'No emergency fund chosen'
+    )
   })
 
-  it('does not call a few hours of cash overdrawn, though it rounds to 0d', () => {
-    expect(daysUntilZeroCard(0.3)).toMatchObject({ value: '0d', overdrawn: false })
+  it('says why the spending fell back to all of it', () => {
+    expect(runwayFallback({ fund_chosen: true, essentials_known: false })).toBe(
+      'Nothing tagged Essential'
+    )
   })
 
-  it('draws no card when nothing is burning', () => {
-    expect(daysUntilZeroCard(null)).toBeNull()
-    expect(daysUntilZeroCard(undefined)).toBeNull()
+  it('says both when both fell back', () => {
+    expect(runwayFallback({ fund_chosen: false, essentials_known: false })).toBe(
+      'Nothing tagged Essential, no emergency fund chosen'
+    )
   })
 })
 
@@ -101,25 +89,5 @@ describe('spendingDelta', () => {
     // burn-rate lines, now read the null.
     expect(spendingDelta(120, 0)).toBeNull()
     expect(spendingDelta(120, -30)).toBeNull()
-  })
-})
-
-describe('roundedDaysUntilZero', () => {
-  it('rounds to whole days and passes null through', () => {
-    expect(roundedDaysUntilZero('45.6')).toBe(46)
-    expect(roundedDaysUntilZero(45.4)).toBe(45)
-    expect(roundedDaysUntilZero(null)).toBeNull()
-    expect(roundedDaysUntilZero(undefined)).toBeNull()
-  })
-})
-
-describe('essentialsReserve', () => {
-  it('multiplies the monthly figure by the months of runway', () => {
-    expect(essentialsReserve(1200, 6)).toBe(7200)
-  })
-
-  it('has no answer until something is tagged', () => {
-    expect(essentialsReserve(null, 6)).toBeNull()
-    expect(essentialsReserve(undefined, 3)).toBeNull()
   })
 })

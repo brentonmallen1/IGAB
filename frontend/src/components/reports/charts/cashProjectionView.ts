@@ -14,8 +14,22 @@
  * while the info panel called 25–75 "likely" and 10–90 "most scenarios", and
  * the tooltip printed raw `p10`/`p25`. The names below are the only ones the
  * chart, key, tooltip and warning use.
+ *
+ * **"If income stopped" replaced "Scheduled only".** The dashed line was the
+ * fixed events alone — scheduled pay in, no everyday spending out — a path no
+ * household lives on. Beside the bands ("if things carry on") the page now
+ * draws the other half of "how long does my money last": the served runway's
+ * straight burn-down at the picked spending and money (`domain/runway.py`).
+ * The chart only places the served points; it computes no balance.
  */
-import type { CashProjectionPoint, CashProjectionReport } from '../../../types'
+import type {
+  CashProjectionPoint,
+  CashProjectionReport,
+  IfIncomeStopped,
+  RunwayMoney,
+  RunwaySpending,
+  StoppedIncomeOption,
+} from '../../../types'
 
 export interface ProjectionRow {
   /** Axis label. */
@@ -30,13 +44,18 @@ export interface ProjectionRow {
   p50: number
   p75: number
   p90: number
-  deterministic: number
+  /** The "If income stopped" line, on the days the server placed a point —
+   *  its start and where it reaches zero or the horizon. Undefined elsewhere:
+   *  the chart joins the points, so the line is straight by construction. */
+  stopped?: number
 }
 
 export function projectionRows(
   points: CashProjectionPoint[],
-  formatLabel: (isoDate: string) => string
+  formatLabel: (isoDate: string) => string,
+  stoppedLine: StoppedIncomeOption['line'] = []
 ): ProjectionRow[] {
+  const stopped = new Map(stoppedLine.map((p) => [p.date, p.balance]))
   return points.map((p) => ({
     date: formatLabel(p.date),
     fullDate: p.date,
@@ -47,7 +66,7 @@ export function projectionRows(
     p50: p.p50,
     p75: p.p75,
     p90: p.p90,
-    deterministic: p.deterministic,
+    ...(stopped.has(p.date) ? { stopped: stopped.get(p.date) } : {}),
   }))
 }
 
@@ -78,7 +97,7 @@ export const PROJECTION_BANDS: { outer: BandStyle; inner: BandStyle } = {
 }
 
 export const MEDIAN_LABEL = 'Median'
-export const SCHEDULED_LABEL = 'Scheduled only'
+export const STOPPED_LABEL = 'If income stopped'
 
 export interface ProjectionTooltipEntry {
   name: string
@@ -87,7 +106,9 @@ export interface ProjectionTooltipEntry {
 }
 
 /** One day's tooltip, highest first: the band edges by how many paths end
- *  past them, the median, and the scheduled-only line. */
+ *  past them and the median — then the "If income stopped" line on the days
+ *  it has a served point. Between them the line is drawn, not known: a
+ *  tooltip there would print a balance the server never stated. */
 export function projectionTooltipEntries(row: ProjectionRow): ProjectionTooltipEntry[] {
   return [
     { name: '1 in 10 high', value: row.p90 },
@@ -95,8 +116,40 @@ export function projectionTooltipEntries(row: ProjectionRow): ProjectionTooltipE
     { name: MEDIAN_LABEL, value: row.p50, color: 'var(--accent-color)' },
     { name: '1 in 4 low', value: row.p25 },
     { name: '1 in 10 low', value: row.p10 },
-    { name: SCHEDULED_LABEL, value: row.deterministic, color: 'var(--text-muted)' },
+    ...(row.stopped !== undefined
+      ? [{ name: STOPPED_LABEL, value: row.stopped, color: 'var(--text-muted)' }]
+      : []),
   ]
+}
+
+/** Whether a spending choice has a figure to offer: a tier nothing is
+ *  tagged into is unknown, and its button is disabled rather than drawing a
+ *  flat line that claims nothing is spent. */
+export function spendingAvailable(stopped: IfIncomeStopped, spending: RunwaySpending): boolean {
+  return stopped.options.some((o) => o.spending === spending && o.monthly_spending !== null)
+}
+
+/** Whether a money choice has a figure: "+ Emergency fund" with no fund
+ *  chosen is an unanswered question, not the cash alone. */
+export function moneyAvailable(stopped: IfIncomeStopped, money: RunwayMoney): boolean {
+  return stopped.options.some((o) => o.money === money && o.money_total !== null)
+}
+
+/**
+ * The option the page draws: the remembered choice where it is available,
+ * else the served default (the Overview's runway). A remembered "+ Emergency
+ * fund" on a budget whose fund was since un-chosen falls back rather than
+ * drawing nothing.
+ */
+export function chosenStoppedOption(
+  stopped: IfIncomeStopped,
+  spending: RunwaySpending | null,
+  money: RunwayMoney | null
+): StoppedIncomeOption | undefined {
+  const pickSpending =
+    spending !== null && spendingAvailable(stopped, spending) ? spending : stopped.default_spending
+  const pickMoney = money !== null && moneyAvailable(stopped, money) ? money : stopped.default_money
+  return stopped.options.find((o) => o.spending === pickSpending && o.money === pickMoney)
 }
 
 export type ProjectionWarning =

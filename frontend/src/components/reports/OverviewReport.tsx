@@ -18,14 +18,8 @@ import { ReportErrorState } from './ReportErrorState'
 import { SavingsRateDialog } from './SavingsRateDialog'
 import { pct, ratePercent } from './charts/savingsRateView'
 import { burnPriorLine } from './charts/burnRateView'
-import {
-  daysUntilZeroCard,
-  essentialsReserve,
-  netWorthDelta,
-  periodHeading,
-  roundedDaysUntilZero,
-  spendingDelta,
-} from './overviewMetrics'
+import { netWorthDelta, periodHeading, runwayFallback, spendingDelta } from './overviewMetrics'
+import { runwayBasis, runwayStatement } from '../../utils/runway'
 import { categoryKey } from './drillScope'
 import { today } from '../../utils/dates'
 import { monthRange } from '../../utils/reportMonths'
@@ -36,7 +30,7 @@ interface Props {
 }
 
 export function OverviewReport({ budgetId }: Props) {
-  const { formatMoney, formatMonthShort, formatDayMonth } = useFormatters()
+  const { formatMoney, formatMonthShort, formatDayMonth, formatDate } = useFormatters()
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const { filters } = useReportStore()
   const { data, isLoading, isError, error, refetch } = useDashboardMetrics(
@@ -54,9 +48,8 @@ export function OverviewReport({ budgetId }: Props) {
 
   const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
-  const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
-  const runway = daysUntilZeroCard(data.days_until_zero)
-  const sixMonthReserve = essentialsReserve(data.essentials?.monthly, 6)
+  const runway = runwayStatement(data.runway, formatDate)
+  const runwayNote = runwayFallback(data.runway)
   const otherEssentials = otherFigureNote(data.essentials, formatMoney)
   const trend = meansTrend(data.means_months)
   const period = periodHeading(
@@ -84,7 +77,7 @@ export function OverviewReport({ budgetId }: Props) {
               its pay and bills are still arriving. <strong>Now</strong> does not move with the
               range: <strong>Ready to Assign</strong> is the month open on the Budget page,{' '}
               <strong>Net Worth</strong> is today’s (its change is against the day before the
-              range), <strong>Burn Rate</strong> and <strong>Days Until Zero</strong> end yesterday,
+              range), <strong>Burn Rate</strong> ends yesterday, <strong>Runway</strong> is today’s,
               <strong> Essentials</strong> is the last three complete months, and{' '}
               <strong>Means trend</strong> the last 12 complete months.
             </p>
@@ -102,11 +95,12 @@ export function OverviewReport({ budgetId }: Props) {
               <strong>Savings Rate</strong>: Saved ÷ Income — money moved into savings or
               investments, or held in a Savings envelope that counts while it’s in the budget, not
               simply money left over. Shows “—” for a window with no income. Open it to see where
-              the savings went and where the income came from. <strong>Days Until Zero</strong>:
-              cash on hand ÷ daily burn rate — how long the budget’s cash accounts would last at
-              this pace. Cards, loans and tracked investments are out: net worth is not money you
-              can spend next week. It reads 0 when that cash is already at or below zero, and is
-              left out when nothing is being spent.
+              the savings went and where the income came from. <strong>Runway</strong>: how long
+              your money would last if income stopped today — your checking and your emergency fund,
+              with what your credit cards owe paid first, spent at your Essentials figure. It says
+              the date it runs out. With no emergency fund chosen it counts checking alone, and with
+              nothing tagged Essential it spends at all your spending; the card says which. The Cash
+              Projection draws the same figure for other choices.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending
@@ -158,8 +152,11 @@ export function OverviewReport({ budgetId }: Props) {
                 ...(data.savings_rate !== null
                   ? [{ metric: 'savings_rate_pct', value: ratePercent(data.savings_rate) }]
                   : []),
-                ...(daysUntilZero !== null
-                  ? [{ metric: 'days_until_zero', value: daysUntilZero }]
+                ...(data.runway.months !== null
+                  ? [
+                      { metric: 'runway_months', value: data.runway.months },
+                      { metric: 'runway_runs_out_on', value: data.runway.runs_out_on },
+                    ]
                   : []),
                 { metric: 'income_this_period', value: data.income_this_month },
                 { metric: 'spent_this_period', value: data.expenses_this_month },
@@ -239,12 +236,9 @@ export function OverviewReport({ budgetId }: Props) {
               label="Essentials / month"
               value={data.essentials ? formatMoney(data.essentials.monthly) : '—'}
               sub={
-                sixMonthReserve != null ? (
+                data.essentials ? (
                   <>
                     {essentialsMonths ? `${essentialsMonths} average` : '3-month average'}
-                    <span className="overview-report__sub-line">
-                      6-month target: {formatMoney(sixMonthReserve)}
-                    </span>
                     {otherEssentials && (
                       <span className="overview-report__sub-line">{otherEssentials}</span>
                     )}
@@ -254,14 +248,20 @@ export function OverviewReport({ budgetId }: Props) {
                 )
               }
             />
-            {runway && (
-              <MetricCard
-                label="Days Until Zero"
-                value={runway.value}
-                sub={runway.sub}
-                warning={runway.overdrawn}
-              />
-            )}
+            <MetricCard
+              label="Runway"
+              value={runway.value}
+              sub={
+                <>
+                  {runway.detail}
+                  <span className="overview-report__sub-line">
+                    If income stopped: {runwayBasis(data.runway)}
+                  </span>
+                  {runwayNote && <span className="overview-report__sub-line">{runwayNote}</span>}
+                </>
+              }
+              warning={runway.gone}
+            />
             <MeansTrendCard months={data.means_months} />
           </MetricRow>
         </div>

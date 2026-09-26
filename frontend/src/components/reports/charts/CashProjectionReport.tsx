@@ -23,13 +23,25 @@ import { ChartTooltip } from './ChartTooltip'
 import {
   MEDIAN_LABEL,
   PROJECTION_BANDS,
-  SCHEDULED_LABEL,
+  STOPPED_LABEL,
+  chosenStoppedOption,
+  moneyAvailable,
   projectionRows,
   projectionTooltipEntries,
   projectionWarning,
+  spendingAvailable,
   type ProjectionRow,
 } from './cashProjectionView'
 import { HORIZON_OPTIONS } from './reportControls'
+import { useReportStore } from '../../../stores/reportStore'
+import {
+  RUNWAY_MONEY_OPTIONS,
+  RUNWAY_SPENDING_OPTIONS,
+  runwayBasis,
+  runwayStatement,
+} from '../../../utils/runway'
+import { monthRange } from '../../../utils/reportMonths'
+import './CashProjectionReport.css'
 
 interface Props {
   budgetId: string
@@ -39,8 +51,12 @@ export function CashProjectionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(360)
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(90)
   const { data, isLoading, isError, error, refetch } = useCashProjectionReport(budgetId, horizon)
-  const { formatMoney, formatDate, formatDayMonth } = useFormatters()
+  const { formatMoney, formatDate, formatDayMonth, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
+  const runwaySpending = useReportStore((s) => s.runwaySpending)
+  const runwayMoney = useReportStore((s) => s.runwayMoney)
+  const setRunwaySpending = useReportStore((s) => s.setRunwaySpending)
+  const setRunwayMoney = useReportStore((s) => s.setRunwayMoney)
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
@@ -51,7 +67,14 @@ export function CashProjectionReport({ budgetId }: Props) {
   const startBalance = Number(data?.start_balance ?? 0)
   const warning = projectionWarning(data)
 
-  const chartData = projectionRows(data?.points ?? [], formatDayMonth)
+  const stopped = data?.if_income_stopped
+  const option = stopped ? chosenStoppedOption(stopped, runwaySpending, runwayMoney) : undefined
+  const statement = option ? runwayStatement(option, formatDate) : null
+  const averaged = stopped
+    ? monthRange(stopped.window_start, stopped.window_end, formatMonthShort)
+    : null
+
+  const chartData = projectionRows(data?.points ?? [], formatDayMonth, option?.line)
 
   const endPoint = chartData[chartData.length - 1]
   const projectedBalance = endPoint?.p50 ?? startBalance
@@ -76,8 +99,16 @@ export function CashProjectionReport({ budgetId }: Props) {
             <strong>8 in 10</strong> (10–90%) — 1 in 10 ends below it, 1 in 10 above.
           </p>
           <p>
-            The <strong>dashed line</strong> shows what would happen with only scheduled and
-            subscription charges — no random daily spending.
+            The <strong>dashed line</strong> is the other question:{' '}
+            <strong>if income stopped</strong> today, how long the money would last. It starts from
+            the money you pick, with what your credit cards owe already paid, and falls by what a
+            month costs on the spending you pick — the average of{' '}
+            {averaged ?? 'the last three complete months'}, the months the Essentials figure reads.{' '}
+            <strong>Checking</strong> is the cash in your budget’s accounts;{' '}
+            <strong>+ Emergency fund</strong> adds what your emergency fund holds outside the budget
+            (envelopes are already in the cash); <strong>+ All savings</strong> adds every
+            off-budget savings account. The Overview’s <strong>Runway</strong> card is this figure
+            at Essentials and the emergency fund.
           </p>
           <ReportScopeNote report="projection" />
         </ReportInfoButton>
@@ -113,7 +144,62 @@ export function CashProjectionReport({ budgetId }: Props) {
           value={formatMoney(projectedBalance)}
           sub={`8 in 10: ${formatMoney(rangeP10)} – ${formatMoney(rangeP90)}`}
         />
+        {option && statement && (
+          <MetricCard
+            label={STOPPED_LABEL}
+            value={statement.value}
+            sub={
+              <>
+                {statement.detail}
+                <span className="cash-projection__sub-line">{runwayBasis(option)}</span>
+              </>
+            }
+            warning={statement.gone}
+          />
+        )}
       </MetricRow>
+
+      {stopped && (
+        <div className="cash-projection__pickers">
+          <span className="cash-projection__pickers-title">{STOPPED_LABEL}</span>
+          <div className="cash-projection__picker" role="group" aria-label="Spending">
+            <span className="cash-projection__picker-label" aria-hidden>
+              Spending
+            </span>
+            {RUNWAY_SPENDING_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={`report-btn ${option?.spending === o.value ? 'report-btn--active' : ''}`}
+                aria-pressed={option?.spending === o.value}
+                disabled={!spendingAvailable(stopped, o.value)}
+                title={spendingAvailable(stopped, o.value) ? undefined : 'Nothing tagged yet'}
+                onClick={() => setRunwaySpending(o.value)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div className="cash-projection__picker" role="group" aria-label="Money">
+            <span className="cash-projection__picker-label" aria-hidden>
+              Money
+            </span>
+            {RUNWAY_MONEY_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={`report-btn ${option?.money === o.value ? 'report-btn--active' : ''}`}
+                aria-pressed={option?.money === o.value}
+                disabled={!moneyAvailable(stopped, o.value)}
+                title={moneyAvailable(stopped, o.value) ? undefined : 'No emergency fund chosen'}
+                onClick={() => setRunwayMoney(o.value)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {chartData.length === 0 ? (
         <div className="reports-empty">No projection data available.</div>
@@ -168,14 +254,18 @@ export function CashProjectionReport({ budgetId }: Props) {
               fillOpacity={PROJECTION_BANDS.inner.fillOpacity}
               isAnimationActive={false}
             />
+            {/* Two served points joined straight: a burn-down at a fixed
+                pace is a line, and "linear" keeps recharts from bending it. */}
             <Line
-              type="monotone"
-              dataKey="deterministic"
-              name={SCHEDULED_LABEL}
+              type="linear"
+              dataKey="stopped"
+              name={STOPPED_LABEL}
               stroke="var(--text-muted)"
               strokeDasharray="4 4"
               strokeWidth={1.5}
               dot={false}
+              connectNulls
+              isAnimationActive={false}
             />
             <Line
               type="monotone"
@@ -212,7 +302,7 @@ export function CashProjectionReport({ budgetId }: Props) {
               className="chart-key__swatch chart-key__swatch--line"
               style={{ background: 'var(--text-muted)' }}
             />
-            {SCHEDULED_LABEL}
+            {STOPPED_LABEL}
           </span>
         </div>
       )}
