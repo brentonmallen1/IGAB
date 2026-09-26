@@ -101,6 +101,50 @@ class TestNeverPaysOff:
         assert len(result.schedule) == 120
 
 
+class TestInterestToPayoff:
+    """What retiring a debt costs in interest — None when it never retires.
+
+    The running `total_interest` of a schedule that never pays off is the
+    interest as far as the schedule ran, which is not a bill: the Liabilities
+    report served it as "Interest left" and added it to its headline.
+    """
+
+    def test_a_payment_short_of_the_interest_has_no_bill_not_a_zero_one(self):
+        # $10,000 at 24%: 200.00 of interest a month against a 100.00 payment.
+        # The schedule stops at month one having counted nothing, and the
+        # report read "Interest left $0.00".
+        result = amortization_schedule(D("10000.00"), D("24"), D("100.00"), START)
+        assert result.never_pays_off
+        assert result.total_interest == D("0")
+        assert result.interest_to_payoff is None
+
+    def test_a_payment_that_barely_covers_it_runs_to_the_cap_and_still_has_none(self):
+        # $100,000 at 6%: 500.00 of interest against 500.01 — a cent of
+        # principal a month, so the default 600-month cap ends it first. The
+        # running total is fifty years of interest, which is not what is left.
+        result = amortization_schedule(D("100000.00"), D("6"), D("500.01"), START)
+        assert result.never_pays_off
+        assert len(result.schedule) == 600
+        assert result.total_interest > D("299000")
+        assert result.interest_to_payoff is None
+
+    def test_a_debt_that_pays_off_costs_its_total(self):
+        result = amortization_schedule(D("1000.00"), D("12"), D("400.00"), START)
+        assert result.interest_to_payoff == result.total_interest == D("18.26")
+
+    def test_nothing_owed_costs_nothing(self):
+        result = amortization_schedule(D("0"), D("24"), D("100.00"), START)
+        assert not result.never_pays_off
+        assert result.interest_to_payoff == D("0")
+
+    def test_the_live_projection_reads_the_same_rule(self):
+        # Two months of 100.00 against 200.00 of interest: the observed pace
+        # never clears it either, and says None the same way.
+        live = project_payoff(D("10000.00"), D("24"), [D("100"), D("100")], START)
+        assert live is not None and live.never_pays_off
+        assert live.total_interest is None
+
+
 class TestZeroRate:
     def test_interest_free_loan(self):
         result = amortization_schedule(D("1000.00"), D("0"), D("100.00"), START)

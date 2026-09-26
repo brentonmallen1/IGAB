@@ -43,7 +43,25 @@ class AmortizationResult:
     schedule: list[AmortizationMonth]
     never_pays_off: bool
     payoff_date: date | None
+    #: The schedule's running total — for one that never pays off, only as
+    #: far as it ran. What retiring the debt costs is `interest_to_payoff`.
     total_interest: Decimal
+
+    @property
+    def interest_to_payoff(self) -> Decimal | None:
+        """The interest paid until the debt is gone, or None when this
+        schedule never gets it there.
+
+        A debt that never pays off has no finite interest bill, and the
+        running total understates an unbounded number whichever way the
+        schedule stopped: at the first payment that fails to cover the month's
+        interest, having counted nothing, or at the 600-month cap, having
+        counted fifty years of it. The Liabilities report quoted the first as
+        "Interest left $0.00" — $10,000 at 24% paid $100 a month — and added
+        $0 to its headline; `project_payoff` already said None. One rule for
+        both, here.
+        """
+        return None if self.never_pays_off else self.total_interest
 
 
 def _month_step(
@@ -343,10 +361,7 @@ def project_payoff(
         payoff_date=result.payoff_date,
         never_pays_off=result.never_pays_off,
         typical_payment=typical,
-        # A pace that never clears the debt has no finite interest bill; the
-        # schedule stops at the cap, and reporting its running total as "what
-        # this will cost you" would understate an unbounded number.
-        total_interest=None if result.never_pays_off else result.total_interest,
+        total_interest=result.interest_to_payoff,
         months=None if result.never_pays_off else len(result.schedule),
     )
 

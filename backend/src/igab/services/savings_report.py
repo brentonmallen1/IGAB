@@ -58,6 +58,7 @@ from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.txn_filters import SAVINGS_ACCOUNT
+from igab.services.report_day import reader_today
 from igab.services.target_service import TargetService
 
 if TYPE_CHECKING:
@@ -148,11 +149,14 @@ def _section_total(envelopes: list[SavingsEnvelope]) -> Decimal:
     return sum((next_carryover(e["current_balance"]) for e in envelopes), ZERO)
 
 
-async def savings_report(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
-    """Saved, On the way to savings and Sinking funds over the last `months`."""
+async def savings_report(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
+    """Saved, On the way to savings and Sinking funds over the last `months`,
+    the newest being the reader's `today`."""
     # No early return, tagged or not: two returned two empties (`months`
     # [] beside the window) and one dropped the drains this path keeps.
-    end_date = date.today()
+    end_date = reader_today(today)
     month_list = report_months(end_date, months)
     start_date = month_list[0]
 

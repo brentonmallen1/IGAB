@@ -499,7 +499,7 @@ class EssentialsReportResponse(ApiModel):
 
     `essentials` is the Guide's figure (rolling 90 days ÷ 3, sinking-fund bills
     spread when the budget's setting is on) and what the
-    Overview card shows; the per-category table averages over `months`
+    Overview card shows; the per-category table averages over `months_averaged`
     complete months instead. `tagged` is False until something carries the
     tag — then every figure is 0 and the UI says where to apply it.
     """
@@ -508,6 +508,9 @@ class EssentialsReportResponse(ApiModel):
     months: int
     window_start: date
     window_end: date
+    #: The complete months the table's averages divide by: `months`, or fewer
+    #: when the budget's history is younger (`history_window`).
+    months_averaged: int
     #: Served whether or not anything is tagged — zeros when nothing is.
     essentials: EssentialsFigures
     monthly_total_average: Decimal
@@ -648,9 +651,19 @@ class LiabilitiesReportItem(ApiModel):
     interest_rate: Decimal | None
     baseline_payoff_date: date | None
     live_payoff_date: date | None
-    # Null when the terms are unset — no schedule, so no interest to project.
+    #: At the minimum payment. Null when the terms are unset — no schedule, so
+    #: no interest to project — and when the minimum never retires the debt,
+    #: which has no interest bill to quote (`AmortizationResult.interest_to_payoff`).
     total_interest_remaining: Decimal | None
+    #: The minimum-payment schedule never retires the debt: the page says
+    #: "Never at this payment" where the date and the interest would be.
+    baseline_never_pays_off: bool
+    #: The payoff verdict, measured at `payoff_basis`.
     never_pays_off: bool
+    #: "observed" when two months of payments give a pace, "minimum" when only
+    #: the contract speaks, null without terms. The page said "at current pace"
+    #: for both, which a debt with no payment history does not have.
+    payoff_basis: Literal["observed", "minimum"] | None
     terms_complete: bool
 
 
@@ -663,10 +676,13 @@ class LiabilitiesBalancePoint(ApiModel):
 class LiabilitiesReportResponse(ApiModel):
     items: list[LiabilitiesReportItem]
     total_balance: Decimal
-    # Sums only the rows whose terms are known; liabilities_missing_terms says
-    # how many were left out, so a partial total can be labelled as one.
+    # Sums only the rows with a finite interest bill; the two counts below say
+    # how many were left out and why, so a partial total can be labelled as one.
     total_interest_remaining: Decimal
     liabilities_missing_terms: int
+    #: Rows whose minimum payment never retires the debt — excluded from the
+    #: total above rather than added in at $0 or at fifty years' worth.
+    liabilities_never_paying_off: int
     balance_over_time: list[LiabilitiesBalancePoint]
     #: Owed on accounts closed with a balance still on them, excluded from
     #: `total_balance` above. Net worth counts it — it spans every account —

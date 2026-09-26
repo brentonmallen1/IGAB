@@ -70,6 +70,7 @@ vi.mock('../../api/reports', () => ({
       months: 12,
       window_start: '2025-09-01',
       window_end: '2026-08-31',
+      months_averaged: 12,
       essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
       monthly_total_average: 1000,
       categories: [],

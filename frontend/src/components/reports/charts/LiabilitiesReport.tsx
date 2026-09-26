@@ -24,7 +24,13 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { closedDebtNote, totalLiabilitiesSub } from './liabilitiesView'
+import {
+  NEVER_AT_THIS_PAYMENT,
+  closedDebtNote,
+  interestRemainingSub,
+  neverPaysOffWarning,
+  totalLiabilitiesSub,
+} from './liabilitiesView'
 import './LiabilitiesReport.css'
 
 interface Props {
@@ -68,7 +74,10 @@ export function LiabilitiesReport({ budgetId }: Props) {
           return row.baseline_payoff_date ?? '9999'
         case 'live':
           return row.live_payoff_date ?? '9999'
+        // A debt the minimum never retires has no bill because it is
+        // unbounded, not because it is small: it sorts above every figure.
         case 'interest':
+          if (row.baseline_never_pays_off) return Infinity
           return row.total_interest_remaining === null ? -Infinity : row.total_interest_remaining
       }
     }
@@ -195,16 +204,16 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 sub={totalLiabilitiesSub(closedCount)}
                 accent
               />
-              {/* Rows without terms contribute no interest, so say the total
-                  is partial rather than let it read as the whole figure. */}
+              {/* Rows without terms, or that the minimum never pays off,
+                  contribute no interest, so say the total is partial rather
+                  than let it read as the whole figure. */}
               <MetricCard
                 label="Interest Remaining"
                 value={formatMoney(data!.total_interest_remaining)}
-                sub={
-                  data!.liabilities_missing_terms > 0
-                    ? `At minimum payments · excludes ${data!.liabilities_missing_terms} without terms`
-                    : 'At minimum payments'
-                }
+                sub={interestRemainingSub(
+                  data!.liabilities_missing_terms,
+                  data!.liabilities_never_paying_off
+                )}
               />
               <MetricCard label="Liabilities" value={String(data!.items.length)} />
             </MetricRow>
@@ -297,12 +306,16 @@ export function LiabilitiesReport({ budgetId }: Props) {
                         {item.interest_rate === null ? '—' : `${item.interest_rate}%`}
                       </td>
                       <td>
-                        {item.baseline_payoff_date ? formatMonth(item.baseline_payoff_date) : '—'}
+                        {item.baseline_never_pays_off
+                          ? NEVER_AT_THIS_PAYMENT
+                          : item.baseline_payoff_date
+                            ? formatMonth(item.baseline_payoff_date)
+                            : '—'}
                       </td>
                       <td>
                         {item.never_pays_off ? (
                           <span className="liabilities-report__warning">
-                            <AlertTriangle size={12} /> Won't pay off at current pace
+                            <AlertTriangle size={12} /> {neverPaysOffWarning(item.payoff_basis)}
                           </span>
                         ) : item.live_payoff_date ? (
                           formatMonth(item.live_payoff_date)
@@ -310,7 +323,11 @@ export function LiabilitiesReport({ budgetId }: Props) {
                           '—'
                         )}
                       </td>
-                      <td className="num">{formatMoneyOrDash(item.total_interest_remaining)}</td>
+                      <td className="num">
+                        {item.baseline_never_pays_off
+                          ? NEVER_AT_THIS_PAYMENT
+                          : formatMoneyOrDash(item.total_interest_remaining)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

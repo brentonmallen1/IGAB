@@ -767,7 +767,7 @@ class TestBurnRate:
 
 class TestCategoryVolatility:
     async def test_statistical_output(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
@@ -810,7 +810,7 @@ class TestCategoryVolatility:
         the budget. `min_val` could never be zero either, so a dormant category
         showed a floor it had never spent as little as.
         """
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 7, 10)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
@@ -843,7 +843,7 @@ class TestCategoryVolatility:
         """The toggle's whole path below the route. Nothing passed amortize=True
         here, so dropping the argument left every test green and the toggle
         quietly showing the raw reading."""
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 7, 10)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
@@ -865,7 +865,7 @@ class TestCategoryVolatility:
         assert r["months_included"] == 2
 
     async def test_empty_returns_empty(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(make_session(earliest_result(None), mock_result([])))
@@ -883,7 +883,7 @@ class TestCategoryVolatility:
 
 class TestSeasonality:
     async def test_cells_and_categories(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
@@ -907,7 +907,7 @@ class TestSeasonality:
     async def test_the_axis_starts_where_the_history_does(self):
         """A budget three weeks old on "12 months" has one complete month. The
         axis drew eleven blank columns before it, which reads as data loss."""
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 20)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(make_session(earliest_result(date(2026, 1, 28)), mock_result([])))
@@ -916,7 +916,7 @@ class TestSeasonality:
         assert result["months"] == [date(2026, 1, 1)]
 
     async def test_empty_returns_months_no_cells(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(make_session(earliest_result(None), mock_result([])))

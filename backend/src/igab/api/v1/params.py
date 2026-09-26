@@ -14,8 +14,12 @@ beside it.
 """
 
 import uuid
+from datetime import date
+from typing import Annotated
 
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
+
+from igab.services.report_day import reader_today
 
 
 def parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
@@ -42,3 +46,17 @@ def parse_csv(value: str | None) -> list[str] | None:
     if not value:
         return None
     return [v.strip() for v in value.split(",") if v.strip()] or None
+
+
+def _reader_today(client_today: Annotated[date | None, Query()] = None) -> date:
+    return reader_today(client_today)
+
+
+#: The reader's day, for a report that ends "today" or leaves the running month
+#: out — which is every report with a window it did not get from the caller.
+#: A GET has no body to carry `ClientDated`, so the browser's local date rides
+#: as `client_today` (`frontend/src/api/reports.ts` sends it on every report
+#: request). A caller that omits it gets the server's day — see
+#: `services/report_day.py` for why that is a different day every evening.
+#: Resolved here, once, so an endpoint receives a date rather than a choice.
+ReaderToday = Annotated[date, Depends(_reader_today)]

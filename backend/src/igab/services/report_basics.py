@@ -52,6 +52,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     category_tagged,
 )
+from igab.services.report_day import reader_today
 from igab.services.savings_held import held_by_envelope
 
 if TYPE_CHECKING:
@@ -67,6 +68,26 @@ _NO_PAYEE_KEY = "__none__"
 
 def _payee_key(payee_id: uuid.UUID | None) -> str:
     return str(payee_id) if payee_id else _NO_PAYEE_KEY
+
+
+async def history_window(
+    session: AsyncSession, budget_id: uuid.UUID, months: int, today: date
+) -> tuple[date, date]:
+    """The last `months` complete months before the reader's `today`, never
+    reaching before this budget's first transaction: the window of every
+    report that averages per month.
+
+    `complete_month_window` is the arithmetic and says why the clamp matters;
+    this supplies where the history starts, which only the database knows.
+    Volatility, seasonality and anomalies read it. Income by Source, Cost of
+    Living, Discretionary, Subscriptions and the Essentials table called the
+    arithmetic without the history, so "All time" — which counts the running
+    month the window leaves out — asked for one month before the first
+    transaction, and every average divided by a month nobody recorded: three
+    complete months of history, averaged over four, read a quarter low.
+    """
+    earliest = await TransactionRepository(session).earliest_date(budget_id)
+    return complete_month_window(today, months, earliest)
 
 
 async def spending_trends(
@@ -131,7 +152,9 @@ async def spending_trends(
     }
 
 
-async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def income_by_source(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """Income per payee per month: what the classifier reads as income.
 
     **The sign does not decide; the class does.** This filtered
@@ -148,8 +171,8 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
     rule is `INCOME_ROW`, which both Sankey modes read too; budgeted mode
     summed positive split parents by sign until it did.
     """
-    # N complete months, like every averaging report (`complete_month_window`).
-    start_date, end_date = complete_month_window(date.today(), months)
+    # N complete months of this budget's history, like every averaging report.
+    start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
     q = (
@@ -216,7 +239,11 @@ _CONTRIBUTOR_CLASSES = (ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL)
 
 
 async def savings_contributors(
-    session: AsyncSession, budget_id: uuid.UUID, start_date: date, end_date: date
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    today: date | None = None,
 ) -> dict:
     """What a savings rate over a window was made of — the rate cards' dialog.
 
@@ -239,9 +266,10 @@ async def savings_contributors(
     destination were decided by different rules, the first in
     `REASON_PRIORITY`, the classifier's own order.
 
-    **Through today.** The Overview card's frame is read up to today whatever
-    range was picked, and the Savings Rate tab's window ends today, so a
-    future-dated row is in neither and is not in this either.
+    **Through today** — the reader's, as the rate cards read it. The Overview
+    card's frame is read up to today whatever range was picked, and the Savings
+    Rate tab's window ends today, so a future-dated row is in neither and is not
+    in this either.
 
     **Held rows.** Saved is moved plus held (`domain.savings`), so each
     kept-here Savings envelope whose balance changed over the window is a
@@ -252,7 +280,7 @@ async def savings_contributors(
 
     Income is grouped by payee, as Income by Source groups it.
     """
-    end = min(end_date, date.today())
+    end = min(end_date, reader_today(today))
     held = {
         cid: pair
         for cid, pair in (await held_by_envelope(session, budget_id, start_date, end)).items()
@@ -409,10 +437,9 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     Independent of the Overview's selected range on purpose: the trend is
     "the last year", and a one-month range would leave it a single bar.
     """
-    earliest = await svc.txns.earliest_date(budget_id)
-    if earliest is None:
+    if await svc.txns.earliest_date(budget_id) is None:
         return []
-    start, end = complete_month_window(today, MEANS_TREND_MONTHS, earliest)
+    start, end = await history_window(svc.session, budget_id, MEANS_TREND_MONTHS, today)
     by_month = await svc._monthly_class_totals(budget_id, start, end)
     rows = []
     for month in month_starts(start, end):
@@ -510,7 +537,7 @@ def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSp
 
 
 async def subscriptions_report(
-    session: AsyncSession, budget_id: uuid.UUID, months: int = 12
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
 ) -> dict:
     """Recurring charges: every posted outflow filed to a category tagged
     Subscription, grouped BY CATEGORY, with the payees inside each one.
@@ -558,10 +585,10 @@ async def subscriptions_report(
         return empty
 
     # N COMPLETE months — the meaning every averaging report gives `months`
-    # (`complete_month_window`). This took N calendar months through today and
+    # (`history_window`). This took N calendar months through today and
     # averaged the N−1 complete ones, so Subscriptions and Cost of Living read
     # one month fewer than Essentials over the same setting.
-    start_date, end_date = complete_month_window(date.today(), months)
+    start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
 
     q = (
@@ -783,7 +810,9 @@ def class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | No
 UNCATEGORIZED_GROUP = "Uncategorized"
 
 
-async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def cost_of_living(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """What it costs to keep the lights on, by category group, in two tiers.
 
     The groups roll up the WIDE tier, `NecessityTier.COST_OF_LIVING`:
@@ -811,7 +840,8 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # N−1 complete ones, which agreed with Essentials only when spending was
     # flat: rent of 3,000 a month plus a 1,200 premium twelve months back read
     # 3,000 here and 3,100 there.
-    start_date, end_date = complete_month_window(date.today(), months)
+    today = reader_today(today)
+    start_date, end_date = await history_window(session, budget_id, months, today)
     month_list = month_starts(start_date, end_date)
 
     repo = TransactionRepository(session)
@@ -875,7 +905,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
 
     # Take-home is Income by Source's own served average over the same
     # window, not a second division of its monthly totals here.
-    income = await income_by_source(session, budget_id, months)
+    income = await income_by_source(session, budget_id, months, today)
     avg_income = income["avg_monthly"]
     avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
     avg_essentials: Decimal | None = None
@@ -948,7 +978,9 @@ def _by_total(item: DiscretionaryLine | DiscretionaryGroup) -> Decimal:
     return item["total"]
 
 
-async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def discretionary(
+    svc: ReportService, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """Spending outside Cost of living, by category within its group.
 
     The rows are `DISCRETIONARY_ROW` — SPENDING-class rows in no category
@@ -967,7 +999,7 @@ async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 
     construction (see `DISCRETIONARY_ROW`). The share between them is the
     page's arithmetic: two served figures and no missing input.
     """
-    start_date, end_date = complete_month_window(date.today(), months)
+    start_date, end_date = await history_window(svc.session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     rows, basis = await svc.txns.discretionary_by_category_month(budget_id, start_date, end_date)
     tagged = basis_is_chosen(basis)
