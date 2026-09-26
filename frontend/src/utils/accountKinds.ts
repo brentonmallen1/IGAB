@@ -31,7 +31,7 @@ export function isCashAccount(account: AccountKindFields): boolean {
 }
 
 /** An off-budget asset — the one kind of account whose `counts_as_savings`
- * flag means anything. The server reads it only there (rules 3 and 5 in
+ * flag means anything. The server reads it only there (rules 5 and 7 in
  * `domain/activity_class.py`), so this decides where the toggle is offered:
  * on anything else it would be a switch wired to nothing. */
 export function isTrackedAsset(account: AccountKindFields): boolean {

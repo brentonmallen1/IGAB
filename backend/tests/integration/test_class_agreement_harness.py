@@ -15,6 +15,7 @@ accounts, 30 months, a tracked brokerage, a managed mortgage, transfers and
 splits. Hand-built data only contains the cases you remembered.
 """
 
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -66,20 +67,22 @@ SHIPPED = ClassImpl(name="joined", cls=ACTIVITY_CLASS, reason=ACTIVITY_REASON)
 
 
 async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
-    """Two of the nine rules never fire over the sample budget.
+    """Three of the eleven rules never fire over the sample budget.
 
     Found by the drop-a-rule check below, which is the whole reason it is
     parameterised over every rule rather than testing one: realistic data is
     necessary for a differential test and not sufficient, because it only
     contains the situations the sample author had a reason to model.
 
-    The gaps, both plausible in a real budget and neither present in ours:
+    The gaps, all plausible in a real budget and none present in ours:
 
       * a category tagged **debt principal** that is not also a transfer to a
         tracked loan — someone paying a debt that IGAB does not track;
       * an **uncategorized transfer to a tracked asset** — the YNAB-import
         shape the savings rule exists for, where the destination decides the
-        class because the user never categorised the leg.
+        class because the user never categorised the leg;
+      * **history from before an account's budget start** — no sample account
+        has one (`_cover_the_opening_position`).
 
     Plus a shape the rules read an extra column for: transfers with a tracked
     asset that does not count as savings, in both directions.
@@ -106,7 +109,7 @@ async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
     await create_transaction(db_session, budget, checking, "-300.00", ANCHOR, payee=to_brokerage)
 
     # A tracked asset that is not savings, both ways, linked: the on-budget leg
-    # takes rule 5's carve-out (spending out, income in) and the far leg must
+    # takes rule 7's carve-out (spending out, income in) and the far leg must
     # not. The sample data's vehicle sale covers one direction only.
     car = await create_account(
         db_session, budget, "Coverage Car", account_type="other_asset", on_budget=False
@@ -145,7 +148,54 @@ async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
     await create_transaction(
         db_session, budget, checking, "-90.00", ANCHOR, category=sent, payee=shop
     )
+
+    await _cover_the_opening_position(db_session, budget, checking, brokerage)
     await db_session.flush()
+
+
+#: The budget start the coverage card and cash account are given. No sample
+#: account has one — the sample is its own budget from its first day — so
+#: rule 4 (BEFORE_BUDGET_START) would never fire here without these rows.
+COVERAGE_START = ANCHOR - timedelta(days=30)
+
+
+async def _cover_the_opening_position(db_session, budget, checking, brokerage) -> None:
+    """Rule 4 reads a column nothing else in the ladder reads — the own
+    account's `budget_start_date`, through the joined account on one side and
+    `AFTER_BUDGET_START`'s EXISTS on the other — so both readings must see
+    rows on each side of the date, on the date itself, and under a NULL.
+
+    A card linked with history: a purchase and the card's side of a payment
+    from before it joined (openings), a purchase someone filed by hand (the
+    escape hatch, SPENDING by its category), and rows on and after the start
+    date that are counted as ever. A cash account with a start date too, whose
+    pre-start move to a brokerage is part of its opening rather than savings,
+    and whose far leg — the brokerage has no start date — stays internal.
+
+    Rule 10 is in the sample already (its cards' unlinked deposits); one more
+    row keeps it covered if the sample changes.
+    """
+    group = await create_category_group(db_session, budget, "Opening Coverage")
+    dining = await create_category(db_session, budget, group, "Filed Before The Start")
+    card = await create_account(
+        db_session, budget, "Coverage Card", account_type="credit_card", on_budget=True
+    )
+    card.budget_start_date = COVERAGE_START
+    before = COVERAGE_START - timedelta(days=10)
+    await create_transaction(db_session, budget, card, "-60.00", before)
+    await create_transaction(db_session, budget, card, "200.00", before)
+    await create_transaction(db_session, budget, card, "-45.00", before, category=dining)
+    await create_transaction(db_session, budget, card, "-30.00", COVERAGE_START)
+    await create_transaction(db_session, budget, card, "150.00", COVERAGE_START)
+
+    cash = await create_account(db_session, budget, "Coverage Late Checking", on_budget=True)
+    cash.budget_start_date = COVERAGE_START
+    await create_transaction(db_session, budget, cash, "900.00", before)
+    out = await create_transaction(db_session, budget, cash, "-400.00", before)
+    into = await create_transaction(db_session, budget, brokerage, "400.00", before)
+    out.transfer_id, into.transfer_id = into.id, out.id
+    # A row whose own account has no start date sits beside one whose does.
+    await create_transaction(db_session, budget, checking, "-25.00", before)
 
 
 async def _full_budget(db_session):
@@ -225,6 +275,50 @@ class TestTheFixtureExercisesEveryRule:
                     ActivityReason.TAGGED_SAVINGS.value,
                 ),
             }
+
+    async def test_the_opening_position_rows_take_their_rules(self, db_session):
+        """The rows `_cover_the_opening_position` adds, in both
+        implementations: each reaches the rule it was added for, and the
+        date is honoured on both sides of it."""
+        budget = await _full_budget(db_session)
+        opening = (ActivityClass.OPENING_BALANCE.value, ActivityReason.BEFORE_BUDGET_START.value)
+        unfiled_credit = (
+            ActivityClass.TRANSFER_INTERNAL.value,
+            ActivityReason.UNFILED_CARD_CREDIT.value,
+        )
+        spending = (ActivityClass.SPENDING.value, ActivityReason.DEFAULT_SPENDING.value)
+        expected = {
+            ("Coverage Card", Decimal("-60.00")): opening,
+            ("Coverage Card", Decimal("200.00")): opening,
+            ("Coverage Card", Decimal("-45.00")): spending,
+            ("Coverage Card", Decimal("-30.00")): spending,
+            ("Coverage Card", Decimal("150.00")): unfiled_credit,
+            ("Coverage Late Checking", Decimal("900.00")): opening,
+            ("Coverage Late Checking", Decimal("-400.00")): opening,
+            ("Coverage Brokerage", Decimal("400.00")): (
+                ActivityClass.TRANSFER_INTERNAL.value,
+                ActivityReason.INTERNAL_TRANSFER.value,
+            ),
+            ("Coverage Checking", Decimal("-25.00")): spending,
+        }
+        for cls, reason in (
+            (ACTIVITY_CLASS, ACTIVITY_REASON),
+            (ACTIVITY_CLASS_SUBQUERY, ACTIVITY_REASON_SUBQUERY),
+        ):
+            q = (
+                select(Account.name, Transaction.amount, cls, reason)
+                .select_from(Transaction)
+                .join(Account, Account.id == Transaction.account_id)
+                .where(
+                    Transaction.budget_id == budget.id,
+                    Transaction.date < ANCHOR,
+                    Account.name.in_({name for name, _ in expected}),
+                )
+            )
+            if cls is ACTIVITY_CLASS:
+                q = apply_class_joins(q)
+            rows = {(r[0], r[1]): (r[2], r[3]) for r in (await db_session.execute(q)).all()}
+            assert rows == expected
 
     async def test_the_sample_openings_take_the_starting_balance_rule(self, db_session):
         """No coverage row is needed for this rule: the sample opens its

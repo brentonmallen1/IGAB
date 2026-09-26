@@ -294,11 +294,11 @@ ACCOUNT_SHAPES = [
     ACCOUNT_SHAPES,
     ids=[s[0] for s in ACCOUNT_SHAPES],
 )
-async def test_the_saved_account_list_agrees_with_rule_3(
+async def test_the_saved_account_list_agrees_with_rule_5(
     db_session, _case, account_type, on_budget, counts
 ):
     """An account is listed under Saved exactly when a transfer into it is
-    SAVINGS by the classifier's rule 3 — so the report never lists an account
+    SAVINGS by the classifier's rule 5 — so the report never lists an account
     the savings rate calls spending, nor leaves out one it calls saving."""
     w = await _world(db_session)
     account = await create_account(

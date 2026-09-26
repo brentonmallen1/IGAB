@@ -165,7 +165,7 @@ _HOUSEHOLD = SampleBudgetSpec(
         AccountSpec(LEGACY, "checking", sort_order=15, is_closed=True, tiers=FULL),
         # A second car, sold. Other Asset, and not savings: the sale's
         # uncategorized transfer into checking is income ready to assign, not a
-        # withdrawal from savings (`activity_class.py`, rules 4 and 6).
+        # withdrawal from savings (`activity_class.py`, rules 5 and 7).
         AccountSpec(
             VEHICLE,
             "other_asset",

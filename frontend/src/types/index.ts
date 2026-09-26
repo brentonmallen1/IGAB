@@ -32,7 +32,7 @@ export interface Account {
   on_budget: boolean
   /** Whether transfers with this account count as saving — read only for an
    *  off-budget asset (`utils/accountKinds.isTrackedAsset`). Served from the
-   *  column; the rule is `domain/activity_class.py` rules 4 and 6. */
+   *  column; the rule is `domain/activity_class.py` rules 5 and 7. */
   counts_as_savings: boolean
   /** The stored emergency-fund mark. Whether the balance is counted is
    *  decided on the server — home is `repositories/txn_filters.py

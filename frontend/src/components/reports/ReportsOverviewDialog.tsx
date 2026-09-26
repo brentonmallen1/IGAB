@@ -8,7 +8,12 @@ import {
   type ReportTab,
   type TabGroup,
 } from '../../stores/reportStore'
-import { REPORT_CATALOG, REPORT_SECTIONS, type ReportCatalogEntry } from './reportCatalog'
+import {
+  NEVER_COUNTED,
+  REPORT_CATALOG,
+  REPORT_SECTIONS,
+  type ReportCatalogEntry,
+} from './reportCatalog'
 import { SCOPE_COPY } from './reportScope'
 import './ReportsOverviewDialog.css'
 
@@ -59,6 +64,7 @@ export function ReportsOverviewDialog({ onClose }: { onClose: () => void }) {
         What each report counts, what it leaves out, and which accounts it reads. Pick a report to
         open it.
       </p>
+      <p className="dialog__body">{NEVER_COUNTED}</p>
       {TAB_GROUPS.map((group) => (
         <section
           key={group.id}

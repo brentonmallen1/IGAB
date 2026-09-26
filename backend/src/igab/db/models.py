@@ -303,7 +303,7 @@ class Account(Base):
     classification: Mapped[str] = mapped_column(String(20), nullable=False)
     #: Whether money moved into this (off-budget asset) account is saving. A
     #: brokerage is; a car or a house is not — buying one is spending and
-    #: selling one is income (`domain/activity_class.py`, rules 4 and 6). Read
+    #: selling one is income (`domain/activity_class.py`, rules 5 and 7). Read
     #: only for off-budget assets. The server default lets a budget snapshot
     #: taken before the column existed still restore.
     counts_as_savings: Mapped[bool] = mapped_column(
@@ -367,8 +367,10 @@ class Account(Base):
     last_reconciled_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     #: The day this account joined the budget. Rows dated before it are opening
     #: position, not budgeted activity: nothing is auto-categorized there on
-    #: first sync, and an uncategorized one is not flagged as needing a
-    #: category (`NEEDS_CATEGORY`).
+    #: first sync, and on a budget account an uncategorized one is neither
+    #: flagged as needing a category (`NEEDS_CATEGORY`) nor counted by any
+    #: report — it classes `OPENING_BALANCE` (`domain/activity_class.py`,
+    #: rule 4) until someone files it.
     #:
     #: A card carried in with three months of bank history is the case. Every
     #: swipe before you started lands in an envelope funded for one month, and

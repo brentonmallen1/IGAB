@@ -12,21 +12,18 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
 
 from igab.db.models import Transaction
 from igab.domain.activity_class import (
-    ACTIVITY_CLASS,
-    ACTIVITY_REASON,
     ActivityClass,
     ActivityReason,
-    apply_class_joins,
     explain,
 )
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 
+from .class_agreement import classes_of
 from .factories import (
     create_account,
     create_budget,
@@ -67,17 +64,7 @@ async def _world(db_session):
 
 
 async def _classify(db_session, txn: Transaction) -> tuple[str, str]:
-    row = (
-        await db_session.execute(
-            # Transaction.id is not wanted; the class joins chain from it.
-            apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
-                    Transaction.id == txn.id
-                )
-            )
-        )
-    ).one()
-    return row[1], row[2]
+    return await classes_of(db_session, txn)
 
 
 async def _transfer_payee(db_session, budget, account):
@@ -265,7 +252,7 @@ class TestTagsOverrideInference:
         assert reason == ActivityReason.DEFAULT_SPENDING
 
     async def test_a_sinking_fund_transfer_to_a_tracked_account_is_still_saving(self, db_session):
-        """Nothing is lost by dropping the tag from rule 1: a household that
+        """Nothing is lost by dropping the tag from rule 2: a household that
         moves the set-aside into a real savings account still gets SAVINGS,
         from the rule that asks where the money WENT rather than what the
         category is called.
@@ -288,9 +275,9 @@ class TestTagsOverrideInference:
         rather than a surprise.
 
         A categorized leg between two ON-budget accounts matches no transfer
-        rule — rule 5 is gated on the leg being uncategorized, and rules 3 and
-        4 need an off-budget counterpart — so it falls to the spending default.
-        The `long_term_expense` tag used to catch it at rule 1.
+        rule — rule 7 is gated on the leg being uncategorized, and rules 5 and
+        6 need an off-budget counterpart — so it falls to the spending default.
+        The `long_term_expense` tag used to catch it at the Savings rule, rule 2.
 
         It is a narrow shape: `domain/transfers.py` only permits a category on
         a leg whose partner is OFF budget, so a row like this arrives from an

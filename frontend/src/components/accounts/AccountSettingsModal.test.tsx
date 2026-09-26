@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AccountSettingsModal } from './AccountSettingsModal'
+import { BUDGET_START_NOTE } from './budgetStartNote'
 import { useAppStore } from '../../stores/appStore'
 import type { Account } from '../../types'
 
@@ -184,5 +185,24 @@ describe('AccountSettingsModal account numbers', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(settingsSaves()).toBe(1)
     expect(numberSaves()).toHaveLength(0)
+  })
+})
+
+describe('AccountSettingsModal budget start', () => {
+  it('says what the date does, in the words the account page’s pill uses', () => {
+    // A card linked with history: the date keeps those rows out of the
+    // reports too, and the hint and the pill had each said only half of it.
+    account.current = {
+      ...account.current,
+      id: 'visa',
+      name: 'Sapphire Visa',
+      account_type: 'credit_card',
+      classification: 'liability',
+      on_budget: true,
+      budget_start_date: '2026-06-15',
+    }
+    render(<AccountSettingsModal accountId="visa" onClose={vi.fn()} />)
+    expect(screen.getByText(BUDGET_START_NOTE)).toBeInTheDocument()
+    expect(BUDGET_START_NOTE).toContain('nor as income or spending in reports')
   })
 })
