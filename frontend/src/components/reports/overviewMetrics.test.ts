@@ -1,10 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import {
+  daysUntilZeroCard,
   essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
   spendingDelta,
 } from './overviewMetrics'
+
+describe('daysUntilZeroCard', () => {
+  it('states the runway in whole days', () => {
+    expect(daysUntilZeroCard(45.6)).toEqual({
+      value: '46d',
+      sub: 'Cash at current 30-day burn',
+      overdrawn: false,
+    })
+  })
+
+  it('shows the card at 0 when cash is already gone, and says so', () => {
+    // The server served None here and the card hid.
+    expect(daysUntilZeroCard(0)).toEqual({
+      value: '0 days',
+      sub: 'Overdrawn: cash is at or below zero',
+      overdrawn: true,
+    })
+    expect(daysUntilZeroCard('0.0')?.overdrawn).toBe(true)
+  })
+
+  it('does not call a few hours of cash overdrawn, though it rounds to 0d', () => {
+    expect(daysUntilZeroCard(0.3)).toMatchObject({ value: '0d', overdrawn: false })
+  })
+
+  it('draws no card when nothing is burning', () => {
+    expect(daysUntilZeroCard(null)).toBeNull()
+    expect(daysUntilZeroCard(undefined)).toBeNull()
+  })
+})
 
 describe('netWorthDelta', () => {
   it('is the percent change vs the prior period', () => {

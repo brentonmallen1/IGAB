@@ -807,6 +807,8 @@ export interface DashboardMetrics {
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
   savings_rate: number | null
+  /** 0 when cash is at or below zero; null only when nothing is burning
+   *  (backend `burn_rate.days_until_zero`). */
   days_until_zero: number | null
   income_this_month: number
   expenses_this_month: number

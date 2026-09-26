@@ -43,7 +43,7 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
-from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows
+from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows, days_until_zero
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
     clamped_month_end,
@@ -454,10 +454,7 @@ class ReportService:
         # neither is money that can be spent next week. Same figure, one
         # home — do not respell the account set here.
         cash_on_hand = await self.accounts.sum_on_budget_balance(budget_id, today)
-        daily_burn = now_burn.per_day
-        days_until_zero: float | None = (
-            float(cash_on_hand / daily_burn) if daily_burn > 0 and cash_on_hand > 0 else None
-        )
+        runway = days_until_zero(cash_on_hand, now_burn.per_day)
 
         # Top Spending is the Breakdown's first three rows, not a second query
         # kept agreeing with it. It was one — the class filter, the envelope
@@ -479,7 +476,7 @@ class ReportService:
             "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
             "savings_rate": this.savings_rate,
-            "days_until_zero": days_until_zero,
+            "days_until_zero": runway,
             "income_this_month": this.income,
             "expenses_this_month": this.spending,
             "expenses_prev_month": expenses_prev,

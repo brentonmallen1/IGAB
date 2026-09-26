@@ -27,6 +27,27 @@ export function roundedDaysUntilZero(days: number | string | null | undefined): 
   return days != null ? Math.round(Number(days)) : null
 }
 
+/**
+ * The Days Until Zero card, or null when there is no runway to state
+ * (nothing is burning — backend `burn_rate.days_until_zero`).
+ *
+ * The server serves exactly 0 when cash is already at or below zero, and the
+ * card says so rather than reading like a countdown. It served None there and
+ * the card hid, at the one moment its answer mattered most. Keyed on the
+ * served value, not the rounded one: a runway of a few hours rounds to 0d but
+ * still has cash in it.
+ */
+export function daysUntilZeroCard(
+  days: number | string | null | undefined
+): { value: string; sub: string; overdrawn: boolean } | null {
+  const rounded = roundedDaysUntilZero(days)
+  if (rounded === null) return null
+  if (Number(days) === 0) {
+    return { value: '0 days', sub: 'Overdrawn: cash is at or below zero', overdrawn: true }
+  }
+  return { value: `${rounded}d`, sub: 'Cash at current 30-day burn', overdrawn: false }
+}
+
 /** N months of essentials as a save target; null passes through (nothing is
  *  tagged Essential yet, so there is no figure to multiply). */
 export function essentialsReserve(

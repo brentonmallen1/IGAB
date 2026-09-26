@@ -151,6 +151,8 @@ class DashboardMetrics(ApiModel):
     #: None when no income was recorded in the window — the Savings Rate tab's
     #: convention, and a gap rather than a floor on the chart.
     savings_rate: float | None
+    #: `burn_rate.days_until_zero`: 0 when cash is already at or below zero,
+    #: None only when nothing is burning.
     days_until_zero: float | None
     #: The `*_this_month` figures cover the requested window, whatever its
     #: length; `expenses_prev_month` covers the equal-length window before it.

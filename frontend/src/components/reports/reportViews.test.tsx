@@ -483,6 +483,28 @@ describe('OverviewReport metric cards', () => {
     expect(spent?.querySelector('.metric-card__delta')).toBeNull()
   })
 
+  it('keeps Days Until Zero on screen at 0, and says the cash is gone', () => {
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 900,
+        burn_rate_prior_60: 900,
+        days_until_zero: 0,
+        income_this_month: 0,
+        expenses_this_month: 900,
+        expenses_prev_month: 900,
+        outflows_this_month: 900,
+        top_categories: [],
+        means_months: [],
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Days Until Zero')).toEqual({
+      value: '0 days',
+      sub: 'Overdrawn: cash is at or below zero',
+    })
+  })
+
   it('names the as-paid essentials figure under the spread one', () => {
     setQuery({
       data: {

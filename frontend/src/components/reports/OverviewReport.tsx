@@ -19,6 +19,7 @@ import { SavingsRateDialog } from './SavingsRateDialog'
 import { pct, ratePercent } from './charts/savingsRateView'
 import { burnPriorLine } from './charts/burnRateView'
 import {
+  daysUntilZeroCard,
   essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
@@ -50,6 +51,7 @@ export function OverviewReport({ budgetId }: Props) {
   const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
+  const runway = daysUntilZeroCard(data.days_until_zero)
   const sixMonthReserve = essentialsReserve(data.essentials?.monthly, 6)
   const otherEssentials = otherFigureNote(data.essentials, formatMoney)
   const trend = meansTrend(data.means_months)
@@ -80,7 +82,8 @@ export function OverviewReport({ budgetId }: Props) {
               the savings went and where the income came from. <strong>Days Until Zero</strong>:
               cash on hand ÷ daily burn rate — how long the budget’s cash accounts would last at
               this pace. Cards, loans and tracked investments are out: net worth is not money you
-              can spend next week.
+              can spend next week. It reads 0 when that cash is already at or below zero, and is
+              left out when nothing is being spent.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending
@@ -206,11 +209,12 @@ export function OverviewReport({ budgetId }: Props) {
               onOpen: () => setSavingsOpen(true),
             }}
           />
-          {daysUntilZero !== null && (
+          {runway && (
             <MetricCard
               label="Days Until Zero"
-              value={`${daysUntilZero}d`}
-              sub="Cash at current 30-day burn"
+              value={runway.value}
+              sub={runway.sub}
+              warning={runway.overdrawn}
             />
           )}
           <MetricCard label="Income This Period" value={formatMoney(data.income_this_month)} />
