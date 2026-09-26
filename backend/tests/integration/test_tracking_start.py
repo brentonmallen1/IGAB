@@ -100,8 +100,15 @@ class TestNetWorth:
             D("278900"),
         ]
         assert [p["entered"] for p in points] == [D("0"), D("17700"), D("300000"), D("-50000")]
-        july = {e["name"]: e["amount"] for e in points[1]["entries"]}
-        assert july == {"Cascade Point Brokerage": D("20000"), "Sapphire Visa": D("-2300")}
+        july = {(e["name"], e["kind"]): e["amount"] for e in points[1]["entries"]}
+        # The card's Starting Balance is its arrival; its unfiled July swipe,
+        # from before its budget start, is named apart — it is the rest of
+        # the position it arrived with, not a second arrival.
+        assert july == {
+            ("Cascade Point Brokerage", "account"): D("20000"),
+            ("Sapphire Visa", "account"): D("-2000"),
+            ("Sapphire Visa", "pre_start"): D("-300"),
+        }
         assert [(e["kind"], e["id"]) for e in points[2]["entries"]] == [
             ("stated_asset", str(house.id))
         ]
@@ -146,9 +153,9 @@ class TestNetWorth:
 
         report = await ReportService(db_session).net_worth(budget.id, months=3, today=TODAY)
 
-        july = {e["name"]: e["amount"] for e in report["points"][1]["entries"]}
-        # -2,000 opening, -300 and -40 unfiled pre-start; the filed -60 is not.
-        assert july["Sapphire Visa"] == D("-2340")
+        july = {(e["name"], e["kind"]): e["amount"] for e in report["points"][1]["entries"]}
+        # -300 and -40 unfiled pre-start; the filed -60 is not.
+        assert july[("Sapphire Visa", "pre_start")] == D("-340")
         assert report["like_for_like_change"] == D("10140")
 
     async def test_stated_values_carry_their_dates(self, db_session):

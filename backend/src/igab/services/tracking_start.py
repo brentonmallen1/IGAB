@@ -23,7 +23,12 @@ from igab.db.models import (
     LiabilityBalanceSnapshot,
     Transaction,
 )
-from igab.domain.activity_class import OPENING_BALANCE_ROW, apply_class_joins
+from igab.domain.activity_class import (
+    ACTIVITY_REASON,
+    OPENING_BALANCE_ROW,
+    ActivityReason,
+    apply_class_joins,
+)
 from igab.domain.tracking_start import Entry, StatedValue, place_entries
 from igab.repositories.txn_filters import BALANCE_ROW, LEAF, LIVE_ACCOUNT, NOT_DELETED, POSTED
 
@@ -109,7 +114,9 @@ async def opening_entries(
     session: AsyncSession, budget_id: uuid.UUID, since: date, through: date
 ) -> list[Entry]:
     """Accounts arriving in the register between `since` and `through`: the
-    net of their opening rows (`OPENING_BALANCE_ROW`) per account per day.
+    net of their opening rows (`OPENING_BALANCE_ROW`) per account per day and
+    reason — a Starting Balance is the account arriving (`account`), history
+    from before its budget start the rest of its position (`pre_start`).
 
     Leaves, because a class is a leaf's: a pre-start split whose legs someone
     filed counts as its legs say, not as the unfiled parent. They sum to the
@@ -123,6 +130,7 @@ async def opening_entries(
                     Transaction.account_id,
                     Account.name,
                     Transaction.date,
+                    ACTIVITY_REASON.label("reason"),
                     func.sum(Transaction.amount).label("amount"),
                 )
                 .join(Account, Account.id == Transaction.account_id)
@@ -136,12 +144,18 @@ async def opening_entries(
                     Transaction.date >= since,
                     Transaction.date <= through,
                 )
-                .group_by(Transaction.account_id, Account.name, Transaction.date)
+                .group_by(Transaction.account_id, Account.name, Transaction.date, ACTIVITY_REASON)
             )
         )
     ).all()
     return [
-        Entry(kind="account", id=str(r.account_id), name=r.name, day=r.date, amount=r.amount)
+        Entry(
+            kind="pre_start" if r.reason == ActivityReason.BEFORE_BUDGET_START else "account",
+            id=str(r.account_id),
+            name=r.name,
+            day=r.date,
+            amount=r.amount,
+        )
         for r in rows
     ]
 

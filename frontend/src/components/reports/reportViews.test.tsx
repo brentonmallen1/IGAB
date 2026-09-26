@@ -3139,7 +3139,7 @@ describe('NetWorthReport, where counting began', () => {
     renderReport(<NetWorthReport budgetId="b1" />)
     expect(card('Change, like-for-like')).toEqual({
       value: '+$400.00',
-      sub: '+$300,400.00 drawn, less +$300,000.00 from tracking starting',
+      sub: '+$300,400.00 on the chart · +$300,000.00 of it from tracking starting',
     })
   })
 

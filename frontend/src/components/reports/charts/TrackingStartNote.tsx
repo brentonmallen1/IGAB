@@ -1,4 +1,4 @@
-import { arrivalLine, type ArrivalMark } from '../../../utils/trackingStart'
+import { namedArrivals, type ArrivalMark } from '../../../utils/trackingStart'
 import './TrackingStartNote.css'
 
 interface Props {
@@ -33,7 +33,7 @@ export function TrackingStartNote({ marks, formatMoney, formatMonthShort }: Prop
               {m.summary}
               <span className="tracking-start-note__names">
                 {' '}
-                ({m.entries.map((e) => arrivalLine(e, formatMoney)).join(' · ')})
+                ({namedArrivals(m.entries, formatMoney)})
               </span>
             </span>
           </li>

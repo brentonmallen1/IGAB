@@ -208,10 +208,11 @@ class AccountSnapshot(ApiModel):
 
 class TrackingEntry(ApiModel):
     """Something that began being counted in a point's stretch
-    (`domain.tracking_start.Entry`): an account arriving with its opening
-    balance, or a stated value or manual debt at its first dated point."""
+    (`domain.tracking_start.Entry`): an account arriving with its Starting
+    Balance, its history from before its budget start, or a stated value or
+    manual debt at its first dated point."""
 
-    kind: Literal["account", "stated_asset", "manual_debt"]
+    kind: Literal["account", "pre_start", "stated_asset", "manual_debt"]
     id: uuid.UUID
     name: str
     #: Its first day in the stretch.

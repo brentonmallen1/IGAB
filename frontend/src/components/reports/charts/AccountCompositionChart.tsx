@@ -19,7 +19,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
-import { COLOR_NET, chartColor } from './chartColors'
+import { CHART_COLORS, COLOR_NET, chartColor } from './chartColors'
 import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -28,7 +28,7 @@ import { useReportMonths } from '../../../stores/reportStore'
 import { arrivalMarks } from '../../../utils/trackingStart'
 import { arrivalLines } from './arrivalLines'
 import { TrackingStartNote } from './TrackingStartNote'
-import { bandLabel, compositionBands } from './compositionView'
+import { bandLabel, compositionBands, plotted } from './compositionView'
 
 interface Props {
   budgetId: string
@@ -47,13 +47,13 @@ export function AccountCompositionReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
-  const bands = data ? compositionBands(data) : []
+  const bands = data ? compositionBands(data, CHART_COLORS.length) : []
   const labelFor = (key: string) => bandLabel(key, (k) => accountTypeLabel(k, typeRows))
   const marks = arrivalMarks(points, formatMoney)
   const chartData = points.map((p, i) => ({
     date: formatMonthShort(p.date),
     Net: Number(p.net_worth),
-    ...Object.fromEntries(bands.map((b) => [labelFor(b.key), b.values[i]])),
+    ...Object.fromEntries(bands.map((b) => [labelFor(b.key), plotted(b, i)])),
   }))
 
   return (
@@ -128,14 +128,16 @@ export function AccountCompositionReport({ budgetId }: Props) {
               <ReferenceLine y={0} stroke="var(--border-color)" strokeWidth={2} />
               {arrivalLines(marks, (i) => chartData[i].date)}
               {bands.map((b) => (
+                // Filled, not stroked: a band crossing the axis stacks its
+                // zero on the positive side, and a stroke traced that as a
+                // line through the other bands (`plotted` says more).
                 <Area
                   key={b.key}
                   type="linear"
                   dataKey={labelFor(b.key)}
-                  stroke={chartColor(b.colorSlot)}
+                  stroke="none"
                   fill={chartColor(b.colorSlot)}
-                  fillOpacity={0.15}
-                  strokeWidth={2}
+                  fillOpacity={0.45}
                   stackId="1"
                 />
               ))}

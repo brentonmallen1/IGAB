@@ -21,6 +21,9 @@ export function setAsideStartNote(
   const month = formatMonthShort(months[first])
   const arrived = entries[first] ?? []
   if (arrived.length === 0) return `Starts ${month}, the first month anything was set aside.`
-  const names = arrived.map((e) => e.name).join(', ')
-  return `Starts ${month}, when ${arrived.length === 1 ? 'its account was' : 'its accounts were'} linked: ${names}.`
+  // One account by name; several by count — the key under the chart names
+  // each of them.
+  return arrived.length === 1
+    ? `Starts ${month}, when ${arrived[0].name} was linked.`
+    : `Starts ${month}, when ${arrived.length} of its accounts were linked.`
 }

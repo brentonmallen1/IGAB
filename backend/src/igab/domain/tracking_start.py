@@ -16,11 +16,15 @@ difference between two points, less what entered between them.
 
 What counts as entering (`Entry.kind`):
 
-- **account** — rows of class `opening_balance` (`activity_class`): an
-  account's Starting Balance row, and the unfiled history from before its
-  budget start, the rest of the position it arrived with. Signed as the
-  ledger signs it, which is the sign net worth reads (a card's opening debt is
-  negative).
+- **account** — an account's Starting Balance row (class `opening_balance`,
+  reason `starting_balance`): the account arriving with what it held. Signed
+  as the ledger signs it, which is the sign net worth reads (a card's opening
+  debt is negative).
+- **pre_start** — the unfiled history from before an account's budget start
+  (reason `before_budget_start`): the rest of the position it arrived with,
+  spread over the months the bank handed over. Named apart from an arrival,
+  because it moves an account already on the chart — a card linked in June
+  with history to September is not "added" four times.
 - **stated_asset** — the first dated value of an asset with no account (a
   home, a vehicle): positive.
 - **manual_debt** — the first dated balance of a debt with no account:
@@ -39,7 +43,7 @@ from typing import Literal
 
 ZERO = Decimal("0")
 
-EntryKind = Literal["account", "stated_asset", "manual_debt"]
+EntryKind = Literal["account", "pre_start", "stated_asset", "manual_debt"]
 
 #: A balance that has not moved in this many days is flagged where it is
 #: drawn. A stated value is a claim with a date, and an account nobody has

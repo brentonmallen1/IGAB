@@ -696,6 +696,12 @@ class TestTheBudgetNeverReadsTheClass:
         the class of its June rows and nothing on the budget page, no balance
         and no net worth, in the month they land or any after.
 
+        What net worth says *about* those rows does move, and should: June's
+        history is marked as the card's position arriving (`pre_start`,
+        `domain.tracking_start`) while it is from before the start, and is
+        change like any other once it is not. The figures are compared
+        without that annotation, and the annotation is checked to move.
+
         The household: a 3,000 paycheck in June. Sapphire Visa joins on
         July 1 with June's history: a 600 purchase, and the card's 200 side of
         a payment whose checking side was filed to Card Bill (200 assigned).
@@ -738,6 +744,13 @@ class TestTheBudgetNeverReadsTheClass:
         refund = await create_transaction(db_session, budget, card, "50.00", date(2026, 7, 25))
         await db_session.flush()
 
+        def figures(point: dict) -> dict:
+            return {k: v for k, v in point.items() if k not in ("entered", "entries")}
+
+        async def arrivals() -> list:
+            points = await ReportService(db_session).net_worth_history(budget.id, 6)
+            return [p["entered"] for p in points]
+
         async def ledger() -> dict:
             services = make_services(db_session)
             accounts = AccountRepository(db_session)
@@ -750,10 +763,14 @@ class TestTheBudgetNeverReadsTheClass:
                     await accounts.get_balance(checking.id),
                     await accounts.get_balance(card.id),
                 ],
-                "net_worth": await ReportService(db_session).net_worth_history(budget.id, 6),
+                "net_worth": [
+                    figures(p)
+                    for p in await ReportService(db_session).net_worth_history(budget.id, 6)
+                ],
             }
 
         before = await ledger()
+        arrived_before = await arrivals()
         assert [await classes_of(db_session, r) for r in june] == [OPENING, OPENING]
         assert await classes_of(db_session, refund) == UNFILED_CREDIT
 
@@ -765,6 +782,10 @@ class TestTheBudgetNeverReadsTheClass:
             ActivityClass.TRANSFER_INTERNAL.value,
         ]
         assert await ledger() == before
+        # June's -600 and +200 were the card's position arriving; now they are
+        # June's activity, and nothing arrives.
+        assert sum(arrived_before) == D("-400.00")
+        assert await arrivals() == [D("0")] * len(arrived_before)
 
         # And the balances are the ones the arithmetic says, so the equality
         # above is not two empty ledgers agreeing. Checking: 3,000 in, 200 and

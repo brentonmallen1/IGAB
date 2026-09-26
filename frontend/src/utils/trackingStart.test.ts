@@ -6,6 +6,7 @@ import {
   arrivalSummary,
   firstFigure,
   likeForLikeLine,
+  namedArrivals,
   signedMoney,
 } from './trackingStart'
 
@@ -23,6 +24,22 @@ describe('arrivalSummary', () => {
     expect(
       arrivalSummary([entry('Cascade Point Brokerage', 20000), entry('Sapphire Visa', -2300)], fmt)
     ).toBe('2 accounts added: +$17,700')
+  })
+
+  it('names history from before a budget start apart from an arrival', () => {
+    // A card linked in June with history to September was "added" four times.
+    expect(
+      arrivalSummary(
+        [entry('Sapphire Visa', -150, 'pre_start'), entry('Harborstone Card', -50, 'pre_start')],
+        fmt
+      )
+    ).toBe('History from before budget start on 2 accounts: −$200')
+    expect(
+      arrivalSummary(
+        [entry('Cascade Point HYSA', 1000), entry('Sapphire Visa', -150, 'pre_start')],
+        fmt
+      )
+    ).toBe('1 account added · history from before budget start on 1 account: +$850')
   })
 
   it('names stated values and manual debts in their own words, accounts first', () => {
@@ -83,7 +100,7 @@ describe('likeForLikeLine', () => {
   it('names what the headline leaves out', () => {
     expect(likeForLikeLine(-3400, 624000, 620600, fmt)).toEqual({
       value: '−$3,400',
-      sub: '+$620,600 drawn, less +$624,000 from tracking starting',
+      sub: '+$620,600 on the chart · +$624,000 of it from tracking starting',
     })
   })
 
@@ -103,5 +120,20 @@ describe('firstFigure', () => {
     expect(firstFigure([null, null, 0, 5])).toBe(2)
     expect(firstFigure([null, null])).toBeNull()
     expect(firstFigure([])).toBeNull()
+  })
+})
+
+describe('namedArrivals', () => {
+  it('names up to six, then counts the rest', () => {
+    const many = Array.from({ length: 8 }, (_, i) => entry(`Account ${i + 1}`, 100 - i))
+    expect(namedArrivals(many, fmt)).toBe(
+      'Account 1 +$100 · Account 2 +$99 · Account 3 +$98 · Account 4 +$97 · Account 5 +$96 · Account 6 +$95 · and 2 more'
+    )
+  })
+
+  it('names all of a short list', () => {
+    expect(namedArrivals([entry('Cascade Point HYSA', 1000)], fmt)).toBe(
+      'Cascade Point HYSA +$1,000'
+    )
   })
 })

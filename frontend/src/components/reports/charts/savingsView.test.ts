@@ -15,14 +15,14 @@ const hysa: TrackingEntry = {
 describe('setAsideStartNote', () => {
   it('names the account whose linking starts the line', () => {
     expect(setAsideStartNote(MONTHS, [null, 1000, 1020], [[], [hysa], []], label)).toBe(
-      'Starts 2026-07, when its account was linked: Cascade Point HYSA.'
+      'Starts 2026-07, when Cascade Point HYSA was linked.'
     )
   })
 
-  it('several accounts', () => {
+  it('several accounts, by count — the key under the chart names them', () => {
     const other = { ...hysa, id: 'b', name: 'Harborstone Savings' }
-    expect(setAsideStartNote(MONTHS, [null, 5, 5], [[], [hysa, other], []], label)).toContain(
-      'when its accounts were linked: Cascade Point HYSA, Harborstone Savings.'
+    expect(setAsideStartNote(MONTHS, [null, 5, 5], [[], [hysa, other], []], label)).toBe(
+      'Starts 2026-07, when 2 of its accounts were linked.'
     )
   })
 

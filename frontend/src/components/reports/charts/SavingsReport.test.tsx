@@ -236,9 +236,7 @@ describe('SavingsReport, before its accounts exist', () => {
 
   it('says where the line starts and which account started it', () => {
     renderReport(linked)
-    expect(
-      screen.getByText(/Starts Jul .*when its account was linked: Cascade Point HYSA/)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Starts Jul .*when Cascade Point HYSA was linked/)).toBeInTheDocument()
   })
 
   it('keys the arrival marker under the chart', () => {

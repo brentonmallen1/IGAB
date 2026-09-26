@@ -681,7 +681,9 @@ class LiabilityService:
             *await opening_entries(session, budget_id, since, through),
             *(e for s in stated if (e := s.entry(through)) is not None),
         ]:
-            owner = by_account.get(entry.id) if entry.kind == "account" else manual.get(entry.id)
+            owner = (
+                manual.get(entry.id) if entry.kind == "manual_debt" else by_account.get(entry.id)
+            )
             if owner is not None:
                 arrivals.append(
                     replace(entry, id=str(owner.id), name=owner.name, amount=-entry.amount)

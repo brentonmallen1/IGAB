@@ -863,7 +863,9 @@ export interface MeansMonth {
  *  signed as the chart it rides on reads it — net worth's sign on Net Worth,
  *  Account Composition and Savings; owed (positive) on Liabilities. */
 export interface TrackingEntry {
-  kind: 'account' | 'stated_asset' | 'manual_debt'
+  /** `account`: a Starting Balance; `pre_start`: history from before the
+   *  account's budget start, on an account that may already be drawn. */
+  kind: 'account' | 'pre_start' | 'stated_asset' | 'manual_debt'
   id: string
   name: string
   day: string
