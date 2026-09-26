@@ -178,6 +178,10 @@ async def list_budget_transactions(
     #: A necessity tier the originating chart rolled up, so its drill lists
     #: the tier's rows rather than every row of the bar's categories.
     necessity_tier: NecessityTier | None = None,
+    #: Only discretionary spending — the Discretionary report's own predicate
+    #: (`activity_class.DISCRETIONARY_ROW`), so a line opens the rows it
+    #: totals rather than every row of its categories.
+    discretionary: bool = False,
     direction: Literal["inflow", "outflow"] | None = None,
     day_of_week: int | None = Query(None, ge=0, le=6),
     cleared: str | None = None,
@@ -243,6 +247,7 @@ async def list_budget_transactions(
         cash_flow_only=cash_flow_only,
         activity_classes=parse_csv(activity_classes),
         necessity_tier=necessity_tier,
+        discretionary=discretionary,
         direction=direction,
         day_of_week=day_of_week,
         cleared=cleared,

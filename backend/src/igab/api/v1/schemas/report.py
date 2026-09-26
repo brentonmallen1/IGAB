@@ -1158,6 +1158,65 @@ class CostOfLivingResponse(ApiModel):
     necessity_tier: str
 
 
+# ─── Discretionary ───────────────────────────────────────────────────────────
+
+
+class DiscretionaryLine(ApiModel):
+    """One category's discretionary spending over the window."""
+
+    category_id: uuid.UUID
+    category_name: str
+    total: Decimal
+    avg_monthly: Decimal
+
+
+class DiscretionaryGroup(ApiModel):
+    """A category group's discretionary spending, with its categories."""
+
+    #: None on the Uncategorized line — rows with no category at all, which
+    #: the drill opens by `no_category`, never by an empty id list (that
+    #: filters nothing and lists the whole window). Required: a group that
+    #: forgot it would read as uncategorized.
+    group_id: uuid.UUID | None
+    group_name: str
+    total: Decimal
+    avg_monthly: Decimal
+    #: Biggest first. Empty on the Uncategorized line, which is one line.
+    categories: list[DiscretionaryLine]
+
+
+class DiscretionaryResponse(ApiModel):
+    """Spending outside Cost of living (`activity_class.DISCRETIONARY_ROW`),
+    over the Cost of Living report's window."""
+
+    months: list[date]
+    #: The window the figures cover, served so a drill-down asks for the same
+    #: days rather than re-deriving them.
+    window_start: date
+    window_end: date
+    #: How many months `avg_monthly` divides by: every month in `months`, all
+    #: of them complete.
+    months_averaged: int
+    #: 'tag' | 'all' — the wide tier's basis (`_necessity_scope`).
+    basis: str
+    #: False when nothing is tagged Essential or Cost of living. Then every
+    #: figure below is None and `groups` is empty: "outside Cost of living"
+    #: would be the whole burn rate, and the page says what to tag instead.
+    tagged: bool
+    #: Net of refunds over the window. Required and nullable: None only when
+    #: `tagged` is False.
+    total: Decimal | None
+    avg_monthly: Decimal | None
+    #: One per entry of `months`; empty when `tagged` is False.
+    monthly_totals: list[Decimal]
+    #: The SPENDING class over the same window, which `total` is a part of by
+    #: construction. The share between them is composed on the client
+    #: (`discretionaryView.ts`) — two served figures, no missing input.
+    spending_total: Decimal | None
+    #: Biggest first, the Uncategorized line among them by size.
+    groups: list[DiscretionaryGroup]
+
+
 # ─── Wishlist discipline ─────────────────────────────────────────────────────
 
 

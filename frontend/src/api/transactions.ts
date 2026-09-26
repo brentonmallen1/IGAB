@@ -146,6 +146,9 @@ export interface BudgetTransactionParams {
   /** Restrict to a necessity tier's own rows (the report's served
    *  `necessity_tier`), whose membership categories alone cannot express. */
   necessityTier?: string
+  /** Restrict to discretionary spending — the Discretionary report's own
+   *  predicate, since its lines are cut by tag and class, not by category. */
+  discretionary?: boolean
   limit?: number
   offset?: number
 }
@@ -179,6 +182,7 @@ function drillDownParams(p: BudgetTransactionParams): Record<string, unknown> {
     account_ids: csv(p.accountIds),
     activity_classes: csv(p.activityClasses),
     necessity_tier: p.necessityTier || undefined,
+    discretionary: p.discretionary || undefined,
     no_category: p.noCategory || undefined,
     tag_ids: csv(p.tagIds),
     filter_id: p.filterId || undefined,

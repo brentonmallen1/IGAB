@@ -1694,6 +1694,55 @@ export interface CostOfLivingReport {
   necessity_tier: string
 }
 
+/** One category's discretionary spending over the window. */
+export interface DiscretionaryLine {
+  category_id: string
+  category_name: string
+  total: number
+  avg_monthly: number
+}
+
+export interface DiscretionaryGroup {
+  /** Null on the Uncategorized line: rows with no category at all, drilled by
+   *  `no_category` — an empty id list would filter nothing and open the whole
+   *  window. */
+  group_id: string | null
+  group_name: string
+  total: number
+  avg_monthly: number
+  /** Biggest first. Empty on the Uncategorized line, which is one line. */
+  categories: DiscretionaryLine[]
+}
+
+/** Spending outside Cost of living (backend
+ *  `domain.activity_class.DISCRETIONARY_ROW`): SPENDING-class rows in no
+ *  category tagged Essential or Cost of living, net of refunds. Not the Cost of
+ *  Living report's Non-essential, which is Cost of living minus Essentials. */
+export interface DiscretionaryReport {
+  months: string[]
+  /** How many months `avg_monthly` divides by: every entry of `months`, all
+   *  complete. */
+  months_averaged: number
+  /** The window the figures cover, served so a drill asks for the same days. */
+  window_start: string
+  window_end: string
+  /** The wide tier's basis. Never 'bound': the Guide's bindings are the
+   *  Essentials figure's, not this report's. */
+  basis: 'tag' | 'all'
+  /** False when nothing is tagged Essential or Cost of living. Every figure
+   *  below is then null and `groups` empty: "outside Cost of living" would be
+   *  the whole burn rate, so the page shows what to tag instead. */
+  tagged: boolean
+  total: number | null
+  avg_monthly: number | null
+  /** One per entry of `months`; empty when `tagged` is false. */
+  monthly_totals: number[]
+  /** The SPENDING class over the same window, which `total` is a part of. The
+   *  share between them is composed in `discretionaryView.ts`, not served. */
+  spending_total: number | null
+  groups: DiscretionaryGroup[]
+}
+
 export interface WishlistDisciplineReport {
   cooled_then_bought: number
   cooled_then_dropped: number

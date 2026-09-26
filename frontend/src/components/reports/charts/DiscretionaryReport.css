@@ -1,0 +1,43 @@
+/* Discretionary: a table where a group heads the categories under it.
+   Weight and indent carry the hierarchy; colour stays for genuine state. */
+
+.discretionary-report__empty {
+  padding: var(--spacing-lg) var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 60ch;
+}
+
+.discretionary-report__empty p {
+  margin: 0 0 var(--spacing-sm);
+}
+
+.discretionary-report__name {
+  text-align: left;
+}
+
+.discretionary-report__num {
+  text-align: right;
+}
+
+.discretionary-report__row--group td,
+.discretionary-report__row--uncategorized td {
+  font-weight: 600;
+}
+
+/* Indented and quieter: the detail of the group above, not peers of it. The
+   indent is on the first cell so the money columns stay aligned. */
+.discretionary-report__row--category td:first-child {
+  padding-left: calc(var(--spacing-md) + var(--spacing-lg));
+}
+
+.discretionary-report__row--category td {
+  color: var(--text-secondary);
+}
+
+.discretionary-report__table tfoot td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--edge-strong);
+  font-weight: 600;
+  color: var(--text-primary);
+}

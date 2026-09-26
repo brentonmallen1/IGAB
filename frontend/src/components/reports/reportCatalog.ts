@@ -91,7 +91,16 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
       'Everything committed each month, in Essential and Non-essential tiers, against income.',
     counts:
       'Categories tagged Essential or Cost of living, plus every debt-principal payment, vs average income.',
-    leavesOut: 'Untagged discretionary spending and savings.',
+    leavesOut: 'Savings, and untagged spending — that is the Discretionary report.',
+  },
+  discretionary: {
+    scope: 'on-budget',
+    summary:
+      'What you chose to spend: spending outside Essential and Cost of living, by category and month.',
+    counts:
+      'Spending in categories tagged neither Essential nor Cost of living, net of refunds, and uncategorized spending on its own line.',
+    leavesOut:
+      'Everything Cost of Living counts, savings, debt payments and transfers; with nothing tagged, it shows no figure at all.',
   },
   'emergency-fund': {
     scope: 'emergency-fund',

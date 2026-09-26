@@ -381,6 +381,11 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 #: the savings figure's held part cuts the page's Available with
 #: `sum_categories_dated_after`, and a cut over different rows would hold money
 #: the envelope never had.
+#:
+#: Discretionary spending starts from these rows too
+#: (`domain.activity_class.DISCRETIONARY_ROW`, which lives there because it
+#: reads the class): its figures are a cut of the SPENDING class these rows
+#: total, so the two must be the same rows.
 CLASS_TOTAL_ROW = and_(NOT_DELETED, POSTED, LEAF, ON_BUDGET_ACCOUNT)
 
 
