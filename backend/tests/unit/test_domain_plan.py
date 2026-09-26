@@ -8,7 +8,7 @@ disagree on, or the baseline both must keep.
 
 from decimal import Decimal
 
-from igab.domain.plan import plan_outcome
+from igab.domain.plan import plan_outcome, total_variance
 
 D = Decimal
 
@@ -20,7 +20,8 @@ def test_a_drained_envelope_that_spent_nothing_is_on_plan():
     assert outcome.plan == D("0")
     assert outcome.variance == D("0")
     assert outcome.over is False
-    assert outcome.variance_pct == 0.0
+    # Floored to no plan, so there is no percentage of it.
+    assert outcome.variance_pct is None
 
 
 def test_real_spending_from_a_drained_envelope_is_over_by_what_was_spent():
@@ -46,10 +47,34 @@ def test_spending_exactly_the_plan_is_not_over():
 
 def test_no_plan_and_no_spending_is_quiet():
     outcome = plan_outcome(D("0"), D("0"))
-    assert (outcome.variance, outcome.over, outcome.variance_pct) == (D("0"), False, 0.0)
+    assert (outcome.variance, outcome.over, outcome.variance_pct) == (D("0"), False, None)
 
 
 def test_spending_with_no_plan_is_over_with_no_percentage():
-    # No denominator to measure against: 0, not a division error.
+    # No denominator to measure against: None, not a division error — and not
+    # 0.0, which Budget vs Actual printed as "0.0%", the figure for spending
+    # a plan to the cent.
     outcome = plan_outcome(D("0"), D("40"))
-    assert (outcome.variance, outcome.over, outcome.variance_pct) == (D("-40"), True, 0.0)
+    assert (outcome.variance, outcome.over, outcome.variance_pct) == (D("-40"), True, None)
+    assert plan_outcome(D("40"), D("40")).variance_pct == 0.0
+
+
+class TestTotalVariance:
+    """Budget vs Actual's headline: the rows' floored verdicts, summed."""
+
+    def test_a_drained_envelope_does_not_cancel_an_overspent_one(self):
+        # 300 moved out of Car Repairs (nothing spent) and Dining 300 over its
+        # 200. Raw assigned - spent: (-300 + 200) - 500 = -600; the rows say
+        # on plan and 300 over.
+        outcomes = [plan_outcome(D("-300"), D("0")), plan_outcome(D("200"), D("500"))]
+        assert total_variance(outcomes) == D("-300")
+
+    def test_under_and_over_net(self):
+        outcomes = [plan_outcome(D("500"), D("450")), plan_outcome(D("100"), D("160"))]
+        assert total_variance(outcomes) == D("-10")
+
+    def test_spending_with_no_plan_counts_in_full(self):
+        assert total_variance([plan_outcome(D("0"), D("40"))]) == D("-40")
+
+    def test_nothing_is_on_plan(self):
+        assert total_variance([]) == D("0")

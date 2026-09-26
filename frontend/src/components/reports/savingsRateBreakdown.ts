@@ -1,7 +1,7 @@
 /** Pure presentation for the savings-rate dialog: nothing here decides a
  *  figure. The totals, the contributors and their reasons are served by
  *  /reports/savings-contributors; the rate is the one the opening card shows. */
-import { otherIncome } from './charts/incomeSourcesView'
+import { otherBand } from './drillDownTotals'
 
 /** The rate's formula in words. "Saved" and "Debt principal" are the labels
  *  of the figures the dialog lists beneath it, so the formula names what the
@@ -21,7 +21,7 @@ export const TOP_INCOME_SOURCES = 5
 /**
  * The first `limit` income sources, and what the rest add up to — so the list
  * the reader sees still sums to the Income figure above it. The remainder is
- * `otherIncome`, Income by Source's "Other" band: whether a shown set is the
+ * `otherBand`, Income by Source's "Other" band: whether a shown set is the
  * whole is one rule, read in cents, and a remainder can be negative.
  */
 export function foldIncomeSources<T extends { total: number }>(
@@ -32,7 +32,7 @@ export function foldIncomeSources<T extends { total: number }>(
   const shown = sources.slice(0, limit)
   const folded = sources.length - shown.length
   if (folded === 0) return { shown, rest: null }
-  const total = otherIncome(
+  const total = otherBand(
     income,
     shown.map((s) => s.total)
   )

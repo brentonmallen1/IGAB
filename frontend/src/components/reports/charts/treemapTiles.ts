@@ -93,6 +93,15 @@ export function groupTiles(
   }))
 }
 
+/** Whether a node recharts hands the content renderer is a tile to draw.
+ *
+ *  Treemap renders the tree's root through the same renderer as its tiles:
+ *  depth 0, the whole chart's area, no name and no `size`. Drawn, it put a
+ *  stray "$0.00" at the centre of the chart on every render. */
+export function isTile(node: { depth?: number; name?: string }): boolean {
+  return (node.depth ?? 0) > 0 && Boolean(node.name)
+}
+
 // A tile's name label. Pure because recharts renders the tile at zero size
 // under jsdom.
 

@@ -135,6 +135,71 @@ async def test_parent_scope_returns_split_as_one_row(api_client, db_session):
     assert abs(money(body["total_amount"])) == Decimal(str(superstore["total"]))
 
 
+async def test_a_payee_drill_lists_split_legs_by_their_payee_of_record(api_client, db_session):
+    """The Pareto payee bar ranks leaf rows by payee of record — a leg's own
+    payee, else its split parent's — and its drill opens this listing on leaf
+    scope. The listing filtered the raw `payee_id` column, which the legs of a
+    split made in the app do not carry, so a 125 bar opened a list of 25: the
+    split purchase was missing from the rows behind it.
+
+    What changes for each caller of the filter:
+
+    - leaf scope (the Pareto payee drill, the assistant's search and grouped
+      query): the legs are listed, under the payee the parent names;
+    - parent scope (the all-accounts register, the Payee Analysis, Sankey and
+      Timeline drills): nothing — a parent row has no split parent, so its
+      payee of record is its own. The per-account register keeps its own
+      parent-only filter, where the raw column is the same thing.
+    """
+    services, budget, checking, _, groceries, gas = await _setup(api_client, db_session)
+    market = await create_payee(db_session, budget, "Harborstone Market")
+    when = TODAY - timedelta(days=5)
+    await services.transactions.create_split(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=when,
+            amount=Decimal("-100.00"),
+            payee_id=market.id,
+            cleared="cleared",
+        ),
+        [
+            TransactionCreate(
+                account_id=checking.id,
+                date=when,
+                amount=Decimal("-60.00"),
+                category_id=groceries.id,
+            ),
+            TransactionCreate(
+                account_id=checking.id, date=when, amount=Decimal("-40.00"), category_id=gas.id
+            ),
+        ],
+    )
+    await create_transaction(
+        db_session, budget, checking, "-25.00", when, category=groceries, payee=market
+    )
+
+    payees, _total, _count, _to80 = await ReportService(db_session).payee_analysis(
+        budget.id, START, TODAY
+    )
+    (bar,) = [p for p in payees if p["payee_name"] == "Harborstone Market"]
+    assert Decimal(str(bar["total"])) == Decimal("125.00")
+
+    leaf = await _fetch(api_client, budget.id, scope="leaf", payee_ids=str(market.id))
+    assert leaf["total_count"] == 3
+    assert money(leaf["total_amount"]) == Decimal("-125.00")
+    assert sorted(money(t["amount"]) for t in leaf["transactions"]) == [
+        Decimal("-60.00"),
+        Decimal("-40.00"),
+        Decimal("-25.00"),
+    ]
+
+    parent = await _fetch(api_client, budget.id, scope="parent", payee_ids=str(market.id))
+    assert parent["total_count"] == 2
+    assert money(parent["total_amount"]) == Decimal("-125.00")
+    assert sum(t["is_split"] for t in parent["transactions"]) == 1
+
+
 async def test_leaf_reconciles_with_spending_report(api_client, db_session):
     services, budget, checking, savings, groceries, gas = await _setup(api_client, db_session)
     reports = ReportService(db_session)

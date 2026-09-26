@@ -302,3 +302,9 @@ class TestBudgetVsActualGivesTheSameVerdict:
         # 120, not the 420 the unfloored subtraction ranked it by.
         assert D(item["variance"]) == D("-120.00")
         assert D(_cell(_cat(pvr, drained.id), THIS_MONTH)["variance"]) == D("-120.00")
+        # And the headline says the same. It was raw assigned - spent, -420
+        # here, above a row reading -120.
+        assert D(bva["total_variance"]) == D("-120.00")
+        # No plan to take a share of: null, which the chart prints "no plan".
+        # It was 0.0, which printed as "0.0%" — on plan to the cent.
+        assert item["variance_pct"] is None

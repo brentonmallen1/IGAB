@@ -14,7 +14,9 @@ export interface DrillDownRow {
    *  whose refunds beat its spending drew "we spent $40" for "we got $40
    *  back". */
   amount: number
-  pct?: number
+  /** Null where the row has no percentage to state; the cell then reads
+   *  `pctAbsent`. */
+  pct?: number | null
   extra?: string
 }
 
@@ -33,6 +35,12 @@ interface Props {
    *  share sat beneath rows reading -25.0% and -40.0% — an aggregate variance
    *  nobody computed. Off unless declared, so a new caller cannot land there. */
   pctIsShare?: boolean
+  /** What the % column says for a row whose `pct` is null — what an absent
+   *  percentage means in this column, which only the caller knows. A variance
+   *  against no plan is "no plan": Budget vs Actual printed "0.0%" there,
+   *  which is also what a category that spent its plan to the cent prints.
+   *  Unsaid, an absent figure reads "—". */
+  pctAbsent?: string
   onRowClick?: (row: DrillDownRow) => void
   amountLabel?: string
 }
@@ -41,6 +49,7 @@ export function DrillDownTable({
   rows,
   wider,
   pctIsShare = false,
+  pctAbsent = '—',
   onRowClick,
   amountLabel = 'Amount',
 }: Props) {
@@ -84,7 +93,13 @@ export function DrillDownTable({
               {rows.some((r) => r.subName) && <td className="ddt__sub">{row.subName ?? ''}</td>}
               <td className="ddt__num">{formatMoney(row.amount)}</td>
               {rows.some((r) => r.pct !== undefined) && (
-                <td className="ddt__num ddt__muted">{row.pct?.toFixed(1) ?? ''}%</td>
+                <td className="ddt__num ddt__muted">
+                  {row.pct === undefined
+                    ? ''
+                    : row.pct === null
+                      ? pctAbsent
+                      : `${row.pct.toFixed(1)}%`}
+                </td>
               )}
               {rows.some((r) => r.extra) && (
                 <td className="ddt__num ddt__muted">{row.extra ?? ''}</td>

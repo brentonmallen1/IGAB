@@ -3,11 +3,28 @@ import { chartColor } from './chartColors'
 import {
   flatTiles,
   groupTiles,
+  isTile,
   tileFontSize,
   tileLabel,
   treemapGroups,
   type TreemapGroup,
 } from './treemapTiles'
+
+describe('isTile', () => {
+  it('skips the root recharts renders through the tile renderer', () => {
+    // Depth 0, no name, no size: drawn, it printed "$0.00" mid-chart.
+    expect(isTile({ depth: 0 })).toBe(false)
+    expect(isTile({})).toBe(false)
+  })
+
+  it('draws a named node below the root', () => {
+    expect(isTile({ depth: 1, name: 'Groceries' })).toBe(true)
+  })
+
+  it('skips an unnamed node at any depth, which has nothing to label', () => {
+    expect(isTile({ depth: 1, name: '' })).toBe(false)
+  })
+})
 
 const item = (id: string, parent_id: string | null, total: number) => ({
   id,

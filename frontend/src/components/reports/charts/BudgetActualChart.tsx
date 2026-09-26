@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportStore } from '../../../stores/reportStore'
+import { useReportScope, useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -22,6 +22,8 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { truncateLabel } from '../../../utils/truncateLabel'
+import { ReportNotes } from '../ReportNotes'
+import { NO_PLAN, varianceHeadline } from './budgetActualView'
 
 interface Props {
   budgetId: string
@@ -68,12 +70,13 @@ export function BudgetActualReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const [showOverspent, setShowOverspent] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('default')
-  const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
+  // Categories, tags and a saved filter, as the filter bar offers them here.
+  const reportScope = useReportScope()
   const { data, isLoading, isError, error, refetch } = useBudgetActualReport(
     budgetId,
     filters.startDate,
     filters.endDate,
-    catIds
+    reportScope
   )
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -122,6 +125,8 @@ export function BudgetActualReport({ budgetId }: Props) {
     const name = d.fullName ?? d.payload?.fullName
     if (id && name) drillTo(id, name)
   }
+
+  const headline = data ? varianceHeadline(data.total_variance, formatMoney) : null
 
   const tableRows = categories.map((c) => ({
     id: c.category_id,
@@ -186,15 +191,16 @@ export function BudgetActualReport({ budgetId }: Props) {
         </div>
       </div>
 
+      {/* A deleted saved filter drops its share of the scope; say so rather
+          than let the report read as a quiet period. */}
+      <ReportNotes report={data} toggleAvailable={false} />
+
       <div ref={captureRef} className="report-capture">
-        {data && (
+        {headline && data && (
           <MetricRow>
             <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
             <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
-            <MetricCard
-              label="Variance"
-              value={formatMoney(data.total_assigned - data.total_spent)}
-            />
+            <MetricCard label={headline.label} value={headline.value} warning={headline.over} />
           </MetricRow>
         )}
 
@@ -264,6 +270,7 @@ export function BudgetActualReport({ budgetId }: Props) {
                 label: 'categories',
               }}
               amountLabel="Spent"
+              pctAbsent={NO_PLAN}
               onRowClick={(row) => drillTo(row.id, row.name)}
             />
           </>

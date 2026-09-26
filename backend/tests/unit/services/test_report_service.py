@@ -324,26 +324,48 @@ class TestBudgetVsActual:
 
         assert result["total_assigned"] == D("800.00")
         assert result["total_spent"] == D("650.00")
+        assert result["total_variance"] == D("150.00")
+
+    async def test_the_headline_variance_is_the_rows_not_the_raw_totals(self):
+        """300 drained out of A with nothing spent, B 150 over its 200. Raw
+        `total_assigned - total_spent` is -450; the rows read on plan and
+        150 over, and the headline has to say what the rows say."""
+        assigns = [
+            self._assignment(CAT_A, JAN, D("-300.00"), "A"),
+            self._assignment(CAT_B, JAN, D("200.00"), "B"),
+        ]
+        spends = [self._spend(CAT_B, D("-350.00"), name="B")]
+        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
+        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
+
+        assert result["total_assigned"] - result["total_spent"] == D("-450.00")
+        assert result["total_variance"] == D("-150.00")
+        assert result["total_variance"] == sum(c["variance"] for c in result["categories"])
 
     async def test_empty_returns_zeros(self):
         svc = ReportService(make_session(mock_result([]), mock_result([])))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
-        assert result == {"categories": [], "total_assigned": D("0"), "total_spent": D("0")}
+        assert result == {
+            "categories": [],
+            "total_assigned": D("0"),
+            "total_spent": D("0"),
+            "total_variance": D("0"),
+        }
 
-    async def test_variance_pct_zero_when_no_assignment(self):
-        """Category with spending but no assignment gets 0% variance_pct.
+    async def test_variance_pct_is_none_when_no_assignment(self):
+        """Category with spending but no assignment has no variance_pct.
 
-        A percentage of nothing has no value, so 0.0 is a placeholder rather
-        than a measurement — `variance` carries the real answer (-100 here).
-        Stated because the same 0.0 also means "spent its plan to the cent";
-        the two are distinguishable only by looking at `assigned`.
+        A percentage of nothing has no value. It was served as 0.0, which is
+        also what "spent its plan to the cent" serves, so the chart printed
+        "0.0%" for spending nobody planned. `variance` carries the real answer
+        (-100 here).
         """
         assigns = []
         spends = [self._spend(CAT_A, D("-100.00"), name="Cascade Point Dues")]
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
         cat = result["categories"][0]
-        assert cat["variance_pct"] == 0.0
+        assert cat["variance_pct"] is None
         assert cat["variance"] == D("-100.00")
         assert cat["assigned"] == D("0")
         # And it is named, not "Unknown" with a blank group.

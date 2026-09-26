@@ -17,6 +17,7 @@ import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
@@ -174,7 +175,13 @@ export function SavingsRateReport({ budgetId }: Props) {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            {/* Saved goes negative in a month that drew money back out of
+                savings, and Debt Paid stacks on it. */}
+            <ComposedChart
+              data={chartData}
+              {...MIXED_SIGN_STACK}
+              margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis

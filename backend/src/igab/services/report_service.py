@@ -29,6 +29,7 @@ from igab.db.models import (
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     INCOME_ROW,
+    NOT_OPENING_BALANCE,
     ActivityClass,
     apply_class_joins,
     counted_class_filter,
@@ -42,7 +43,7 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
-from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows
+from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows, days_until_zero
 
 # Aliased: `report_basics.history_window` is the per-month reports' window;
 # this one is the projection sampler's whole-week stretch of days.
@@ -59,7 +60,7 @@ from igab.domain.dates import (
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.money_moves import Figures, figures, flows
-from igab.domain.plan import plan_outcome
+from igab.domain.plan import plan_outcome, total_variance
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.view_arrangement import arrange_by_view
 from igab.repositories.account_repo import AccountRepository
@@ -83,6 +84,7 @@ from igab.repositories.txn_filters import (
     account_scope,
     category_tagged,
     in_category_scope,
+    join_split_parent,
     none_of,
     reapplied_by_schedule,
     reapplied_by_subscriptions,
@@ -450,10 +452,7 @@ class ReportService:
         # neither is money that can be spent next week. Same figure, one
         # home — do not respell the account set here.
         cash_on_hand = await self.accounts.sum_on_budget_balance(budget_id, today)
-        daily_burn = now_burn.per_day
-        days_until_zero: float | None = (
-            float(cash_on_hand / daily_burn) if daily_burn > 0 and cash_on_hand > 0 else None
-        )
+        runway = days_until_zero(cash_on_hand, now_burn.per_day)
 
         # Top Spending is the Breakdown's first three rows, not a second query
         # kept agreeing with it. It was one — the class filter, the envelope
@@ -475,7 +474,7 @@ class ReportService:
             "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
             "savings_rate": this.savings_rate,
-            "days_until_zero": days_until_zero,
+            "days_until_zero": runway,
             "income_this_month": this.income,
             "expenses_this_month": this.spending,
             "expenses_prev_month": expenses_prev,
@@ -913,23 +912,24 @@ class ReportService:
     ) -> dict:
         """Sankey based on actual transactions (includes payee data)."""
         q = (
-            select(
-                Transaction.id,
-                Transaction.amount,
-                # A split leg created in the app carries no payee: the parent
-                # names where the money came from, as in payee_analysis.
-                PAYEE_OF_RECORD.label("payee_id"),
-                Transaction.category_id,
-                Transaction.transfer_id,
-                Transaction.is_split,
-                Payee.name.label("payee_name"),
-                Category.name.label("category_name"),
-                CategoryGroup.id.label("group_id"),
-                CategoryGroup.name.label("group_name"),
-                ACTIVITY_CLASS.label("activity_class"),
-                INCOME_ROW.label("is_income"),
+            join_split_parent(
+                select(
+                    Transaction.id,
+                    Transaction.amount,
+                    # A split leg created in the app carries no payee: the parent
+                    # names where the money came from, as in payee_analysis.
+                    PAYEE_OF_RECORD.label("payee_id"),
+                    Transaction.category_id,
+                    Transaction.transfer_id,
+                    Transaction.is_split,
+                    Payee.name.label("payee_name"),
+                    Category.name.label("category_name"),
+                    CategoryGroup.id.label("group_id"),
+                    CategoryGroup.name.label("group_name"),
+                    ACTIVITY_CLASS.label("activity_class"),
+                    INCOME_ROW.label("is_income"),
+                )
             )
-            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .outerjoin(CategoryGroup, Category.category_group_id == CategoryGroup.id)
@@ -940,12 +940,8 @@ class ReportService:
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 CASH_FLOW_ROW,
-                # A starting balance is where an account's counting begins, not
-                # money that flowed: neither income in nor an outflow off the
-                # budget node. Left in, a card's opening debt was an
-                # "Uncategorized" expense branch here after every spending
-                # report had stopped counting it.
-                ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value,
+                # Neither income in nor an outflow off the budget node.
+                NOT_OPENING_BALANCE,
             )
         )
         q, _ = account_scope(q, account_ids)
@@ -1268,7 +1264,12 @@ class ReportService:
         spending = (await self.session.execute(spend_q)).all()
 
         if not assignments and not spending:
-            return {"categories": [], "total_assigned": Decimal("0"), "total_spent": Decimal("0")}
+            return {
+                "categories": [],
+                "total_assigned": Decimal("0"),
+                "total_spent": Decimal("0"),
+                "total_variance": Decimal("0"),
+            }
 
         # Aggregate assignments by category
         assign_by_cat: dict[str, dict] = {}
@@ -1298,6 +1299,7 @@ class ReportService:
             assign_by_cat[cid]["spent"] += abs(Decimal(str(r.amount)))
 
         categories = []
+        outcomes = []
         total_assigned = Decimal("0")
         total_spent = Decimal("0")
 
@@ -1307,6 +1309,7 @@ class ReportService:
             # neutral there. `overspent` is served so the chart stops
             # deciding it from the raw assignment.
             outcome = plan_outcome(item["assigned"], item["spent"])
+            outcomes.append(outcome)
             categories.append(
                 {
                     **item,
@@ -1322,6 +1325,9 @@ class ReportService:
             "categories": categories,
             "total_assigned": total_assigned,
             "total_spent": total_spent,
+            # The headline is the rows' verdicts summed, so it cannot say
+            # something the rows under it do not (`plan.total_variance`).
+            "total_variance": total_variance(outcomes),
         }
 
     # ─── Cumulative Variance ──────────────────────────────────────────────────
@@ -1878,15 +1884,16 @@ class ReportService:
         cap as a period-wide fact.
         """
         q = (
-            select(
-                Transaction.date,
-                Transaction.amount,
-                PAYEE_OF_RECORD.label("payee_id"),
-                Transaction.category_id,
-                Payee.name.label("payee_name"),
-                Category.name.label("category_name"),
+            join_split_parent(
+                select(
+                    Transaction.date,
+                    Transaction.amount,
+                    PAYEE_OF_RECORD.label("payee_id"),
+                    Transaction.category_id,
+                    Payee.name.label("payee_name"),
+                    Category.name.label("category_name"),
+                )
             )
-            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
@@ -2104,6 +2111,9 @@ class ReportService:
                 # Timeline is parent-centric: one entry per real purchase.
                 PARENT_ROW,
                 CASH_FLOW_ROW,
+                # Every class is drawn, but an opening is not a transaction
+                # anybody made.
+                NOT_OPENING_BALANCE,
             )
         )
         # `in_category_scope`, not `scoped`: a split parent carries no

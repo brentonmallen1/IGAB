@@ -27,6 +27,13 @@ describe('REPORT_CATALOG', () => {
     for (const section of Object.values(REPORT_SECTIONS)) expect(tabs.has(section.tab)).toBe(true)
   })
 
+  it('says Essentials counts the tag alone', () => {
+    // It said "or bound in the Guide"; the report reads tags and never the
+    // Guide's bound categories (`services/essentials.py`).
+    expect(REPORT_CATALOG.essentials.counts).not.toMatch(/Guide/)
+    expect(REPORT_CATALOG.essentials.counts).toMatch(/tagged Essential/)
+  })
+
   it('gives a section its own scope rather than its tab’s', () => {
     // Payday Effect is drawn on the Day Patterns tab but ignores the account
     // filter that tab honours.

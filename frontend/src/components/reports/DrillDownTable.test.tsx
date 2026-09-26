@@ -71,6 +71,22 @@ describe('DrillDownTable', () => {
     expect(cellsOf('of $5,000.00 across 40 categories')).toContain('23.4%')
   })
 
+  it('says what an absent percentage means, where the caller knows', () => {
+    // Budget vs Actual's variance % for spending with no plan was served as
+    // 0.0 and printed "0.0%", the figure for spending a plan to the cent.
+    const planned = [
+      { id: 'd', name: 'Dining', amount: 160, pct: -60 },
+      { id: 'g', name: 'Gifts', amount: 40, pct: null },
+    ]
+    const { unmount } = render(<DrillDownTable rows={planned} pctAbsent="no plan" />)
+    expect(cellsOf('Gifts')).toContain('no plan')
+    expect(cellsOf('Dining')).toContain('-60.0%')
+    unmount()
+
+    render(<DrillDownTable rows={planned} />)
+    expect(cellsOf('Gifts')).toContain('—')
+  })
+
   it('keeps a negative row negative', () => {
     // Income vs Expenses lists monthly expenses; a month whose refunds beat
     // its spending is negative, and the table's `Math.abs` drew "we got $40

@@ -4,6 +4,26 @@
  * chart to see. A row's tone is `utils/activityClassTone`, shared with the
  * Guide.
  */
+import { activityClassTone } from '../../../utils/activityClassTone'
+
+/**
+ * The chip beside a row's amount: what the row is, where the amount's sign
+ * and the tone alone would say it wrong. Null for plain spending.
+ *
+ * Tone comes from the class, which says what a row means but not which way
+ * the money went. A +5,000 inflow filed to a spending envelope is SPENDING by
+ * class, and was drawn as a red "$5,000.00" with no chip — a purchase, when
+ * it was money back. An inflow on an expense-toned class is named a Refund;
+ * the amount beside it carries its sign.
+ */
+export function timelineChip(row: {
+  amount: number
+  activity_class: string | null
+  activity_label: string
+}): string | null {
+  if (activityClassTone(row.activity_class) === 'expense' && row.amount > 0) return 'Refund'
+  return row.activity_class === 'spending' ? null : row.activity_label
+}
 
 /**
  * Newest first. The server ranks by SIZE to pick the largest N; a timeline

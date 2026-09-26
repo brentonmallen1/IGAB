@@ -445,6 +445,14 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('$1,100.00')).toBeInTheDocument()
     expect(screen.getByText(/\+10\.0%/)).toBeInTheDocument() // net worth delta
     expect(screen.getByText(/\+20\.0%/)).toBeInTheDocument() // spending delta
+    // Spending up is bad news and net worth up good, whatever the sign says:
+    // "Spent +21%" was drawn green.
+    expect(screen.getByText(/\+20\.0%/).closest('.metric-card__delta')).toHaveClass(
+      'metric-card__delta--bad'
+    )
+    expect(screen.getByText(/\+10\.0%/).closest('.metric-card__delta')).toHaveClass(
+      'metric-card__delta--good'
+    )
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
     expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
     expect(screen.getByText('Groceries')).toBeInTheDocument()
@@ -481,6 +489,28 @@ describe('OverviewReport metric cards', () => {
       .getByText('Spent This Period', { selector: '.metric-card__label' })
       .closest('.metric-card')
     expect(spent?.querySelector('.metric-card__delta')).toBeNull()
+  })
+
+  it('keeps Days Until Zero on screen at 0, and says the cash is gone', () => {
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 900,
+        burn_rate_prior_60: 900,
+        days_until_zero: 0,
+        income_this_month: 0,
+        expenses_this_month: 900,
+        expenses_prev_month: 900,
+        outflows_this_month: 900,
+        top_categories: [],
+        means_months: [],
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Days Until Zero')).toEqual({
+      value: '0 days',
+      sub: 'Overdrawn: cash is at or below zero',
+    })
   })
 
   it('names the as-paid essentials figure under the spread one', () => {
@@ -1049,6 +1079,141 @@ describe('IncomeSourcesReport average', () => {
   })
 })
 
+describe('VarianceReport cards', () => {
+  it('names the newest point the running month, not last month', () => {
+    // The series ends with the month in progress; "Last Month Spent" read
+    // half a month as a whole one.
+    setQuery({
+      data: {
+        points: [
+          {
+            month: '2026-08-01',
+            budget_assigned: 3000,
+            actual_spent: 2900,
+            monthly_variance: 100,
+            cumulative_variance: 100,
+          },
+          {
+            month: '2026-09-01',
+            budget_assigned: 3000,
+            actual_spent: 1200,
+            monthly_variance: 1800,
+            cumulative_variance: 1900,
+          },
+        ],
+      },
+    })
+    renderReport(<VarianceReport budgetId="b1" />)
+    expect(card('Spent this month so far').value).toBe('$1,200.00')
+    expect(card('Assigned this month so far').value).toBe('$3,000.00')
+    expect(screen.queryByText(/Last Month/)).toBeNull()
+  })
+})
+
+describe('IncomeExpenseReport drill', () => {
+  it('opens a month’s Expenses with its refunds, so the list totals the row', () => {
+    setQuery({
+      data: {
+        months: [
+          {
+            month: '2026-08-01',
+            income: 6000,
+            expenses: 1530,
+            savings: 0,
+            debt_principal: 0,
+            net: 4470,
+          },
+        ],
+      },
+    })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    fireEvent.click(screen.getByText('2026-08'))
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({
+      label: 'Expenses · 2026-08',
+      scope: 'leaf',
+      activityClasses: ['spending'],
+      startDate: '2026-08-01',
+      endDate: '2026-08-31',
+    })
+    expect(drill?.direction).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+  })
+})
+
+describe('TimelineReport amounts', () => {
+  it('keeps the sign, and names money back into a spending envelope', () => {
+    setQuery({
+      data: {
+        transactions: [
+          {
+            id: 't1',
+            date: '2026-08-14',
+            amount: 5000,
+            payee_name: 'Harborstone Roofing',
+            category_name: 'Home Repair',
+            memo: null,
+            activity_class: 'spending',
+            activity_label: 'Spending',
+          },
+          {
+            id: 't2',
+            date: '2026-08-10',
+            amount: -250,
+            payee_name: 'Corner Market',
+            category_name: 'Groceries',
+            memo: null,
+            activity_class: 'spending',
+            activity_label: 'Spending',
+          },
+        ],
+        class_excluded: [],
+        filter_unavailable: false,
+      },
+    })
+    renderReport(<TimelineReport budgetId="b1" />)
+    const refund = screen.getByText('Harborstone Roofing').closest('.timeline__card')!
+    expect(refund.querySelector('.timeline__amount')?.textContent).toBe('$5,000.00Refund')
+    const purchase = screen.getByText('Corner Market').closest('.timeline__card')!
+    expect(purchase.querySelector('.timeline__amount')?.textContent).toBe('-$250.00')
+  })
+})
+
+describe('SpendingTrendsReport legend', () => {
+  it('lists the stack in order, Other last, in its own key rather than recharts’', () => {
+    // Twelve categories: ten named, two in Other. recharts' <Legend> sorted
+    // them by name, and with eight palette slots two pairs shared a colour
+    // with nothing on the page to tell them apart.
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      id: `c${i}`,
+      name: `Envelope ${String.fromCharCode(76 - i)}`,
+      group_id: 'g',
+      group_name: 'Everyday',
+      monthly: [120 - i],
+      total: 120 - i,
+    }))
+    setQuery({
+      data: {
+        months: ['2026-08-01'],
+        series,
+        monthly_totals: [series.reduce((sum, s) => sum + s.total, 0)],
+        total: series.reduce((sum, s) => sum + s.total, 0),
+        class_excluded: [],
+        filter_unavailable: false,
+      },
+    })
+    useReportStore.getState().setFilters({ groupBy: 'category' })
+    renderReport(<SpendingTrendsReport budgetId="b1" />)
+    const legend = screen.getByRole('list', { name: 'Series in this chart' })
+    const names = within(legend)
+      .getAllByRole('button')
+      .map((b) => b.querySelector('.chart-legend__name')?.textContent)
+    expect(names).toEqual([...series.slice(0, 10).map((s) => s.name), 'Other'])
+    // Other holds the two it folded, the 11th and 12th: 110 and 109.
+    expect(within(legend).getByRole('button', { name: 'Other, $219.00' })).toBeInTheDocument()
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({
@@ -1369,6 +1534,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '500',
         total_spent: '450',
+        total_variance: 50,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -1408,6 +1574,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '-200',
         total_spent: '160',
+        total_variance: -60,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -1447,6 +1614,7 @@ describe('BudgetActualReport values', () => {
         ],
         total_assigned: '600',
         total_spent: '610',
+        total_variance: -10,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -1456,6 +1624,83 @@ describe('BudgetActualReport values', () => {
     const whole = cellsOf('of $610.00 across 2 categories')
     expect(whole).toContain('$610.00')
     expect(whole.some((c) => c.includes('%'))).toBe(false)
+  })
+
+  /** Car Repairs drained by 300 with nothing spent; Dining 60 over its 100;
+   *  Gifts 40 spent with no plan. Raw assigned − spent is -200 − 200 = -400;
+   *  the rows' verdicts are 0, -60 and -40. */
+  const drained = {
+    categories: [
+      {
+        category_id: 'c1',
+        category_name: 'Car Repairs',
+        category_group_name: 'Irregular',
+        assigned: -300,
+        spent: 0,
+        variance: 0,
+        variance_pct: null,
+        overspent: false,
+      },
+      {
+        category_id: 'c2',
+        category_name: 'Dining',
+        category_group_name: 'Everyday',
+        assigned: 100,
+        spent: 160,
+        variance: -60,
+        variance_pct: -60,
+        overspent: true,
+      },
+      {
+        category_id: 'c3',
+        category_name: 'Gifts',
+        category_group_name: 'Everyday',
+        assigned: 0,
+        spent: 40,
+        variance: -40,
+        variance_pct: null,
+        overspent: true,
+      },
+    ],
+    total_assigned: -200,
+    total_spent: 200,
+    total_variance: -100,
+    filter_unavailable: false,
+  }
+
+  it('headlines the rows’ verdicts, with the direction in words', () => {
+    // The card was "Variance" over raw assigned − spent: -$400.00 above rows
+    // that sum to -100, with the sign left for the reader to decode.
+    setQuery({ data: drained })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    expect(card('Over plan by').value).toBe('$100.00')
+    expect(screen.queryByText('-$400.00')).toBeNull()
+  })
+
+  it('says "no plan" for spending nobody planned, not "0.0%"', () => {
+    setQuery({ data: drained })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    expect(cellsOf('Gifts')).toContain('no plan')
+    expect(cellsOf('Dining')).toContain('-60.0%')
+    expect(screen.queryByText('0.0%')).toBeNull()
+  })
+
+  it('asks for the tags and the saved filter the filter bar offers, not the categories alone', () => {
+    useReportStore.getState().setFilters({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
+    try {
+      setQuery({ data: drained })
+      renderReport(<BudgetActualReport budgetId="b1" />)
+      const [, , , scope] = hookCalls.get('useBudgetActualReport')!.at(-1)!
+      expect(scope).toEqual({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
+    } finally {
+      useReportStore.getState().setFilters({ tagIds: [], filterId: null })
+    }
+  })
+
+  it('says so when the saved filter it was asked for is gone', () => {
+    setQuery({ data: { ...drained, filter_unavailable: true } })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    expect(screen.getByText(/That saved filter no longer exists/)).toBeInTheDocument()
   })
 })
 
@@ -1737,6 +1982,7 @@ describe('drill tables read spending as a positive figure', () => {
         ],
         total_assigned: '500',
         total_spent: '450',
+        total_variance: 50,
       },
     })
     renderReport(<BudgetActualReport budgetId="b1" />)
@@ -2061,6 +2307,54 @@ describe('EmergencyCoverageReport', () => {
     setQuery({ data: { ...base, series: [pt('2026-08-01', 4)] } })
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
     expect(screen.queryByText(/\/mo as paid/)).toBeNull()
+  })
+})
+
+describe('info panels say what the chart draws', () => {
+  const openInfo = (name: string) =>
+    fireEvent.click(screen.getByRole('button', { name: `About the ${name} report` }))
+
+  it('Net Worth: overlaid areas, debts subtracted, stated assets counted', () => {
+    // It said "The stacked area shows…" over areas drawn on top of each other,
+    // "plus any manually tracked debts" of debts it subtracts, and never
+    // mentioned the stated asset values it adds.
+    setQuery({ data: { points: [] } })
+    renderReport(<NetWorthReport budgetId="b1" />)
+    openInfo('Net Worth Over Time')
+    expect(screen.getByText(/not stacked/)).toBeInTheDocument()
+    expect(screen.getByText(/stated value of things/)).toBeInTheDocument()
+    expect(screen.getByText(/both are subtracted/)).toBeInTheDocument()
+    expect(screen.queryByText(/stacked area/)).toBeNull()
+    expect(screen.queryByText(/plus any manually tracked debts/)).toBeNull()
+  })
+
+  it('Income vs Expenses: series by legend name, never by a colour the theme may not use', () => {
+    setQuery({ data: { months: [] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    openInfo('Income vs Expenses')
+    expect(screen.getAllByText(/Net line/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/\b(blue|green|red)\b/)).toBeNull()
+  })
+
+  it('Overview: which cards follow the range, and which are as of today', () => {
+    // "All metrics use the selected date range except burn rates" — while Net
+    // Worth, Essentials and Days Until Zero were as of today too.
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 0,
+        burn_rate_prior_60: 0,
+        income_this_month: 0,
+        outflows_this_month: 0,
+        top_categories: [],
+        means_months: [],
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    openInfo('Overview Dashboard')
+    expect(screen.getByText(/follow the selected date range/)).toBeInTheDocument()
+    expect(screen.getByText(/are as of today/)).toBeInTheDocument()
+    expect(screen.queryByText(/All metrics use the selected date range/)).toBeNull()
   })
 })
 

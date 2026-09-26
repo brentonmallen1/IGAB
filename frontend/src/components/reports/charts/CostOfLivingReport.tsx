@@ -12,6 +12,7 @@ import { ReportNotes } from '../ReportNotes'
 import type { CostOfLivingGroup } from '../../../types'
 import { chartColor } from './chartColors'
 import { ChartLegend } from './ChartLegend'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -226,7 +227,13 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
           <div className="report-chart" style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              {/* A group's month nets its refunds, so a month of them is a
+                  negative band. */}
+              <BarChart
+                data={chartData}
+                {...MIXED_SIGN_STACK}
+                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis
                   dataKey="month"

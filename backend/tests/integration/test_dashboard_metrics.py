@@ -225,6 +225,22 @@ class TestFiguresPreservedFromTheOldSuite:
 
         assert card["days_until_zero"] is None
 
+    async def test_days_until_zero_is_zero_when_cash_is_already_gone(self, db_session):
+        """It served None here, and the card hid — the moment its answer was
+        most urgent."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking", on_budget=True)
+        group = await create_category_group(db_session, budget, "Everyday")
+        cat = await create_category(db_session, budget, group, "Groceries")
+        await create_transaction(db_session, budget, checking, "100.00", TODAY - timedelta(days=5))
+        await create_transaction(db_session, budget, checking, "-300.00", TODAY, category=cat)
+        await db_session.flush()
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["days_until_zero"] == 0.0
+
 
 class TestTopSpendingIsSpending:
     """`top_categories` partitioned on `amount < 0` alone, two screens below a

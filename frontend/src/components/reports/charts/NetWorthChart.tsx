@@ -54,14 +54,14 @@ export function NetWorthReport({ budgetId }: Props) {
         <h2 className="report-section__title">Net Worth Over Time</h2>
         <ReportInfoButton title="Net Worth Over Time">
           <p>
-            <strong>Net worth</strong> = total assets minus total liabilities across{' '}
-            <strong>all accounts</strong> — on-budget, tracking, and loans — plus any manually
-            tracked debts.
+            <strong>Net worth</strong> = assets minus liabilities. <strong>Assets</strong> are what
+            every account holds — on-budget and tracking alike — plus the stated value of things
+            with no account behind them, like a home. <strong>Liabilities</strong> are what cards
+            and loans owe, plus debts you track by hand; both are subtracted.
           </p>
           <p>
-            The stacked area shows how <strong>assets</strong> and <strong>liabilities</strong>{' '}
-            compose your net worth each month. A growing gap between them means you're building
-            wealth.
+            The three areas are drawn over each other from zero, not stacked. A widening gap between
+            Assets and Liabilities means you&apos;re building wealth.
           </p>
           <ReportScopeNote report="net-worth" />
         </ReportInfoButton>

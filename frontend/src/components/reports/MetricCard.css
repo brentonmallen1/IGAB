@@ -100,11 +100,12 @@
   font-weight: 500;
 }
 
-.metric-card__delta--pos {
+/* Good news and bad news, not the sign: spending up is --bad. */
+.metric-card__delta--good {
   color: var(--color-positive);
 }
 
-.metric-card__delta--neg {
+.metric-card__delta--bad {
   color: var(--color-negative);
 }
 

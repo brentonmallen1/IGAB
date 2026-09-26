@@ -111,6 +111,22 @@ export function spendingDrillClasses(includeSavings: boolean): string[] {
   return includeSavings ? ['spending', 'savings', 'debt_principal'] : ['spending']
 }
 
+/** The drill-down behind a figure that nets one set of classes over a window:
+ *  every leaf row of those classes, whichever way it went.
+ *
+ *  **No direction.** The figures net: Expenses is spending less its refunds,
+ *  Income is pay less a clawback. An `outflow` filter dropped the refunds, so
+ *  a $15,300 Expenses bar opened a list of $19,400 of purchases; `inflow` did
+ *  the same to a clawed-back paycheck under Income. Refunds list as positive
+ *  rows and the panel's total is the bar's. */
+function netClassDrill(
+  label: string,
+  activityClasses: string[],
+  window: { startDate: string; endDate: string }
+): DrillDownContext {
+  return { kind: 'month', label, scope: 'leaf', activityClasses, ...window }
+}
+
 /** The drill-down behind an Income figure: the rows every income figure
  *  counts, which is `INCOME_ROW` on the server — leaf rows of the income
  *  class. Parent rows are the wrong shape: a split paycheck of +1,000 pay and
@@ -121,14 +137,17 @@ export function incomeDrill(
   label: string,
   window: { startDate: string; endDate: string }
 ): DrillDownContext {
-  return {
-    kind: 'month',
-    label,
-    scope: 'leaf',
-    direction: 'inflow',
-    activityClasses: ['income'],
-    ...window,
-  }
+  return netClassDrill(label, ['income'], window)
+}
+
+/** The drill-down behind an Expenses figure — spending net of refunds, the
+ *  SPENDING class alone (savings and debt principal are figures of their
+ *  own). Leaf rows, because classes live on leaves, not on a split parent. */
+export function expensesDrill(
+  label: string,
+  window: { startDate: string; endDate: string }
+): DrillDownContext {
+  return netClassDrill(label, spendingDrillClasses(false), window)
 }
 
 export interface TabFilterSupport {

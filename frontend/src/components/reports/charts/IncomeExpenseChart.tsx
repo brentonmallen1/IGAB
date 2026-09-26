@@ -11,8 +11,8 @@ import {
   YAxis,
 } from 'recharts'
 import {
+  expensesDrill,
   incomeDrill,
-  spendingDrillClasses,
   useReportMonths,
   useReportStore,
 } from '../../../stores/reportStore'
@@ -44,32 +44,24 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   const { data, isLoading, isError, error, refetch } = useIncomeExpenseReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  function drillTo(month: string, direction: 'inflow' | 'outflow') {
+  /** The rows behind one month's bar. Both figures net — refunds in
+   *  Expenses, clawbacks in Income — so each list carries both directions
+   *  and totals the bar that opened it. */
+  function drillTo(month: string, figure: 'income' | 'expenses') {
     const ym = month.slice(0, 7)
     const window = monthWindow(ym)
     const range = { startDate: window.start, endDate: window.end }
-    if (direction === 'inflow') {
-      setDrillDown(incomeDrill(`Income · ${ym}`, range))
-      return
-    }
-    setDrillDown({
-      kind: 'month',
-      label: `Expenses · ${ym}`,
-      // Leaf + explicit classes: this bar means SPENDING (savings and debt
-      // principal are separate series), so the panel must not list every
-      // outflow. Classes live on leaves, not on a split parent, so the scope
-      // has to match too.
-      scope: 'leaf',
-      direction,
-      activityClasses: spendingDrillClasses(false),
-      ...range,
-    })
+    setDrillDown(
+      figure === 'income'
+        ? incomeDrill(`Income · ${ym}`, range)
+        : expensesDrill(`Expenses · ${ym}`, range)
+    )
   }
 
-  const monthBarClick = (direction: 'inflow' | 'outflow') => (data: unknown) => {
+  const monthBarClick = (figure: 'income' | 'expenses') => (data: unknown) => {
     const d = data as { month?: string; payload?: { month?: string } }
     const month = d.month ?? d.payload?.month
-    if (month) drillTo(month, direction)
+    if (month) drillTo(month, figure)
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
@@ -100,8 +92,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
           <p>
-            Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with
-            the <strong>net cash flow</strong> (blue line) overlaid.
+            Monthly <strong>Income</strong> and <strong>Expenses</strong> as bars, with the{' '}
+            <strong>Net</strong> line — cash flow — drawn over them.
           </p>
           <p>
             <strong>Saved</strong> is money that stayed yours — moved into savings or investments,
@@ -114,8 +106,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             an envelope is still in them, so it does not lower net.
           </p>
           <p>
-            Months where the blue line is above zero mean you spent less than you earned — a
-            positive sign. Dipping below zero means you ran a deficit that month.
+            Months where the Net line is above zero mean you spent less than you earned. Below zero,
+            you ran a deficit that month.
           </p>
           <ReportScopeNote report="income-expense" />
         </ReportInfoButton>
@@ -163,14 +155,14 @@ export function IncomeExpenseReport({ budgetId }: Props) {
                 fill={COLOR_POSITIVE}
                 radius={[2, 2, 0, 0]}
                 cursor="pointer"
-                onClick={monthBarClick('inflow')}
+                onClick={monthBarClick('income')}
               />
               <Bar
                 dataKey="Expenses"
                 fill={COLOR_NEGATIVE}
                 radius={[2, 2, 0, 0]}
                 cursor="pointer"
-                onClick={monthBarClick('outflow')}
+                onClick={monthBarClick('expenses')}
               />
               <Bar dataKey="Saved" fill={COLOR_NEUTRAL} radius={[2, 2, 0, 0]} />
               <Line
@@ -185,7 +177,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           <DrillDownTable
             rows={tableRows}
             amountLabel="Expenses"
-            onRowClick={(row) => drillTo(row.id, 'outflow')}
+            onRowClick={(row) => drillTo(row.id, 'expenses')}
           />
         </div>
       )}

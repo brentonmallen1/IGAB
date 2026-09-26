@@ -29,6 +29,7 @@ from igab.domain.burn_rate import (
     DayClassTotal,
     burn,
     burn_windows,
+    days_until_zero,
 )
 from igab.guide.concepts import ESSENTIALS_WINDOW_DAYS, TRAILING_MONTHS, essentials_since
 
@@ -152,6 +153,36 @@ class TestZero:
     def test_a_fully_refunded_window_is_positive_zero(self):
         result = burn([spend(3, "-80.00"), spend(1, "80.00")], AS_OF)
         assert str(result.recent) == "0.00"
+
+
+class TestDaysUntilZero:
+    """The Overview's runway card. It hid itself whenever cash was at or below
+    zero — the one moment its answer was most urgent."""
+
+    def test_cash_over_the_daily_burn(self):
+        # 3,000 at 900 a month is 30 a day: 100 days.
+        assert days_until_zero(D("3000.00"), D("900.00") / RECENT_DAYS) == 100.0
+
+    def test_overdrawn_while_spending_is_zero_days(self):
+        assert days_until_zero(D("-450.00"), D("30.00")) == 0.0
+
+    def test_exactly_empty_while_spending_is_zero_days(self):
+        assert days_until_zero(D("0.00"), D("30.00")) == 0.0
+
+    def test_a_cent_left_is_not_zero_days(self):
+        assert days_until_zero(D("0.01"), D("30.00")) == pytest.approx(0.01 / 30)
+
+    @pytest.mark.parametrize("cash", ["3000.00", "0.00", "-450.00"])
+    def test_nothing_burning_has_no_runway_to_state(self, cash):
+        # No pace to run out at, overdrawn or not: no number of days is true.
+        assert days_until_zero(D(cash), D("0")) is None
+
+    def test_a_window_of_net_refunds_has_no_runway_to_state(self):
+        assert days_until_zero(D("3000.00"), D("-2.00")) is None
+
+    def test_it_reads_the_burn_the_card_shows(self):
+        # An empty budget burns nothing, so it states no runway.
+        assert days_until_zero(D("500.00"), burn([], AS_OF).per_day) is None
 
 
 class TestTheGuideReadsTheSameNinetyDays:

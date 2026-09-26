@@ -20,6 +20,7 @@ for Plan vs Reality, the whole window for Budget vs Actual — and returns the
 verdict.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -37,11 +38,27 @@ class PlanOutcome:
     over: bool
 
     @property
-    def variance_pct(self) -> float:
-        """Variance as a share of the plan; 0 where there was no plan to
+    def variance_pct(self) -> float | None:
+        """Variance as a share of the plan; None where there was no plan to
         measure against, rather than a division by zero or a sign flip from
-        a negative denominator."""
-        return float(self.variance / self.plan * 100) if self.plan > ZERO else 0.0
+        a negative denominator.
+
+        None, not 0.0: Budget vs Actual printed "0.0%" for spending nobody
+        planned, which is what a category that spent its plan to the cent
+        also prints."""
+        return float(self.variance / self.plan * 100) if self.plan > ZERO else None
+
+
+def total_variance(outcomes: Iterable[PlanOutcome]) -> Decimal:
+    """What a set of categories came to against their plans: the sum of each
+    one's floored verdict.
+
+    Not `sum(assigned) - sum(spent)`. That headline read beside rows floored
+    per category disagreed with them whenever an envelope was drained: 300
+    moved out of one envelope and 300 overspent in another nets to 0 raw,
+    while the rows say one is on plan and the other 300 over.
+    """
+    return sum((o.variance for o in outcomes), ZERO)
 
 
 def plan_outcome(assigned: Decimal, spent: Decimal) -> PlanOutcome:

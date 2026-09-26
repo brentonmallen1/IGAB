@@ -19,6 +19,7 @@ import { SavingsRateDialog } from './SavingsRateDialog'
 import { pct, ratePercent } from './charts/savingsRateView'
 import { burnPriorLine } from './charts/burnRateView'
 import {
+  daysUntilZeroCard,
   essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
@@ -50,6 +51,7 @@ export function OverviewReport({ budgetId }: Props) {
   const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
+  const runway = daysUntilZeroCard(data.days_until_zero)
   const sixMonthReserve = essentialsReserve(data.essentials?.monthly, 6)
   const otherEssentials = otherFigureNote(data.essentials, formatMoney)
   const trend = meansTrend(data.means_months)
@@ -61,8 +63,13 @@ export function OverviewReport({ budgetId }: Props) {
           <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
             <p>
-              A snapshot of your financial health at a glance. All metrics use the selected date
-              range except burn rates, which use rolling windows from today.
+              A snapshot of your financial health at a glance. <strong>Your Means</strong>,{' '}
+              <strong>Savings Rate</strong>, <strong>Income</strong> and <strong>Spent</strong> this
+              period, and <strong>Top Spending</strong> follow the selected date range.{' '}
+              <strong>Net Worth</strong>, <strong>Burn Rate</strong>, <strong>Essentials</strong>{' '}
+              and <strong>Days Until Zero</strong> are as of today; Net Worth’s change is against
+              the day before the range. <strong>Means trend</strong> reads the last 12 complete
+              months, and <strong>Ready to Assign</strong> is the month open on the Budget page.
             </p>
             <p>
               <strong>Burn Rate</strong>: spending over the last 30 days, net of refunds, beside the
@@ -80,7 +87,8 @@ export function OverviewReport({ budgetId }: Props) {
               the savings went and where the income came from. <strong>Days Until Zero</strong>:
               cash on hand ÷ daily burn rate — how long the budget’s cash accounts would last at
               this pace. Cards, loans and tracked investments are out: net worth is not money you
-              can spend next week.
+              can spend next week. It reads 0 when that cash is already at or below zero, and is
+              left out when nothing is being spent.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending
@@ -170,7 +178,7 @@ export function OverviewReport({ budgetId }: Props) {
             value={formatMoney(data.net_worth)}
             delta={
               data.net_worth_prev !== 0
-                ? { value: netWorthDeltaPct, label: 'vs prior period' }
+                ? { value: netWorthDeltaPct, label: 'vs prior period', good: 'up' }
                 : undefined
             }
           />
@@ -206,11 +214,12 @@ export function OverviewReport({ budgetId }: Props) {
               onOpen: () => setSavingsOpen(true),
             }}
           />
-          {daysUntilZero !== null && (
+          {runway && (
             <MetricCard
               label="Days Until Zero"
-              value={`${daysUntilZero}d`}
-              sub="Cash at current 30-day burn"
+              value={runway.value}
+              sub={runway.sub}
+              warning={runway.overdrawn}
             />
           )}
           <MetricCard label="Income This Period" value={formatMoney(data.income_this_month)} />
@@ -219,7 +228,8 @@ export function OverviewReport({ budgetId }: Props) {
             value={formatMoney(data.expenses_this_month)}
             delta={
               spendingDeltaPct !== null
-                ? { value: spendingDeltaPct, label: 'vs prior period' }
+                ? // More spending is the bad direction: "+21%" was drawn green.
+                  { value: spendingDeltaPct, label: 'vs prior period', good: 'down' }
                 : undefined
             }
           />
