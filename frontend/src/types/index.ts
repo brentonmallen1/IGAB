@@ -1857,6 +1857,9 @@ export interface TransactionMatch {
 }
 
 export interface CostOfLivingGroup {
+  /** null for the Uncategorized bucket — the flag its drill reads (backend
+   *  `report_basics.cost_of_living`). Never test the name. */
+  group_id: string | null
   group_name: string
   monthly_amounts: number[]
   total: number

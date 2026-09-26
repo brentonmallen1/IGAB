@@ -82,7 +82,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   // Pointing at a group in the key fades every other group's tiles, which is
   // what tells two groups apart once the palette repeats.
   const shown = useMemo(
-    () => visibleItems.map((t) => ({ ...t, dimmed: !!highlight && t.groupName !== highlight })),
+    () => visibleItems.map((t) => ({ ...t, dimmed: !!highlight && t.groupKey !== highlight })),
     [visibleItems, highlight]
   )
 

@@ -133,6 +133,7 @@ const CASES: [string, ComponentType<{ budgetId: string }>, unknown][] = [
       window_end: '2026-08-31',
       groups: [
         {
+          group_id: 'g-bills',
           group_name: 'Bills',
           monthly_amounts: [700],
           total: 700,
@@ -141,6 +142,7 @@ const CASES: [string, ComponentType<{ budgetId: string }>, unknown][] = [
           category_ids: ['c1'],
         },
         {
+          group_id: 'g-health',
           group_name: 'Health',
           monthly_amounts: [-40],
           total: -40,

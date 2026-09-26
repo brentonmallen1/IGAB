@@ -222,10 +222,10 @@ export function CategoryHistoryReport({ budgetId }: Props) {
               Spent bar takes its colour from its month's state. */}
           <ChartLegend
             series={[
-              { name: 'Assigned', color: COLOR_NEUTRAL },
-              { name: 'Spent', color: CHART_COLORS[0] },
-              { name: 'Spent, envelope overspent', color: COLOR_NEGATIVE },
-              { name: 'Available', color: COLOR_NET },
+              { id: 'assigned', name: 'Assigned', color: COLOR_NEUTRAL },
+              { id: 'spent', name: 'Spent', color: CHART_COLORS[0] },
+              { id: 'overspent', name: 'Spent, envelope overspent', color: COLOR_NEGATIVE },
+              { id: 'available', name: 'Available', color: COLOR_NET },
             ]}
             active={null}
             onHover={() => {}}

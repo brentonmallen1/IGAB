@@ -26,6 +26,9 @@ export interface TreeNode {
   parent_name: string | null
   /** The group whose colour the tile wears — what the colour key names. */
   groupName: string
+  /** That group's key (its id, or the no-group key): what the colour key and
+   *  its highlight match on, so two groups named alike stay two. */
+  groupKey: string
   size: number
   /** Share of what is on screen — the whole period, or the group drilled
    *  into — as the Breakdown states it. Null when there is no positive total
@@ -37,6 +40,8 @@ export interface TreeNode {
 }
 
 export interface TreemapGroup {
+  /** The group's id, or `__none__` for categories with no group. */
+  key: string
   name: string
   total: number
   /** This group's colour slot — the only place it is decided. */
@@ -56,6 +61,7 @@ function categoryTile(item: Item, group: TreemapGroup, shownTotal: number): Tree
     parent_id: item.parent_id,
     parent_name: item.parent_name,
     groupName: group.name,
+    groupKey: group.key,
     size: item.total,
     pct: shareOfTotal(item.total, shownTotal),
     fill: chartColor(group.colorIdx),
@@ -73,7 +79,7 @@ export function treemapGroups(items: readonly Item[]): Map<string, TreemapGroup>
     const gid = groupKey(item)
     let g = map.get(gid)
     if (!g) {
-      g = { name: item.parent_name, total: 0, colorIdx: map.size, children: [] }
+      g = { key: gid, name: item.parent_name, total: 0, colorIdx: map.size, children: [] }
       map.set(gid, g)
       members.set(gid, [])
     }
@@ -111,7 +117,11 @@ export function drawableTiles(tiles: readonly TreeNode[]): {
 /** The key to category mode's colours: each group once, in slot order. A
  *  flat treemap shades every category by its group and named none of them. */
 export function groupColorKey(groups: ReadonlyMap<string, TreemapGroup>) {
-  return [...groups.values()].map((g) => ({ name: g.name, color: chartColor(g.colorIdx) }))
+  return [...groups.values()].map((g) => ({
+    id: g.key,
+    name: g.name,
+    color: chartColor(g.colorIdx),
+  }))
 }
 
 /** Group mode, undrilled: one tile per group. */
@@ -126,6 +136,7 @@ export function groupTiles(
     parent_id: null,
     parent_name: null,
     groupName: g.name,
+    groupKey: g.key,
     size: g.total,
     pct: shareOfTotal(g.total, grandTotal),
     fill: chartColor(g.colorIdx),

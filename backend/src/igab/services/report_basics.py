@@ -772,6 +772,10 @@ def _as_costs(signed: Iterable[tuple[date, Decimal]], month_list: Sequence[date]
 
 
 class CostOfLivingGroup(CostSeries):
+    #: None for the Uncategorized bucket — the flag the page drills it by.
+    #: Keyed by id, not name: two groups sharing a name were one bar, and a
+    #: real group NAMED "Uncategorized" opened as rows with no category.
+    group_id: str | None
     group_name: str
     #: This group's share of the cost-of-living total, 0-100. Not of income —
     #: the shares have to add to 100 or the bar reads as arithmetic nobody
@@ -849,9 +853,8 @@ def class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | No
 
 
 #: What the null-group bucket is called: `domain.spending.UNCATEGORIZED`, the
-#: one spelling every spending report's Uncategorized line uses. The client
-#: tests it to decide that a drill-down means "no category at all" rather than
-#: "these ids".
+#: one spelling every spending report's Uncategorized line uses. A name to
+#: print only: the bucket is told apart by its `group_id` of None.
 UNCATEGORIZED_GROUP = UNCATEGORIZED
 
 
@@ -921,23 +924,25 @@ async def cost_of_living(
     #: adjustment on an account someone had imported on-budget did exactly
     #: that — and the report had no drill-down at all, so the only honest
     #: reading of an unexplainable block was "this report is broken".
-    by_group: dict[str, list[tuple[date, Decimal]]] = {}
-    ids_by_group: dict[str, set[str]] = {}
+    by_group: dict[uuid.UUID | None, list[tuple[date, Decimal]]] = {}
+    names: dict[uuid.UUID | None, str] = {}
+    ids_by_group: dict[uuid.UUID | None, set[str]] = {}
     for row in rows:
-        name = row.group_name or UNCATEGORIZED_GROUP
-        by_group.setdefault(name, []).append((row.month, row.total))
-        seen = ids_by_group.setdefault(name, set())
+        by_group.setdefault(row.group_id, []).append((row.month, row.total))
+        names[row.group_id] = row.group_name or UNCATEGORIZED_GROUP
+        seen = ids_by_group.setdefault(row.group_id, set())
         if row.category_id is not None:
             seen.add(str(row.category_id))
 
     groups: list[CostOfLivingGroup] = [
         {
             **_as_costs(signed, month_list),
-            "group_name": name,
+            "group_id": str(gid) if gid is not None else None,
+            "group_name": names[gid],
             "share": Decimal("0"),
-            "category_ids": sorted(ids_by_group.get(name, set())),
+            "category_ids": sorted(ids_by_group.get(gid, set())),
         }
-        for name, signed in by_group.items()
+        for gid, signed in by_group.items()
     ]
     cost_of_living_total = sum((g["total"] for g in groups), Decimal("0"))
     for g in groups:

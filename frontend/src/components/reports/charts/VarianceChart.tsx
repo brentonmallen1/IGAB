@@ -187,9 +187,9 @@ export function VarianceReport({ budgetId }: Props) {
           // a colour no bar had.
           <ChartLegend
             series={[
-              { name: 'Month under plan', color: COLOR_POSITIVE },
-              { name: 'Month over plan', color: COLOR_NEGATIVE },
-              { name: 'Running total', color: COLOR_NET },
+              { id: 'under', name: 'Month under plan', color: COLOR_POSITIVE },
+              { id: 'over', name: 'Month over plan', color: COLOR_NEGATIVE },
+              { id: 'running', name: 'Running total', color: COLOR_NET },
             ]}
             active={null}
             onHover={() => {}}

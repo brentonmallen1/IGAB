@@ -1348,6 +1348,10 @@ class CategoryHistoryReportResponse(ApiModel):
 
 
 class CostOfLivingGroup(ApiModel):
+    #: None for the Uncategorized bucket, which the page drills by "no
+    #: category". Required: the page used to find the bucket by comparing the
+    #: name to "Uncategorized", so a real group of that name opened wrong.
+    group_id: uuid.UUID | None
     group_name: str
     monthly_amounts: list[Decimal]
     total: Decimal

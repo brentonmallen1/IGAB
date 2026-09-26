@@ -208,7 +208,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                       name={s.name}
                       stackId="stack"
                       fill={s.color}
-                      fillOpacity={highlight && highlight !== s.name ? 0.25 : 1}
+                      fillOpacity={highlight && highlight !== s.key ? 0.25 : 1}
                       isAnimationActive={false}
                     />
                   ))}
@@ -245,7 +245,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                       dataKey={s.key}
                       name={s.name}
                       stroke={s.color}
-                      strokeOpacity={highlight && highlight !== s.name ? 0.2 : 1}
+                      strokeOpacity={highlight && highlight !== s.key ? 0.2 : 1}
                       dot={false}
                       strokeWidth={2}
                       isAnimationActive={false}
@@ -260,6 +260,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
               palette repeats, and this list is what says which is which. */}
           <ChartLegend
             series={series.map((s) => ({
+              id: s.key,
               name: s.name,
               color: s.color,
               value: formatMoney(s.total),

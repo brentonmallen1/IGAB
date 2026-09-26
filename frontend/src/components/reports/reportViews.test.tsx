@@ -1938,6 +1938,7 @@ describe('CostOfLivingReport tiers', () => {
     window_end: '2026-08-31',
     groups: [
       {
+        group_id: 'g-bills',
         group_name: 'Bills',
         monthly_amounts: [700, 700],
         total: 1400,
@@ -1946,6 +1947,7 @@ describe('CostOfLivingReport tiers', () => {
         category_ids: ['c1'],
       },
       {
+        group_id: 'g-fun',
         group_name: 'Fun',
         monthly_amounts: [200, 200],
         total: 400,
@@ -1989,6 +1991,50 @@ describe('CostOfLivingReport tiers', () => {
       sub: 'per month, over 2 complete months',
     })
     expect(card('Required')).toEqual({ value: '75%', sub: 'of take-home' })
+  })
+
+  it('opens the Uncategorized bucket by its served null id, by "no category"', () => {
+    const bucket = {
+      group_id: null,
+      group_name: 'Uncategorized',
+      monthly_amounts: [50, 50],
+      total: 100,
+      avg_monthly: 50,
+      share: 5,
+      category_ids: [],
+    }
+    setQuery({ data: { ...tiered, groups: [...tiered.groups, bucket] } })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Uncategorized' })
+    )
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ noCategory: true, label: 'Uncategorized' })
+    expect(drill?.categoryIds).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+  })
+
+  it('opens a real group named "Uncategorized" by its categories', () => {
+    // The page compared the name to the string "Uncategorized", so a group a
+    // household had named that opened every row with no category instead.
+    const named = {
+      group_id: 'g-named',
+      group_name: 'Uncategorized',
+      monthly_amounts: [50, 50],
+      total: 100,
+      avg_monthly: 50,
+      share: 5,
+      category_ids: ['c9'],
+    }
+    setQuery({ data: { ...tiered, groups: [...tiered.groups, named] } })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Uncategorized' })
+    )
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ categoryIds: ['c9'] })
+    expect(drill?.noCategory).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
   })
 
   it('names its table for the tier it rolls up', () => {

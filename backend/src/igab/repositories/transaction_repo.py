@@ -1349,7 +1349,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         bound_categories: Sequence[uuid.UUID] | None = None,
         tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[list, str]:
-        """(category_id, category_name, group_name, month, total, sinking) rows
+        """(category_id, category_name, group_id, group_name, month, total, sinking) rows
         over the same predicate as `essential_spend`, grouped by calendar
         month. A payee-tagged row without a category groups under None.
 
@@ -1363,6 +1363,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             select(
                 Transaction.category_id,
                 Category.name.label("category_name"),
+                CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
                 month,
                 func.sum(Transaction.amount).label("total"),
@@ -1372,7 +1373,14 @@ class TransactionRepository(BaseRepository[Transaction]):
             .outerjoin(Category, Category.id == Transaction.category_id)
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
             .where(*self._necessity_where(budget_id, since, until, scope))
-            .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month, sinking)
+            .group_by(
+                Transaction.category_id,
+                Category.name,
+                CategoryGroup.id,
+                CategoryGroup.name,
+                month,
+                sinking,
+            )
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis
