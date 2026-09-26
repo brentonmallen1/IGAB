@@ -59,6 +59,7 @@ import { AccountCompositionReport } from './AccountCompositionChart'
 import { CostOfLivingReport } from './CostOfLivingReport'
 import { IncomeSourcesReport } from './IncomeSourcesReport'
 import { SavingsRateReport } from './SavingsRateChart'
+import { SpendingTrendsReport } from './SpendingTrendsReport'
 
 /** Each chart with a month that has a negative segment under a positive one. */
 const CASES: [string, ComponentType<{ budgetId: string }>, unknown][] = [
@@ -155,6 +156,35 @@ const CASES: [string, ComponentType<{ budgetId: string }>, unknown][] = [
       tagged: true,
       class_excluded: [],
       counted_classes: ['spending', 'debt_principal'],
+    },
+  ],
+  [
+    'Spending Trends — a category that netted a refund',
+    SpendingTrendsReport,
+    {
+      months: ['2026-08-01'],
+      series: [
+        {
+          id: 'g',
+          name: 'Groceries',
+          group_id: 'e',
+          group_name: 'Everyday',
+          monthly: [400],
+          total: 400,
+        },
+        {
+          id: 'h',
+          name: 'Health',
+          group_id: 'e',
+          group_name: 'Everyday',
+          monthly: [-40],
+          total: -40,
+        },
+      ],
+      monthly_totals: [360],
+      total: 360,
+      class_excluded: [],
+      filter_unavailable: false,
     },
   ],
 ]

@@ -3,7 +3,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -21,8 +20,9 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { chartColor } from './chartColors'
-import { monthWiderByLabel, rollupTrends } from './spendingTrends'
+import { ChartLegend } from './ChartLegend'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
+import { OTHER_KEY, rollupTrends, stackTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
@@ -30,8 +30,6 @@ import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
 interface Props {
   budgetId: string
 }
-
-const MAX_SERIES = 10
 
 /**
  * Spending over time for a chosen set of categories — the basic report that
@@ -47,6 +45,9 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   const groupBy = resolveGroupBy('spending-trends', filters.groupBy)
   const [includeSavings, setIncludeSavings] = useState(false)
   const [chart, setChart] = useState<'stacked' | 'lines'>('stacked')
+  // Which series the legend is pointing at. The palette repeats past its
+  // eighth slot, so this is what tells two same-coloured series apart.
+  const [highlight, setHighlight] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const reportScope = useReportScope()
@@ -60,21 +61,15 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   )
 
   const rolled = useMemo(() => (data ? rollupTrends(data, groupBy) : []), [data, groupBy])
-  const shown = rolled.slice(0, MAX_SERIES)
-  // Month label → the month's total across EVERY series. Only the ten
-  // largest series are stacked, so the tooltip's own sum is a subtotal.
-  const widerFor = useMemo(
-    () => (data ? monthWiderByLabel(data, formatMonth) : () => undefined),
-    [data, formatMonth]
+  // Bars stack every named series plus Other, so each is its month's total.
+  // Lines draw the named series alone: they are not a stack, and an Other
+  // line would be a series nobody asked to follow.
+  const stacked = useMemo(
+    () => (data ? stackTrends(data, rolled, formatMonth) : { rows: [], series: [] }),
+    [data, rolled, formatMonth]
   )
-  const chartData = useMemo(() => {
-    if (!data) return []
-    return data.months.map((m, i) => {
-      const row: Record<string, string | number> = { month: formatMonth(m) }
-      for (const s of shown) row[s.name] = s.monthly[i] ?? 0
-      return row
-    })
-  }, [data, shown, formatMonth])
+  const series =
+    chart === 'stacked' ? stacked.series : stacked.series.filter((s) => s.key !== OTHER_KEY)
 
   if (isLoading) return <div className="report-loading">Loading...</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -153,7 +148,11 @@ export function SpendingTrendsReport({ budgetId }: Props) {
           <div className="report-chart" style={{ height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
               {chart === 'stacked' ? (
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart
+                  data={stacked.rows}
+                  {...MIXED_SIGN_STACK}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <YAxis
@@ -174,18 +173,24 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                         }))}
                         label={String(label ?? '')}
                         showTotal
-                        wider={widerFor(String(label ?? ''))}
                         formatter={formatMoney}
                       />
                     )}
                   />
-                  <Legend />
-                  {shown.map((s, idx) => (
-                    <Bar key={s.key} dataKey={s.name} stackId="stack" fill={chartColor(idx)} />
+                  {series.map((s) => (
+                    <Bar
+                      key={s.key}
+                      dataKey={s.key}
+                      name={s.name}
+                      stackId="stack"
+                      fill={s.color}
+                      fillOpacity={highlight && highlight !== s.name ? 0.25 : 1}
+                      isAnimationActive={false}
+                    />
                   ))}
                 </BarChart>
               ) : (
-                <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <LineChart data={stacked.rows} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <YAxis
@@ -209,21 +214,35 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                       />
                     )}
                   />
-                  <Legend />
-                  {shown.map((s, idx) => (
+                  {series.map((s) => (
                     <Line
                       key={s.key}
                       type="monotone"
-                      dataKey={s.name}
-                      stroke={chartColor(idx)}
+                      dataKey={s.key}
+                      name={s.name}
+                      stroke={s.color}
+                      strokeOpacity={highlight && highlight !== s.name ? 0.2 : 1}
                       dot={false}
                       strokeWidth={2}
+                      isAnimationActive={false}
                     />
                   ))}
                 </LineChart>
               )}
             </ResponsiveContainer>
           </div>
+
+          {/* In stack order, not recharts' own legend: past eight series the
+              palette repeats, and this list is what says which is which. */}
+          <ChartLegend
+            series={series.map((s) => ({
+              name: s.name,
+              color: s.color,
+              value: formatMoney(s.total),
+            }))}
+            active={highlight}
+            onHover={setHighlight}
+          />
 
           <table className="report-table">
             <caption className="sr-only">Spending by month</caption>

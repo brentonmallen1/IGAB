@@ -22,7 +22,8 @@ import { ChartTooltip } from './ChartTooltip'
 import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { incomeSourceCount, otherIncome } from './incomeSourcesView'
+import { incomeSourceCount } from './incomeSourcesView'
+import { otherBand } from '../drillDownTotals'
 import { MIXED_SIGN_STACK } from './mixedSignStack'
 
 interface Props {
@@ -47,7 +48,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
     return data.months.map((m, i) => {
       const row: Record<string, string | number> = { month: formatMonth(m) }
       for (const s of shown) row[s.payee_name] = s.monthly[i] ?? 0
-      const rest = otherIncome(
+      const rest = otherBand(
         data.monthly_totals[i],
         shown.map((s) => s.monthly[i] ?? 0)
       )

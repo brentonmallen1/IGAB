@@ -999,6 +999,41 @@ describe('IncomeSourcesReport average', () => {
   })
 })
 
+describe('SpendingTrendsReport legend', () => {
+  it('lists the stack in order, Other last, in its own key rather than recharts’', () => {
+    // Twelve categories: ten named, two in Other. recharts' <Legend> sorted
+    // them by name, and with eight palette slots two pairs shared a colour
+    // with nothing on the page to tell them apart.
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      id: `c${i}`,
+      name: `Envelope ${String.fromCharCode(76 - i)}`,
+      group_id: 'g',
+      group_name: 'Everyday',
+      monthly: [120 - i],
+      total: 120 - i,
+    }))
+    setQuery({
+      data: {
+        months: ['2026-08-01'],
+        series,
+        monthly_totals: [series.reduce((sum, s) => sum + s.total, 0)],
+        total: series.reduce((sum, s) => sum + s.total, 0),
+        class_excluded: [],
+        filter_unavailable: false,
+      },
+    })
+    useReportStore.getState().setFilters({ groupBy: 'category' })
+    renderReport(<SpendingTrendsReport budgetId="b1" />)
+    const legend = screen.getByRole('list', { name: 'Series in this chart' })
+    const names = within(legend)
+      .getAllByRole('button')
+      .map((b) => b.querySelector('.chart-legend__name')?.textContent)
+    expect(names).toEqual([...series.slice(0, 10).map((s) => s.name), 'Other'])
+    // Other holds the two it folded, the 11th and 12th: 110 and 109.
+    expect(within(legend).getByRole('button', { name: 'Other, $219.00' })).toBeInTheDocument()
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({

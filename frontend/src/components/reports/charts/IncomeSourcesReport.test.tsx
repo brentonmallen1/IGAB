@@ -5,7 +5,7 @@
  * Ready to Assign is income by class — and recharts' default stack offset
  * ("none") draws that segment downwards from the top of the one below it, so
  * it paints over its neighbour and leaves the bar standing at the month's
- * gross. The arithmetic lives in `incomeSourcesView`; what this pins is the
+ * gross. The arithmetic lives in `drillDownTotals.otherBand`; what this pins is the
  * wiring around it, which no pure test can see: the offset the chart is given,
  * that a negative Other band reaches the chart as a band, and that the
  * tooltip's Total is the month's net.
