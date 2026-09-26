@@ -2796,11 +2796,10 @@ class ReportService:
                     none_of(
                         *projected_schedules, reapplied_by_subscriptions(subscription_payee_ids)
                     ),
-                    # A starting balance is where an account's counting begins,
-                    # not a flow. Sampled, an account opened inside the window
-                    # was a phantom deposit the size of its whole balance,
-                    # replayed on every path that drew its day.
-                    ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value,
+                    # Sampled, an account opened inside the window was a
+                    # phantom deposit the size of its whole balance, replayed
+                    # on every path that drew its day.
+                    NOT_OPENING_BALANCE,
                 )
                 .group_by(Transaction.date)
             )

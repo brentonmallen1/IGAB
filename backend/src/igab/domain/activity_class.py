@@ -734,9 +734,10 @@ INCOME_ROW = and_(
 #:
 #: A starting balance is where an account's counting begins, not money that
 #: moved. The class-counting reports leave it out by never asking for it; the
-#: two that take every class have to say so. The Cash Flow Sankey drew a card's
-#: opening debt as an "Uncategorized" expense branch, and the Event Timeline
-#: made a card's -9,200 opening its "Largest Transaction".
+#: three that take every class have to say so. The Cash Flow Sankey drew a
+#: card's opening debt as an "Uncategorized" expense branch, the Event Timeline
+#: made a card's -9,200 opening its "Largest Transaction", and Cash Projection
+#: sampled an account opened inside its history as a deposit of its balance.
 NOT_OPENING_BALANCE = ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value
 
 
