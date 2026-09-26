@@ -12,21 +12,18 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
 
 from igab.db.models import Transaction
 from igab.domain.activity_class import (
-    ACTIVITY_CLASS,
-    ACTIVITY_REASON,
     ActivityClass,
     ActivityReason,
-    apply_class_joins,
     explain,
 )
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 
+from .class_agreement import classes_of
 from .factories import (
     create_account,
     create_budget,
@@ -67,17 +64,7 @@ async def _world(db_session):
 
 
 async def _classify(db_session, txn: Transaction) -> tuple[str, str]:
-    row = (
-        await db_session.execute(
-            # Transaction.id is not wanted; the class joins chain from it.
-            apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
-                    Transaction.id == txn.id
-                )
-            )
-        )
-    ).one()
-    return row[1], row[2]
+    return await classes_of(db_session, txn)
 
 
 async def _transfer_payee(db_session, budget, account):

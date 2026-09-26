@@ -28,6 +28,7 @@ from igab.domain.activity_class import (
 )
 from igab.repositories.tag_repo import TagRepository
 
+from .class_agreement import classes_of
 from .factories import (
     create_account,
     create_budget,
@@ -143,14 +144,7 @@ async def _world(db_session):
 
 
 async def _classify(db_session, txn) -> str:
-    # Transaction.id is not wanted; the class joins chain from it.
-    return (
-        await db_session.execute(
-            apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS).where(Transaction.id == txn.id)
-            )
-        )
-    ).one()[1]
+    return (await classes_of(db_session, txn))[0]
 
 
 async def _linked(db_session, w, src, dst, amount, category=None):
