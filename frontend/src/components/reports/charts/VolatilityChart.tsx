@@ -18,7 +18,8 @@ import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
 import {
   buildVolatilityChartRows,
   coefficientOfVariation,
-  filterVolatile,
+  rankByVariability,
+  VOLATILITY_MIN_MEAN,
   volatilityExport,
 } from './volatilityData'
 import { DrillDownTable } from '../DrillDownTable'
@@ -31,7 +32,7 @@ interface Props {
 }
 
 export function VolatilityReport({ budgetId }: Props) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonth } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
@@ -62,7 +63,7 @@ export function VolatilityReport({ budgetId }: Props) {
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
-  const categories = filterVolatile(data?.categories ?? [])
+  const categories = rankByVariability(data?.categories ?? [])
 
   const chartData = buildVolatilityChartRows(categories)
   const amortized = data?.amortized ?? false
@@ -74,7 +75,7 @@ export function VolatilityReport({ budgetId }: Props) {
     subName: c.category_group_name,
     amount: c.mean,
     pct: coefficientOfVariation(c.mean, c.std_dev),
-    extra: `σ ${formatMoney(c.std_dev)}`,
+    extra: formatMoney(c.std_dev),
   }))
 
   return (
@@ -83,34 +84,23 @@ export function VolatilityReport({ budgetId }: Props) {
         <h2 className="report-section__title">Category Volatility</h2>
         <ReportInfoButton title="Category Volatility">
           <p>
-            The <strong>bar</strong> shows the mean monthly spend. The <strong>whiskers</strong>{' '}
-            extend from the historical minimum (drawn on the bar) to the maximum (drawn beside it) —
-            the full range of variation.
+            Each bar is a category&apos;s <strong>average month</strong>; the whiskers run from its
+            quietest month to its busiest. <strong>Swing</strong> is how far a typical month strays
+            from the average, as a share of it (σ ÷ average). The list is ranked by it, with
+            categories averaging under {formatMoney(VOLATILITY_MIN_MEAN)} a month last. A month with
+            nothing spent counts as zero, and refunds lower a month.
           </p>
           <p>
-            Categories with large error bars (wide range) are <strong>unpredictable</strong> — they
-            spike and drop month to month. These are candidates for a bigger buffer or a closer look
-            at what drives the spikes.
+            A bill paid a few times a year swings by design. <strong>Amortize lumpy charges</strong>{' '}
+            spreads each charge over the months until the next, so a steady cost reads flat and only
+            a genuine change still swings.
           </p>
-          <p>
-            <strong>Fewer, bigger payments read as volatile</strong>, and that is not a mistake: a
-            month with nothing spent is a zero, so an annual insurance premium shows a wide range
-            and a low mean. Its cost is steady; only its timing is lumpy.
-          </p>
-          <p>
-            <strong>Amortize lumpy charges</strong> tells those apart. It spreads each charge
-            forward over the months until the next one, so a bill of the same size every six months
-            reads flat — and a category whose cost genuinely changed still shows a range. Months
-            before a category&apos;s first charge in the window are left out of its figures, since a
-            charge from before the window paid for them. The last charge spreads over the same gap
-            as the one before it, so a bill paid in the window&apos;s final month reads at its
-            monthly rate rather than its full size.
-          </p>
-          <p>Only categories with at least 2 months of data are shown.</p>
           <ReportScopeNote report="volatility" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
-          Mean monthly spending with min/max range. High variation = unstable spending.
+          {data?.window_start && data.window_end
+            ? `Complete months, ${formatMonth(data.window_start)} – ${formatMonth(data.window_end)}. Most variable first.`
+            : 'Most variable first.'}
         </p>
         <div className="flex-row ms-auto">
           <label className="report-toggle">
@@ -200,7 +190,9 @@ export function VolatilityReport({ budgetId }: Props) {
           </ResponsiveContainer>
           <DrillDownTable
             rows={tableRows}
-            amountLabel="Mean/Month"
+            amountLabel="Average / month"
+            pctLabel="Swing"
+            extraLabel="σ"
             onRowClick={(row) => drillTo(row.id, row.name)}
           />
         </div>

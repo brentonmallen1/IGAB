@@ -413,11 +413,18 @@ interface ReportState {
    *  while the active tab is actually starred (`reportNav`), so unstarring
    *  the one you are on needs no separate cleanup. */
   navFavorites: boolean
+  /** The category Category History shows. It lived in the report's own
+   *  `useState`, so leaving the tab — or reloading — dropped it and the report
+   *  opened on "Pick a category…" every time, for a report nobody reads
+   *  without one. Persisted, like the range. An id that no longer names a
+   *  category simply finds nothing and the picker asks again. */
+  historyCategoryId: string
   drillDown: DrillDownContext | null
 
   setActiveTab: (tab: ReportTab) => void
   setRangeMonths: (months: number) => void
   setNavFavorites: (on: boolean) => void
+  setHistoryCategoryId: (id: string) => void
   setFilters: (filters: Partial<ReportFilters>) => void
   setDrillDown: (ctx: DrillDownContext | null) => void
   resetFilters: () => void
@@ -445,6 +452,7 @@ export const useReportStore = create<ReportState>()(
       filters: defaultFilters(),
       rangeMonths: DEFAULT_RANGE_MONTHS,
       navFavorites: false,
+      historyCategoryId: '',
       drillDown: null,
 
       setActiveTab: (tab) => set({ activeTab: tab, drillDown: null }),
@@ -452,6 +460,7 @@ export const useReportStore = create<ReportState>()(
       // panel's window was resolved against the window that just moved.
       setRangeMonths: (months) => set({ rangeMonths: months, drillDown: null }),
       setNavFavorites: (on) => set({ navFavorites: on }),
+      setHistoryCategoryId: (id) => set({ historyCategoryId: id, drillDown: null }),
       // Filter changes invalidate the drill context (its window/ids were
       // resolved against the previous filters)
       setFilters: (partial) =>
@@ -466,6 +475,7 @@ export const useReportStore = create<ReportState>()(
         filters: s.filters,
         rangeMonths: s.rangeMonths,
         navFavorites: s.navFavorites,
+        historyCategoryId: s.historyCategoryId,
       }),
       // A state persisted before a filter field existed arrives without it,
       // and `filters.tagIds.length` on undefined is a blank Reports page for
