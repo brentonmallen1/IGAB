@@ -934,6 +934,12 @@ class ReportService:
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 CASH_FLOW_ROW,
+                # A starting balance is where an account's counting begins, not
+                # money that flowed: neither income in nor an outflow off the
+                # budget node. Left in, a card's opening debt was an
+                # "Uncategorized" expense branch here after every spending
+                # report had stopped counting it.
+                ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value,
             )
         )
         q, _ = account_scope(q, account_ids)

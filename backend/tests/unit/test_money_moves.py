@@ -170,7 +170,7 @@ class TestPlannedSpendByTag:
 
     def test_a_kept_here_outflow_that_is_not_spending_is_spent_against_the_plan(self):
         """A move from a kept-here envelope to a tracked savings account
-        classes SAVINGS by rule 3; the plan still meant that money to leave."""
+        classes SAVINGS by rule 4; the plan still meant that money to leave."""
         assert self._explain(CategoryKind.SAVINGS_KEPT, ActivityClass.SAVINGS).planned_spend_by_tag
 
     def test_not_a_refund_and_not_other_tags(self):

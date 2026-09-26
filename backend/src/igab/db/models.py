@@ -303,7 +303,7 @@ class Account(Base):
     classification: Mapped[str] = mapped_column(String(20), nullable=False)
     #: Whether money moved into this (off-budget asset) account is saving. A
     #: brokerage is; a car or a house is not — buying one is spending and
-    #: selling one is income (`domain/activity_class.py`, rules 3 and 5). Read
+    #: selling one is income (`domain/activity_class.py`, rules 4 and 6). Read
     #: only for off-budget assets. The server default lets a budget snapshot
     #: taken before the column existed still restore.
     counts_as_savings: Mapped[bool] = mapped_column(

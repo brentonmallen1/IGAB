@@ -1,5 +1,5 @@
 -- ACTIVITY_CLASS
-CASE WHEN (EXISTS (SELECT categories.id 
+CASE WHEN (xfer_payee.name IS NOT DISTINCT FROM 'Starting Balance' AND NOT (transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL)) THEN 'opening_balance' WHEN (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
@@ -19,7 +19,7 @@ WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_grou
 FROM category_groups 
 WHERE category_groups.id = categories.category_group_id AND category_groups.is_system = true))))) THEN 'income' ELSE 'spending' END
 -- ACTIVITY_REASON
-CASE WHEN (EXISTS (SELECT categories.id 
+CASE WHEN (xfer_payee.name IS NOT DISTINCT FROM 'Starting Balance' AND NOT (transactions.transfer_id IS NOT NULL OR xfer_payee.transfer_account_id IS NOT NULL)) THEN 'starting_balance' WHEN (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
@@ -39,7 +39,11 @@ WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_grou
 FROM category_groups 
 WHERE category_groups.id = categories.category_group_id AND category_groups.is_system = true))))) THEN 'uncategorized_inflow' ELSE 'default_spending' END
 -- ACTIVITY_CLASS_SUBQUERY
-CASE WHEN (EXISTS (SELECT categories.id 
+CASE WHEN ((EXISTS (SELECT payees.id 
+FROM payees, transactions 
+WHERE payees.id = transactions.payee_id AND payees.name IN ('Starting Balance'))) AND NOT (transactions.transfer_id IS NOT NULL OR (EXISTS (SELECT payees.id 
+FROM payees, transactions 
+WHERE payees.id = transactions.payee_id AND payees.transfer_account_id IS NOT NULL)))) THEN 'opening_balance' WHEN (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
@@ -123,7 +127,11 @@ WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_grou
 FROM category_groups 
 WHERE category_groups.id = categories.category_group_id AND category_groups.is_system = true))))) THEN 'income' ELSE 'spending' END
 -- ACTIVITY_REASON_SUBQUERY
-CASE WHEN (EXISTS (SELECT categories.id 
+CASE WHEN ((EXISTS (SELECT payees.id 
+FROM payees, transactions 
+WHERE payees.id = transactions.payee_id AND payees.name IN ('Starting Balance'))) AND NOT (transactions.transfer_id IS NOT NULL OR (EXISTS (SELECT payees.id 
+FROM payees, transactions 
+WHERE payees.id = transactions.payee_id AND payees.transfer_account_id IS NOT NULL)))) THEN 'starting_balance' WHEN (EXISTS (SELECT categories.id 
 FROM categories, transactions 
 WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 

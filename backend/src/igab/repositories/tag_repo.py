@@ -37,7 +37,7 @@ SYSTEM_TAGS = [
     # toward a known annual bill, so the Savings report lists it beside real
     # savings — but the bill itself is a cost, and classifying its payout as
     # SAVINGS hid a property-tax payment from every spending report while
-    # telling the household it had saved that money (see activity_class rule 1).
+    # telling the household it had saved that money (see activity_class rule 2).
     ("long_term_expense", "Long-term expense", "teal"),
     ("debt_principal", "Debt principal", "orange"),
     # The two necessity tiers, and Essentials is the strict subset.

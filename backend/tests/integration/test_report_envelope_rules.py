@@ -283,7 +283,7 @@ class TestThePlannedSpendUniverse:
     )
     async def test_kept_here_transfer_to_hysa_counts_against_plan(self, db_session, tag_key, mode):
         """A kept-here savings envelope moving its balance to a tracked HYSA.
-        The row classes SAVINGS by where it went (rule 3), not by the tag, and
+        The row classes SAVINGS by where it went (rule 4), not by the tag, and
         the plan still meant that money to leave the envelope. An Emergency
         fund envelope is kept here by default, and the plan arm must reach it
         although it carries no Savings tag."""
@@ -458,7 +458,7 @@ class TestASavingsTaggedEnvelope:
     """Item 5d in docs/reports-audit-chain.md, decided and now built: spending
     out of a `savings`-tagged envelope counts against that envelope's plan.
 
-    The tag classes the outflow SAVINGS (rule 1 of `domain.activity_class`),
+    The tag classes the outflow SAVINGS (rule 2 of `domain.activity_class`),
     and for a long time that meant the plan-vs-actual family counted the
     envelope's assignments and none of its spending — a Vacation Savings
     envelope assigned 195 a month and drained by a 390 flight read as a

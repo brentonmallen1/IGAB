@@ -371,13 +371,14 @@ class TestEdgeCases:
         txn = await create_transaction(db_session, w.budget, w.brokerage, "1000.00", TODAY)
         assert (await _classify(db_session, txn))[0] == ActivityClass.INVESTMENT_RETURN
 
-    async def test_every_class_value_is_reachable_or_reserved(self):
+    async def test_every_class_value_is_reachable(self):
+        """Nothing is reserved any more: OPENING_BALANCE was, until the
+        Starting Balance rule gave it a row to name."""
         emitted = {
             cls for _, cls, _ in __import__("igab.domain.activity_class", fromlist=["RULES"]).RULES
         }
         emitted.add(ActivityClass.SPENDING)
-        reserved = {ActivityClass.OPENING_BALANCE}
-        assert set(ActivityClass) == emitted | reserved
+        assert set(ActivityClass) == emitted
 
 
 class TestExplain:

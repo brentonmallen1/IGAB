@@ -137,7 +137,7 @@ async def _household(db_session, owner=None):
     await tag_with_system_tags(db_session, rent, "essential")
     await tag_with_system_tags(db_session, electric, "essential")
     await tag_with_system_tags(db_session, streaming, "cost_of_living")
-    # Savings, sent out by default: its outflows class SAVINGS by rule 1, so
+    # Savings, sent out by default: its outflows class SAVINGS by rule 2, so
     # "untagged for Cost of living" alone would have counted them.
     await tag_with_system_tags(db_session, investing, "savings")
 

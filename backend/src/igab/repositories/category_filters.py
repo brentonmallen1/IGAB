@@ -396,7 +396,7 @@ def ticked_on_checklist(tag_id, system_key) -> ColumnElement[bool]:
 
 # ─── Savings categories ──────────────────────────────────────────────────────
 #
-# How a category's money counts as saved, stated once. The classifier's rule 1
+# How a category's money counts as saved, stated once. The classifier's rule 2
 # (`domain/activity_class.py`), the plan reports' savings exception, the
 # served `Category.savings_role` and the Savings report all read these — a
 # second spelling of "which envelopes are savings, and how" is exactly how a
@@ -445,7 +445,7 @@ SAVINGS_ROLE = case(
     ),
 )
 
-#: A savings category whose outflows count as saved — rule 1 of the classifier.
+#: A savings category whose outflows count as saved — rule 2 of the classifier.
 #: Never NULL: every arm of `SAVINGS_ROLE` is a literal or coalesced to one.
 SAVINGS_SENT_OUT = SAVINGS_ROLE == SAVINGS_SENT_OUT_MODE
 
@@ -458,7 +458,7 @@ HOLDS_SAVINGS = and_(SAVINGS_ROLE == SAVINGS_KEPT_HERE_MODE, _SAVINGS_ENVELOPE)
 
 #: A sent-out savings envelope — the same envelope terms as `HOLDS_SAVINGS`. Its
 #: Available is money on the way to savings: it counts as saved when it leaves
-#: (rule 1), so the Savings report shows the balance beside Saved and never in
+#: (rule 2), so the Savings report shows the balance beside Saved and never in
 #: it — adding it would count the same dollars again the day they are sent.
 SENDS_SAVINGS = and_(SAVINGS_SENT_OUT, _SAVINGS_ENVELOPE)
 

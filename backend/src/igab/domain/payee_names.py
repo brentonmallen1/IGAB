@@ -39,6 +39,11 @@ from collections.abc import Iterable, Sequence
 #: arrive *with* a category come from a YNAB import, which preserves the
 #: export's "Inflow: Ready to Assign" filing because that is YNAB's own
 #: convention for an adjustment on any account.
+#:
+#: The starting balance alone also decides a row's activity class:
+#: `txn_filters.STARTING_BALANCE_ROW` makes it `OPENING_BALANCE`, so reports
+#: never count where an account's counting begins as income or spending. The
+#: other two names keep the class their shape gives them.
 RECONCILIATION_ADJUSTMENT_PAYEE = "Reconciliation Balance Adjustment"
 STARTING_BALANCE_PAYEE = "Starting Balance"
 BALANCE_ADJUSTMENT_PAYEES = frozenset(

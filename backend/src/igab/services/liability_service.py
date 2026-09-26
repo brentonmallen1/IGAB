@@ -157,10 +157,11 @@ def _charged_interest(
     """Interest genuinely charged in `month`, as a positive figure.
 
     The guard is the whole point and it is easy to miss: on a tracked debt a
-    plain outflow IS an interest charge (`activity_class`), and so is the
-    origination row that opens the account with its whole principal. That row
-    lands in a month with no payment, so requiring a payment in the same month
-    is what stops a 24,000 loan being read as 24,000 of interest.
+    plain outflow IS an interest charge (`activity_class`), and so is an
+    origination row that opens the account with its whole principal under
+    any name but Starting Balance (`DEBT_INTEREST_ROW` leaves that one out).
+    Such a row lands in a month with no payment, so requiring a payment in the
+    same month is what stops a 24,000 loan being read as 24,000 of interest.
 
     One implementation because two readers need it — the trailing-months
     average on the liability page, and the "has this month already been
@@ -433,10 +434,12 @@ class LiabilityService:
         first, as positive figures; plain deposits over the window).
 
         Tracked debts only — the line `activity_class` draws: on an on-budget
-        card a plain outflow is a purchase, not a charge. And only the months
-        a payment arrived in: the origination row is a plain outflow too, and
-        the month it lands in has no payment, so it is never read as a
-        charge. Both empty for an unmanaged liability — no ledger to read.
+        card a plain outflow is a purchase, not a charge. A Starting Balance
+        row is never a charge (`DEBT_INTEREST_ROW`). And only the months a
+        payment arrived in: an origination row under another name is a plain
+        outflow too, and the month it lands in has no payment, so it is never
+        read as a charge. Both empty for an unmanaged liability — no ledger
+        to read.
         """
         if liability.linked_account_id is None:
             return [], ZERO
