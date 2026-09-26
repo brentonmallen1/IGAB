@@ -21,9 +21,13 @@ interface Props {
 }
 
 export function TimelineReport({ budgetId }: Props) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDate } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [limit, setLimit] = useState<(typeof TIMELINE_LIMITS)[number]>(25)
+  // Money out by default: "the largest transactions" is read as where the
+  // big money went, and a month of paycheques otherwise took most of the
+  // slots. Inflows are one click away.
+  const [outflowsOnly, setOutflowsOnly] = useState(true)
   const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, error, refetch } = useTimelineReport(
@@ -32,7 +36,8 @@ export function TimelineReport({ budgetId }: Props) {
     filters.endDate,
     limit,
     reportScope,
-    acctIds
+    acctIds,
+    outflowsOnly
   )
   const { data: payees } = usePayees(budgetId)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -64,25 +69,40 @@ export function TimelineReport({ budgetId }: Props) {
   return (
     <div className="report-section surface">
       <div className="report-section__header">
-        <h2 className="report-section__title">Event Timeline</h2>
-        <ReportInfoButton title="Event Timeline">
+        <h2 className="report-section__title">Largest transactions</h2>
+        <ReportInfoButton title="Largest transactions">
           <p>
-            Your largest transactions, newest first. The <strong>dot size</strong> reflects the
-            transaction's magnitude relative to the largest in the set — bigger dot = larger amount.
+            Your largest transactions in the period, drawn newest first. <strong>Money out</strong>{' '}
+            lists outflows only; <strong>All</strong> lets deposits and refunds compete for the
+            slots too. The <strong>dot size</strong> reflects the transaction&apos;s size relative
+            to the largest in the set.
           </p>
           <p>
-            <strong>Red dots</strong> are spending; <strong>green dots</strong> are income. Money
-            moved into savings or used to pay down a tracked debt gets its own colour and a label —
-            it left your budget, but it isn't spending. Amounts keep their sign: money out is
-            negative, and money back into a spending category is marked <strong>Refund</strong>.
-            Transactions alternate left/right for readability. Hover any dot for full details.
+            Spending and income each have their own colour. Money moved into savings or used to pay
+            down a tracked debt gets a colour and a label of its own — it left your budget, but it
+            isn&apos;t spending. Amounts keep their sign: money out is negative, and money back into
+            a spending category is marked <strong>Refund</strong>. Hover any dot for full details.
           </p>
           <ReportScopeNote report="timeline" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
-          Largest transactions — size indicates relative magnitude.
+          Newest first; a dot&apos;s size is relative to the largest here.
         </p>
         <div className="flex-row ms-auto">
+          <button
+            className={`report-btn ${outflowsOnly ? 'report-btn--active' : ''}`}
+            onClick={() => setOutflowsOnly(true)}
+            type="button"
+          >
+            Money out
+          </button>
+          <button
+            className={`report-btn ${!outflowsOnly ? 'report-btn--active' : ''}`}
+            onClick={() => setOutflowsOnly(false)}
+            type="button"
+          >
+            All
+          </button>
           {TIMELINE_LIMITS.map((l) => (
             <button
               key={l}
@@ -117,10 +137,10 @@ export function TimelineReport({ budgetId }: Props) {
       <ReportNotes report={data} toggleAvailable={false} />
 
       <div ref={captureRef} className="report-capture">
+        {/* One card: "Shown: 25 transactions" restated the Top 25 button. */}
         {transactions.length > 0 && (
           <MetricRow>
-            <MetricCard label="Largest Transaction" value={formatMoney(largestAmt)} />
-            <MetricCard label="Shown" value={`${transactions.length} transactions`} />
+            <MetricCard label="Largest" value={formatMoney(largestAmt)} />
           </MetricRow>
         )}
 
@@ -140,13 +160,13 @@ export function TimelineReport({ budgetId }: Props) {
                   <div
                     className={`timeline__dot timeline__dot--${tone}`}
                     style={{ width: size, height: size }}
-                    title={`${tx.date} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(amt)}`}
+                    title={`${formatDate(tx.date)} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(amt)}`}
                   />
                   <div
                     className={`timeline__card timeline__card--${side} ${tx.payee_name && payeeIdByName.has(tx.payee_name) ? 'timeline__card--clickable' : ''}`}
                     onClick={tx.payee_name ? () => drillTo(tx.payee_name!) : undefined}
                   >
-                    <div className="timeline__date">{tx.date}</div>
+                    <div className="timeline__date">{formatDate(tx.date)}</div>
                     <div className="timeline__payee">{tx.payee_name ?? 'Unknown Payee'}</div>
                     {tx.category_name && (
                       <div className="timeline__category">{tx.category_name}</div>

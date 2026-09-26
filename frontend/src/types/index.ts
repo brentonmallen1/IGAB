@@ -671,7 +671,8 @@ export interface SplitCreate {
 }
 
 export interface SpendingCategory {
-  id: string
+  /** null on the Uncategorized line — backend `domain/spending.py`. */
+  id: string | null
   name: string
   group_name: string
   total: number
@@ -705,6 +706,8 @@ export interface IncomeExpenseMonth {
 
 export interface IncomeExpenseReport {
   months: IncomeExpenseMonth[]
+  /** The classes `expenses` counts — what the Expenses drill-down lists. */
+  expense_classes: string[]
 }
 
 export interface CategoryTarget {
@@ -821,7 +824,8 @@ export interface DashboardMetrics {
    *  COST_OF_LIVING_CLASSES — spending plus debt payments, never savings.
    *  Read against income by `components/reports/livingMeans.ts`. */
   outflows_this_month: number
-  top_categories: { id: string; name: string; group_name: string; total: number }[]
+  /** `id` is null on the Uncategorized line. */
+  top_categories: { id: string | null; name: string; group_name: string; total: number }[]
   /** The last 12 complete months, oldest first, whatever the requested window
    *  — fewer on a younger budget, none on an empty one; a quiet month inside
    *  the window is zeros. Served by `report_basics.means_months` with the
@@ -1077,7 +1081,10 @@ export interface VolatilityReport {
 }
 
 export interface SpendingGroupItem {
-  id: string
+  /** null on the Uncategorized line: spending with no category, drilled by
+   *  `noCategory` (backend `domain/spending.py`). Net of refunds, so `total`
+   *  can be negative. */
+  id: string | null
   name: string
   parent_id: string | null
   parent_name: string | null
@@ -1116,6 +1123,10 @@ export interface SpendingGroupedReport extends SavedFilterScope {
   /** Savings / debt activity in categories the user is looking at that a
    *  spending report will not count. Empty without a selection or view. */
   class_excluded: SpendingClassExcluded[]
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 export interface CategoryClassSlice {
@@ -1134,16 +1145,25 @@ export interface CategoryClassification {
 }
 
 export interface SeasonalityCell {
-  category_id: string
+  /** null on the Uncategorized row. */
+  category_id: string | null
   category_name: string
   month: string
+  /** Net of refunds: a month that took back more than it spent is negative. */
   total: number
 }
 
 export interface SeasonalityReport {
   cells: SeasonalityCell[]
   months: string[]
-  categories: { id: string; name: string }[]
+  /** The largest by net spending (backend `SEASONALITY_TOP`). */
+  categories: { id: string | null; name: string }[]
+  /** Every category that spent in the window — "top 20 of N". */
+  category_count: number
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 /** One envelope or account the emergency fund counted. */
@@ -1247,7 +1267,8 @@ export interface EssentialsReport {
 }
 
 export interface SpendingTrendSeries {
-  id: string
+  /** null on the Uncategorized series. */
+  id: string | null
   name: string
   group_id: string | null
   group_name: string | null
@@ -1260,7 +1281,17 @@ export interface SpendingTrendsReport extends SavedFilterScope {
   series: SpendingTrendSeries[]
   monthly_totals: number[]
   total: number
+  /** Over the complete months in the range only; null when it holds none.
+   *  Never divide `total` by `months.length` — that counts the running month. */
+  monthly_average: number | null
+  months_averaged: number
+  /** Whether the last month on the axis is complete; false means "so far". */
+  latest_complete: boolean
   class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 export interface IncomeSource {
@@ -1323,14 +1354,27 @@ export interface PayeeAnalysisReport {
    *  every payee — the Pareto card's figure, which the top 25 cannot give
    *  (backend `domain/concentration.py`). null when nothing was spent. */
   payees_to_80pct: number | null
+  /** Months of the window a payee must appear in to be `is_recurring`
+   *  (backend `domain.spending.recurring_months`); null when the window is
+   *  too short to call anything recurring. */
+  recurring_min_months: number | null
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 export interface DayPatternItem {
   day_of_week: number
   day_name: string
+  /** Net spending on this weekday across the window. */
   total: number
+  /** Purchases, not rows: a split's legs are one purchase. */
   count: number
-  avg_transaction: number
+  /** How many of this weekday the window holds, quiet ones included. */
+  weekdays: number
+  /** `total / weekdays`: a typical such day. null when there are none. */
+  avg_per_day: number | null
 }
 
 export interface DayPatternsReport extends SavedFilterScope {
@@ -1341,6 +1385,10 @@ export interface DayPatternsReport extends SavedFilterScope {
   /** The activity classes these figures count, passed to the drill-down so a
    *  bar and the panel it opens total the same. */
   counted_classes: string[]
+  /** The days `weekdays` counts: the range, from the budget's first
+   *  transaction at the earliest, through today at the latest. */
+  window_start: string
+  window_end: string
 }
 
 export interface TimelineTransaction {
@@ -1537,16 +1585,22 @@ export interface AnomalyReport {
 
 export interface PaydayEffectDay {
   offset: number
-  avg_spend: number
+  /** The median payday's discretionary spending this many days after it. */
+  median_spend: number
+  /** Paydays this day has happened for. */
+  paydays: number
 }
 
 export interface PaydayEffectReport {
   days: PaydayEffectDay[]
-  /** null when the payday windows cover every day, so there is no "outside"
-   *  to average — backend PaydayEffectResponse. Never read it as 0.00: that
-   *  says the household spends nothing between paydays. */
+  /** The median day's discretionary spending across the whole window, over
+   *  `baseline_days` days. null only when there were no paydays. */
   baseline_daily: number | null
+  baseline_days: number
+  /** Paydays found in the window. */
   event_count: number
+  window_start: string
+  window_end: string
   /** The smallest inflow the server counted as a payday — backend
    *  PAYDAY_FLOOR, served so the info panel quotes the rule it applied. */
   payday_floor: number

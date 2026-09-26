@@ -130,7 +130,7 @@ async def test_parent_scope_returns_split_as_one_row(api_client, db_session):
 
     # Reconciles with the payee-analysis aggregate (PARENT_ROW-based)
     reports = ReportService(db_session)
-    payees, _total, _count, _to80 = await reports.payee_analysis(budget.id, START, TODAY)
+    payees = (await reports.payee_analysis(budget.id, START, TODAY))["payees"]
     superstore = next(p for p in payees if p["payee_name"] == "Superstore")
     assert abs(money(body["total_amount"])) == Decimal(str(superstore["total"]))
 
@@ -179,9 +179,7 @@ async def test_a_payee_drill_lists_split_legs_by_their_payee_of_record(api_clien
         db_session, budget, checking, "-25.00", when, category=groceries, payee=market
     )
 
-    payees, _total, _count, _to80 = await ReportService(db_session).payee_analysis(
-        budget.id, START, TODAY
-    )
+    payees = (await ReportService(db_session).payee_analysis(budget.id, START, TODAY))["payees"]
     (bar,) = [p for p in payees if p["payee_name"] == "Harborstone Market"]
     assert Decimal(str(bar["total"])) == Decimal("125.00")
 
@@ -229,7 +227,10 @@ async def test_leaf_reconciles_with_spending_report(api_client, db_session):
             cleared="cleared",
         ),
     )
-    # Refund: positive amount in the category — spending charts count outflow only
+    # Refund: positive amount in the category. Spending is net of refunds, so
+    # the report counts it and so does the drill, which asks for the served
+    # classes rather than a direction — an `outflow` drill dropped it, and a
+    # 235 bar opened a 260 list.
     await create_transaction(
         db_session, budget, checking, "25.00", TODAY - timedelta(days=1), category=groceries
     )
@@ -243,13 +244,13 @@ async def test_leaf_reconciles_with_spending_report(api_client, db_session):
         scope="leaf",
         posted_only=True,
         cash_flow_only=True,
-        direction="outflow",
+        activity_classes="spending",
         category_ids=str(groceries.id),
         start_date=START.isoformat(),
         end_date=TODAY.isoformat(),
     )
-    assert abs(money(body["total_amount"])) == Decimal(str(report_total))
-    assert body["total_count"] == 2  # plain -200 and split child -60
+    assert -money(body["total_amount"]) == Decimal(str(report_total)) == Decimal("235.00")
+    assert body["total_count"] == 3  # plain -200, split child -60 and the +25 refund
 
 
 async def test_month_reconciles_with_income_vs_expense(api_client, db_session):

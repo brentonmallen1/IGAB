@@ -5,6 +5,7 @@
  */
 import type { SpendingTrendsReport } from '../../../types'
 import { otherBand } from '../drillDownTotals'
+import { categoryKey } from '../drillScope'
 import { chartColor, COLOR_OTHER } from './chartColors'
 
 export interface TrendRow {
@@ -21,7 +22,8 @@ export function rollupTrends(
 ): TrendRow[] {
   if (groupBy !== 'group') {
     return data.series.map((s) => ({
-      key: s.id,
+      // The Uncategorized series is served with no id.
+      key: categoryKey(s.id),
       name: s.name,
       group_name: s.group_name,
       monthly: s.monthly,

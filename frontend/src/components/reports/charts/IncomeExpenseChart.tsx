@@ -48,13 +48,14 @@ export function IncomeExpenseReport({ budgetId }: Props) {
    *  Expenses, clawbacks in Income — so each list carries both directions
    *  and totals the bar that opened it. */
   function drillTo(month: string, figure: 'income' | 'expenses') {
+    if (!data) return
     const ym = month.slice(0, 7)
     const window = monthWindow(ym)
     const range = { startDate: window.start, endDate: window.end }
     setDrillDown(
       figure === 'income'
         ? incomeDrill(`Income · ${ym}`, range)
-        : expensesDrill(`Expenses · ${ym}`, range)
+        : expensesDrill(`Expenses · ${ym}`, range, data.expense_classes)
     )
   }
 

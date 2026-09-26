@@ -3,6 +3,7 @@
  * ParetoChart so the concentration math is unit-testable. */
 import type { GroupBy } from '../../../stores/reportStore'
 import { shareOfTotal } from '../drillDownTotals'
+import { categoryKey } from '../drillScope'
 
 export interface ParetoItem {
   id: string
@@ -10,10 +11,15 @@ export interface ParetoItem {
   total: number
   groupKey: string | null
   groupName: string | null
+  /** The category ids a bar opens (`categoryTarget`): its own, a group's
+   *  members, or `[null]` for the Uncategorized line. Empty in payee mode,
+   *  whose bars open by payee. */
+  members: (string | null)[]
 }
 
 interface SpendingGroupItemLike {
-  id: string
+  /** null on the Uncategorized line. */
+  id: string | null
   name: string
   total: string | number
   parent_id: string | null
@@ -73,6 +79,7 @@ export function buildParetoItems(
         total: Number(p.total),
         groupKey: null,
         groupName: null,
+        members: [],
       })),
       // The served total, not a sum of the ranked rows: it covers every
       // payee in the window, and each row's `pct` is a share of it.
@@ -82,17 +89,22 @@ export function buildParetoItems(
     }
   }
   if (groupBy === 'group') {
-    const map = new Map<string, { id: string; name: string; total: number }>()
+    const map = new Map<
+      string,
+      { id: string; name: string; total: number; members: (string | null)[] }
+    >()
     for (const item of spendingItems) {
       const gid = item.parent_id ?? '__none__'
       const ex = map.get(gid)
       if (ex) {
         ex.total += Number(item.total)
+        ex.members.push(item.id)
       } else {
         map.set(gid, {
           id: gid,
           name: item.parent_name ?? 'Uncategorized',
           total: Number(item.total),
+          members: [item.id],
         })
       }
     }
@@ -107,11 +119,12 @@ export function buildParetoItems(
   const items = [...spendingItems].sort((a, b) => Number(b.total) - Number(a.total))
   return {
     sorted: items.map((i) => ({
-      id: i.id,
+      id: categoryKey(i.id),
       name: i.name,
       total: Number(i.total),
       groupKey: i.parent_id,
       groupName: i.parent_name,
+      members: [i.id],
     })),
     grandTotal: Number(backendTotal ?? 0),
     universeCount: items.length,
@@ -184,31 +197,8 @@ export function paretoSummary(
   return { drawn, ...paretoInsight(cumulativePcts, universeCount, servedItemsTo80) }
 }
 
-/** Determines if spending adheres to the 80/20 rule.
- * Returns null if data is insufficient, or an object with:
- * - adherent: true if ≤30% of items account for 80% of spending
- * - pct: the actual percentage of items needed for 80%
- * - message: guidance for the user
- *
- * Takes the unrounded coverage. It used to take the string the card renders,
- * so 30.4% of items — which `.toFixed(0)` shows as "30" — was reported as
- * concentrated spending on the wrong side of the line. */
-export function paretoAdherence(
-  coverage: number | null,
-  totalItemCount: number
-): { adherent: boolean; pct: number; message: string } | null {
-  if (coverage === null || totalItemCount < 3) return null
-  const pct = coverage
-  if (pct <= 30) {
-    return {
-      adherent: true,
-      pct,
-      message: 'Spending is concentrated—easier to optimize the top items.',
-    }
-  }
-  return {
-    adherent: false,
-    pct,
-    message: 'Spending is spread thin—consider consolidating or reviewing smaller items.',
-  }
-}
+// No verdict. The card used to add "Spending is concentrated — easier to
+// optimize" or "spread thin — consider consolidating" at a 30% threshold,
+// in warning colour on one side of it: advice from a number that describes a
+// budget's shape, not a problem with it. A household whose rent is most of
+// its spending is not doing anything wrong. The card states the figure.

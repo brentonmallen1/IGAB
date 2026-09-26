@@ -25,6 +25,7 @@ import {
   roundedDaysUntilZero,
   spendingDelta,
 } from './overviewMetrics'
+import { categoryKey } from './drillScope'
 import './OverviewReport.css'
 
 interface Props {
@@ -251,7 +252,7 @@ export function OverviewReport({ budgetId }: Props) {
           <h3 className="overview-report__section-heading">Top Spending</h3>
           <div className="overview-report__top-list">
             {data.top_categories.map((c, i) => (
-              <div key={c.id} className="overview-report__top-item">
+              <div key={categoryKey(c.id)} className="overview-report__top-item">
                 <span className="overview-report__top-rank">{i + 1}</span>
                 <div className="overview-report__top-info">
                   <span className="overview-report__top-name">{c.name}</span>

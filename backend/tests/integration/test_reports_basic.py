@@ -428,12 +428,13 @@ class TestTheClassRuleIsOneRule:
         trends = (await spending_trends(svc, budget.id, *window, **scope))["total"]
         days = await svc.day_patterns(budget.id, *window, **scope)
         by_day = sum((d["total"] for d in days["days"]), Decimal("0"))
-        _p, by_payee, _n, _to80 = await svc.payee_analysis(budget.id, *window, **scope)
+        by_payee = (await svc.payee_analysis(budget.id, *window, **scope))["total"]
 
-        assert breakdown == grouped == trends == Decimal("180.00")
-        # The one deliberate gap (stated at `SPENDING_ROW`): the day and payee
-        # views count uncategorized spending the category rollups cannot place.
-        assert by_day == by_payee == breakdown + Decimal("15.00")
+        # 180 of fees and 15 uncategorized. The category rollups used to stop
+        # at 180 — they inner-joined Category, so uncategorized spending had
+        # nowhere to go — while the day and payee views said 195. It is its
+        # own Uncategorized line now, on all five.
+        assert breakdown == grouped == trends == by_day == by_payee == Decimal("195.00")
 
 
 async def _sankey_seen(svc, budget_id, window, mode, **scope) -> Decimal:
@@ -452,7 +453,7 @@ _SCOPED_READERS = {
     "large_transactions": lambda svc, b, w, **s: _count(svc.large_transactions(b, *w, **s)),
     "cash_flow_sankey_spent": lambda svc, b, w, **s: _sankey_seen(svc, b, w, "spent", **s),
     "cash_flow_sankey_budgeted": lambda svc, b, w, **s: _sankey_seen(svc, b, w, "budgeted", **s),
-    "payee_analysis": lambda svc, b, w, **s: _nth(svc.payee_analysis(b, *w, **s), 1),
+    "payee_analysis": lambda svc, b, w, **s: _key(svc.payee_analysis(b, *w, **s), "total"),
 }
 
 
@@ -514,8 +515,8 @@ class TestAnEmptyScopeReturnsNothingNotEverything:
         svc = ReportService(db_session)
         window = (add_months(THIS, -1), TODAY)
 
-        _p, unscoped, _n, _to80 = await svc.payee_analysis(budget.id, *window)
-        _p, empty, _n, _to80 = await svc.payee_analysis(budget.id, *window, payee_ids=[])
+        unscoped = (await svc.payee_analysis(budget.id, *window))["total"]
+        empty = (await svc.payee_analysis(budget.id, *window, payee_ids=[]))["total"]
 
         assert unscoped == Decimal("60.00")
         assert empty == Decimal("0")

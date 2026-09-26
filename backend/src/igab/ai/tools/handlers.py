@@ -471,22 +471,25 @@ async def _resolve_category(ctx: ToolContext, name: str):
 async def payee_analysis(ctx: ToolContext, args: dict) -> dict:
     start = _date(args, "start_date", ctx.today.replace(day=1))
     end = _date(args, "end_date", ctx.today)
-    rows, total, payee_count, _ = await ctx.reports.payee_analysis(
-        ctx.budget_id, start, end, limit=25
-    )
+    report = await ctx.reports.payee_analysis(ctx.budget_id, start, end, limit=25)
     shaped = [
         {
             "payee": r["payee_name"],
             "total": money(r["total"]),
             "count": r["count"],
-            "recurring": r.get("is_recurring", False),
+            "recurring": r["is_recurring"],
         }
-        for r in rows
+        for r in report["payees"]
     ]
     # A ranked top-N, not a page, so `clip` would report "25 rows, not
     # truncated". The total spans every payee and so does the count, which is
     # why this one may state it.
-    return ranked(shaped, measure="amount spent", total_amount=total, total_rows=payee_count)
+    return ranked(
+        shaped,
+        measure="amount spent, net of refunds",
+        total_amount=report["total"],
+        total_rows=report["payee_count"],
+    )
 
 
 async def large_transactions(ctx: ToolContext, args: dict) -> dict:

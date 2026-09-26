@@ -12,7 +12,8 @@ from igab.domain.enums import TargetStatus
 
 
 class SpendingCategory(ApiModel):
-    id: uuid.UUID
+    #: None on the Uncategorized line (`domain.spending.UNCATEGORIZED`).
+    id: uuid.UUID | None
     name: str
     group_name: str
     total: Decimal
@@ -47,13 +48,18 @@ class IncomeExpenseMonth(ApiModel):
 
 class IncomeExpenseResponse(ApiModel):
     months: list[IncomeExpenseMonth]
+    #: The classes `expenses` counts, served so the Expenses drill-down lists
+    #: them — the client kept its own copy of this list beside a comment
+    #: asking the next reader to keep the two in step.
+    expense_classes: list[str]
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 
 
 class TopCategory(ApiModel):
-    id: uuid.UUID
+    #: None on the Uncategorized line (`domain.spending.UNCATEGORIZED`).
+    id: uuid.UUID | None
     name: str
     group_name: str
     total: Decimal
@@ -407,7 +413,9 @@ class VolatilityResponse(ApiModel):
 
 
 class SpendingGroupItem(ApiModel):
-    id: uuid.UUID
+    #: None on the Uncategorized line: spending with no category, which a
+    #: drill opens by `no_category` (`domain.spending.UNCATEGORIZED`).
+    id: uuid.UUID | None
     name: str
     #: Opaque rollup key, not a foreign key: a category-group id normally, a
     #: view-group id under a view, and the "__unassigned__" sentinel for
@@ -454,22 +462,42 @@ class SpendingGroupedResponse(ApiModel):
     #: REQUIRED, not defaulted: a report that forgets it would report an empty
     #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────
 
 
 class SeasonalityCell(ApiModel):
-    category_id: uuid.UUID
+    #: None on the Uncategorized row.
+    category_id: uuid.UUID | None
     category_name: str
     month: date
+    #: Net of refunds, so a month that took back more than it spent is negative.
     total: Decimal
+
+
+class SeasonalityCategory(ApiModel):
+    #: None on the Uncategorized row.
+    id: uuid.UUID | None
+    name: str
 
 
 class SeasonalityResponse(ApiModel):
     cells: list[SeasonalityCell]
     months: list[date]
-    categories: list[dict]
+    #: The largest `report_service.SEASONALITY_TOP` by net spending.
+    categories: list[SeasonalityCategory]
+    #: Every category that spent in the window, so the page can say "top 20
+    #: of N" rather than let the cut pass for the whole budget.
+    category_count: int
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Essentials ───────────────────────────────────────────────────────────────
@@ -577,6 +605,14 @@ class PayeeAnalysisResponse(ApiModel):
     #: every payee (`domain.concentration`). None when nothing was spent. The
     #: Pareto card reads it: the client holds only the top 25.
     payees_to_80pct: int | None
+    #: How many of the window's months a payee must appear in to be
+    #: `is_recurring` (`domain.spending.recurring_months`). None when the
+    #: window is too short to call anything recurring — the page says so.
+    recurring_min_months: int | None
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Day Patterns ─────────────────────────────────────────────────────────────
@@ -585,9 +621,16 @@ class PayeeAnalysisResponse(ApiModel):
 class DayPatternItem(ApiModel):
     day_of_week: int
     day_name: str
+    #: Net spending on this weekday across the window.
     total: Decimal
+    #: Purchases, not rows: a split's legs are one purchase.
     count: int
-    avg_transaction: Decimal
+    #: How many of this weekday the window holds — the divisor of
+    #: `avg_per_day`, quiet days included.
+    weekdays: int
+    #: `total` / `weekdays`: a typical such day. None when the window holds
+    #: none of this weekday.
+    avg_per_day: Decimal | None
 
 
 class DayPatternsResponse(ApiModel):
@@ -604,6 +647,10 @@ class DayPatternsResponse(ApiModel):
     #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
     #: class filter, and the panel lists more than the bar.
     counted_classes: list[str]
+    #: The days `weekdays` counts: the requested range, from no earlier than
+    #: the budget's first transaction and through no later than today.
+    window_start: date
+    window_end: date
 
 
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────
@@ -983,18 +1030,25 @@ class AnomalyReportResponse(ApiModel):
 
 class PaydayEffectDay(ApiModel):
     offset: int  # 0 = payday, 1 = day after, etc.
-    avg_spend: Decimal
+    #: The median payday's discretionary spending on this day after it.
+    median_spend: Decimal
+    #: Paydays this offset has happened for: the newest may not have reached
+    #: its later days yet.
+    paydays: int
 
 
 class PaydayEffectResponse(ApiModel):
     days: list[PaydayEffectDay]
-    #: Average daily spend on days outside every payday window, counted from
-    #: the first payday in the range. None when the windows cover every one of
-    #: those days — biweekly pay at window=14, whatever its phase. A served
-    #: 0.00 would say "this household spends nothing outside payday", which is
-    #: the opposite of "there is no outside".
+    #: The median day's discretionary spending across the whole window,
+    #: paydays included, over `baseline_days` days. None only when there were
+    #: no paydays, and so nothing to compare it with.
     baseline_daily: Decimal | None
-    event_count: int  # number of income events used
+    baseline_days: int
+    #: Paydays found in the window.
+    event_count: int
+    #: The days read: the last N complete months and the running month so far.
+    window_start: date
+    window_end: date
     #: The smallest inflow counted as a payday (report_service.PAYDAY_FLOOR),
     #: served so the panel states the rule without a second copy of it.
     payday_floor: Decimal
@@ -1048,9 +1102,10 @@ class ReportRangeResponse(ApiModel):
 
 
 class SpendingTrendSeries(ApiModel):
-    """One category's spending per month over the window."""
+    """One category's spending per month over the window, net of refunds."""
 
-    id: uuid.UUID
+    #: None on the Uncategorized series.
+    id: uuid.UUID | None
     name: str
     group_id: uuid.UUID | None
     group_name: str | None
@@ -1068,6 +1123,13 @@ class SpendingTrendsResponse(ApiModel):
     #: Sum over every series per month, so a total line needs no client math.
     monthly_totals: list[Decimal]
     total: Decimal
+    #: The average over the COMPLETE months in the range only
+    #: (`domain.dates.complete_months`); None when it holds none.
+    monthly_average: Decimal | None
+    months_averaged: int
+    #: Whether the last month on the axis is one of those — False for the
+    #: running month, which the page labels "so far".
+    latest_complete: bool
     #: Present only when the user scoped the report (categories, a filter, a
     #: tag): activity in that scope a spending report will not count.
     class_excluded: list[SpendingClassExcluded] = []
@@ -1075,6 +1137,10 @@ class SpendingTrendsResponse(ApiModel):
     #: REQUIRED, not defaulted: a report that forgets it would report an empty
     #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Income by Source ────────────────────────────────────────────────────────

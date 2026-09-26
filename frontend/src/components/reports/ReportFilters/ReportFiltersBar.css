@@ -119,6 +119,14 @@
   color: var(--text-primary);
 }
 
+/* A filter the report takes in another Group by mode: drawn, so a choice
+   made there is still visibly in force, but dimmed like the comboboxes
+   beside it (`.msc--disabled`). */
+.rfb__view-select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Accent while a view is driving the rollup, the same way an active Group by
    button reads — the report is not showing the default arrangement. */
 .rfb__view-select--active {

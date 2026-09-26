@@ -154,8 +154,9 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="spending_by_category",
         description=(
-            "Total spent per envelope between two dates, largest first. By default "
-            "this covers day-to-day spending only; set include_savings to also count "
+            "Total spent per envelope between two dates, largest first, net of "
+            "refunds, with uncategorized spending as its own line. By default this "
+            "covers day-to-day spending only; set include_savings to also count "
             "money moved to savings and debt principal."
         ),
         parameters=_obj(

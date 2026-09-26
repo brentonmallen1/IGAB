@@ -6,6 +6,7 @@ import { categoryOptions } from './categoryOptions'
 import { usePayees } from '../../../api/payees'
 import { useAccounts } from '../../../api/accounts'
 import {
+  filterSupport,
   resolveGroupBy,
   useReportStore,
   TAB_FILTER_SUPPORT,
@@ -49,7 +50,13 @@ export function ReportFiltersBar({ budgetId }: Props) {
  */
 export function ReportFiltersContent({ budgetId }: Props) {
   const { filters, setFilters, resetFilters, activeTab } = useReportStore()
-  const support = TAB_FILTER_SUPPORT[activeTab]
+  // Which filters the tab has at all (drawn), and which apply in the mode it
+  // is drawing (lit). A filter the tab takes in another mode is drawn dimmed
+  // rather than hidden: a choice made in that mode is still in force there,
+  // and hiding it would make it look cleared.
+  const offered = TAB_FILTER_SUPPORT[activeTab]
+  const support = filterSupport(activeTab, filters.groupBy)
+  const inert = 'The current Group by mode does not use this filter'
   const categories = useCategories(budgetId)
   const groups = useCategoryGroups(budgetId)
   const payees = usePayees(budgetId)
@@ -105,14 +112,15 @@ export function ReportFiltersContent({ budgetId }: Props) {
             onChange={(startDate, endDate) => setFilters({ startDate, endDate })}
           />
         )}
-        {support.views && (views.data?.length ?? 0) > 0 && (
+        {offered.views && (views.data?.length ?? 0) > 0 && (
           <label className="rfb__view">
             <span className="rfb__view-label">View</span>
             <select
               className={`rfb__view-select ${filters.viewId ? 'rfb__view-select--active' : ''}`}
               value={filters.viewId ?? ''}
               onChange={(e) => setFilters({ viewId: e.target.value || null })}
-              title="Roll up by a saved view's groups instead of your own"
+              disabled={!support.views}
+              title={support.views ? "Roll up by a saved view's groups instead of your own" : inert}
             >
               <option value="">Default groups</option>
               {views.data!.map((v) => (
@@ -141,39 +149,46 @@ export function ReportFiltersContent({ budgetId }: Props) {
           </div>
         )}
       </div>
-      {(support.categories || support.payees || support.accounts) && (
+      {(offered.categories || offered.payees || offered.accounts) && (
         <div className="rfb__selects">
           {/* Three ways of saying which categories this report is about, kept
               adjacent because they are one question. They UNION on the server
               (services/report_scope.py): each adds to the scope. A tag needs no
               saved row, so it stays dynamic; a saved filter is the one you
               chose to name, and carries its own tag axis. */}
-          {support.categories && (
+          {offered.categories && (
             <MultiSelectCombobox
               label="Categories"
               selectedIds={filters.categoryIds}
               options={categoryOpts}
               onChange={(ids) => setFilters({ categoryIds: ids })}
               placeholder="All categories"
+              disabled={!support.categories}
+              title={support.categories ? undefined : inert}
             />
           )}
-          {support.categories && tagOptions.length > 0 && (
+          {offered.categories && tagOptions.length > 0 && (
             <MultiSelectCombobox
               label="Tags"
               selectedIds={filters.tagIds}
               options={tagOptions}
               onChange={(ids) => setFilters({ tagIds: ids })}
               placeholder="Any tag"
+              disabled={!support.categories}
+              title={support.categories ? undefined : inert}
             />
           )}
-          {support.categories && (savedFilters.data?.length ?? 0) > 0 && (
+          {offered.categories && (savedFilters.data?.length ?? 0) > 0 && (
             <label className="rfb__view">
               <span className="rfb__view-label">Saved filter</span>
               <select
                 className={`rfb__view-select ${filters.filterId ? 'rfb__view-select--active' : ''}`}
                 value={filters.filterId ?? ''}
                 onChange={(e) => setFilters({ filterId: e.target.value || null })}
-                title="Scope by a filter you saved on the budget page"
+                disabled={!support.categories}
+                title={
+                  support.categories ? 'Scope by a filter you saved on the budget page' : inert
+                }
               >
                 <option value="">Any saved filter</option>
                 {savedFilters.data!.map((f) => (
@@ -184,13 +199,15 @@ export function ReportFiltersContent({ budgetId }: Props) {
               </select>
             </label>
           )}
-          {support.payees && (
+          {offered.payees && (
             <MultiSelectCombobox
               label="Payees"
               selectedIds={filters.payeeIds}
               options={payeeOptions}
               onChange={(ids) => setFilters({ payeeIds: ids })}
               placeholder="All payees"
+              disabled={!support.payees}
+              title={support.payees ? undefined : inert}
             />
           )}
           {support.accounts && (

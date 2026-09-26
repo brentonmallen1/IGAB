@@ -14,6 +14,7 @@ from igab.domain.dates import (
     add_months,
     clamped_month_end,
     complete_month_window,
+    complete_months,
     month_end,
     month_start,
     month_starts,
@@ -21,6 +22,7 @@ from igab.domain.dates import (
     months_spanned,
     report_months,
     trailing_start,
+    weekday_counts,
     weekday_occurrences,
 )
 
@@ -299,3 +301,55 @@ class TestClampedMonthEnd:
 
     def test_on_the_last_day_both_agree(self):
         assert clamped_month_end(date(2026, 9, 1), date(2026, 9, 30)) == date(2026, 9, 30)
+
+
+class TestWeekdayCounts:
+    """The divisor of Day Patterns' per-day average: every weekday in the
+    window, quiet ones included."""
+
+    def test_a_whole_week_is_one_of_each(self):
+        assert weekday_counts(date(2026, 1, 5), date(2026, 1, 11)) == [1] * 7
+
+    def test_january_2026_has_five_thursdays_fridays_and_saturdays(self):
+        # 1 January 2026 is a Thursday; 31 days is four weeks and three days.
+        assert weekday_counts(date(2026, 1, 1), date(2026, 1, 31)) == [4, 4, 4, 5, 5, 5, 4]
+
+    def test_one_day(self):
+        assert weekday_counts(date(2026, 1, 3), date(2026, 1, 3)) == [0, 0, 0, 0, 0, 1, 0]
+
+    def test_the_counts_add_up_to_the_days(self):
+        start, end = date(2025, 2, 17), date(2026, 3, 4)
+        assert sum(weekday_counts(start, end)) == (end - start).days + 1
+
+    def test_an_empty_range_counts_nothing(self):
+        assert weekday_counts(date(2026, 1, 10), date(2026, 1, 9)) == [0] * 7
+
+    def test_it_agrees_with_the_per_month_count(self):
+        month = date(2024, 2, 1)
+        counts = weekday_counts(month, month_end(month))
+        assert counts == [weekday_occurrences(month, d) for d in range(7)]
+
+
+class TestCompleteMonths:
+    """What Spending Trends' average may divide by, over a range the reader
+    picked."""
+
+    def test_the_running_month_is_not_complete(self):
+        months = complete_months(date(2026, 1, 1), date(2026, 3, 18), date(2026, 3, 18))
+        assert months == [date(2026, 1, 1), date(2026, 2, 1)]
+
+    def test_not_even_on_its_last_day(self):
+        # The day is not over, so neither is the month.
+        months = complete_months(date(2026, 3, 1), date(2026, 3, 31), date(2026, 3, 31))
+        assert months == []
+
+    def test_a_month_the_range_cuts_is_not_complete(self):
+        months = complete_months(date(2026, 1, 15), date(2026, 3, 10), date(2026, 9, 1))
+        assert months == [date(2026, 2, 1)]
+
+    def test_a_whole_past_range(self):
+        months = complete_months(date(2025, 11, 1), date(2026, 1, 31), date(2026, 9, 1))
+        assert months == [date(2025, 11, 1), date(2025, 12, 1), date(2026, 1, 1)]
+
+    def test_a_range_inside_one_month_has_none(self):
+        assert complete_months(date(2026, 2, 3), date(2026, 2, 20), date(2026, 9, 1)) == []

@@ -920,36 +920,54 @@ def category_tagged(*system_keys: str):
     )
 
 
-#: A row that spends money: what every spending rollup reads before its class
-#: set and its account scope — the Breakdown and the AI spending tool
-#: (`spending_by_category`, which the Overview's Top Spending card reads),
-#: the grouped and trend rollups (`_spending_query`), Day Patterns, Payee
-#: Analysis and Volatility.
+#: A row a spending report counts, whichever way its money went: the ONE row
+#: set behind "spending" on every report of that shape — Spending Trends, the
+#: Breakdown, Pareto, the Treemap, Seasonality, Payees and Day Patterns, all
+#: through `ReportService._spending_query`, plus the AI spending tool and the
+#: Overview's Top Spending card. Apply the class set (`counted_classes`, with
+#: `apply_class_joins`) and the account scope (`account_scope`) beside it:
+#: they widen together, so they are applied together.
 #:
-#: Each spelled it by hand, and the copies drifted: `SPENT_ENVELOPE` reached
-#: two of them and not Day Patterns or Payee Analysis, so over an explicit
-#: tracked-brokerage selection a -400 filed to Ready to Assign read 20 on the
-#: Breakdown and 420 on the two beside it.
+#: **Net of refunds.** No sign term: a spending-class inflow — a refund filed
+#: to Groceries — lowers Groceries' spending, exactly as it lowers the
+#: envelope's activity and the Expenses bar on Income vs Expenses, which sums
+#: the same class over `CLASS_TOTAL_ROW`. This carried `amount < 0`, and the
+#: same twelve months read three ways: gross on Trends and the Breakdown,
+#: gross-plus-uncategorized on Payees and Day Patterns, net on Income vs
+#: Expenses and Burn Rate — a month of $6,300 net read $10,400 on Trends.
+#: The class does the work a sign cannot: an uncategorized inflow classes
+#: INCOME and a row in the system group classes INCOME, so neither can reach
+#: a spending total by being positive.
+#:
+#: **Uncategorized is counted**, and shown as its own line wherever a report
+#: lists categories: `_spending_query` outer-joins Category. The category
+#: rollups used to inner-join it, so they came in under Payees and Day
+#: Patterns by exactly the uncategorized spending, the one gap this carried.
 #:
 #: `not_(row_category(IN_SYSTEM_GROUP))`, not `row_category(SPENT_ENVELOPE)`:
-#: the positive EXISTS fails an uncategorized row, and the day and payee
-#: views count uncategorized spending. The category-keyed rollups join
-#: Category and so leave those rows out by construction. **That is the one
-#: deliberate gap**: Day Patterns and Payee Analysis exceed the Breakdown by
-#: exactly the uncategorized spending in scope, pinned by
-#: `test_reports_basic.py::TestTheClassRuleIsOneRule`.
+#: the positive EXISTS fails an uncategorized row.
 #:
-#: Not here: the class set (`counted_classes` / `counted_class_filter`, with
-#: `apply_class_joins`) and the account scope (`account_scope`), which widen
-#: together and so are applied together.
+#: Each report once spelled this by hand, and the copies drifted:
+#: `SPENT_ENVELOPE` reached two of them and not Day Patterns or Payee
+#: Analysis, so over an explicit tracked-brokerage selection a -400 filed to
+#: Ready to Assign read 20 on the Breakdown and 420 on the two beside it.
 SPENDING_ROW = and_(
     NOT_DELETED,
     POSTED,
-    Transaction.amount < 0,
     LEAF,
     CASH_FLOW_ROW,
     not_(row_category(IN_SYSTEM_GROUP)),
 )
+
+#: `SPENDING_ROW`'s outflows alone — gross, a refund never lowering it. Read
+#: by the plan family (`PLANNED_SPEND_ROW`), Volatility and Anomalies, and by
+#: nothing that calls its figure "spending": those reports compare against a
+#: plan or a baseline, and whether a refund belongs in their "spent" is their
+#: own open decision, not this one. Named so the gap is a stated divergence
+#: rather than a second spelling: over one window it exceeds the net figure
+#: by exactly the spending-class inflows (pinned by
+#: `test_one_spending_definition.py::TestTheGrossCutIsTheOutflowsAlone`).
+SPENDING_OUTFLOW = and_(SPENDING_ROW, Transaction.amount < 0)
 
 
 #: A row that spends planned money: the SHAPE half of what plan-vs-actual
@@ -979,14 +997,15 @@ SPENDING_ROW = and_(
 #:   lives one import up, in `planned_spend_filter`, together with the joins
 #:   note: a query with the class filter and no joins is a cartesian product.
 #:
-#: So it is `SPENDING_ROW` narrowed to what a plan can be held to: on-budget,
+#: So it is `SPENDING_OUTFLOW` narrowed to what a plan can be held to: on-budget,
 #: and filed somewhere (the foreign key is `ON DELETE SET NULL`, so a
 #: category id names a Category row, deleted or not).
 #:
-#: One divergence is deliberate and stays: `amount < 0` means a refund posted
-#: to a spending category never reduces "spent". Pinned by test rather than
-#: silently changed — flipping it would move every historical variance figure.
-PLANNED_SPEND_ROW = and_(SPENDING_ROW, ON_BUDGET_ACCOUNT, Transaction.category_id.isnot(None))
+#: One divergence is deliberate and stays: the outflow cut means a refund
+#: posted to a spending category never reduces "spent". Pinned by test rather
+#: than silently changed — flipping it would move every historical variance
+#: figure.
+PLANNED_SPEND_ROW = and_(SPENDING_OUTFLOW, ON_BUDGET_ACCOUNT, Transaction.category_id.isnot(None))
 
 
 # ─── Free-text search ────────────────────────────────────────────────────────

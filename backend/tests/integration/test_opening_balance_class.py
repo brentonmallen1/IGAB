@@ -432,9 +432,10 @@ class TestTheReportsThisMonth:
     async def test_starting_balance_is_not_a_top_payee(self, db_session):
         budget, _ = await _household(db_session, _today())
         today = _today()
-        payees, total, count, _ = await ReportService(db_session).payee_analysis(
+        report = await ReportService(db_session).payee_analysis(
             budget.id, today.replace(day=1), today
         )
+        payees, total, count = report["payees"], report["total"], report["payee_count"]
         assert {p["payee_name"] for p in payees} == {"Corner Market", "Thai Garden"}
         assert (total, count) == (SPENDING, 2)
 

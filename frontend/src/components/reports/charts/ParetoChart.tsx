@@ -12,7 +12,7 @@ import {
   YAxis,
   ReferenceLine,
 } from 'recharts'
-import { spendingDrillClasses, useReportStore, type GroupBy } from '../../../stores/reportStore'
+import { useReportStore, type GroupBy } from '../../../stores/reportStore'
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -22,14 +22,14 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
-import { buildParetoItems, paretoAdherence, paretoSummary } from './paretoData'
+import { buildParetoItems, paretoSummary, type ParetoItem } from './paretoData'
 import { shareOfTotal } from '../drillDownTotals'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { useReportScope } from '../../../stores/reportStore'
-import { drillScope } from '../drillScope'
+import { categoryTarget } from '../drillScope'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { PAYEE_RANKED } from './reportControls'
 
@@ -136,61 +136,40 @@ export function ParetoReport({ budgetId }: Props) {
     [groupBy, spendingItems, spendingQ.data, payeeQ.data]
   )
 
-  // Group id → member category ids, for expanding a group drill client-side
-  const groupMembers = useMemo(() => {
-    const m = new Map<string, string[]>()
-    for (const item of spendingItems) {
-      const key = item.parent_id ?? '__none__'
-      m.set(key, [...(m.get(key) ?? []), item.id])
-    }
-    return m
-  }, [spendingItems])
-
   // All hooks above — safe to conditionally return now
   const activeQ = groupBy === 'payee' ? payeeQ : spendingQ
   if (activeQ.isLoading) return <div className="report-loading">Loading…</div>
   if (activeQ.isError)
     return <ReportErrorState error={activeQ.error} onRetry={() => activeQ.refetch()} />
 
-  function drillTo(id: string, name: string) {
+  /** The rows behind a bar: every row of the classes the active report
+   *  counted (served), whichever way it went — spending is net of refunds.
+   *  Payee mode carries no category scope: its report takes none, and the
+   *  filter bar dims it there, so a drill that sent one listed less than the
+   *  bar. */
+  function drillTo(item: ParetoItem) {
     const window = { startDate: filters.startDate, endDate: filters.endDate }
-    // The chart counts spending (plus savings when the toggle is on); the
-    // panel must count the same, or the list contradicts the bar.
-    const activityClasses = spendingDrillClasses(includeSavings)
     if (groupBy === 'payee') {
+      if (!payeeQ.data) return
       setDrillDown({
         kind: 'payee',
-        label: name,
+        label: item.name,
         scope: 'leaf',
-        direction: 'outflow',
-        payeeIds: [id],
-        ...drillScope(reportScope),
-        activityClasses,
+        payeeIds: [item.id],
+        activityClasses: payeeQ.data.counted_classes,
         ...window,
       })
-    } else if (groupBy === 'group') {
-      const memberIds = groupMembers.get(id) ?? []
-      if (memberIds.length === 0) return
-      setDrillDown({
-        kind: 'category-group',
-        label: name,
-        scope: 'leaf',
-        direction: 'outflow',
-        categoryIds: memberIds,
-        activityClasses,
-        ...window,
-      })
-    } else {
-      setDrillDown({
-        kind: 'category',
-        label: name,
-        scope: 'leaf',
-        direction: 'outflow',
-        categoryIds: [id],
-        activityClasses,
-        ...window,
-      })
+      return
     }
+    if (!spendingQ.data || item.members.length === 0) return
+    setDrillDown({
+      kind: groupBy === 'group' ? 'category-group' : 'category',
+      label: item.name,
+      scope: 'leaf',
+      ...categoryTarget(item.members),
+      activityClasses: spendingQ.data.counted_classes,
+      ...window,
+    })
   }
 
   // `universeCount`, not `sorted.length`: in payee mode the server ranks the
@@ -209,7 +188,6 @@ export function ParetoReport({ budgetId }: Props) {
         : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
   }))
 
-  const adherence = paretoAdherence(coverage, universeCount)
   const rankedIsEverything = universeCount === sorted.length
 
   const tableRows = sorted.map((item) => ({
@@ -227,17 +205,18 @@ export function ParetoReport({ budgetId }: Props) {
         <h2 className="report-section__title">Pareto Analysis (80/20 Rule)</h2>
         <ReportInfoButton title="Pareto Analysis">
           <p>
-            The <strong>80/20 rule</strong>: roughly 80% of your spending comes from 20% of your
-            categories. This chart shows where spending concentrates.
+            How few of your largest {GROUP_PLURALS[groupBy]} make up most of your spending. The card
+            counts how many it takes to reach 80% of the period&apos;s total.
           </p>
           <p>
-            <strong>Bars</strong> show individual amounts (colored by category group). The{' '}
-            <strong>orange line</strong> is the running cumulative percentage. The{' '}
-            <strong>red dashed line</strong> marks 80%.
+            <strong>Bars</strong> are each one&apos;s spending, largest first; in category mode they
+            are shaded by group. The <strong>line</strong> is the running share of the total, and
+            the <strong>dashed line</strong> marks 80%.
           </p>
           <p>
-            Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the
-            category group, category, or payee level.
+            Switch <strong>Group by</strong> in the toolbar to rank category groups, categories or
+            payees. Payee mode ranks every payee and ignores the category, tag, saved-filter and
+            view pickers, which dim; the other modes ignore the payee picker.
           </p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
           <ReportScopeNote report="pareto" />
@@ -280,13 +259,10 @@ export function ParetoReport({ budgetId }: Props) {
                 label="80% of Spend"
                 value={`${idx80 + 1} ${idx80 === 0 ? GROUP_LABELS[groupBy].toLowerCase() : GROUP_PLURALS[groupBy]}`}
                 sub={
-                  adherence
-                    ? adherence.message
-                    : coverage === null
-                      ? undefined
-                      : `${coverage.toFixed(0)}% of ${rankedIsEverything ? 'all' : 'the'} ${GROUP_PLURALS[groupBy]}`
+                  coverage === null
+                    ? undefined
+                    : `${coverage.toFixed(0)}% of ${rankedIsEverything ? 'all' : 'the'} ${GROUP_PLURALS[groupBy]}`
                 }
-                warning={adherence ? !adherence.adherent : false}
               />
             )}
           </MetricRow>
@@ -346,7 +322,7 @@ export function ParetoReport({ budgetId }: Props) {
                     const d = data as { fullName?: string; payload?: { fullName?: string } }
                     const full = d.fullName ?? d.payload?.fullName
                     const item = sorted.find((s) => s.name === full)
-                    if (item) drillTo(item.id, item.name)
+                    if (item) drillTo(item)
                   }}
                 >
                   {chartData.map((entry, i) => (
@@ -368,7 +344,10 @@ export function ParetoReport({ budgetId }: Props) {
               wider={{ total: grandTotal, count: universeCount, label: GROUP_PLURALS[groupBy] }}
               pctIsShare
               amountLabel="Spent"
-              onRowClick={(row) => drillTo(row.id, row.name)}
+              onRowClick={(row) => {
+                const item = sorted.find((s) => s.id === row.id)
+                if (item) drillTo(item)
+              }}
             />
           </>
         )}

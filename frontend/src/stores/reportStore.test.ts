@@ -5,7 +5,13 @@
  * where the user asked for payees.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { expensesDrill, incomeDrill, resolveGroupBy, useReportStore } from './reportStore'
+import {
+  expensesDrill,
+  filterSupport,
+  incomeDrill,
+  resolveGroupBy,
+  useReportStore,
+} from './reportStore'
 import { thisMonthWindow } from '../utils/dateWindow'
 import { pinTimeZone } from '../test-utils/timeZone'
 
@@ -49,8 +55,11 @@ describe('incomeDrill', () => {
 describe('expensesDrill', () => {
   const window = { startDate: '2026-08-01', endDate: '2026-08-31' }
 
-  it('lists the spending-class leaf rows the Expenses figure nets', () => {
-    expect(expensesDrill('Expenses · 2026-08', window)).toEqual({
+  it('lists the leaf rows of the classes the report served', () => {
+    // The classes are the server's (`expense_classes`, `counted_classes`).
+    // They were a client copy, `spendingDrillClasses`, kept "in step" with
+    // the server's by a comment.
+    expect(expensesDrill('Expenses · 2026-08', window, ['spending'])).toEqual({
       kind: 'month',
       label: 'Expenses · 2026-08',
       scope: 'leaf',
@@ -62,7 +71,26 @@ describe('expensesDrill', () => {
   it('keeps the refunds, so the list totals the bar', () => {
     // Income vs Expenses passed `direction: 'outflow'`: a bar of 15,300 net
     // opened 19,400 of purchases with the 4,100 of refunds left out.
-    expect(expensesDrill('Expenses', window).direction).toBeUndefined()
+    expect(expensesDrill('Expenses', window, ['spending']).direction).toBeUndefined()
+  })
+})
+
+describe('filterSupport', () => {
+  // Pareto's modes read two reports. Every filter was lit in every mode, so a
+  // category picked in payee mode appeared to apply while the bars ignored it.
+  it('dims the payee filter where Pareto ranks categories or groups', () => {
+    expect(filterSupport('pareto', 'category').payees).toBe(false)
+    expect(filterSupport('pareto', 'group').payees).toBe(false)
+    expect(filterSupport('pareto', 'category').categories).toBe(true)
+  })
+
+  it('dims the category scope and the view where Pareto ranks payees', () => {
+    const payee = filterSupport('pareto', 'payee')
+    expect([payee.categories, payee.views, payee.payees]).toEqual([false, false, true])
+  })
+
+  it('leaves a tab without modes as declared', () => {
+    expect(filterSupport('spending-breakdown', 'payee').categories).toBe(true)
   })
 })
 

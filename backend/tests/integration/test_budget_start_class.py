@@ -630,15 +630,15 @@ class TestTheReports:
 
     async def test_payee_analysis(self, db_session):
         budget, _ = await _household(db_session)
-        payees, total, count, _ = await ReportService(db_session).payee_analysis(
+        report = await ReportService(db_session).payee_analysis(
             budget.id, _month(), month_end(_month())
         )
-        assert {p["payee_name"] for p in payees} == {
+        assert {p["payee_name"] for p in report["payees"]} == {
             "Sapphire Visa",
             "Corner Market",
             "Thai Garden",
         }
-        assert (total, count) == (SPENDING, 3)
+        assert (report["total"], report["payee_count"]) == (SPENDING, 3)
 
     async def test_day_patterns(self, db_session):
         """And the note under it names no opening as left out: its remedy,

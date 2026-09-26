@@ -322,6 +322,8 @@ describe('a deleted saved filter', () => {
     days: [],
     transactions: [],
     counted_classes: [],
+    window_start: '2026-08-01',
+    window_end: '2026-08-31',
     view_hidden_categories: 0,
     view_hidden_total: '0',
     class_excluded: [],
@@ -912,35 +914,51 @@ describe('VolatilityReport drill-down', () => {
   })
 })
 
-describe('DayPatternsReport payday baseline', () => {
-  it('shows no baseline, rather than $0.00, when paydays cover every day', () => {
-    // The server serves null when no day falls outside a payday window. The
-    // chart turned it into 0 with `?? 0`, so the card read "Baseline Daily
-    // $0.00" — "spends nothing between paydays" — and every bar with any
-    // spend was painted as above it. Both hooks share this mock's data, so
-    // each row carries the day-of-week fields and the payday fields.
-    setQuery({
-      data: {
-        days: [0, 1].map((i) => ({
-          day_of_week: i,
-          day_name: i ? 'Tuesday' : 'Monday',
-          total: 50,
-          count: 1,
-          avg_transaction: 50,
-          offset: i,
-          avg_spend: 40,
-        })),
-        counted_classes: ['spending'],
-        baseline_daily: null,
-        event_count: 26,
-        payday_floor: 200,
-      },
-    })
-    renderReport(<DayPatternsReport budgetId="b1" />)
+describe('DayPatternsReport', () => {
+  // Both hooks share this mock's data, so each row carries the day-of-week
+  // fields and the payday fields.
+  const both = {
+    days: [0, 1].map((i) => ({
+      day_of_week: i,
+      day_name: i ? 'Tuesday' : 'Monday',
+      total: i ? 300 : 100,
+      count: 2,
+      weekdays: 5,
+      avg_per_day: i ? 60 : 20,
+      offset: i,
+      median_spend: i ? 45 : 5,
+      paydays: 26,
+    })),
+    counted_classes: ['spending'],
+    window_start: '2026-01-01',
+    window_end: '2026-09-25',
+    baseline_daily: 12,
+    baseline_days: 268,
+    event_count: 26,
+    payday_floor: 200,
+  }
 
-    expect(screen.getByText('No days fall outside a payday window')).toBeInTheDocument()
-    expect(screen.queryByText('Average on non-payday periods')).toBeNull()
-    expect(screen.queryByText('$0.00')).toBeNull()
+  it('ranks the weekdays by a typical day, not by their totals', () => {
+    setQuery({ data: both })
+    renderReport(<DayPatternsReport budgetId="b1" />)
+    // "Average", not "typical": typical means the median everywhere else.
+    expect(card('Busiest day')).toEqual({ value: 'Tuesday', sub: '$60.00 on an average Tuesday' })
+    expect(card('Quietest day')).toEqual({ value: 'Monday', sub: '$20.00 on an average Monday' })
+    // It says which date it reads: a Saturday shop can post on Monday.
+    expect(screen.getByText(/by the bank.s posting date/)).toBeInTheDocument()
+  })
+
+  it('states the typical day as a median over the days it read', () => {
+    // The baseline averaged only the days outside every payday window, so
+    // biweekly pay at 14 days had none, and the card read "no baseline".
+    setQuery({ data: both })
+    renderReport(<DayPatternsReport budgetId="b1" />)
+    expect(card('Typical day')).toEqual({ value: '$12.00', sub: 'Median of 268 days' })
+    expect(card('Peak day after payday')).toEqual({
+      value: 'Day +1',
+      sub: '$45.00 on the median payday',
+    })
+    expect(screen.getByText(/26 paydays/)).toBeInTheDocument()
   })
 
   it('states the payday rule the server applied, and that it counts spending only', () => {
@@ -952,7 +970,10 @@ describe('DayPatternsReport payday baseline', () => {
       data: {
         days: [],
         counted_classes: ['spending'],
+        window_start: '2026-01-01',
+        window_end: '2026-09-25',
         baseline_daily: 12,
+        baseline_days: 268,
         event_count: 3,
         payday_floor: 250,
       },
@@ -965,7 +986,8 @@ describe('DayPatternsReport payday baseline', () => {
       '$250.00 or more into a cash account'
     )
     expect(panel.queryByText(/scheduled bills/)).toBeNull()
-    expect(panel.getByText(/Counts spending only/)).toBeInTheDocument()
+    // Discretionary only: a bill due two days after pay is not a splurge.
+    expect(panel.getByText(/Discretionary only/)).toBeInTheDocument()
   })
 })
 
@@ -1124,6 +1146,8 @@ describe('IncomeExpenseReport drill', () => {
             net: 4470,
           },
         ],
+        // The classes are served; the client's copy of them is gone.
+        expense_classes: ['spending'],
       },
     })
     renderReport(<IncomeExpenseReport budgetId="b1" />)
@@ -1361,12 +1385,12 @@ describe('ParetoReport insight', () => {
 
     // total spending card (the drill table's total row shows it too)
     expect(screen.getAllByText('$1,000.00').length).toBeGreaterThan(0)
-    // Rent + Groceries reach 80%: 2 of 4 categories = 50% coverage, which is
-    // above the 30% adherence threshold, so the spread-thin message shows
+    // Rent + Groceries reach 80%: 2 of 4 categories. The card states that and
+    // no more — it used to add a "spread thin, consider consolidating"
+    // verdict in warning colour, advice drawn from a budget's shape.
     expect(screen.getByText('2 categories')).toBeInTheDocument()
-    expect(
-      screen.getByText('Spending is spread thin—consider consolidating or reviewing smaller items.')
-    ).toBeInTheDocument()
+    expect(card('80% of Spend').sub).toBe('50% of all categories')
+    expect(screen.queryByText(/spread thin|concentrated/)).toBeNull()
   })
 
   it('draws the payee card from the served count when the top 25 hold under 80%', () => {
@@ -2367,5 +2391,265 @@ describe('AccountCompositionReport info panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'About the Account Composition report' }))
     expect(screen.getByText(/less any unmanaged debts/)).toBeInTheDocument()
     expect(screen.queryByText(/this said/)).toBeNull()
+  })
+})
+
+/**
+ * One meaning of spending: every spending chart drills with the classes the
+ * server says it counted, in both directions — the figures are net of
+ * refunds — and opens the Uncategorized line by "no category". A client copy
+ * of the class set (`spendingDrillClasses`) and `direction: 'outflow'` on
+ * every drill made each list longer than the bar above it by its refunds.
+ */
+describe('spending drills total what the chart totals', () => {
+  const served = ['spending', 'savings', 'debt_principal']
+  const grouped = {
+    groups: [
+      {
+        id: 'c1',
+        name: 'Groceries',
+        parent_id: 'g1',
+        parent_name: 'Everyday',
+        total: 250,
+        count: 3,
+        pct: 86.2,
+      },
+      {
+        id: null,
+        name: 'Uncategorized',
+        parent_id: null,
+        parent_name: 'Uncategorized',
+        total: 40,
+        count: 1,
+        pct: 13.8,
+      },
+    ],
+    total: 290,
+    view_hidden_categories: 0,
+    view_hidden_total: 0,
+    class_excluded: [],
+    filter_unavailable: false,
+    counted_classes: served,
+  }
+
+  afterEach(() => {
+    useReportStore.getState().setDrillDown(null)
+    useReportStore.getState().setFilters({ groupBy: 'group', categoryIds: [] })
+  })
+
+  const drill = () => useReportStore.getState().drillDown
+
+  it('Breakdown used to omit the Uncategorized line; it opens by "no category"', () => {
+    setQuery({ data: grouped })
+    renderReport(<SpendingBreakdownReport budgetId="b1" />)
+    const cell = () => screen.getAllByText('Uncategorized').find((el) => el.tagName === 'TD')!
+    fireEvent.click(cell()) // the group
+    fireEvent.click(cell()) // its one line
+    expect(drill()).toMatchObject({ noCategory: true, activityClasses: served })
+    expect(drill()?.categoryIds).toBeUndefined()
+    expect(drill()?.direction).toBeUndefined()
+  })
+
+  it('Breakdown lists a line that netted negative, and leaves it off the ring', () => {
+    setQuery({
+      data: {
+        ...grouped,
+        groups: [
+          ...grouped.groups,
+          {
+            id: 'c9',
+            name: 'Returns',
+            parent_id: 'g9',
+            parent_name: 'Shopping',
+            total: -90,
+            count: 1,
+            pct: 0,
+          },
+        ],
+        total: 200,
+      },
+    })
+    renderReport(<SpendingBreakdownReport budgetId="b1" />)
+    expect(cellsOf('Shopping')).toContain('-$90.00')
+    expect(screen.getByText(/Refunds outweighed spending on 1 line/)).toBeInTheDocument()
+  })
+
+  it('Seasonality opens a cell with the served classes, uncategorized by "no category"', () => {
+    setQuery({
+      data: {
+        months: ['2026-07-01'],
+        categories: [{ id: null, name: 'Uncategorized' }],
+        cells: [{ category_id: null, month: '2026-07-01', total: 40 }],
+        category_count: 1,
+        counted_classes: ['spending'],
+      },
+    })
+    const { container } = renderReport(<SeasonalityReport budgetId="b1" />)
+    fireEvent.click(container.querySelector('td.heatmap__cell--clickable')!)
+    expect(drill()).toMatchObject({
+      noCategory: true,
+      activityClasses: ['spending'],
+      startDate: '2026-07-01',
+      endDate: '2026-07-31',
+    })
+    expect(drill()?.direction).toBeUndefined()
+  })
+
+  it('Seasonality says how many categories it cut the grid from', () => {
+    setQuery({
+      data: {
+        months: ['2026-07-01'],
+        categories: [{ id: 'c1', name: 'Electric' }],
+        cells: [{ category_id: 'c1', month: '2026-07-01', total: 90 }],
+        category_count: 34,
+        counted_classes: ['spending'],
+      },
+    })
+    renderReport(<SeasonalityReport budgetId="b1" />)
+    expect(screen.getByText(/The top 1 of 34 categories/)).toBeInTheDocument()
+  })
+
+  it('Payees open leaf rows of the served classes, refunds included', () => {
+    setQuery({
+      data: {
+        payees: [
+          {
+            payee_id: 'p1',
+            payee_name: 'Corner Market',
+            total: 250,
+            count: 2,
+            pct: 100,
+            monthly_trend: [],
+            top_categories: [],
+            is_recurring: false,
+          },
+        ],
+        total: 250,
+        payee_count: 1,
+        payees_to_80pct: 1,
+        recurring_min_months: 3,
+        counted_classes: ['spending'],
+      },
+    })
+    renderReport(<PayeeReport budgetId="b1" />)
+    fireEvent.click(screen.getAllByText('Corner Market').at(-1)!)
+    expect(drill()).toMatchObject({
+      payeeIds: ['p1'],
+      scope: 'leaf',
+      activityClasses: ['spending'],
+    })
+    expect(drill()?.direction).toBeUndefined()
+    // "Occasional", not "One-off", and the rule the server applied.
+    expect(screen.getByText('Occasional')).toBeInTheDocument()
+    expect(
+      screen.getAllByText(/Recurring = seen in 3\+ months of the range/).length
+    ).toBeGreaterThan(0)
+  })
+
+  it('Pareto payee mode carries no category scope, which its report never applied', () => {
+    useReportStore.getState().setFilters({ groupBy: 'payee', categoryIds: ['c1'] })
+    setQuery({
+      data: {
+        ...grouped,
+        payees: [
+          {
+            payee_id: 'p1',
+            payee_name: 'Corner Market',
+            total: 250,
+            count: 2,
+            pct: 100,
+            monthly_trend: [],
+            top_categories: [],
+            is_recurring: false,
+          },
+        ],
+        payee_count: 1,
+        payees_to_80pct: 1,
+        recurring_min_months: 3,
+      },
+    })
+    renderReport(<ParetoReport budgetId="b1" />)
+    fireEvent.click(screen.getAllByText('Corner Market').at(-1)!)
+    expect(drill()).toMatchObject({ payeeIds: ['p1'], activityClasses: served })
+    expect(drill()?.categoryIds).toBeUndefined()
+    expect(drill()?.direction).toBeUndefined()
+  })
+
+  it('the Pareto and Seasonality panels name no colours', () => {
+    // A colour name is wrong in thirty-nine of forty themes.
+    setQuery({ data: grouped })
+    renderReport(<ParetoReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Pareto Analysis report' }))
+    expect(screen.queryByText(/\b(orange|red|blue|green)\b/)).toBeNull()
+  })
+
+  it('Seasonality panel names no colours either', () => {
+    setQuery({ data: { months: [], categories: [], cells: [], category_count: 0 } })
+    renderReport(<SeasonalityReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Seasonality Heatmap report' }))
+    expect(screen.queryByText(/\b(orange|red|blue|green)\b/)).toBeNull()
+  })
+})
+
+describe('Spending Trends cards', () => {
+  it('averages complete months and calls the running one "so far"', () => {
+    // It divided the window by every month on the axis, the running one
+    // included, and called that month "Latest month".
+    setQuery({
+      data: {
+        months: ['2026-08-01', '2026-09-01'],
+        series: [
+          {
+            id: 'c1',
+            name: 'Groceries',
+            group_id: 'g1',
+            group_name: 'Everyday',
+            monthly: [300, 120],
+            total: 420,
+          },
+        ],
+        monthly_totals: [300, 120],
+        total: 420,
+        monthly_average: 300,
+        months_averaged: 1,
+        latest_complete: false,
+        class_excluded: [],
+        filter_unavailable: false,
+        counted_classes: ['spending'],
+      },
+    })
+    renderReport(<SpendingTrendsReport budgetId="b1" />)
+    expect(card('Average / month')).toEqual({ value: '$300.00', sub: 'Over 1 complete month' })
+    expect(screen.getByText(/so far$/, { selector: '.metric-card__label' })).toBeInTheDocument()
+    expect(screen.queryByText('Latest month')).toBeNull()
+  })
+})
+
+describe('Largest transactions', () => {
+  it('is titled for what it lists, with no card restating the row count', () => {
+    setQuery({
+      data: {
+        transactions: [
+          {
+            id: 't1',
+            date: '2026-09-03',
+            amount: -1400,
+            payee_name: 'Harborstone',
+            category_name: 'Rent',
+            memo: null,
+            activity_class: 'spending',
+            activity_label: 'Spending',
+          },
+        ],
+        filter_unavailable: false,
+      },
+    })
+    renderReport(<TimelineReport budgetId="b1" />)
+    expect(screen.getByRole('heading', { name: 'Largest transactions' })).toBeInTheDocument()
+    expect(screen.queryByText('Shown')).toBeNull()
+    // Money out is the default view.
+    expect(screen.getByRole('button', { name: 'Money out' })).toHaveClass('report-btn--active')
+    // A formatted date, not the ISO string.
+    expect(screen.queryByText('2026-09-03')).toBeNull()
   })
 })

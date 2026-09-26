@@ -186,9 +186,8 @@ class TestSplitLegsClassifyIndividually:
 
     async def test_payee_analysis_counts_only_the_spending_leg(self, db_session):
         budget = await self._split_world(db_session)
-        payees, total, _count, _to80 = await ReportService(db_session).payee_analysis(
-            budget.id, MONTH_START, TODAY
-        )
+        report = await ReportService(db_session).payee_analysis(budget.id, MONTH_START, TODAY)
+        payees, total = report["payees"], report["total"]
         assert total == Decimal("100.00")
         assert [p["payee_name"] for p in payees] == ["Big Box"], (
             "the split's legs still attribute to the parent's payee"
@@ -218,9 +217,11 @@ class TestSplitLegsClassifyIndividually:
             )
         await db_session.flush()
 
-        payees, total, _count, _to80 = await ReportService(db_session).payee_analysis(
-            budget.id, MONTH_START, TODAY
-        )
+        report = await ReportService(db_session).payee_analysis(budget.id, MONTH_START, TODAY)
+        payees, total = report["payees"], report["total"]
         assert total == Decimal("75.00")
         assert len(payees) == 1
-        assert payees[0]["count"] == 2, "legs are counted, the basket is one payee"
+        # One trip to the shop, however many envelopes it was filed across.
+        # The count read the legs, so a basket split three ways was three
+        # "transactions" at that payee.
+        assert payees[0]["count"] == 1, "the basket is one purchase at one payee"

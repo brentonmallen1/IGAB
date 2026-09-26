@@ -695,7 +695,9 @@ async def test_the_payee_total_covers_every_payee_not_only_the_ranked_ones(db_se
             payee=payee,
         )
 
-    rows, total, count, to_80 = await reports.payee_analysis(budget.id, START, TODAY, limit=2)
+    report = await reports.payee_analysis(budget.id, START, TODAY, limit=2)
+    rows, total = report["payees"], report["total"]
+    count, to_80 = report["payee_count"], report["payees_to_80pct"]
 
     assert [r["payee_name"] for r in rows] == ["Harborstone Realty", "Cascade Grocers"]
     # 400 + 300 + 200 + 100 + 50, not the 700 the two ranked rows carry.

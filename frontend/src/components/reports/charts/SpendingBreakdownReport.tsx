@@ -1,19 +1,20 @@
 import { useMemo, useRef, useState } from 'react'
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { useSpendingGroupedReport } from '../../../api/reports'
-import { useReportStore, spendingDrillClasses } from '../../../stores/reportStore'
+import { useReportStore } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { useReportScope } from '../../../stores/reportStore'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { shareOfTotal } from '../drillDownTotals'
+import { categoryKey, categoryTarget } from '../drillScope'
 
 /** A slice's share, or a dash where there is no positive total to share. */
 const shareLabel = (share: number | null) => (share === null ? '—' : `${Math.round(share)}%`)
@@ -64,9 +65,20 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
 
   const open = groups.find((g) => g.key === openGroup) ?? null
   const slices = open
-    ? open.items.map((it) => ({ key: it.id, name: it.name, value: it.total }))
-    : groups.map((g) => ({ key: g.key, name: g.name, value: g.total }))
+    ? open.items.map((it) => ({
+        key: categoryKey(it.id),
+        id: it.id,
+        name: it.name,
+        value: it.total,
+      }))
+    : groups.map((g) => ({ key: g.key, id: null, name: g.name, value: g.total }))
   const total = open ? open.total : data.total
+  // Spending is net of refunds, so a line that took back more than it spent
+  // is negative. The table lists it, signed, and the total includes it; a
+  // donut has no negative slice to draw, so it is left off the ring and the
+  // ring says so rather than quietly adding up to more than the total.
+  const drawn = slices.filter((s) => s.value > 0)
+  const undrawn = slices.length - drawn.length
 
   return (
     <div className="report-section surface">
@@ -78,6 +90,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
             group&apos;s categories. Percentages are of what is on screen.
           </p>
           <ReportScopeNote report="spending-breakdown" />
+          <SpendingClassNote />
         </ReportInfoButton>
         <div className="flex-row">
           {open && (
@@ -126,17 +139,17 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={slices}
+                  data={drawn}
                   dataKey="value"
                   nameKey="name"
                   innerRadius="55%"
                   outerRadius="85%"
                   paddingAngle={1}
                   onClick={(_, idx) => {
-                    if (!open) setOpenGroup(slices[idx]?.key ?? null)
+                    if (!open) setOpenGroup(drawn[idx]?.key ?? null)
                   }}
                 >
-                  {slices.map((s, idx) => (
+                  {drawn.map((s, idx) => (
                     <Cell
                       key={s.key}
                       fill={chartColor(idx)}
@@ -163,6 +176,12 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
               </PieChart>
             </ResponsiveContainer>
           </div>
+          {undrawn > 0 && (
+            <p className="report-section__subtitle">
+              Refunds outweighed spending on {undrawn} {undrawn === 1 ? 'line' : 'lines'}: listed
+              below, not drawn on the ring.
+            </p>
+          )}
           <table className="report-table">
             <caption className="sr-only">Spending breakdown</caption>
             <thead>
@@ -188,13 +207,15 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
                       setOpenGroup(s.key)
                       return
                     }
+                    // Every row of the classes the report counted, whichever
+                    // way it went: spending is net of refunds, so an outflow
+                    // drill listed more than the row said.
                     setDrillDown({
                       kind: 'category',
                       label: s.name,
                       scope: 'leaf',
-                      direction: 'outflow',
-                      categoryIds: [s.key],
-                      activityClasses: spendingDrillClasses(includeSavings),
+                      ...categoryTarget([s.id]),
+                      activityClasses: data.counted_classes,
                       startDate: filters.startDate,
                       endDate: filters.endDate,
                     })
