@@ -231,8 +231,8 @@ def trailing_average(
     for (`domain.dates.history_index`). Months before it are not months a
     household spent nothing — they are months the budget did not exist — and
     averaging their zeros in did exactly what the paragraph above warns against
-    from the other direction: a young budget's chart opened at 6.0 months of
-    runway, because two thirds of its denominator was a period with no data.
+    from the other direction: a young budget's chart opened at 6.0 months
+    covered, because two thirds of its denominator was a period with no data.
     """
     start = max(first_data, index - window + 1)
     span = totals[start : index + 1]
