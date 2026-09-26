@@ -27,6 +27,15 @@ the band came out about three times as wide as any real ninety days had been.
 A path now copies contiguous runs of real history (`BlockSampler`), so a run
 carries its paydays with the bills between them.
 
+**Every history day is equally likely.** A run that reached yesterday used to
+stop there and start a new one, so a day near the start of the history could
+only be reached by the few runs that began before it: the first four weeks
+were drawn a fraction as often as the rest. On a budget whose oldest weeks held
+a bonus, that alone pulled the median down by $3k over 90 days. The history is
+whole weeks (`history_window`) and a run wraps from yesterday back to the
+oldest day, which falls on the same weekday, so every day is covered by
+exactly as many runs as every other.
+
 **Day 0 is the balance.** The start balance already holds today's rows, and a
 path used to add a sampled day on top of it, so the median began below the
 "Current Balance" printed beside it. Draws begin at day 1. A fixed event
@@ -53,8 +62,9 @@ from igab.domain.money import quantize_cents
 
 ZERO = Decimal("0")
 
-#: How far back the paths look: the six months ending yesterday.
-HISTORY_DAYS = 180
+#: How far back the paths look: the 26 whole weeks ending yesterday. Whole weeks
+#: so a run can wrap from yesterday to the oldest day on the same weekday.
+HISTORY_DAYS = 182
 
 #: The length of one replayed run. Four whole weeks, so a run that starts on the
 #: path's weekday stays on it, and long enough to hold two paydays of any
@@ -89,14 +99,19 @@ class HistoryWindow:
 
 def history_window(today: date, first_row: date | None) -> HistoryWindow | None:
     """The `HISTORY_DAYS` ending yesterday, or from `first_row` when the
-    register is younger than that. None when no day qualifies: no rows, or none
-    before today.
+    register is younger than that, trimmed to whole weeks. None when no day
+    qualifies: no rows, or none before today.
 
     Ending yesterday: today's rows are already in the start balance, and today
     is not over. Starting no earlier than the first row: a budget three weeks
     old has three weeks of history, and zero-filling the months before it
     existed would read as months of nothing happening, pulling every path
     toward flat.
+
+    Whole weeks, dropping up to six of the oldest days: `BlockSampler` wraps a
+    run from yesterday back to the window's first day, and only a whole number
+    of weeks lands it on the same weekday. Under a week there is no weekday to
+    keep, and every day is kept.
     """
     if first_row is None:
         return None
@@ -104,6 +119,9 @@ def history_window(today: date, first_row: date | None) -> HistoryWindow | None:
     start = max(trailing_start(end, HISTORY_DAYS), first_row)
     if start > end:
         return None
+    days = (end - start).days + 1
+    if days >= 7:
+        start += timedelta(days=days % 7)
     return HistoryWindow(start, end)
 
 
@@ -121,16 +139,21 @@ def zero_filled(flows: Iterable[tuple[date, Decimal]], window: HistoryWindow) ->
 class BlockSampler:
     """Draws a path as indices into a window's days: contiguous runs, each
     starting on a random history day of the same weekday as the path day it
-    fills, and running until it has copied `block_days` days or reaches the
-    end of the history — then a new run starts the same way.
+    fills and copying `block_days` days, wrapping from the last day to the
+    first — then a new run starts the same way.
 
     Weekday-matched starts keep a run's weekends on the path's weekends; the
-    run itself keeps a payday's spacing from the next one.
+    run itself keeps a payday's spacing from the next one. Wrapping, over a
+    window of whole weeks, is what makes every day equally likely: a run that
+    stopped at the end left the oldest days to the few runs that began before
+    them.
     """
 
     def __init__(self, window: HistoryWindow, block_days: int = BLOCK_DAYS) -> None:
         if block_days < 1:
             raise ValueError("block_days must be at least 1")
+        if window.days >= 7 and window.days % 7:
+            raise ValueError("a history of a week or more must be whole weeks")
         self.size = window.days
         self.block_days = block_days
         by_weekday: list[list[int]] = [[] for _ in range(7)]
@@ -147,11 +170,11 @@ class BlockSampler:
         i = left = 0
         weekday = first_day.weekday()
         for _ in range(days):
-            if left == 0 or i == self.size:
+            if left == 0:
                 i = rng.choice(self._starts[weekday])
                 left = self.block_days
             out.append(i)
-            i += 1
+            i = (i + 1) % self.size
             left -= 1
             weekday = (weekday + 1) % 7
         return out

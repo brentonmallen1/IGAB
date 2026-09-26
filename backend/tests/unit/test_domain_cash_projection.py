@@ -104,12 +104,24 @@ class TestHistoryWindow:
     def test_no_rows_is_no_history(self):
         assert history_window(TODAY, None) is None
 
-    def test_six_months_ending_yesterday(self):
+    def test_twenty_six_whole_weeks_ending_yesterday(self):
         w = history_window(TODAY, date(2020, 1, 1))
         assert w is not None
         assert w.end == TODAY - timedelta(days=1)
         assert w.start == TODAY - timedelta(days=HISTORY_DAYS)
-        assert w.days == HISTORY_DAYS == 180
+        assert w.days == HISTORY_DAYS == 182
+
+    def test_a_young_budget_keeps_its_newest_whole_weeks(self):
+        """Ten days of register are one whole week: the sampler wraps a run
+        from yesterday to the first day, and only whole weeks land it on the
+        same weekday. The three oldest days go."""
+        w = history_window(TODAY, TODAY - timedelta(days=10))
+        assert w == HistoryWindow(TODAY - timedelta(days=7), TODAY - timedelta(days=1))
+
+    def test_under_a_week_keeps_every_day(self):
+        """No weekday to keep under a week, so nothing is dropped."""
+        first = TODAY - timedelta(days=5)
+        assert history_window(TODAY, first) == HistoryWindow(first, TODAY - timedelta(days=1))
 
     def test_a_young_budget_starts_at_its_first_row(self):
         """Three weeks of register are three weeks of history. Zero-filling
@@ -170,27 +182,67 @@ class TestBlockSampler:
                 first + timedelta(days=k)
             ).weekday()
 
-    def test_runs_are_contiguous_and_break_only_at_a_block_or_the_end(self):
-        """A run copies consecutive history days; a new one starts only when
-        the run has copied BLOCK_DAYS days or reached yesterday."""
+    def test_runs_are_contiguous_and_break_only_after_a_full_block(self):
+        """A run copies consecutive history days, wrapping from yesterday to
+        the first day; a new one starts only once it has copied BLOCK_DAYS."""
         window = window_ending_yesterday(TODAY, HISTORY_DAYS)
         drawn = self._drawn(window, TODAY + timedelta(days=1), 365)
         run = 1
         for prev, cur in zip(drawn, drawn[1:], strict=False):
-            if cur == prev + 1 and run < BLOCK_DAYS:
+            if cur == (prev + 1) % window.days and run < BLOCK_DAYS:
                 run += 1
                 continue
-            assert run == BLOCK_DAYS or prev == window.days - 1, (prev, cur, run)
+            assert run == BLOCK_DAYS, (prev, cur, run)
             run = 1
 
-    def test_a_run_reaching_yesterday_starts_a_new_one(self):
-        """A 10-day history: every run ends at its last day, and the next day
-        of the path begins a new run on the right weekday."""
-        window = window_ending_yesterday(TODAY, 10)
-        drawn = self._drawn(window, TODAY + timedelta(days=1), 60)
-        assert max(drawn) == 9
-        for prev, cur in zip(drawn, drawn[1:], strict=False):
-            assert cur == prev + 1 or prev == 9
+    def test_a_run_reaching_yesterday_wraps_to_the_first_day(self):
+        """Two weeks of history: a run carries on from yesterday into the
+        oldest day, which falls on the weekday after yesterday's."""
+        window = window_ending_yesterday(TODAY, 14)
+        drawn = self._drawn(window, TODAY + timedelta(days=1), 120)
+        wraps = [k for k in range(1, len(drawn)) if drawn[k - 1] == 13 and drawn[k] == 0]
+        assert wraps
+        assert window.start.weekday() == (window.end + timedelta(days=1)).weekday()
+
+    def test_every_history_day_is_equally_likely(self):
+        """Every run that could start on a Saturday, laid end to end, covers
+        each history day the same number of times.
+
+        A run used to stop at yesterday, so the oldest days were reachable only
+        from the few runs that began before them — the first four weeks were
+        drawn a fraction as often as the rest, and a register whose oldest
+        weeks held a bonus projected $3k lower over ninety days than the same
+        register with the bonus last."""
+
+        class NthStart(random.Random):
+            def __init__(self, n):
+                super().__init__(0)
+                self.n = n
+
+            def choice(self, seq):
+                return seq[self.n]
+
+        window = window_ending_yesterday(TODAY, HISTORY_DAYS)
+        sampler = BlockSampler(window)
+        saturday = TODAY + timedelta(days=(5 - TODAY.weekday()) % 7 or 7)
+        counts = [0] * window.days
+        n = 0
+        while True:
+            try:
+                drawn = sampler.indices(saturday, BLOCK_DAYS, NthStart(n))
+            except IndexError:
+                break
+            for i in drawn:
+                counts[i] += 1
+            n += 1
+        assert n == HISTORY_DAYS // 7
+        assert set(counts) == {BLOCK_DAYS // 7}
+
+    def test_a_history_of_part_weeks_is_refused(self):
+        """Wrapping lands on the same weekday only over whole weeks;
+        `history_window` never builds anything else."""
+        with pytest.raises(ValueError):
+            BlockSampler(window_ending_yesterday(TODAY, 10))
 
     def test_under_a_week_of_history_every_weekday_still_draws(self):
         """Some weekday has no day of its own in a 3-day history; any day
