@@ -613,17 +613,21 @@ export function useTimelineReport(
   })
 }
 
+/** `months` is the balance chart's window (the report range); the rows and
+ *  totals are today's whatever it is. */
 export function useLiabilitiesReport(
   budgetId: string | null,
   liabilityType?: string,
-  mode?: string
+  mode?: string,
+  months = 12
 ) {
   return useQuery({
-    queryKey: [ROOT.reports, 'liabilities', budgetId, liabilityType ?? null, mode ?? null],
+    queryKey: [ROOT.reports, 'liabilities', budgetId, liabilityType ?? null, mode ?? null, months],
     queryFn: () =>
       fetchReport<LiabilitiesReport>(budgetId, 'liabilities', {
         liability_type: liabilityType,
         mode,
+        months,
       }),
     enabled: !!budgetId,
     staleTime: STALE,

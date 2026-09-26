@@ -3,6 +3,7 @@ import type { SavingsEnvelope, SavingsSaved, SavingsSection, SavingsTarget } fro
 import { accountTypeLabel } from '../../../constants/accountTypes'
 import { BADGE_LABELS } from '../../budget/targetTooltip'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { SET_ASIDE } from '../../../utils/savingsModes'
 
 /**
  * The Savings report's three sections. Every figure is served
@@ -138,7 +139,7 @@ export function SavedSection({ saved }: { saved: SavingsSaved }) {
   return (
     <SectionFrame
       id="savings-saved"
-      title="Saved"
+      title={SET_ASIDE}
       total={saved.total}
       lede={
         <>
@@ -150,14 +151,18 @@ export function SavedSection({ saved }: { saved: SavingsSaved }) {
     >
       {empty ? (
         <Empty>
-          Nothing saved here yet. Set a Savings envelope to count{' '}
+          Nothing set aside here yet. Set a Savings envelope to count{' '}
           <strong>while it’s in the budget</strong>, tag an envelope <strong>Emergency fund</strong>
           , or mark an off-budget account <strong>Counts as savings</strong>.
         </Empty>
       ) : (
         <>
           {saved.envelopes.length > 0 && (
-            <EnvelopeTable caption="Saved envelopes" envelopes={saved.envelopes} withTarget />
+            <EnvelopeTable
+              caption={`${SET_ASIDE} envelopes`}
+              envelopes={saved.envelopes}
+              withTarget
+            />
           )}
           {saved.accounts.length > 0 && (
             <div className="savings-section__table-wrap">
@@ -209,7 +214,7 @@ export function OnTheWaySection({ section }: { section: SavingsSection }) {
       lede={
         <>
           What Savings envelopes that count when money leaves the budget still hold. It counts as
-          saved when it leaves, so it isn&apos;t added to Saved.
+          saved when it leaves, so it isn&apos;t added to {SET_ASIDE}.
         </>
       }
     >
@@ -234,8 +239,8 @@ export function SinkingFundsSection({ section }: { section: SavingsSection }) {
       total={section.total}
       lede={
         <>
-          Envelopes tagged Long-term expense: money spoken for by a planned bill. Never added to
-          Saved.
+          Envelopes tagged Long-term expense: money spoken for by a planned bill. Never added to{' '}
+          {SET_ASIDE}.
         </>
       }
     >

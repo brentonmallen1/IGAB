@@ -35,6 +35,16 @@ export const SAVINGS_MODE_OPTIONS: readonly SavingsModeOption[] = [
   },
 ]
 
+/**
+ * The Savings report's name for its balance: what is set aside now.
+ *
+ * It was "Saved", beside a Savings Rate whose "Saved" is a flow — what moved
+ * into savings in a month. One word for a stock and a flow read as one figure
+ * that disagreed with itself. "Saved" stays the flow's; the balance is this,
+ * wherever the report or the Guide names it.
+ */
+export const SET_ASIDE = 'Set aside'
+
 /** What "in the budget" and "leaving the budget" mean, for any place that
  *  defines the two choices rather than just offering them. */
 export const SAVINGS_MODES_DEFINITION =

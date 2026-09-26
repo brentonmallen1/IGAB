@@ -49,6 +49,22 @@ export function formatMoneyWithOptions(
   return `${sign}${symbol}${formatted}`
 }
 
+/**
+ * A chart axis tick: whole currency units when the tick is whole, cents only
+ * when it has them. Axes drew "$250,000.00" on every gridline — a column of
+ * zeros in the widest part of the chart. A tick that genuinely falls between
+ * cents ($1.25 on a small scale) keeps them rather than reading as a
+ * duplicate "$1".
+ */
+export function formatMoneyTick(
+  amount: number,
+  currencyCode: string,
+  numberFormat: NumberFormat
+): string {
+  const full = formatMoneyWithOptions(amount, currencyCode, numberFormat)
+  return Number.isInteger(amount) ? full.slice(0, -3) : full
+}
+
 /** Format amount without currency symbol, with configurable format */
 export function formatAmountWithOptions(amount: number, numberFormat: NumberFormat): string {
   const sign = amount < 0 ? '-' : ''

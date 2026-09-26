@@ -804,6 +804,12 @@ export interface ReportSettings {
 export interface DashboardMetrics {
   net_worth: number
   net_worth_prev: number
+  /** What began being counted between `net_worth_prev`'s day and today —
+   *  accounts arriving with their opening balances, values first stated —
+   *  and the change less it: the card's figure. Server-computed:
+   *  `domain/tracking_start.py`. */
+  net_worth_entered: number
+  net_worth_change: number
   /** Net spending over the last 30 days, and over the 60 days before them
    *  per 30 days — no day in both. Server-computed: `domain/burn_rate.py`;
    *  the change between them is composed in `charts/burnRateView.ts`. */
@@ -851,6 +857,19 @@ export interface MeansMonth {
   outflows: number
 }
 
+/** Something that began being counted in a point's stretch
+ *  (`domain/tracking_start.py`): an account arriving with its opening balance,
+ *  or a stated value or manual debt at its first dated point. `amount` is
+ *  signed as the chart it rides on reads it — net worth's sign on Net Worth,
+ *  Account Composition and Savings; owed (positive) on Liabilities. */
+export interface TrackingEntry {
+  kind: 'account' | 'stated_asset' | 'manual_debt'
+  id: string
+  name: string
+  day: string
+  amount: number
+}
+
 export interface NetWorthPoint {
   date: string
   total_assets: number
@@ -867,12 +886,40 @@ export interface NetWorthPoint {
     classification: string | null
     balance: number
   }[]
+  /** What entered net worth in the stretch this point closes. */
+  entered: number
+  entries: TrackingEntry[]
 }
 
 export interface NetWorthReport {
   points: NetWorthPoint[]
   unmanaged_liability_total: number
   asset_value_total: number
+  /** Newest point less oldest, as drawn. */
+  change: number
+  /** The same, less what began being counted after the oldest point — the
+   *  headline. Null with no points. */
+  like_for_like_change: number | null
+  /** `change` less `like_for_like_change`. */
+  entered_total: number
+  /** Figures told rather than added up, with the day each was last true. */
+  stated_values: {
+    kind: 'stated_asset' | 'manual_debt'
+    id: string
+    name: string
+    value: number
+    as_of: string | null
+  }[]
+  /** Figures in today's net worth unmoved for 60+ days
+   *  (`tracking_start.STALE_AFTER_DAYS`). */
+  stale_balances: {
+    kind: 'account' | 'stated_asset' | 'manual_debt'
+    id: string
+    name: string
+    last_changed: string | null
+  }[]
+  /** The threshold `stale_balances` was built with, for the page's copy. */
+  stale_after_days: number
 }
 
 export interface LiabilitiesReportItem {
@@ -895,13 +942,26 @@ export interface LiabilitiesReportItem {
   /** What that verdict was measured at: the pace actually paid, or the
    *  minimum when there is no payment history. Null without terms. */
   payoff_basis: 'observed' | 'minimum' | null
+  /** The verdict's date (`amortization.payoff_verdict`). */
+  payoff_date: string | null
   terms_complete: boolean
+  /** Why there is no payoff at the pace paid, when there is none — the cell
+   *  says this instead of "—" (`liability_service.pace_missing`). */
+  pace_missing: 'no_terms' | 'payments_not_linked' | 'too_little_history' | null
+  /** The entered payment contradicts the loan's own terms
+   *  (`amortization.terms_check`) — most often escrow folded into it. */
+  terms_disagree: boolean
 }
 
 export interface LiabilitiesBalancePoint {
   date: string
+  /** Keyed by liability id; a debt is absent before its first point. */
   per_liability: Record<string, number>
   total: number
+  /** Owed (positive) that began being counted this month, keyed to the
+   *  liability. */
+  entered: number
+  entries: TrackingEntry[]
 }
 
 export interface LiabilitiesReport {
@@ -911,6 +971,10 @@ export interface LiabilitiesReport {
   total_interest_remaining: number
   /** Rows left out of that total for want of terms */
   liabilities_missing_terms: number
+  /** What those rows owe. */
+  missing_terms_balance: number
+  /** Rows owing anything today. */
+  carrying_balance_count: number
   /** Rows left out of it because their minimum never retires the debt */
   liabilities_never_paying_off: number
   balance_over_time: LiabilitiesBalancePoint[]
@@ -924,8 +988,12 @@ export interface LiabilitiesReport {
 
 export interface AccountCompositionPoint {
   date: string
-  // Balance per account-type key present in the budget (custom types included)
+  /** Balance per account-type key in `series` (custom types included). */
   balances: Record<string, number>
+  /** The bands no account holds, so the stack sums to `net_worth`: stated
+   *  asset values (positive) and debts with no account (negative). */
+  stated_assets: number
+  manual_debts: number
   /** Net worth at this point — served (report_service.account_composition)
    *  rather than summed from `balances`, because unmanaged debts and stated
    *  asset values sit in net worth without appearing in any account series. */
@@ -933,10 +1001,15 @@ export interface AccountCompositionPoint {
   /** The stated-asset share of the gap between the net line and the visible
    *  stack — footnoted when non-zero. */
   asset_value_total: number
+  entered: number
+  entries: TrackingEntry[]
 }
 
 export interface AccountCompositionReport {
   points: AccountCompositionPoint[]
+  /** Every account type a live account has, registry order: a series'
+   *  colour is its place here, so it holds across ranges. */
+  series: string[]
 }
 
 /** One month of the Burn Rate chart: the 30 days ending on its last day
@@ -1617,8 +1690,12 @@ export interface SavingsSaved {
   total: number
   envelopes_total: number
   accounts_total: number
-  /** Saved at each month's end, aligned with `SavingsReport.months`. */
-  monthly_totals: number[]
+  /** Set aside at each month's end, aligned with `SavingsReport.months`;
+   *  null before anything in the section has a figure. */
+  monthly_totals: (number | null)[]
+  /** What savings accounts brought in by being linked, per month. */
+  monthly_entered: number[]
+  monthly_entries: TrackingEntry[][]
   envelopes: SavingsEnvelope[]
   accounts: SavingsAccount[]
 }

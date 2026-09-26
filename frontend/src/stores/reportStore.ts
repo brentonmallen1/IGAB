@@ -49,7 +49,7 @@ export interface TabDef {
 export const REPORT_TABS: TabDef[] = [
   { id: 'overview', label: 'Overview', group: 'overview' },
   { id: 'net-worth', label: 'Net Worth', group: 'financial' },
-  { id: 'account-composition', label: 'Accounts', group: 'financial' },
+  { id: 'account-composition', label: 'Account Composition', group: 'financial' },
   { id: 'liabilities', label: 'Liabilities', group: 'financial' },
   { id: 'savings', label: 'Savings', group: 'financial' },
   { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },

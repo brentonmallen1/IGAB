@@ -74,6 +74,7 @@ from igab.domain.plan import CHRONIC_WINDOW, is_chronic, plan_outcome, total_var
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.spending import UNCATEGORIZED, spent
 from igab.domain.tracking_start import (
+    STALE_AFTER_DAYS,
     Entry,
     StatedValue,
     entered,
@@ -633,6 +634,7 @@ class ReportService:
                 for s in drawn.stated
                 if s.current > 0
             ],
+            "stale_after_days": STALE_AFTER_DAYS,
             "stale_balances": await self._stale_balances(
                 budget_id, points[-1], drawn.stated, today
             ),

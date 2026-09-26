@@ -275,6 +275,9 @@ class NetWorthResponse(ApiModel):
     entered_total: Decimal
     stated_values: list[StatedValueOut]
     stale_balances: list[StaleBalance]
+    #: `tracking_start.STALE_AFTER_DAYS`, served so the page's copy states the
+    #: threshold the list was built with rather than a second copy of it.
+    stale_after_days: int
 
 
 # ─── Account Composition ──────────────────────────────────────────────────────

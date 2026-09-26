@@ -209,6 +209,7 @@ class TestNetWorth:
         assert body["entered_total"] == 267700
         assert [p["entered"] for p in body["points"]] == [0, 17700, 300000, -50000]
         assert body["stale_balances"][0]["name"] == "Harborstone Checking"
+        assert body["stale_after_days"] == 60
 
 
 class TestOverviewCard:

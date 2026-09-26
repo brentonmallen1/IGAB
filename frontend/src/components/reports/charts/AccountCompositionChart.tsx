@@ -25,6 +25,10 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { useReportMonths } from '../../../stores/reportStore'
+import { arrivalMarks } from '../../../utils/trackingStart'
+import { arrivalLines } from './arrivalLines'
+import { TrackingStartNote } from './TrackingStartNote'
+import { bandLabel, compositionBands } from './compositionView'
 
 interface Props {
   budgetId: string
@@ -43,14 +47,13 @@ export function AccountCompositionReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
-  // Series are whatever type keys this budget actually has — custom types
-  // included. Balances carry their ledger sign, so liabilities plot negative.
-  const typeKeys = [...new Set(points.flatMap((p) => Object.keys(p.balances)))].sort()
-  const labelFor = (key: string) => accountTypeLabel(key, typeRows)
-  const chartData = points.map((p) => ({
+  const bands = data ? compositionBands(data) : []
+  const labelFor = (key: string) => bandLabel(key, (k) => accountTypeLabel(k, typeRows))
+  const marks = arrivalMarks(points, formatMoney)
+  const chartData = points.map((p, i) => ({
     date: formatMonthShort(p.date),
     Net: Number(p.net_worth),
-    ...Object.fromEntries(typeKeys.map((k) => [labelFor(k), Number(p.balances[k] ?? 0)])),
+    ...Object.fromEntries(bands.map((b) => [labelFor(b.key), b.values[i]])),
   }))
 
   return (
@@ -59,13 +62,19 @@ export function AccountCompositionReport({ budgetId }: Props) {
         <h2 className="report-section__title">Account Composition</h2>
         <ReportInfoButton title="Account Composition">
           <p>
-            Shows how your balance is distributed across <strong>account types</strong> — checking,
-            savings, investments, loans, and any custom types — over time, across all accounts.
+            Shows how your net worth is made up across <strong>account types</strong> — checking,
+            savings, investments, loans, and any custom types — over time, across all accounts. Two
+            more bands hold what no account does: <strong>stated values</strong> (a home, a vehicle)
+            and <strong>debts tracked by hand</strong>.
           </p>
           <p>
-            Balances keep their sign: asset balances stack above zero, debt balances below. The{' '}
-            <strong>Net</strong> line is their sum, less any unmanaged debts and plus any stated
-            asset values — the same figure the Net Worth report draws.
+            Balances keep their sign: assets stack above zero, debts below. The <strong>Net</strong>{' '}
+            line is the sum of every band — the same figure the Net Worth report draws. A type keeps
+            its colour on every range.
+          </p>
+          <p>
+            A numbered line marks a month something began being counted — an account linked with its
+            balance, a value or debt first entered — listed under the chart.
           </p>
           <ReportScopeNote report="account-composition" />
         </ReportInfoButton>
@@ -74,23 +83,18 @@ export function AccountCompositionReport({ budgetId }: Props) {
           <ReportExportButton
             reportId="account-composition"
             getRows={() =>
-              points.map((p) => ({
+              points.map((p, i) => ({
                 date: p.date,
                 net_worth: Number(p.net_worth),
-                ...Object.fromEntries(typeKeys.map((k) => [k, Number(p.balances[k] ?? 0)])),
+                ...Object.fromEntries(bands.map((b) => [b.key, b.values[i]])),
+                started_tracking: p.entered,
               }))
             }
             captureRef={captureRef}
           />
         </div>
       </div>
-      <p className="report-section__subtitle">Assets stack positive, debts negative.</p>
-      {Number(points[points.length - 1]?.asset_value_total ?? 0) > 0 && (
-        <p className="report-section__subtitle">
-          The Net line includes {formatMoney(Number(points[points.length - 1].asset_value_total))}{' '}
-          of stated asset value that no account series shows.
-        </p>
-      )}
+      <p className="report-section__subtitle">Assets stack above zero, debts below.</p>
 
       <div ref={captureRef} className="report-capture">
         {chartData.length === 0 ? (
@@ -104,7 +108,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
             <ComposedChart
               data={chartData}
               {...MIXED_SIGN_STACK}
-              margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+              margin={{ top: 16, right: 16, left: 0, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
@@ -122,22 +126,28 @@ export function AccountCompositionReport({ budgetId }: Props) {
               />
               <Legend />
               <ReferenceLine y={0} stroke="var(--border-color)" strokeWidth={2} />
-              {typeKeys.map((k, i) => (
+              {arrivalLines(marks, (i) => chartData[i].date)}
+              {bands.map((b) => (
                 <Area
-                  key={k}
-                  type="monotone"
-                  dataKey={labelFor(k)}
-                  stroke={chartColor(i)}
-                  fill={chartColor(i)}
+                  key={b.key}
+                  type="linear"
+                  dataKey={labelFor(b.key)}
+                  stroke={chartColor(b.colorSlot)}
+                  fill={chartColor(b.colorSlot)}
                   fillOpacity={0.15}
                   strokeWidth={2}
                   stackId="1"
                 />
               ))}
-              <Line type="monotone" dataKey="Net" stroke={COLOR_NET} strokeWidth={2} dot={false} />
+              <Line type="linear" dataKey="Net" stroke={COLOR_NET} strokeWidth={2} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         )}
+        <TrackingStartNote
+          marks={marks}
+          formatMoney={formatMoney}
+          formatMonthShort={formatMonthShort}
+        />
       </div>
     </div>
   )

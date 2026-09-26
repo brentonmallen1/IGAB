@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useFormatters } from './useFormatters'
 import { useIsMobile } from './useMediaQuery'
 import { useAppStore } from '../stores/appStore'
-import { getCurrencySymbol } from '../utils/money'
+import { formatMoneyTick, getCurrencySymbol } from '../utils/money'
 import { compactMoney, MONEY_AXIS_WIDTH } from '../utils/moneyAxis'
 
 /**
@@ -16,11 +16,17 @@ export function useMoneyAxis(): { tickFormatter: (v: number) => string; width: n
   const privacyMode = useAppStore((s) => s.privacyMode)
   return useMemo(() => {
     if (!isMobile)
-      return { tickFormatter: (v: number) => formatMoney(v), width: MONEY_AXIS_WIDTH.desktop }
+      return {
+        tickFormatter: (v: number) =>
+          privacyMode
+            ? formatMoney(v)
+            : formatMoneyTick(v, settings.currencyCode, settings.numberFormat),
+        width: MONEY_AXIS_WIDTH.desktop,
+      }
     const symbol = getCurrencySymbol(settings.currencyCode)
     return {
       tickFormatter: (v: number) => (privacyMode ? formatMoney(v) : compactMoney(v, symbol)),
       width: MONEY_AXIS_WIDTH.phone,
     }
-  }, [isMobile, formatMoney, settings.currencyCode, privacyMode])
+  }, [isMobile, formatMoney, settings.currencyCode, settings.numberFormat, privacyMode])
 }

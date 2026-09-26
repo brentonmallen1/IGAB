@@ -1,5 +1,5 @@
 /**
- * The Savings report's three sections — Saved, On the way to savings, Sinking
+ * The Savings report's three sections — Set aside, On the way to savings, Sinking
  * funds — each with its own served total and its own empty state. The report
  * adds nothing up: every total on screen is one the server sent.
  */
@@ -47,6 +47,8 @@ const EMPTY: SavingsReportData = {
     envelopes_total: 0,
     accounts_total: 0,
     monthly_totals: [0, 0, 0, 0],
+    monthly_entered: [0, 0, 0, 0],
+    monthly_entries: [[], [], [], []],
     envelopes: [],
     accounts: [],
   },
@@ -64,6 +66,8 @@ const FULL: SavingsReportData = {
     envelopes_total: 1200,
     accounts_total: 2000,
     monthly_totals: [2800, 2900, 3100, 3200],
+    monthly_entered: [0, 0, 0, 0],
+    monthly_entries: [[], [], [], []],
     envelopes: [
       envelope('Emergency Fund', 1200, {
         target: {
@@ -124,14 +128,14 @@ describe('SavingsReport sections', () => {
     renderReport(FULL)
     const total = (name: string) =>
       section(name).querySelector('.savings-section__total')?.textContent
-    expect(total('Saved')).toBe('$3,200.00')
+    expect(total('Set aside')).toBe('$3,200.00')
     expect(total('On the way to savings')).toBe('$400.00')
     expect(total('Sinking funds')).toBe('$900.00')
   })
 
-  it('lists envelopes and off-budget accounts under Saved', () => {
+  it('lists envelopes and off-budget accounts under Set aside', () => {
     renderReport(FULL)
-    const saved = section('Saved')
+    const saved = section('Set aside')
     expect(within(saved).getByText('Emergency Fund')).toBeInTheDocument()
     expect(within(saved).getByText('Harborstone Reserve')).toBeInTheDocument()
     expect(
@@ -148,7 +152,7 @@ describe('SavingsReport sections', () => {
     expect(within(funds).getByText(/50% of \$1,800\.00 by .* · Funded/)).toBeInTheDocument()
   })
 
-  it('gives On the way no target column and no Saved rows', () => {
+  it('gives On the way no target column and no Set aside rows', () => {
     renderReport(FULL)
     const onTheWay = section('On the way to savings')
     expect(within(onTheWay).getByText('Investing')).toBeInTheDocument()
@@ -157,7 +161,7 @@ describe('SavingsReport sections', () => {
 
   it('says what fills each empty section', () => {
     renderReport(EMPTY)
-    expect(within(section('Saved')).getByText(/Nothing saved here yet/)).toBeInTheDocument()
+    expect(within(section('Set aside')).getByText(/Nothing set aside here yet/)).toBeInTheDocument()
     expect(
       within(section('On the way to savings')).getByText(
         'No Savings envelopes that count when money leaves the budget.'
@@ -190,5 +194,63 @@ describe('SavingsReport before an import', () => {
   it('says nothing when every month has a figure', () => {
     renderReport({ ...data, unrecovered: [] })
     expect(screen.queryByText(/reproduce YNAB/)).not.toBeInTheDocument()
+  })
+})
+
+describe('SavingsReport, before its accounts exist', () => {
+  // Cascade Point HYSA was linked in July with 2,000; nothing else is set
+  // aside. The chart drew $0 for June and a 2,000 climb nobody saved.
+  const linked: SavingsReportData = {
+    ...EMPTY,
+    saved: {
+      ...EMPTY.saved,
+      total: 2000,
+      accounts_total: 2000,
+      monthly_totals: [null, 2000, 2000, 2000],
+      monthly_entered: [0, 2000, 0, 0],
+      monthly_entries: [
+        [],
+        [
+          {
+            kind: 'account',
+            id: 'a1',
+            name: 'Cascade Point HYSA',
+            day: '2026-07-10',
+            amount: 2000,
+          },
+        ],
+        [],
+        [],
+      ],
+      accounts: [
+        {
+          account_id: 'a1',
+          name: 'Cascade Point HYSA',
+          account_type: 'savings',
+          monthly_balances: [null, 2000, 2000, 2000],
+          current_balance: 2000,
+        },
+      ],
+    },
+  }
+
+  it('says where the line starts and which account started it', () => {
+    renderReport(linked)
+    expect(
+      screen.getByText(/Starts Jul .*when its account was linked: Cascade Point HYSA/)
+    ).toBeInTheDocument()
+  })
+
+  it('keys the arrival marker under the chart', () => {
+    renderReport(linked)
+    const key = screen.getByRole('region', { name: 'When counting began' })
+    expect(key).toHaveTextContent('1 account added: +$2,000.00')
+    expect(key).toHaveTextContent('Cascade Point HYSA +$2,000.00')
+  })
+
+  it('says nothing of a start when the line starts with the window', () => {
+    renderReport(FULL)
+    expect(screen.queryByText(/^Starts /)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'When counting began' })).not.toBeInTheDocument()
   })
 })

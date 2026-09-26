@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatMoney, moneyOrDash, NO_FIGURE, parseAmountInput, sumToCents, toCents } from './money'
+import {
+  formatMoney,
+  formatMoneyTick,
+  moneyOrDash,
+  NO_FIGURE,
+  parseAmountInput,
+  sumToCents,
+  toCents,
+} from './money'
 
 describe('parseAmountInput', () => {
   it('parses plain decimal amounts', () => {
@@ -118,5 +126,23 @@ describe('moneyOrDash', () => {
     expect(moneyOrDash(1200, fmt)).toBe('$1,200.00')
     // Privacy mode passes a masking formatter; the dash reveals no amount.
     expect(moneyOrDash(1200, () => '$••••')).toBe('$••••')
+  })
+})
+
+describe('formatMoneyTick', () => {
+  it('drops the cents from a whole tick', () => {
+    expect(formatMoneyTick(250000, 'USD', 'comma_dot')).toBe('$250,000')
+    expect(formatMoneyTick(-1500, 'USD', 'comma_dot')).toBe('-$1,500')
+    expect(formatMoneyTick(0, 'USD', 'comma_dot')).toBe('$0')
+  })
+
+  it('in every number format', () => {
+    expect(formatMoneyTick(250000, 'EUR', 'dot_comma')).toBe('€250.000')
+    expect(formatMoneyTick(250000, 'EUR', 'space_comma')).toBe('€250 000')
+  })
+
+  it('keeps cents a tick really has, so a small scale does not read $1, $1, $2', () => {
+    expect(formatMoneyTick(1.25, 'USD', 'comma_dot')).toBe('$1.25')
+    expect(formatMoneyTick(2.5, 'EUR', 'dot_comma')).toBe('€2,50')
   })
 })
