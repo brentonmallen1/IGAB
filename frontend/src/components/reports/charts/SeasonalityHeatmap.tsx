@@ -24,18 +24,17 @@ function intensityStyle(value: number, max: number): React.CSSProperties {
 }
 
 export function SeasonalityReport({ budgetId }: Props) {
-  const { formatMoney, privacyMode } = useFormatters()
+  const { formatMoney, formatMonthShort, privacyMode } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSeasonalityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   function drillTo(categoryId: string, categoryName: string, month: string) {
-    const ym = month.slice(0, 7)
-    const window = monthWindow(ym)
+    const window = monthWindow(month)
     setDrillDown({
       kind: 'category',
-      label: `${categoryName} · ${ym}`,
+      label: `${categoryName} · ${formatMonthShort(month)}`,
       scope: 'leaf',
       direction: 'outflow',
       categoryIds: [categoryId],
@@ -105,7 +104,7 @@ export function SeasonalityReport({ budgetId }: Props) {
                   </th>
                   {allMonths.map((m) => (
                     <th scope="col" key={String(m)} className="heatmap__month-header">
-                      {String(m).slice(0, 7)}
+                      {formatMonthShort(String(m))}
                     </th>
                   ))}
                 </tr>
@@ -123,7 +122,7 @@ export function SeasonalityReport({ budgetId }: Props) {
                           key={String(m)}
                           className={`heatmap__cell ${val > 0 ? 'heatmap__cell--clickable' : ''}`}
                           style={intensityStyle(val, maxVal)}
-                          title={`${cat.name} · ${String(m).slice(0, 7)}: ${formatMoney(val)}`}
+                          title={`${cat.name} · ${formatMonthShort(String(m))}: ${formatMoney(val)}`}
                           onClick={val > 0 ? () => drillTo(cat.id, cat.name, String(m)) : undefined}
                         >
                           {val > 0 && (

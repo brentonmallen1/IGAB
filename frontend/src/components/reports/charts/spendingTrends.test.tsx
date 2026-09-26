@@ -28,6 +28,9 @@ const data: SpendingTrendsReport = {
   ],
   monthly_totals: [1500, 1590],
   total: 3090,
+  avg_monthly: 1500,
+  months_averaged: 1,
+  running_month: '2026-09-01',
   class_excluded: [],
   filter_unavailable: false,
 }

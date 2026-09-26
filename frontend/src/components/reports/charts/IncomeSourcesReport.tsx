@@ -35,7 +35,7 @@ const MAX_SERIES = 8
 /** Income per payee per month, with a total line — pairs with the paycheck
  *  planner. Only rows the classifier reads as income count. */
 export function IncomeSourcesReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(320)
   const months = useReportMonths()
@@ -46,7 +46,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
   const chartData = useMemo(() => {
     if (!data) return []
     return data.months.map((m, i) => {
-      const row: Record<string, string | number> = { month: formatMonth(m) }
+      const row: Record<string, string | number> = { month: formatMonthShort(m) }
       for (const s of shown) row[s.payee_name] = s.monthly[i] ?? 0
       const rest = otherBand(
         data.monthly_totals[i],
@@ -55,7 +55,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
       if (rest !== null) row.Other = rest
       return row
     })
-  }, [data, shown, formatMonth])
+  }, [data, shown, formatMonthShort])
 
   if (isLoading) return <div className="report-loading">Loading...</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -162,7 +162,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                 </th>
                 {data.months.map((m) => (
                   <th key={m} scope="col" style={{ textAlign: 'right' }}>
-                    {formatMonth(m)}
+                    {formatMonthShort(m)}
                   </th>
                 ))}
                 <th scope="col" style={{ textAlign: 'right' }}>

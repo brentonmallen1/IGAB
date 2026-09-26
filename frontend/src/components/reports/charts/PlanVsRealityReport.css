@@ -122,3 +122,10 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* The month in progress: month-to-date cells, counted in no verdict. Italic
+   rather than faded, so its figures keep their contrast in every theme. */
+.plan-reality__month-header--running,
+.plan-reality__cell--running {
+  font-style: italic;
+}

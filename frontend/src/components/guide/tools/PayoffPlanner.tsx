@@ -364,6 +364,7 @@ function BalanceChart({
   formatMoney: (n: number) => string
 }) {
   const moneyAxis = useMoneyAxis()
+  const { formatMonthShort } = useFormatters()
   const series = SERIES
   const length = Math.max(...series.map((s) => plan[s.key].months.length))
   if (length === 0) return null
@@ -386,7 +387,7 @@ function BalanceChart({
         <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <XAxis
             dataKey="month"
-            tickFormatter={(d: string) => d.slice(0, 7)}
+            tickFormatter={(d: string) => formatMonthShort(d)}
             tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
             minTickGap={24}
           />
@@ -394,7 +395,7 @@ function BalanceChart({
           <Tooltip
             {...TOOLTIP_STYLE}
             formatter={(v) => formatMoney(Number(v))}
-            labelFormatter={(d) => String(d).slice(0, 7)}
+            labelFormatter={(d) => formatMonthShort(String(d))}
           />
           {/* Three lines with no key at all: which curve was which was
               guesswork, and the whole point of the chart is telling them

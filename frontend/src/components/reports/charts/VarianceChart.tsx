@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import {
   Bar,
+  Cell,
   ComposedChart,
   CartesianGrid,
   Legend,
@@ -24,6 +25,12 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { useReportMonths } from '../../../stores/reportStore'
+import {
+  completeMonthRows,
+  reportMonthLabel,
+  RUNNING_MONTH_OPACITY,
+  throughMonth,
+} from '../../../utils/reportMonths'
 
 interface Props {
   budgetId: string
@@ -31,7 +38,7 @@ interface Props {
 
 export function VarianceReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useVarianceReport(budgetId, months)
@@ -41,10 +48,15 @@ export function VarianceReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
-  const latest = points[points.length - 1]
+  // The drift is the complete months'; the running month's own figures so
+  // far sit beside it on their own cards.
+  const settled = completeMonthRows(points).at(-1)
+  const running = points.find((p) => p.partial_month)
 
   const chartData = points.map((p) => ({
-    month: p.month.slice(0, 7),
+    iso: p.month,
+    month: reportMonthLabel(p.month, p.partial_month, formatMonthShort),
+    partial: p.partial_month,
     Assigned: p.budget_assigned,
     Spent: p.actual_spent,
     'Monthly Variance': p.monthly_variance,
@@ -66,6 +78,11 @@ export function VarianceReport({ budgetId }: Props) {
             <strong>line</strong> is the cumulative drift — if it slopes down, your budget is
             eroding month by month.
           </p>
+          <p>
+            The drift covers complete months only. The month in progress is drawn after them,
+            lighter and marked <em>so far</em>, with no point on the line: its whole plan is in from
+            the 1st while its spending arrives over the month.
+          </p>
           <ReportScopeNote report="variance" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Running budget drift over time</p>
@@ -76,6 +93,7 @@ export function VarianceReport({ budgetId }: Props) {
             getRows={() =>
               points.map((p) => ({
                 month: p.month.slice(0, 7),
+                partial_month: p.partial_month,
                 assigned: p.budget_assigned,
                 spent: p.actual_spent,
                 monthly_variance: p.monthly_variance,
@@ -88,21 +106,31 @@ export function VarianceReport({ budgetId }: Props) {
       </div>
 
       <div ref={captureRef} className="report-capture">
-        {latest && (
+        {(settled || running) && (
           <MetricRow>
-            <MetricCard
-              label="Cumulative Variance"
-              value={formatMoney(latest.cumulative_variance)}
-              sub={latest.cumulative_variance > 0 ? 'Under budget overall' : 'Over budget overall'}
-            />
-            {/* The newest point is the running month (`report_months`), not
-                last month: "Last Month Spent" read a half-finished month as a
-                whole one. */}
-            <MetricCard
-              label="Assigned this month so far"
-              value={formatMoney(latest.budget_assigned)}
-            />
-            <MetricCard label="Spent this month so far" value={formatMoney(latest.actual_spent)} />
+            {settled && settled.cumulative_variance !== null && (
+              <MetricCard
+                label="Cumulative Variance"
+                value={formatMoney(settled.cumulative_variance)}
+                sub={`${
+                  settled.cumulative_variance > 0 ? 'Under budget' : 'Over budget'
+                } ${throughMonth(settled.month, formatMonthShort)}`}
+              />
+            )}
+            {/* The running month (`ReportWindow`), apart from the drift:
+                "Last Month Spent" once read a half-finished month as whole. */}
+            {running && (
+              <>
+                <MetricCard
+                  label="Assigned this month so far"
+                  value={formatMoney(running.budget_assigned)}
+                />
+                <MetricCard
+                  label="Spent this month so far"
+                  value={formatMoney(running.actual_spent)}
+                />
+              </>
+            )}
           </MetricRow>
         )}
 
@@ -121,8 +149,16 @@ export function VarianceReport({ budgetId }: Props) {
               />
               <Legend />
               <ReferenceLine y={0} stroke="var(--border-color)" strokeWidth={2} />
-              <Bar dataKey="Assigned" fill={COLOR_NEUTRAL} opacity={0.6} radius={[2, 2, 0, 0]} />
-              <Bar dataKey="Spent" fill={COLOR_NEGATIVE} opacity={0.6} radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Assigned" fill={COLOR_NEUTRAL} opacity={0.6} radius={[2, 2, 0, 0]}>
+                {chartData.map((d) => (
+                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
+                ))}
+              </Bar>
+              <Bar dataKey="Spent" fill={COLOR_NEGATIVE} opacity={0.6} radius={[2, 2, 0, 0]}>
+                {chartData.map((d) => (
+                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
+                ))}
+              </Bar>
               <Line
                 type="monotone"
                 dataKey="Cumulative"

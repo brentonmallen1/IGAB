@@ -24,19 +24,19 @@ export function AnomaliesReport({ budgetId }: Props) {
     threshold
   )
   const { setDrillDown } = useReportStore()
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
 
   const anomalies = useMemo(() => data?.anomalies ?? [], [data])
 
   const groupedByMonth = useMemo(() => {
     const groups = new Map<string, typeof anomalies>()
     for (const a of anomalies) {
-      const monthKey = formatMonth(a.month)
+      const monthKey = formatMonthShort(a.month)
       if (!groups.has(monthKey)) groups.set(monthKey, [])
       groups.get(monthKey)!.push(a)
     }
     return groups
-  }, [anomalies, formatMonth])
+  }, [anomalies, formatMonthShort])
 
   function handleClick(a: (typeof anomalies)[0]) {
     // monthWindow clamps the end to today, which this copy did not: for the

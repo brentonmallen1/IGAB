@@ -10,6 +10,7 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { monthRange, reportMonthLabel } from '../../../utils/reportMonths'
 import './PlanVsRealityReport.css'
 
 interface Props {
@@ -17,7 +18,7 @@ interface Props {
 }
 
 export function PlanVsRealityReport({ budgetId }: Props) {
-  const { formatMoney, privacyMode } = useFormatters()
+  const { formatMoney, formatMonthShort, privacyMode } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
   const [chronicOnly, setChronicOnly] = useState(false)
@@ -40,6 +41,11 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const allMonths = data?.months ?? []
+  // The running month's cells are month-to-date: drawn, marked "so far", and
+  // counted in no verdict or total (served — `running_month`).
+  const isRunning = (month: string) => month === data?.running_month
+  const settledMonths = allMonths.filter((m) => !isRunning(m))
+  const covered = monthRange(settledMonths[0], settledMonths.at(-1), formatMonthShort)
   let categories = data?.categories ?? []
   if (chronicOnly) categories = categories.filter((c) => c.chronic)
 
@@ -64,6 +70,11 @@ export function PlanVsRealityReport({ budgetId }: Props) {
             A category over plan in <strong>3 of the last 6 months</strong> is flagged as chronic —
             a sign its budget doesn't match how you actually spend. Click a cell to see that month's
             transactions.
+          </p>
+          <p>
+            The totals, the chronic flag and the Over column count complete months only. The month
+            in progress is the last column, marked <em>so far</em>: its plan is in, its spending is
+            still arriving.
           </p>
           <ReportScopeNote report="plan-reality" />
         </ReportInfoButton>
@@ -106,8 +117,16 @@ export function PlanVsRealityReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {data && (
           <MetricRow>
-            <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
-            <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
+            <MetricCard
+              label="Total Assigned"
+              value={formatMoney(data.total_assigned)}
+              sub={covered ?? undefined}
+            />
+            <MetricCard
+              label="Total Spent"
+              value={formatMoney(data.total_spent)}
+              sub={covered ?? undefined}
+            />
             <MetricCard label="Chronically Over" value={String(data.chronic_count)} />
           </MetricRow>
         )}
@@ -128,8 +147,12 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                     Category
                   </th>
                   {allMonths.map((m) => (
-                    <th scope="col" key={m} className="plan-reality__month-header">
-                      {m.slice(0, 7)}
+                    <th
+                      scope="col"
+                      key={m}
+                      className={`plan-reality__month-header${isRunning(m) ? ' plan-reality__month-header--running' : ''}`}
+                    >
+                      {reportMonthLabel(m, isRunning(m), formatMonthShort)}
                     </th>
                   ))}
                   <th scope="col" className="plan-reality__over-header">
@@ -163,7 +186,8 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                     {cat.monthly.map((cell) => {
                       const v = cell.variance
                       const active = isActive(cell)
-                      const ym = cell.month.slice(0, 7)
+                      const running = isRunning(cell.month)
+                      const ym = reportMonthLabel(cell.month, running, formatMonthShort)
                       return (
                         <td
                           key={cell.month}
@@ -172,6 +196,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                             active ? 'plan-reality__cell--clickable' : '',
                             active && v < 0 ? 'plan-reality__cell--over' : '',
                             active && v >= 0 ? 'plan-reality__cell--under' : '',
+                            running ? 'plan-reality__cell--running' : '',
                           ].join(' ')}
                           style={active ? overspendStyle(v, maxOver) : undefined}
                           title={`${cat.category_name} · ${ym} — assigned ${formatMoney(cell.assigned)}, spent ${formatMoney(cell.spent)}`}

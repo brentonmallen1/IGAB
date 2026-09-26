@@ -29,7 +29,7 @@ interface Props {
 
 export function NetWorthReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useNetWorthReport(budgetId, months)
@@ -42,7 +42,7 @@ export function NetWorthReport({ budgetId }: Props) {
   const latest = points[points.length - 1]
 
   const chartData = points.map((p) => ({
-    date: p.date.slice(0, 7),
+    date: formatMonthShort(p.date),
     Assets: p.total_assets,
     Liabilities: p.total_liabilities,
     'Net Worth': p.net_worth,

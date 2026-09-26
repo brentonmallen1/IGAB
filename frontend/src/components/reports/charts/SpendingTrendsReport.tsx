@@ -26,6 +26,8 @@ import { OTHER_KEY, rollupTrends, stackTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
+import { reportMonthLabel } from '../../../utils/reportMonths'
+import { averagedOver } from './averagedOver'
 
 interface Props {
   budgetId: string
@@ -38,7 +40,7 @@ interface Props {
  * follows a tag follows it here too.
  */
 export function SpendingTrendsReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(340)
   const { filters } = useReportStore()
@@ -61,12 +63,19 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   )
 
   const rolled = useMemo(() => (data ? rollupTrends(data, groupBy) : []), [data, groupBy])
+  // One label for every month on the page: "Sep 26", and "Sep 26 so far" for
+  // the running month, which the server names.
+  const runningMonth = data?.running_month ?? null
+  const monthLabel = useMemo(
+    () => (m: string) => reportMonthLabel(m, m === runningMonth, formatMonthShort),
+    [runningMonth, formatMonthShort]
+  )
   // Bars stack every named series plus Other, so each is its month's total.
   // Lines draw the named series alone: they are not a stack, and an Other
   // line would be a series nobody asked to follow.
   const stacked = useMemo(
-    () => (data ? stackTrends(data, rolled, formatMonth) : { rows: [], series: [] }),
-    [data, rolled, formatMonth]
+    () => (data ? stackTrends(data, rolled, monthLabel) : { rows: [], series: [] }),
+    [data, rolled, monthLabel]
   )
   const series =
     chart === 'stacked' ? stacked.series : stacked.series.filter((s) => s.key !== OTHER_KEY)
@@ -75,7 +84,9 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const avg = data.months.length ? data.total / data.months.length : 0
+  // The average is served over the months the range holds whole and that are
+  // over: a range through today drew the running month and divided by it.
+  const lastMonth = data.months[data.months.length - 1]
   const last = data.monthly_totals[data.monthly_totals.length - 1] ?? 0
 
   return (
@@ -141,8 +152,16 @@ export function SpendingTrendsReport({ budgetId }: Props) {
         <div ref={captureRef} className="report-capture">
           <MetricRow>
             <MetricCard label="Total" value={formatMoney(data.total)} />
-            <MetricCard label="Average / month" value={formatMoney(avg)} />
-            <MetricCard label="Latest month" value={formatMoney(last)} />
+            <MetricCard
+              label="Average / month"
+              value={formatMoneyOrDash(data.avg_monthly)}
+              sub={
+                data.months_averaged > 0
+                  ? averagedOver('per month', data.months_averaged)
+                  : 'no complete month in this range'
+              }
+            />
+            {lastMonth && <MetricCard label={monthLabel(lastMonth)} value={formatMoney(last)} />}
           </MetricRow>
 
           <div className="report-chart" style={{ height: chartHeight }}>
@@ -253,7 +272,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                 </th>
                 {data.months.map((m) => (
                   <th key={m} scope="col" style={{ textAlign: 'right' }}>
-                    {formatMonth(m)}
+                    {monthLabel(m)}
                   </th>
                 ))}
                 <th scope="col" style={{ textAlign: 'right' }}>

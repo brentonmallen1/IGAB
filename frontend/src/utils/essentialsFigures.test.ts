@@ -10,6 +10,8 @@ const figures = (over: Partial<EssentialsFigures> = {}): EssentialsFigures => ({
   spread: 2140,
   spread_on: true,
   monthly: 2140,
+  window_start: '2026-06-01',
+  window_end: '2026-08-31',
   ...over,
 })
 

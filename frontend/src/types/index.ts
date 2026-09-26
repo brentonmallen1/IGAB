@@ -688,6 +688,10 @@ export interface SpendingReport {
 
 export interface IncomeExpenseMonth {
   month: string
+  /** The running month: its figures are month-to-date. Drawn apart and
+   *  labelled "so far" (`utils/reportMonths.ts`), never in an average, total
+   *  or headline. Home: backend `domain.dates.ReportWindow`. */
+  partial_month: boolean
   income: number
   /** Money spent. Saving and debt principal are separate — both leave the
    *  budget, but neither is spending. */
@@ -783,6 +787,10 @@ export interface EssentialsFigures {
   spread: number
   spread_on: boolean
   monthly: number
+  /** The complete months `as_paid` averages — the last three, or fewer on a
+   *  young budget; null before any history. Said wherever the figure is. */
+  window_start: string | null
+  window_end: string | null
 }
 
 /** GET/PUT /reports/settings — `services/report_settings.py`. */
@@ -1034,6 +1042,10 @@ export interface PlanRealityCategory {
 
 export interface PlanRealityReport {
   months: string[]
+  /** The newest of `months`, still running: its cells are month-to-date and
+   *  labelled "so far"; no verdict or total reads it (backend
+   *  `ReportWindow`). */
+  running_month: string
   categories: PlanRealityCategory[]
   total_assigned: number
   total_spent: number
@@ -1042,10 +1054,17 @@ export interface PlanRealityReport {
 
 export interface VariancePoint {
   month: string
+  /** The running month: its figures are month-to-date. Drawn apart and
+   *  labelled "so far" (`utils/reportMonths.ts`), never in an average, total
+   *  or headline. Home: backend `domain.dates.ReportWindow`. */
+  partial_month: boolean
   budget_assigned: number
   actual_spent: number
   monthly_variance: number
-  cumulative_variance: number
+  /** The complete months' drift through this one; null on the running month,
+   *  whose whole assignment lands on the 1st and its spending over thirty
+   *  days. */
+  cumulative_variance: number | null
 }
 
 export interface VarianceReport {
@@ -1204,6 +1223,10 @@ export interface EmergencyCoverageReport {
   /** The Essentials report's own runway, quoted rather than recomputed. */
   coverage_months: number | null
   essentials: EssentialsFigures
+  /** How many Essential categories are also Long-term expense. None: the
+   *  spread setting has nothing to spread, so its toggle is hidden and the
+   *  page says why (`utils/essentialsFigures.ts`). */
+  long_term_essentials: number
   target_low: number
   target_high: number
   target_range: [number, number]
@@ -1222,6 +1245,10 @@ export interface EssentialsReport {
    *  when the budget's history is younger (backend `history_window`). */
   months_averaged: number
   essentials: EssentialsFigures
+  /** How many Essential categories are also Long-term expense. None: the
+   *  spread setting has nothing to spread, so its toggle is hidden and the
+   *  page says why (`utils/essentialsFigures.ts`). */
+  long_term_essentials: number
   monthly_total_average: number
   categories: {
     category_id: string | null
@@ -1260,6 +1287,13 @@ export interface SpendingTrendsReport extends SavedFilterScope {
   series: SpendingTrendSeries[]
   monthly_totals: number[]
   total: number
+  /** `total` over the months the range holds whole and that are over —
+   *  `months_averaged` of them (backend `complete_months_within`). Null with
+   *  none: a range inside the running month has nothing to average. */
+  avg_monthly: number | null
+  months_averaged: number
+  /** The running month when the range draws it: month-to-date, "so far". */
+  running_month: string | null
   class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
 }
 
@@ -1287,6 +1321,9 @@ export interface CategoryHistoryReport {
   category_name: string
   months: {
     month: string
+    /** The running month, month-to-date: drawn apart and labelled "so far",
+     *  never in a headline (backend `ReportWindow`). */
+    partial_month: boolean
     assigned: number
     activity: number
     /** Null for an income category: "Income categories do not hold money", so
@@ -1699,6 +1736,11 @@ export interface CostOfLivingReport {
    *  not what a household could not cut. */
   avg_monthly_essentials: number | null
   avg_monthly_income: number
+  /** Spending outside both tiers over the same window — the Discretionary
+   *  report's own rows — so the verdict lays take-home out whole: committed,
+   *  discretionary and left over (`necessityView.takeHomeSplit`). Null when
+   *  nothing is tagged, as that report serves it. */
+  avg_monthly_discretionary: number | null
   /* The gap between the tiers, and the two ratios against take-home, are NOT
    * served: they are arithmetic on the three averages above, so they are
    * composed once in `components/reports/charts/necessityView.ts`
@@ -1765,6 +1807,10 @@ export interface DiscretionaryReport {
   /** The SPENDING class over the same window, which `total` is a part of. The
    *  share between them is composed in `discretionaryView.ts`, not served. */
   spending_total: number | null
+  /** The Cost of living tier over the same window, positive. With `total` it
+   *  is `spending_total` plus the debt payments that tier counts by class —
+   *  said in one line (`discretionaryView.tierSumLine`). Null untagged. */
+  cost_of_living_total: number | null
   groups: DiscretionaryGroup[]
 }
 
