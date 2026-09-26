@@ -244,6 +244,127 @@ class TestTheModelsCategoryIsKept:
         assert job.result["draft"]["category_unresolved"] is None
 
 
+class TestOnlyFileableCategoriesAreOffered:
+    """The model is offered, and its reply matched against, only the
+    categories a receipt can be filed to (`IS_CATEGORIZABLE`).
+
+    Both lists used to filter `Category.is_archived` and nothing else. So a
+    card's envelope, or a live category in an archived group, passed the
+    matcher, and then `require_categorizable` refused it at create. That
+    InvariantViolation is retryable (it reads as the model misbehaving), so
+    the scan ran three times and ended as a $0 stub. The receipt's real
+    total was thrown away because the model picked an envelope nothing can be
+    filed to.
+
+    Now the pick resolves to nothing, like any other name that is not one of
+    the budget's categories: the row keeps the receipt's total, lands
+    uncategorized, and the review says what the model named
+    (`category_unresolved`)."""
+
+    async def _card_envelope(self, db_session, budget):
+        group = await create_category_group(db_session, budget, "Credit Card Payments")
+        envelope = await create_category(db_session, budget, group, "Sapphire Visa")
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        envelope.linked_account_id = card.id
+        await db_session.flush()
+        return envelope
+
+    async def _in_archived_group(self, db_session, budget):
+        group = await create_category_group(db_session, budget, "Retired")
+        group.is_archived = True
+        category = await create_category(db_session, budget, group, "Old Hobbies")
+        await db_session.flush()
+        return category
+
+    async def _scan_naming(
+        self, db_session, attachments_dir, mock_extraction, budget, account, name
+    ):
+        mock_extraction.return_value = {
+            **GOOD_EXTRACTION,
+            "category": name,
+            "suggested_split": [],
+        }
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        return job
+
+    async def test_a_card_envelope_pick_keeps_the_total_and_lands_uncategorized(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        await self._card_envelope(db_session, budget)
+
+        job = await self._scan_naming(
+            db_session, attachments_dir, mock_extraction, budget, account, "Sapphire Visa"
+        )
+
+        assert job.status == "done"
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.amount == Decimal("-42.50"), "not a $0 stub"
+        assert txn.memo != FAILURE_STUB_MEMO
+        assert txn.category_id is None
+        assert job.result["draft"]["category"] is None
+        assert job.result["draft"]["category_unresolved"] == "Sapphire Visa"
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_a_pick_in_an_archived_group_keeps_the_total_and_lands_uncategorized(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        await self._in_archived_group(db_session, budget)
+
+        job = await self._scan_naming(
+            db_session, attachments_dir, mock_extraction, budget, account, "Old Hobbies"
+        )
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.amount == Decimal("-42.50")
+        assert txn.category_id is None
+        assert job.result["draft"]["category_unresolved"] == "Old Hobbies"
+
+    async def test_a_name_shared_with_an_unfileable_category_is_no_longer_ambiguous(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        # "Gifts" in a live group and "Gifts" in an archived one: counted as
+        # two candidates, the bare name was ambiguous and resolved to nothing.
+        # Only one of them can take the row, so the pick is that one.
+        budget, account = await _setup(db_session, attachments_dir)
+        live = await create_category_group(db_session, budget, "Household")
+        gifts = await create_category(db_session, budget, live, "Gifts")
+        retired = await create_category_group(db_session, budget, "Retired")
+        retired.is_archived = True
+        await create_category(db_session, budget, retired, "Gifts")
+        await db_session.flush()
+
+        job = await self._scan_naming(
+            db_session, attachments_dir, mock_extraction, budget, account, "Gifts"
+        )
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.category_id == gifts.id
+        assert job.result["draft"]["category"] == "Gifts"
+
+    async def test_the_prompt_lists_only_what_can_be_filed(self, db_session, attachments_dir):
+        from igab.repositories.settings_repo import SettingsRepository
+        from igab.services.settings_service import SettingsService
+
+        budget, _ = await _setup(db_session, attachments_dir)
+        await self._card_envelope(db_session, budget)
+        await self._in_archived_group(db_session, budget)
+        income = await create_category_group(db_session, budget, "Income", is_system=True)
+        await create_category(db_session, budget, income, "Paycheque")
+
+        svc = AIService(db_session, SettingsService(SettingsRepository(db_session)))
+        listed = {(c["name"], c["group"]) for c in await svc._get_categories(budget.id)}
+
+        assert listed == {
+            ("Groceries", "Everyday"),
+            ("Household", "Everyday"),
+            # Income stays: it is where a refund or a paycheque is filed.
+            ("Paycheque", "Income"),
+        }
+
+
 class TestReceiptFailures:
     async def test_missing_staged_file_is_non_retryable(
         self, db_session, attachments_dir, mock_extraction

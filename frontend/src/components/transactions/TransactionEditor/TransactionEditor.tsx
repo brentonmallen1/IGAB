@@ -75,7 +75,7 @@ import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
-import { unresolvedCategoryNote } from '../../ai/draftNotes'
+import { categoryForLabel, unresolvedCategoryNote } from '../../ai/draftNotes'
 import { CardEndingNotice } from '../../ai/CardEndingNotice'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
@@ -388,15 +388,20 @@ export function TransactionEditor({
   }
 
   // AI-suggested split from receipt line items — offered, never auto-applied.
-  // Lines resolved against live categories; a renamed category leaves that
-  // line's picker empty for the user to fill.
+  // Each line's label is read back against the categories a line may be
+  // filed to (the list the picker offers); a category renamed or archived
+  // since leaves that line's picker empty for the user to fill. The bare-name
+  // comparison this used missed every group-qualified label ("Gifts
+  // (Household)"), which is exactly the case the qualification exists for.
   const suggestedSplit = isReview ? (aiJob?.result?.suggested_split ?? null) : null
 
   function applySuggestedSplit() {
     if (!suggestedSplit || suggestedSplit.length < 2) return
+    const fileable = categories.filter((c) => c.is_categorizable)
+    const groupNames = new Map(categoryGroups.map((g) => [g.id, g.name]))
     setSplits(
       suggestedSplit.map((line) => {
-        const cat = categories.find((c) => c.name.toLowerCase() === line.category.toLowerCase())
+        const cat = categoryForLabel(line.category, fileable, groupNames)
         return {
           tempId: randomUUID(),
           amount: Math.abs(parseApiDecimal(line.amount)).toFixed(2),

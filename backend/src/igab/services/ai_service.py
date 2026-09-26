@@ -17,6 +17,7 @@ from igab.ai.reply_json import parse_json_reply
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
 from igab.integrations.ollama.client import OllamaClient
+from igab.repositories.category_repo import CategoryRepository
 from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RECEIPT_REPLY_SCHEMA
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
@@ -626,15 +627,10 @@ class AIService:
             return "Unable to generate insights — check Ollama connection in Settings."
 
     async def _get_categories(self, budget_id: uuid.UUID) -> list[dict]:
-        from igab.db.models import CategoryGroup
-
-        result = await self.session.execute(
-            select(Category.id, Category.name, CategoryGroup.name.label("group"))
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Category.budget_id == budget_id,
-                Category.is_deleted == False,  # noqa: E712
-                Category.is_archived == False,  # noqa: E712
-            )
-        )
-        return [{"id": r.id, "name": r.name, "group": r.group} for r in result.all()]
+        """The categories the model may pick from: the receipt, text-entry and
+        suggest prompts all list these. Each of them files the answer, so it
+        is the fileable list, the same one the reply is matched against. It
+        used to be its own query filtering only `is_archived`, which offered
+        card envelopes and categories in archived groups."""
+        pairs = await CategoryRepository(self.session).get_fileable_with_group_names(budget_id)
+        return [{"id": cat.id, "name": cat.name, "group": group} for cat, group in pairs]

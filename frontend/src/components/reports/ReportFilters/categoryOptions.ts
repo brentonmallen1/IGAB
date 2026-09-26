@@ -1,4 +1,5 @@
-import type { BudgetView, Category } from '../../../types'
+import type { BudgetView, Category, CategoryGroup } from '../../../types'
+import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { renderableCategories } from '../../budget/budgetGroups'
 import { groupByView } from '../../budget/BudgetTable/viewGrouping'
 import type { MultiSelectOption } from './MultiSelectCombobox'
@@ -15,7 +16,7 @@ import type { MultiSelectOption } from './MultiSelectCombobox'
  */
 export function categoryOptions(
   categories: Category[],
-  groupName: Map<string, string>,
+  budgetGroups: CategoryGroup[],
   view: BudgetView | null
 ): MultiSelectOption[] {
   // Archived envelopes are offered, and labelled. Their spending still counts
@@ -31,11 +32,13 @@ export function categoryOptions(
   const visible = renderableCategories(categories)
   const label = (c: Category) => (c.is_archived ? `${c.name} (archived)` : c.name)
   if (!view) {
-    return visible.map((c) => ({
-      id: c.id,
-      label: label(c),
-      group: groupName.get(c.category_group_id) ?? '',
-    }))
+    // The shared grouping, so a category whose group is not in the list reads
+    // under the same fallback heading every other picker uses; this one left
+    // it blank.
+    return flatCategoryOptions(
+      visible.map((c) => ({ ...c, name: label(c) })),
+      budgetGroups
+    )
   }
 
   // groupByView wants a budget id only to stamp the synthetic group rows it

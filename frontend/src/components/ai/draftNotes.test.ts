@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { AIJob, AIJobDraft } from '../../api/aiJobs'
-import { cardEndingNote, unresolvedCategoryNote } from './draftNotes'
+import {
+  aiSuggestedCategory,
+  cardEndingNote,
+  categoryForLabel,
+  labelNamesCategory,
+  unresolvedCategoryNote,
+} from './draftNotes'
+import labelCases from '../../../../shared/category_label_cases.json'
 
 const draft = (over: Partial<AIJobDraft> = {}): AIJobDraft => ({
   payee: 'Hardware Store',
@@ -57,5 +64,75 @@ describe('cardEndingNote', () => {
     expect(cardEndingNote(job({}, null))).toBeNull()
     expect(cardEndingNote(job({ transaction_account_id: null }))).toBeNull()
     expect(cardEndingNote({ ...job(), result: null } as AIJob)).toBeNull()
+  })
+})
+
+describe('labelNamesCategory: agreement with the server that writes the label', () => {
+  for (const c of labelCases.cases) {
+    it(`"${c.label}" (${c.note})`, () => {
+      c.candidates.forEach(([name, group], i) => {
+        expect(labelNamesCategory(c.label, { name, group })).toBe(i === c.index)
+      })
+    })
+  }
+
+  it('ignores case, as the server matcher does', () => {
+    expect(labelNamesCategory('groceries', { name: 'Groceries', group: 'Everyday' })).toBe(true)
+    expect(labelNamesCategory('GIFTS (HOLIDAYS)', { name: 'Gifts', group: 'Holidays' })).toBe(true)
+  })
+
+  it('reads only the bare name when the group is not known', () => {
+    expect(labelNamesCategory('Gifts (Holidays)', { name: 'Gifts', group: null })).toBe(false)
+    expect(labelNamesCategory('Gifts', { name: 'Gifts', group: null })).toBe(true)
+  })
+})
+
+describe('categoryForLabel', () => {
+  const groupNames = new Map([
+    ['household', 'Household'],
+    ['holidays', 'Holidays'],
+  ])
+  const cats = [
+    { id: 'gifts-home', name: 'Gifts', category_group_id: 'household' },
+    { id: 'gifts-hols', name: 'Gifts', category_group_id: 'holidays' },
+  ]
+
+  it('finds a group-qualified split line', () => {
+    // The editor's suggested split compared bare names, so a qualified line
+    // like this one resolved to nothing and its picker was left empty.
+    expect(categoryForLabel('Gifts (Holidays)', cats, groupNames)?.id).toBe('gifts-hols')
+  })
+
+  it('finds nothing for a category renamed since', () => {
+    expect(categoryForLabel('Presents', cats, groupNames)).toBeUndefined()
+  })
+})
+
+describe('aiSuggestedCategory', () => {
+  const filed = { name: 'Dining Out', group: 'Everyday' }
+
+  it("names the model's pick when the row is filed elsewhere", () => {
+    expect(aiSuggestedCategory(draft({ category: 'Groceries' }), filed)).toBe('Groceries')
+  })
+
+  it('says nothing when the row is where the model put it', () => {
+    expect(aiSuggestedCategory(draft({ category: 'Dining Out' }), filed)).toBeNull()
+  })
+
+  it('reads a group-qualified pick as the same category', () => {
+    expect(aiSuggestedCategory(draft({ category: 'Dining Out (Everyday)' }), filed)).toBeNull()
+    expect(aiSuggestedCategory(draft({ category: 'Dining Out (Travel)' }), filed)).toBe(
+      'Dining Out (Travel)'
+    )
+  })
+
+  it('names the pick beside an uncategorized row', () => {
+    expect(aiSuggestedCategory(draft({ category: 'Groceries' }), null)).toBe('Groceries')
+  })
+
+  it('is silent when the model named nothing, or nothing resolved', () => {
+    // An unresolved pick has its own note (`unresolvedCategoryNote`).
+    expect(aiSuggestedCategory(draft({ category_unresolved: 'Garden' }), null)).toBeNull()
+    expect(aiSuggestedCategory(undefined, filed)).toBeNull()
   })
 })

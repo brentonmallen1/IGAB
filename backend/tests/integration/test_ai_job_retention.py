@@ -64,6 +64,21 @@ class TestTransactionRemovedFlag:
         detail = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs/{job.id}")).json()
         assert detail["transaction_removed"] is True
 
+    async def test_mutating_endpoints_report_it_too(self, api_client, db_session):
+        # Only list and detail used to ask; retry and reprocess defaulted the
+        # flag to False and reported a deleted row as still there.
+        budget, account = await _setup(api_client, db_session)
+        txn = await create_transaction(db_session, budget, account, "-12.34", NOW.date())
+        job = await make_job(
+            db_session, budget, status="error", transaction_id=txn.id, finished_at=NOW
+        )
+        txn.is_deleted = True
+        await db_session.flush()
+
+        retry = await api_client.post(f"/api/v1/{budget.id}/ai/jobs/{job.id}/retry")
+        assert retry.status_code == 200, retry.text
+        assert retry.json()["transaction_removed"] is True
+
     async def test_job_without_transaction_is_not_flagged(self, api_client, db_session):
         budget, _ = await _setup(api_client, db_session)
         await make_job(db_session, budget, finished_at=NOW)
@@ -114,6 +129,83 @@ class TestRetentionCleanup:
 
         assert set(deleted) == {too_old.id}
         assert await db_session.get(AIJob, recent.id) is not None
+
+    async def test_keeps_a_scan_still_waiting_for_approval(self, api_client, db_session):
+        """Retention ages out the LOG, not the work. A done job whose row is
+        still unapproved is in "Needs you" (`NEEDS_REVIEW_EXPR`); deleting it
+        by age dropped the scan off that list while its row waited on, and
+        the receipt beside it was the only thing saying what the AI did."""
+        budget, account = await _setup(api_client, db_session)
+        old = NOW - timedelta(days=40)
+        waiting = await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-12.50",
+            NOW.date(),
+            approved=False,
+            created_via="ai_receipt",
+            cleared="uncleared",
+        )
+        approved = await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-7.25",
+            NOW.date(),
+            approved=True,
+            created_via="ai_receipt",
+            cleared="uncleared",
+        )
+        still_waiting = await make_job(
+            db_session, budget, status="done", finished_at=old, transaction_id=waiting.id
+        )
+        failed_stub = await make_job(
+            db_session, budget, status="error", finished_at=old, transaction_id=waiting.id
+        )
+        dealt_with = await make_job(
+            db_session, budget, status="done", finished_at=old, transaction_id=approved.id
+        )
+
+        deleted = await run_retention_cleanup(db_session)
+
+        assert set(deleted) == {dealt_with.id}
+        assert await db_session.get(AIJob, still_waiting.id) is not None
+        assert await db_session.get(AIJob, failed_stub.id) is not None
+        # And it is still listed where the user will look for it.
+        listing = await api_client.get(
+            f"/api/v1/{budget.id}/ai/jobs", params={"needs_review": "true"}
+        )
+        assert {j["id"] for j in listing.json()["jobs"]} == {
+            str(still_waiting.id),
+            str(failed_stub.id),
+        }
+
+    async def test_deletes_the_scan_once_its_row_is_approved(self, api_client, db_session):
+        budget, account = await _setup(api_client, db_session)
+        txn = await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-12.50",
+            NOW.date(),
+            approved=False,
+            created_via="ai_receipt",
+            cleared="uncleared",
+        )
+        job = await make_job(
+            db_session,
+            budget,
+            status="done",
+            finished_at=NOW - timedelta(days=40),
+            transaction_id=txn.id,
+        )
+        assert await run_retention_cleanup(db_session) == []
+
+        txn.approved = True
+        await db_session.flush()
+
+        assert await run_retention_cleanup(db_session) == [job.id]
 
     async def test_cleanup_never_touches_transactions(self, api_client, db_session):
         budget, account = await _setup(api_client, db_session)

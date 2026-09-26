@@ -1,5 +1,61 @@
 import type { AIJob, AIJobDraft } from '../../api/aiJobs'
 
+/** A category as a label can name it: its own name and its group's. */
+export interface NamedCategory {
+  name: string
+  /** Null when the group is not in the list the caller holds. */
+  group: string | null
+}
+
+/**
+ * Does the model's category label name this category?
+ *
+ * The label (`result.draft.category`, and each `suggested_split` line) is
+ * the server's `category_matching.canonical_label`: the category's real
+ * name, qualified as "Name (Group)" only when that name repeats. The server
+ * already matched the model's words to a category; this only reads the
+ * format back. `shared/category_label_cases.json` runs the writer and this
+ * reader over the same cases.
+ *
+ * Case-insensitive, as the server's matcher is: a category renamed only in
+ * case since the scan still reads as the one the model picked.
+ */
+export function labelNamesCategory(label: string, category: NamedCategory): boolean {
+  const folded = label.toLowerCase()
+  if (folded === category.name.toLowerCase()) return true
+  return category.group !== null && folded === `${category.name} (${category.group})`.toLowerCase()
+}
+
+/**
+ * The first of `categories` a label names, for turning a suggested split line
+ * into a picker value. Undefined when none does (renamed or archived since),
+ * which leaves that line's picker empty for the user to fill.
+ */
+export function categoryForLabel<C extends { name: string; category_group_id: string }>(
+  label: string,
+  categories: C[],
+  groupNames: Map<string, string>
+): C | undefined {
+  return categories.find((c) =>
+    labelNamesCategory(label, { name: c.name, group: groupNames.get(c.category_group_id) ?? null })
+  )
+}
+
+/**
+ * The model's category when the row is filed somewhere else, for "AI
+ * suggested X" beside the category the row is in. Null when the model named
+ * none, or named the category the row is in. `filed` is null for a row with
+ * no category, where any pick the model made is a suggestion not taken.
+ */
+export function aiSuggestedCategory(
+  draft: AIJobDraft | undefined,
+  filed: NamedCategory | null
+): string | null {
+  const suggested = draft?.category
+  if (!suggested) return null
+  return filed && labelNamesCategory(suggested, filed) ? null : suggested
+}
+
 /**
  * The sentence for a category the model named and the budget could not
  * resolve. Shown wherever the model's reason is, because the reason names

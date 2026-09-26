@@ -7,7 +7,12 @@
  * describe block exists to keep it that way.
  */
 import { describe, expect, it } from 'vitest'
-import { UNGROUPED_LABEL, flatCategoryOptions, groupedCategorySections } from './categoryPickers'
+import {
+  UNGROUPED_LABEL,
+  filingCategoryOptions,
+  flatCategoryOptions,
+  groupedCategorySections,
+} from './categoryPickers'
 import type { Category, CategoryGroup } from '../types'
 import { makeCategory } from '../test-utils/factories'
 
@@ -79,15 +84,81 @@ describe('flat options', () => {
   })
 
   it('labels an orphan rather than leaving its group blank', () => {
+    // The report filter left it blank; the Guide's planner import said
+    // "Ungrouped" (unreachable there, since it offers only renderable
+    // categories, whose group is always listed). Both read this builder now.
     expect(flatCategoryOptions([cat('a', 'gone')], [])[0].group).toBe(UNGROUPED_LABEL)
+  })
+
+  it('keeps the order it is given', () => {
+    // The pickers render groups in first-seen order, so the builder must not
+    // reorder: the server sorts the category list.
+    const opts = flatCategoryOptions(
+      [cat('b', 'g2'), cat('a', 'g1'), cat('c', 'g2')],
+      [group('g1', 'Bills'), group('g2', 'Fun')]
+    )
+    expect(opts.map((o) => o.id)).toEqual(['b', 'a', 'c'])
+  })
+})
+
+/**
+ * The builder behind every picker that files a transaction leg. Six hand-made
+ * copies of it disagreed; each divergence is a case here, named for the
+ * component that got it wrong.
+ */
+describe('filing pickers', () => {
+  const groups = [group('g1', 'Everyday')]
+
+  it('offers only what the server says may be filed to', () => {
+    const offered = cat('groceries', 'g1')
+    const cardEnvelope = cat('sapphire', 'g-cards', { is_categorizable: false })
+    expect(filingCategoryOptions([offered, cardEnvelope], groups)).toEqual([
+      { id: 'groceries', label: 'GROCERIES', group: 'Everyday' },
+    ])
+  })
+
+  it("bulk categorize: a card's envelope is no longer on offer", () => {
+    // TransactionTable mapped the raw category list, so the selection bar
+    // offered every card's envelope, which the server refuses to file to.
+    const cardEnvelope = cat('sapphire', 'g1', {
+      linked_account_id: 'acc-card',
+      is_assignable: false,
+      is_categorizable: false,
+    })
+    expect(filingCategoryOptions([cardEnvelope], groups)).toEqual([])
+  })
+
+  it('register row, split editor and bulk categorize: an orphan gets a heading, not a blank', () => {
+    // All three wrote `?? ''`. A live category under a soft-deleted group is
+    // categorizable and its group is in no list, so it drew with no header,
+    // run into whichever group came before it.
+    const orphan = cat('orphan', 'deleted-group')
+    expect(filingCategoryOptions([orphan], groups)[0].group).toBe(UNGROUPED_LABEL)
+  })
+
+  it('reads the same heading the sectioned pickers draw', () => {
+    // Quick-add and the sectioned editors already said UNGROUPED_LABEL; the
+    // flat and sectioned pickers now agree about where an orphan sits.
+    const orphan = cat('orphan', 'deleted-group')
+    const [section] = groupedCategorySections([orphan], groups)
+    expect(filingCategoryOptions([orphan], groups)[0].group).toBe(section.group.name)
+  })
+
+  it('follows the flag and nothing else', () => {
+    // The server decides: a category the client might guess is ineligible
+    // (an income category, in a system group) is offered because the server
+    // says it may be filed to. That is where a refund or a paycheque goes.
+    const income = cat('paycheque', 'g1', { is_assignable: false, is_categorizable: true })
+    expect(filingCategoryOptions([income], groups).map((o) => o.id)).toEqual(['paycheque'])
   })
 })
 
 describe('the server owns eligibility', () => {
-  it('exports no eligibility rule', async () => {
+  it('exports no eligibility rule of its own', async () => {
     const mod = await import('./categoryPickers')
     expect(Object.keys(mod).sort()).toEqual([
       'UNGROUPED_LABEL',
+      'filingCategoryOptions',
       'flatCategoryOptions',
       'groupedCategorySections',
     ])
@@ -98,5 +169,6 @@ describe('the server owns eligibility', () => {
     // passes it — filtering is the caller's one clause, and it reads the field.
     const ineligible = cat('x', 'g1', { is_assignable: false, is_categorizable: false })
     expect(groupedCategorySections([ineligible], [group('g1', 'Bills')])[0].cats).toHaveLength(1)
+    expect(flatCategoryOptions([ineligible], [group('g1', 'Bills')])).toHaveLength(1)
   })
 })

@@ -110,10 +110,18 @@ describe("no surface offers a card's envelope", () => {
   // hid the money from the budget completely. Read as source, so a seventh
   // spelling cannot quietly appear.
   const readsServedVerdict: [string, RegExp][] = [
-    // The register row's picker builds its list in a colocated pure module,
-    // so the verdict is read there — the same rule, one file along.
-    ['../transactions/TransactionRow/rowOptions.ts', /c\.is_categorizable/],
-    ['../transactions/SplitTransactionEditor/SplitTransactionEditor.tsx', /c\.is_categorizable/],
+    // Every picker that files a leg reads the verdict through one builder,
+    // `filingCategoryOptions`, which reads it here — the same rule, one file
+    // along. Bulk categorize was the copy that forgot it.
+    ['../../utils/categoryPickers.ts', /c\.is_categorizable/],
+    ['../transactions/TransactionRow/TransactionRow.tsx', /filingCategoryOptions\(/],
+    [
+      '../transactions/SplitTransactionEditor/SplitTransactionEditor.tsx',
+      /filingCategoryOptions\(/,
+    ],
+    ['../transactions/QuickAddSheet/QuickAddSheet.tsx', /filingCategoryOptions\(/],
+    ['../transactions/TransactionTable/TransactionTable.tsx', /filingCategoryOptions\(/],
+    ['../../pages/AIActivityPage/tabs/JobCategory.tsx', /filingCategoryOptions\(/],
     ['../guide/wishlist/ProjectForm.tsx', /c\.is_assignable/],
     ['../guide/wishlist/WishForm.tsx', /c\.is_assignable/],
     // Its rows are the live envelopes, hidden ones out — `is_assignable`

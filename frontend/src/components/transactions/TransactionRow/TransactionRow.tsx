@@ -43,7 +43,8 @@ import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import { AccountCell, accountCellLock } from './AccountCell'
-import { categoryOptions, payeeOptions } from './rowOptions'
+import { payeeOptions } from './rowOptions'
+import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import { mayBecomeTransfer, transferOptionAccountId, transferOptions } from '../transferConversion'
 import type { Transaction, Category, CategoryGroup, Payee, Account } from '../../../types'
 import './TransactionRow.css'
@@ -394,7 +395,7 @@ export const TransactionRow = memo(function TransactionRow({
     [payees, accounts, txn]
   )
   const categoryOpts = useMemo(
-    () => categoryOptions(categories, categoryGroups),
+    () => filingCategoryOptions(categories, categoryGroups),
     [categories, categoryGroups]
   )
 

@@ -281,10 +281,10 @@
   color: var(--text-secondary);
 }
 
-/* The account the row landed in. Sits in the meta line but reads a step
-   louder than the rest of it — it is the field most worth checking before
-   approving, and the only one no model chose. */
-.ai-activity__account {
+/* Where the row landed: its account and its category (JobField). They sit
+   in the meta line but read a step louder than the rest of it — they are
+   the fields most worth checking before approving. */
+.ai-activity__field {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -296,19 +296,28 @@
   color: var(--text-primary);
 }
 
-.ai-activity__account--button {
+.ai-activity__field--button {
   cursor: pointer;
 }
 
-.ai-activity__account--button:hover {
+.ai-activity__field--button:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
 
-.ai-activity__account--picking {
+.ai-activity__field--picking {
   padding: 0;
   border: none;
   min-width: 180px;
+}
+
+/* The model's pick, beside a category the row is not filed in. Secondary
+   text rather than a warning: a changed category is a decision, not a
+   fault. */
+.ai-activity__suggested {
+  font-size: var(--font-size-2xs);
+  font-style: italic;
+  color: var(--text-secondary);
 }
 
 .ai-activity__actions {

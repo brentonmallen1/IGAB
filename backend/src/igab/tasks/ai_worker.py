@@ -211,7 +211,9 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         if debug:
             job.result = {"request": debug["request"]}
 
-    categories = await svcs["transactions"].category_repo.get_all_with_group_names(job.budget_id)
+    categories = await svcs["transactions"].category_repo.get_fileable_with_group_names(
+        job.budget_id
+    )
     try:
         draft = parse_extraction(
             raw,

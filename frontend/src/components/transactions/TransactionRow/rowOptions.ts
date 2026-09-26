@@ -1,34 +1,18 @@
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
-import type { Category, CategoryGroup, Payee } from '../../../types'
+import type { Payee } from '../../../types'
 
 /**
- * What the register row's pickers offer — pure, so the filters are testable
- * without mounting a row.
+ * What the register row's payee picker offers — pure, so the filter is
+ * testable without mounting a row.
  *
- * Both lists are filters, not just maps, and both filters are load-bearing:
- * offering the wrong option here does not misdraw a cell, it files money
- * somewhere the user cannot find it.
+ * Its category picker offers `filingCategoryOptions` (utils/categoryPickers),
+ * the list every picker that files a leg shares. It lived here until the
+ * split editor, bulk categorize and quick-add turned out to spell it three
+ * more ways.
  */
 
 /** Real payees only. A transfer payee is a destination, not a payee; picking
  *  one would name a transfer the row is not. */
 export function payeeOptions(payees: Payee[]): ComboboxOption[] {
   return payees.filter((p) => !p.transfer_account_id).map((p) => ({ id: p.id, label: p.name }))
-}
-
-/**
- * `is_categorizable`, like every other category picker — the server decides
- * what a leg may be filed to. Offering the raw list put each card's
- * envelope in the register's most-used control, under a blank group heading
- * (its group is hidden, so no name resolved), and filing a row there hid the
- * money from the budget entirely.
- */
-export function categoryOptions(categories: Category[], groups: CategoryGroup[]): ComboboxOption[] {
-  return categories
-    .filter((c) => c.is_categorizable)
-    .map((c) => ({
-      id: c.id,
-      label: c.name,
-      group: groups.find((g) => g.id === c.category_group_id)?.name ?? '',
-    }))
 }

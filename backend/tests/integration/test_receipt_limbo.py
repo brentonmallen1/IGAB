@@ -280,6 +280,11 @@ class TestTheApi:
         assert r.status_code == 200, r.text
         body = r.json()
         assert (body["status"], body["transaction_account_id"]) == ("done", str(checking.id))
+        # Placing is a mutating endpoint: it serves the category it just filed.
+        assert (body["transaction_category_id"], body["transaction_is_split"]) == (
+            str(tools.id),
+            False,
+        )
         txn = await db_session.get(Transaction, uuid.UUID(body["transaction_id"]))
         await db_session.refresh(txn)
         assert (txn.amount, txn.category_id, txn.approved) == (Decimal("-24.00"), tools.id, False)

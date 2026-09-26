@@ -80,8 +80,9 @@ export interface AIJob {
   attempts: number
   max_attempts: number
   transaction_id: string | null
-  /** The linked transaction was deleted after this job ran */
-  transaction_removed?: boolean
+  /** The linked transaction was deleted after this job ran. Served on every
+   *  path, derived from the same subquery as `transaction_account_id`. */
+  transaction_removed: boolean
   /** Is the transaction this job created still waiting for approval?
    *  Served — the rule is `AI_NEEDS_REVIEW` in
    *  `backend/.../repositories/txn_filters.py`, the same expression the nav
@@ -94,6 +95,15 @@ export interface AIJob {
    *  because `payload.account_id` is only where the scan was submitted.
    *  Null when there is no transaction (still queued, or deleted since). */
   transaction_account_id: string | null
+  /** The category the created transaction is filed in NOW — served
+   *  (`AIJob.transaction_category_id` in backend/.../db/models.py), for the
+   *  same reason as the account. `result.draft.category` is the model's pick,
+   *  a label, and stays exactly as the model gave it. Null when the row is
+   *  uncategorized, a split, or does not exist. */
+  transaction_category_id: string | null
+  /** The created transaction is a split parent: its category is its lines',
+   *  and the server refuses one on the parent. False with no transaction. */
+  transaction_is_split: boolean
   /** The account that owns `result.draft.card_last4`, as of now — served
    *  (`AIJob.card_ending_account_id`), because which account an ending is on
    *  is the server's question: the worker asks it to place a scan. */

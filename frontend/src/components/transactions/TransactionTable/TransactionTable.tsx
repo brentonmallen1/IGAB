@@ -58,7 +58,7 @@ import type {
   ScheduledTransaction,
   TransactionMatch,
 } from '../../../types'
-import type { ComboboxOption } from '../../common/Combobox/Combobox'
+import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
 import { registerPayAction } from './payButton'
@@ -627,12 +627,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [mergeTxns, selectedTransactionIds, clearTransactionSelection, notify]
   )
 
-  const categoryComboboxOptions = useMemo<ComboboxOption[]>(
-    () =>
-      categories.map((c) => {
-        const group = categoryGroups.find((g) => g.id === c.category_group_id)
-        return { id: c.id, label: c.name, group: group?.name ?? '' }
-      }),
+  // Bulk categorize files every selected row, so it offers what any filing
+  // picker does. It used to map the raw list: every card's envelope was on
+  // offer, and the server refuses a row filed to one.
+  const categoryComboboxOptions = useMemo(
+    () => filingCategoryOptions(categories, categoryGroups),
     [categories, categoryGroups]
   )
 

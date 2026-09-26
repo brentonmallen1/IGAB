@@ -74,15 +74,6 @@ async def _reloaded(repo: AIJobRepository, job: AIJob) -> AIJob:
     return reloaded
 
 
-async def _removed_transaction_ids(repo: AIJobRepository, jobs: list[AIJob]) -> set[uuid.UUID]:
-    """Transaction ids referenced by these jobs that no longer resolve."""
-    txn_ids = list({j.transaction_id for j in jobs if j.transaction_id is not None})
-    if not txn_ids:
-        return set()
-    existing = await repo.existing_transaction_ids(txn_ids)
-    return {tid for tid in txn_ids if tid not in existing}
-
-
 async def _bank_matches(session, jobs: list[AIJob]) -> dict[uuid.UUID, Transaction]:
     """For each receipt still waiting for an account, the one row in the
     budget it could be the paper for — asked now, because the bank's row
@@ -102,16 +93,10 @@ async def _bank_matches(session, jobs: list[AIJob]) -> dict[uuid.UUID, Transacti
     return out
 
 
-async def _respond(session, repo: AIJobRepository, jobs: list[AIJob]) -> list[AIJobResponse]:
+async def _respond(session, jobs: list[AIJob]) -> list[AIJobResponse]:
     """Serialise jobs with everything that is asked at read time."""
-    removed = await _removed_transaction_ids(repo, jobs)
     matches = await _bank_matches(session, jobs)
-    return [
-        AIJobResponse.from_job(
-            j, transaction_removed=j.transaction_id in removed, bank_match=matches.get(j.id)
-        )
-        for j in jobs
-    ]
+    return [AIJobResponse.from_job(j, bank_match=matches.get(j.id)) for j in jobs]
 
 
 def _safe_filename(name: str | None) -> str:
@@ -284,7 +269,7 @@ async def list_jobs(
         limit=min(limit, 200),
         offset=offset,
     )
-    return AIJobListResponse(jobs=await _respond(session, job_repo, jobs), total_count=total)
+    return AIJobListResponse(jobs=await _respond(session, jobs), total_count=total)
 
 
 @router.get("/{budget_id}/ai/jobs/active-count", response_model=ActiveCountResponse)
@@ -313,7 +298,7 @@ async def get_job(
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
 ) -> AIJobResponse:
     job = await _get_owned_job(job_repo, job_id, budget_id)
-    [response] = await _respond(session, job_repo, [job])
+    [response] = await _respond(session, [job])
     return response
 
 
@@ -423,7 +408,9 @@ async def place_receipt(
     draft = None
     extraction = (job.result or {}).get("extraction")
     if isinstance(extraction, dict):
-        categories = await svcs["transactions"].category_repo.get_all_with_group_names(budget_id)
+        categories = await svcs["transactions"].category_repo.get_fileable_with_group_names(
+            budget_id
+        )
         today = (
             date.fromisoformat(payload["client_today"])
             if payload.get("client_today")
@@ -519,7 +506,7 @@ async def parse_nl_transaction(
 
     try:
         raw = await ai_svc.parse_nl_transaction(budget_id, text, today)
-        categories = await txn_svc.category_repo.get_all_with_group_names(budget_id)
+        categories = await txn_svc.category_repo.get_fileable_with_group_names(budget_id)
         draft = parse_extraction(
             raw,
             kind="nl_parse",

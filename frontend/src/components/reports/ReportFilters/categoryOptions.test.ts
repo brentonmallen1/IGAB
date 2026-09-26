@@ -6,8 +6,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import { categoryOptions } from './categoryOptions'
+import { UNGROUPED_LABEL } from '../../../utils/categoryPickers'
 import type { BudgetView, Category } from '../../../types'
-import { makeCategory } from '../../../test-utils/factories'
+import { makeCategory, makeCategoryGroup } from '../../../test-utils/factories'
 
 function cat(id: string, name: string, group = 'g-real'): Category {
   return makeCategory({ id, name, category_group_id: group })
@@ -36,7 +37,7 @@ function view(
   }
 }
 
-const GROUPS = new Map([['g-real', 'Monthly Bills']])
+const GROUPS = [makeCategoryGroup({ id: 'g-real', name: 'Monthly Bills' })]
 
 describe('categoryOptions', () => {
   it('uses the budget groups when no view is active', () => {
@@ -82,6 +83,22 @@ describe('categoryOptions', () => {
     expect(categoryOptions([archived], GROUPS, v)).toEqual([
       { id: 'c1', label: 'Old (archived)', group: 'Need' },
     ])
+  })
+
+  it('labels an archived category with no view active too', () => {
+    const archived = { ...cat('c1', 'Old'), is_archived: true }
+    expect(categoryOptions([archived], GROUPS, null)).toEqual([
+      { id: 'c1', label: 'Old (archived)', group: 'Monthly Bills' },
+    ])
+  })
+
+  it('puts a category whose group is not in the list under the shared fallback heading', () => {
+    // This picker left the heading blank, so the category drew under no
+    // header at all, run into the group above it. Every picker now reads
+    // the one fallback (utils/categoryPickers).
+    expect(categoryOptions([cat('c1', 'Rent', 'g-gone')], GROUPS, null)[0].group).toBe(
+      UNGROUPED_LABEL
+    )
   })
 
   it('leaves a live category unlabelled', () => {

@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useTargetsByBudget } from '../../../api/targets'
 import { renderableCategoryIds } from '../../budget/budgetGroups'
+import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { Dialog } from '../../common/Dialog/Dialog'
 import {
   GroupedMultiSelect,
@@ -61,14 +62,10 @@ export function ImportPanel(props: {
 
   // Group name carried on every option, so the list renders the budget's own
   // headers rather than one undifferentiated column of names.
-  const options = useMemo<MultiSelectOption[]>(() => {
-    const groupName = new Map((groups.data ?? []).map((g) => [g.id, g.name]))
-    return candidates.map((c) => ({
-      id: c.id,
-      label: c.name,
-      group: groupName.get(c.category_group_id) ?? 'Ungrouped',
-    }))
-  }, [candidates, groups.data])
+  const options = useMemo<MultiSelectOption[]>(
+    () => flatCategoryOptions(candidates, groups.data ?? []),
+    [candidates, groups.data]
+  )
 
   const targetByCategory = useMemo(
     () => new Map((targets.data ?? []).map((t) => [t.category_id, t])),
