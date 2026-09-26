@@ -27,6 +27,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NET } from './chartColors'
 import { columnTotal, shareOfLeanMonth, worstMonth, worstOverHeadline } from './essentialsView'
 import { monthRange } from '../../../utils/reportMonths'
+import { fundCoverLine } from '../../../utils/runway'
 import { completeMonths } from './averagedOver'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 import './EssentialsReport.css'
@@ -168,12 +169,8 @@ export function EssentialsReport({ budgetId }: Props) {
               <MetricCard
                 label="Saved so far"
                 value={formatMoneyOrDash(data.emergency_fund.total)}
-                sub={
-                  data.runway_months === null
-                    ? 'No emergency fund chosen yet'
-                    : `${data.runway_months} month${data.runway_months === 1 ? '' : 's'} of essentials`
-                }
-                accent={data.runway_months !== null && data.runway_months >= rangeLow}
+                sub={fundCoverLine(data.fund_runway)}
+                accent={data.fund_runway.months !== null && data.fund_runway.months >= rangeLow}
               />
               {worst && (
                 <MetricCard

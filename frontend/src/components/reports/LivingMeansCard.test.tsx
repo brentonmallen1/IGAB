@@ -9,6 +9,7 @@ import { useAppStore } from '../../stores/appStore'
 import { PRIVACY_MASK } from '../../utils/money'
 import type { DashboardMetrics } from '../../types'
 import { LivingMeansCard } from './LivingMeansCard'
+import { overviewRunway } from '../../test-utils/runwayFixtures'
 
 /** 5,000 in; 3,000 spent and 1,000 to the mortgage; 2,000 saved, which is
  *  not an outflow. Band 4,750 to 5,250. */
@@ -21,7 +22,7 @@ function metrics(overrides: Partial<DashboardMetrics> = {}): DashboardMetrics {
     essentials: null,
     essentials_tagged: false,
     savings_rate: 0.4,
-    days_until_zero: null,
+    runway: overviewRunway(),
     income_this_month: 5000,
     expenses_this_month: 3000,
     expenses_prev_month: 2500,

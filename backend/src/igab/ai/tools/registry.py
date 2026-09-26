@@ -324,8 +324,12 @@ TOOLS: tuple[ToolSpec, ...] = (
             "Where the cash balance is heading if things carry on — recent "
             "cash in and out, paychecks included, replayed on top of scheduled "
             "bills — with the date the median path would go negative and the "
-            "date about 1 path in 10 would. Use this for 'will I make it to "
-            "payday', 'can I afford this', and anything about running out."
+            "date about 1 path in 10 would; and the runway if income stopped "
+            "(months, and the date the money runs out, card debt taken out) for "
+            "each spending basis (all, cost of living, essentials) and money "
+            "(checking, + emergency fund, + all savings). Use this for 'will I "
+            "make it to payday', 'can I afford this', 'how long could we last "
+            "without a paycheck', and anything about running out."
         ),
         parameters=_obj(
             {

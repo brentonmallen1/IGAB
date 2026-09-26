@@ -144,6 +144,25 @@ async def _saved_accounts(
     return out
 
 
+async def saved_accounts_total(session: AsyncSession, budget_id: uuid.UUID) -> Decimal:
+    """Saved's accounts part today: every off-budget savings account
+    (`SAVINGS_ACCOUNT`) at its balance — the report's `accounts_total`, and
+    the savings the runway adds to the budget's cash
+    (`services.runway_holdings`). The report's listing leaves out a closed
+    account that held nothing, which moves no sum."""
+    ids = (
+        (
+            await session.execute(
+                select(Account.id).where(Account.budget_id == budget_id, SAVINGS_ACCOUNT)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    balances = await AccountRepository(session).balances_for(list(ids))
+    return sum(balances.values(), ZERO)
+
+
 def _section_total(envelopes: list[SavingsEnvelope]) -> Decimal:
     """What a section's envelopes hold, each at its carryover-floored Available."""
     return sum((next_carryover(e["current_balance"]) for e in envelopes), ZERO)
@@ -265,7 +284,7 @@ async def savings_report(
 
     accounts = await _saved_accounts(session, budget_id, month_list, end_date)
     envelopes_total = _section_total(saved)
-    accounts_total = sum((a["current_balance"] for a in accounts), ZERO)
+    accounts_total = await saved_accounts_total(session, budget_id)
     monthly_totals = [
         sum(
             (next_carryover(e["monthly_balances"][i] or ZERO) for e in saved),

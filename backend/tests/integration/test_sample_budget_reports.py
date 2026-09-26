@@ -153,7 +153,7 @@ async def test_the_emergency_fund_report_draws_a_real_line(db_session):
         report = await EmergencyCoverageService(db_session).coverage(budget.id, months=12)
 
         assert report["fund"].total is not None, tier
-        assert report["coverage_months"] is not None, tier
+        assert report["covered"].months is not None, tier
         assert len(report["series"]) == 12, tier
         assert all(p["coverage_months"] is not None for p in report["series"]), tier
 
@@ -170,7 +170,7 @@ async def test_the_fund_is_short_of_the_band_so_the_report_has_a_gap_to_show(db_
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=12)
 
     low, _high = report["target_range"]
-    assert report["coverage_months"] < low
+    assert report["covered"].months < low
     assert report["fund"].total < report["target_low"]
 
 

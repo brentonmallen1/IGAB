@@ -30,6 +30,7 @@ from igab.api.v1.schemas.report import (
     DiscretionaryResponse,
     EmergencyCoverageResponse,
     EssentialsReportResponse,
+    IfIncomeStopped,
     IncomeBySourceResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
@@ -947,8 +948,8 @@ async def cash_projection_report(
     today: ReaderToday,
     days: ProjectionDays = 90,
 ) -> CashProjectionResponse:
-    """Cash projection — fan chart with deterministic and stochastic layers,
-    starting on the reader's today."""
+    """Cash projection — a fan chart of where the cash lands if things carry
+    on, beside the runway if income stopped, starting on the reader's today."""
     data = await report_svc.cash_projection(budget_id, days, today=today)
     return CashProjectionResponse(
         start_balance=data["start_balance"],
@@ -956,6 +957,7 @@ async def cash_projection_report(
         events=[CashProjectionEvent.model_validate(e) for e in data["events"]],
         goes_negative_date=data["goes_negative_date"],
         p10_negative_date=data["p10_negative_date"],
+        if_income_stopped=IfIncomeStopped.model_validate(data["if_income_stopped"]),
     )
 
 

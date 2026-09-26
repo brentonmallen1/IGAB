@@ -1,5 +1,6 @@
 /** Pure metric math for the Overview dashboard cards. Extracted from
  * OverviewReport so the delta/rate math is unit-testable. */
+import type { OverviewRunway } from '../../types'
 
 /** Percent change vs the prior period, guarded for prev = 0 and using an
  * absolute denominator so a negative prior net worth doesn't flip the sign
@@ -22,39 +23,22 @@ export function spendingDelta(current: number, prev: number): number | null {
   return ((current - prev) / prev) * 100
 }
 
-/** Whole-day display value; null passes through (no runway to show). */
-export function roundedDaysUntilZero(days: number | string | null | undefined): number | null {
-  return days != null ? Math.round(Number(days)) : null
-}
-
 /**
- * The Days Until Zero card, or null when there is no runway to state
- * (nothing is burning — backend `burn_rate.days_until_zero`).
- *
- * The server serves exactly 0 when cash is already at or below zero, and the
- * card says so rather than reading like a countdown. It served None there and
- * the card hid, at the one moment its answer mattered most. Keyed on the
- * served value, not the rounded one: a runway of a few hours rounds to 0d but
- * still has cash in it.
+ * Why the Overview's Runway read something other than its default (Essentials
+ * against checking and the emergency fund), or null when it did not fall back.
+ * The server picks the fallback (`domain/runway.default_basis`) and serves
+ * why; this only says it.
  */
-export function daysUntilZeroCard(
-  days: number | string | null | undefined
-): { value: string; sub: string; overdrawn: boolean } | null {
-  const rounded = roundedDaysUntilZero(days)
-  if (rounded === null) return null
-  if (Number(days) === 0) {
-    return { value: '0 days', sub: 'Overdrawn: cash is at or below zero', overdrawn: true }
-  }
-  return { value: `${rounded}d`, sub: 'Cash at current 30-day burn', overdrawn: false }
-}
-
-/** N months of essentials as a save target; null passes through (nothing is
- *  tagged Essential yet, so there is no figure to multiply). */
-export function essentialsReserve(
-  monthly: number | null | undefined,
-  months: number
-): number | null {
-  return monthly == null ? null : monthly * months
+export function runwayFallback(
+  runway: Pick<OverviewRunway, 'fund_chosen' | 'essentials_known'>
+): string | null {
+  const reasons = [
+    ...(runway.essentials_known ? [] : ['nothing tagged Essential']),
+    ...(runway.fund_chosen ? [] : ['no emergency fund chosen']),
+  ]
+  if (reasons.length === 0) return null
+  const said = reasons.join(', ')
+  return said[0].toUpperCase() + said.slice(1)
 }
 
 /**

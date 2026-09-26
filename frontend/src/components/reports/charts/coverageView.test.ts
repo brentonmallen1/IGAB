@@ -161,7 +161,7 @@ describe('where the self-reported fund is carried flat from', () => {
   })
 })
 
-/** The first chart's axis is months of runway. Its tooltip formatter was
+/** The first chart's axis is months covered. Its tooltip formatter was
  * module-private in the component and untested, so going back to
  * `formatter={formatMoney}` — which read 3.4 months as "$3.40" — passed every
  * check. */

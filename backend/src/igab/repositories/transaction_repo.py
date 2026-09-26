@@ -34,6 +34,7 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
     basis_is_chosen,
+    counted_class_filter,
     tier_scope,
 )
 from igab.repositories.base import BaseRepository
@@ -67,6 +68,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     PROVISIONALLY_LINKED,
     REGISTER_RANK,
+    SPENDING_ROW,
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
@@ -1469,6 +1471,35 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis
+
+    async def spending_by_month(self, budget_id: uuid.UUID, since: date, until: date) -> list:
+        """(month, total, sinking) rows of ALL spending in the window — the
+        one spending definition (`SPENDING_ROW` with `counted_class_filter`,
+        on-budget accounts, as `ReportService._spending_query` reads it
+        unscoped), net of refunds, grouped by calendar month and by whether
+        the row's category is a sinking fund.
+
+        The shape `essential_spend_by_category_month` returns, so the runway's
+        "all spending" month is composed by the same `essentials_at` as its
+        Essentials and Cost of living months — same window, same spread
+        setting — and the three bases differ only in which rows they count.
+        """
+        month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        sinking = IN_SINKING_FUND.label("sinking")
+        q = (
+            select(month, func.sum(Transaction.amount).label("total"), sinking)
+            .select_from(Transaction)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.date >= since,
+                Transaction.date <= until,
+                SPENDING_ROW,
+                ON_BUDGET_ACCOUNT,
+                counted_class_filter(),
+            )
+            .group_by(month, sinking)
+        )
+        return list((await self.session.execute(apply_class_joins(q))).all())
 
     async def earliest_date(self, budget_id: uuid.UUID) -> date | None:
         """The oldest transaction in the budget, or None for an empty one.

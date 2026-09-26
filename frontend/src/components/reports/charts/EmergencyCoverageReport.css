@@ -7,6 +7,12 @@
   padding: var(--spacing-md);
 }
 
+/* The Covered card's second line: which way coverage moved over the window. */
+.coverage-report__sub-line {
+  display: block;
+  font-size: var(--font-size-xs);
+}
+
 .coverage-report__empty {
   padding: var(--spacing-lg) var(--spacing-md);
   color: var(--text-secondary);

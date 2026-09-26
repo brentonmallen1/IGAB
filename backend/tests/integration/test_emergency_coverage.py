@@ -1,7 +1,7 @@
 """The emergency-fund coverage report: a stock measured against a flow.
 
-The Essentials report says what a lean month costs and carries today's runway
-as one card's subtitle. This says whether the fund covers that month, and for
+The Essentials report says what a lean month costs and carries how long the
+fund lasts on it as one card's subtitle. This says whether the fund covers that month, and for
 how long, over time — the question "am I covered, and is that getting better".
 
 Hand-computed dollars throughout: essentials are a flat $1,000 a month so every
@@ -127,7 +127,7 @@ async def test_the_target_band_is_served_per_month(db_session):
         assert point["target_high"] == Decimal("6000.00")
 
 
-async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
+async def test_the_headline_is_the_essentials_reports_own_fund_runway(db_session):
     """Quoted, not recomputed: two reports that each divide the same pair of
     numbers are two reports that can disagree."""
 
@@ -137,7 +137,8 @@ async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
     essentials = await essentials_summary(db_session, budget.id, 4)
 
-    assert report["coverage_months"] == essentials["runway_months"]
+    assert report["covered"] == essentials["fund_runway"]
+    assert report["covered"].months == Decimal("3.0")
     assert report["fund"].total == essentials["emergency_fund"].total
     assert report["essentials"] == essentials["essentials"]
 
@@ -160,7 +161,7 @@ async def test_nothing_tagged_essential_has_no_denominator(db_session):
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
     assert report["tagged"] is False
-    assert report["coverage_months"] is None
+    assert report["covered"].months is None
 
 
 def test_the_trailing_average_uses_what_exists():
@@ -296,7 +297,7 @@ class TestTheAverageStartsWithTheHistory:
     async def test_a_young_budgets_newest_point_is_the_headline(self, db_session):
         """History began last month, with $1,000 of essentials and a $2,000
         fund. The newest point divides by the one month that exists — 2.0
-        months of runway — and so does the headline: both are
+        months covered — and so does the headline: both are
         `essentials_at` over the same months. They diverged by design once,
         the headline a rolling ninety days ÷ 3 reading 6.0 beside a chart
         reading 2.0."""
@@ -313,4 +314,4 @@ class TestTheAverageStartsWithTheHistory:
         assert point["essentials"] == Decimal("1000.00")
         assert point["coverage_months"] == Decimal("2.0")
         assert report["essentials"].monthly == point["essentials"]
-        assert report["coverage_months"] == point["coverage_months"]
+        assert report["covered"].months == point["coverage_months"]

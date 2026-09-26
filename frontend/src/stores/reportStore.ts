@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
+import type { RunwayMoney, RunwaySpending } from '../types'
 import { lastMonthWindow } from '../utils/dateWindow'
 
 export type ReportTab =
@@ -468,12 +469,20 @@ interface ReportState {
    *  without one. Persisted, like the range. An id that no longer names a
    *  category simply finds nothing and the picker asks again. */
   historyCategoryId: string
+  /** The Cash Projection's "If income stopped" choice — what a month costs
+   *  and what money counts. null until someone picks: the page opens on the
+   *  served default (the Overview's runway), so an unpicked store never
+   *  disagrees with the card beside it. Persisted, like the range. */
+  runwaySpending: RunwaySpending | null
+  runwayMoney: RunwayMoney | null
   drillDown: DrillDownContext | null
 
   setActiveTab: (tab: ReportTab) => void
   setRangeMonths: (months: number) => void
   setNavFavorites: (on: boolean) => void
   setHistoryCategoryId: (id: string) => void
+  setRunwaySpending: (spending: RunwaySpending) => void
+  setRunwayMoney: (money: RunwayMoney) => void
   setFilters: (filters: Partial<ReportFilters>) => void
   setDrillDown: (ctx: DrillDownContext | null) => void
   resetFilters: () => void
@@ -505,6 +514,8 @@ export const useReportStore = create<ReportState>()(
       rangeMonths: DEFAULT_RANGE_MONTHS,
       navFavorites: false,
       historyCategoryId: '',
+      runwaySpending: null,
+      runwayMoney: null,
       drillDown: null,
 
       setActiveTab: (tab) => set({ activeTab: tab, drillDown: null }),
@@ -513,6 +524,8 @@ export const useReportStore = create<ReportState>()(
       setRangeMonths: (months) => set({ rangeMonths: months, drillDown: null }),
       setNavFavorites: (on) => set({ navFavorites: on }),
       setHistoryCategoryId: (id) => set({ historyCategoryId: id, drillDown: null }),
+      setRunwaySpending: (spending) => set({ runwaySpending: spending }),
+      setRunwayMoney: (money) => set({ runwayMoney: money }),
       // Filter changes invalidate the drill context (its window/ids were
       // resolved against the previous filters)
       setFilters: (partial) =>
@@ -541,6 +554,8 @@ export const useReportStore = create<ReportState>()(
         rangeMonths: s.rangeMonths,
         navFavorites: s.navFavorites,
         historyCategoryId: s.historyCategoryId,
+        runwaySpending: s.runwaySpending,
+        runwayMoney: s.runwayMoney,
       }),
       // A state persisted before a filter field existed arrives without it,
       // and `filters.tagIds.length` on undefined is a blank Reports page for

@@ -37,6 +37,7 @@ import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 import { monthRange, throughMonth } from '../../../utils/reportMonths'
+import { runwayStatement } from '../../../utils/runway'
 import './EmergencyCoverageReport.css'
 
 interface Props {
@@ -46,19 +47,22 @@ interface Props {
 /**
  * Whether the emergency fund covers a lean month, and for how long.
  *
- * The Essentials report answers what a lean month costs and carries today's
- * runway as one card's subtitle. This is the other question — *am I covered,
- * and is that getting better* — which is a stock measured against a flow, and
- * neither half belongs on a chart of monthly spending. Putting a fund balance
- * beside spending bars invites reading them as comparable when they are not.
+ * The Essentials report answers what a lean month costs and carries how long
+ * the fund lasts on it as one card's subtitle. This is the other question —
+ * *am I covered, and is that getting better* — which is a stock measured
+ * against a flow, and neither half belongs on a chart of monthly spending.
+ * Putting a fund balance beside spending bars invites reading them as
+ * comparable when they are not.
  *
  * Every figure here is served (`services/emergency_coverage.py`), including
- * the headline coverage, which is the Essentials report's own `runway_months`
- * quoted rather than recomputed: two pages that each divide the same pair of
- * numbers are two pages that can disagree.
+ * "Covered", which is the runway rule at (Essentials, the fund) — the
+ * Essentials report's own `fund_runway`, quoted rather than recomputed: two
+ * pages that each divide the same pair of numbers are two pages that can
+ * disagree. It takes out what the credit cards owe, and says so; the charts
+ * are the fund alone over time.
  */
 export function EmergencyCoverageReport({ budgetId }: Props) {
-  const { formatMoney, formatMonthShort } = useFormatters()
+  const { formatMoney, formatMonthShort, formatDate } = useFormatters()
   // The second chart plots money. Its axis printed raw numbers — no currency
   // and no privacy mask — beside a tooltip and cards that both read $••••.
   const moneyAxis = useMoneyAxis()
@@ -71,7 +75,8 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
   if (!data) return <div className="reports-empty">No data available.</div>
 
   const [low, high] = data.target_range
-  const where = standing(data.coverage_months, data.target_range)
+  const where = standing(data.covered.months, data.target_range)
+  const covered = runwayStatement(data.covered, formatDate)
   const trend = coverageTrend(data.series)
   const toTarget = monthsToTarget(data.series)
   const chart = data.series.map((p) => ({
@@ -101,10 +106,13 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
           <ReportInfoButton title="Emergency Fund">
             <p>
               How many months of <strong>essential</strong> spending your emergency fund would
-              cover. Coverage is the fund divided by the essentials figure — the average of the last
-              three complete months, the one the Guide’s target uses — so this page and the roadmap
-              cannot tell different stories about the same household. Each month on the charts reads
-              the same figure as of that month; the newest point is the headline.
+              cover. <strong>Covered</strong> is the fund, less what your credit cards owe, divided
+              by the essentials figure — the average of the last three complete months, the one the
+              Guide’s target uses — so this page and the roadmap cannot tell different stories about
+              the same household. It is the same rule as the Overview’s <strong>Runway</strong>,
+              counting the fund alone. The charts show the fund itself over time, each month against
+              the essentials figure as of that month, so the newest point differs from Covered by
+              what the cards owe today.
             </p>
             <p>
               With <strong>Spread yearly bills over 12 months</strong> on, bills in categories
@@ -176,8 +184,17 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
             <MetricRow>
               <MetricCard
                 label="Covered"
-                value={data.coverage_months === null ? '—' : `${data.coverage_months} months`}
-                sub={trend ? coverageTrendPhrase(trend) : undefined}
+                value={covered.value}
+                sub={
+                  <>
+                    {covered.detail}
+                    {trend && (
+                      <span className="coverage-report__sub-line">
+                        {coverageTrendPhrase(trend)}
+                      </span>
+                    )}
+                  </>
+                }
                 accent={where === 'within' || where === 'above'}
                 warning={where === 'below'}
               />
@@ -214,9 +231,12 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
             <EmergencyFundCounting budgetId={budgetId} />
 
             <p className="coverage-report__note">
-              Coverage is the fund divided by what a lean month costs —{' '}
-              {formatMoney(data.essentials.monthly)}/month, the average of{' '}
-              {averaged ?? 'the last three complete months'}
+              Covered is the fund
+              {data.covered.card_debt > 0
+                ? `, less ${formatMoney(data.covered.card_debt)} owed on your credit cards,`
+                : ''}{' '}
+              divided by what a lean month costs — {formatMoney(data.essentials.monthly)}/month, the
+              average of {averaged ?? 'the last three complete months'}
               {spreadsBills(data.essentials, data.long_term_essentials)
                 ? ', with yearly bills spread over 12 months'
                 : ''}

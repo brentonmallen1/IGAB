@@ -50,6 +50,7 @@ vi.mock('../../api/emergencyFund', () => ({
 import { useReportStore } from '../../stores/reportStore'
 import { useAppStore } from '../../stores/appStore'
 import { PRIVACY_MASK } from '../../utils/money'
+import { ifIncomeStopped, overviewRunway, runwayFigure } from '../../test-utils/runwayFixtures'
 import { CostOfLivingReport } from './charts/CostOfLivingReport'
 import { DiscretionaryReport } from './charts/DiscretionaryReport'
 import { EssentialsReport } from './charts/EssentialsReport'
@@ -417,7 +418,7 @@ describe('OverviewReport metric cards', () => {
         burn_rate_30: 900,
         burn_rate_prior_60: 600,
         savings_rate: 0.25,
-        days_until_zero: 45.6,
+        runway: overviewRunway(),
         income_this_month: '4000',
         expenses_this_month: '3000',
         expenses_prev_month: '2500',
@@ -457,7 +458,11 @@ describe('OverviewReport metric cards', () => {
       'metric-card__delta--good'
     )
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
-    expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
+    // How long the money lasts if income stopped, and what it read.
+    expect(card('Runway')).toEqual({
+      value: '20.0 months',
+      sub: 'to May 27, 2028If income stopped: Essentials, checking + emergency fund, cards paid',
+    })
     expect(screen.getByText('Groceries')).toBeInTheDocument()
     // The last 30 days against the 60 before them — no day in both.
     expect(card('30-Day Burn Rate')).toEqual({
@@ -480,6 +485,7 @@ describe('OverviewReport metric cards', () => {
         outflows_this_month: 450,
         top_categories: [],
         means_months: [],
+        runway: overviewRunway(),
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -494,25 +500,60 @@ describe('OverviewReport metric cards', () => {
     expect(spent?.querySelector('.metric-card__delta')).toBeNull()
   })
 
-  it('keeps Days Until Zero on screen at 0, and says the cash is gone', () => {
+  it('keeps Runway on screen at 0, and says the money is gone', () => {
+    // Days Until Zero hid itself when cash hit zero — the moment its answer
+    // mattered most. Cards owing more than the money is the same moment.
     setQuery({
       data: {
         net_worth: 0,
         burn_rate_30: 900,
         burn_rate_prior_60: 900,
-        days_until_zero: 0,
         income_this_month: 0,
         expenses_this_month: 900,
         expenses_prev_month: 900,
         outflows_this_month: 900,
         top_categories: [],
         means_months: [],
+        runway: overviewRunway({ money_total: -300, months: 0, runs_out_on: '2026-09-26' }),
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
-    expect(card('Days Until Zero')).toEqual({
-      value: '0 days',
-      sub: 'Overdrawn: cash is at or below zero',
+    expect(card('Runway')).toEqual({
+      value: '0.0 months',
+      sub: 'Nothing left once the cards are paidIf income stopped: Essentials, checking + emergency fund, cards paid',
+    })
+    const runway = screen.getByText('Runway', { selector: '.metric-card__label' })
+    expect(runway.closest('.metric-card')).toHaveClass('metric-card--warning')
+  })
+
+  it('says why the runway fell back to checking and all spending', () => {
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 900,
+        burn_rate_prior_60: 900,
+        income_this_month: 0,
+        expenses_this_month: 900,
+        expenses_prev_month: 900,
+        outflows_this_month: 900,
+        top_categories: [],
+        means_months: [],
+        runway: overviewRunway({
+          spending: 'all',
+          money: 'checking',
+          months: 2.5,
+          runs_out_on: '2026-12-11',
+          fund_chosen: false,
+          essentials_known: false,
+        }),
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Runway')).toEqual({
+      value: '2.5 months',
+      sub:
+        'to Dec 11, 2026If income stopped: all spending, checking, cards paid' +
+        'Nothing tagged Essential, no emergency fund chosen',
     })
   })
 
@@ -526,6 +567,7 @@ describe('OverviewReport metric cards', () => {
         outflows_this_month: '0',
         top_categories: [],
         means_months: [],
+        runway: overviewRunway(),
         essentials: {
           as_paid: 2800,
           spread: 2200,
@@ -537,10 +579,12 @@ describe('OverviewReport metric cards', () => {
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
-    // The months it averages first (D6), then the target, then the other figure.
+    // The months it averages first (D6), then the other figure. The 6-month
+    // target left: it is the Emergency Fund report's, and said twice it was
+    // one more figure to reconcile.
     expect(card('Essentials / month')).toEqual({
       value: '$2,200.00',
-      sub: 'Jun 26 – Aug 26 average6-month target: $13,200.00$2,200.00/mo spread · $2,800.00/mo as paid',
+      sub: 'Jun 26 – Aug 26 average$2,200.00/mo spread · $2,800.00/mo as paid',
     })
   })
 
@@ -556,6 +600,7 @@ describe('OverviewReport metric cards', () => {
         outflows_this_month: '0',
         top_categories: [],
         means_months: [],
+        runway: overviewRunway(),
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -616,7 +661,7 @@ describe('CashProjectionReport', () => {
   const projection = (goes: string | null, p10: string | null) => ({
     start_balance: 900,
     points: [
-      { date: '2026-09-26', p10: 900, p25: 900, p50: 900, p75: 900, p90: 900, deterministic: 900 },
+      { date: '2026-09-26', p10: 900, p25: 900, p50: 900, p75: 900, p90: 900 },
       {
         date: '2026-10-26',
         p10: -150,
@@ -624,12 +669,12 @@ describe('CashProjectionReport', () => {
         p50: 700,
         p75: 1100,
         p90: 1600,
-        deterministic: 900,
       },
     ],
     events: [],
     goes_negative_date: goes,
     p10_negative_date: p10,
+    if_income_stopped: ifIncomeStopped(),
   })
 
   it('says a 1 in 10 dip softly when only the low band crosses', () => {
@@ -660,6 +705,66 @@ describe('CashProjectionReport', () => {
       sub: '8 in 10: -$150.00 – $1,600.00',
     })
   })
+
+  describe('if income stopped', () => {
+    afterEach(() => useReportStore.setState({ runwaySpending: null, runwayMoney: null }))
+
+    it('opens on the Overview’s runway and says what it read', () => {
+      setQuery({ data: projection(null, null) })
+      renderReport(<CashProjectionReport budgetId="b1" />)
+      // 10,000 of checking and fund, cards paid, at 1,000 of Essentials.
+      expect(card('If income stopped')).toEqual({
+        value: '10.0 months',
+        sub: 'to Jan 1, 2027Essentials, checking + emergency fund, cards paid',
+      })
+      const spending = screen.getByRole('group', { name: 'Spending' })
+      expect(within(spending).getByRole('button', { name: 'Essentials' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
+      const money = screen.getByRole('group', { name: 'Money' })
+      expect(within(money).getByRole('button', { name: '+ Emergency fund' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
+    })
+
+    it('remembers a pick, and draws it', () => {
+      setQuery({ data: projection(null, null) })
+      renderReport(<CashProjectionReport budgetId="b1" />)
+      fireEvent.click(screen.getByRole('button', { name: 'All' }))
+      fireEvent.click(screen.getByRole('button', { name: '+ All savings' }))
+      expect(useReportStore.getState()).toMatchObject({
+        runwaySpending: 'all',
+        runwayMoney: 'with_savings',
+      })
+      expect(card('If income stopped')).toEqual({
+        value: '6.3 months',
+        sub: 'to Jan 1, 2027all spending, checking + all savings, cards paid',
+      })
+    })
+
+    it('disables + Emergency fund with no fund chosen, and falls back from a remembered one', () => {
+      useReportStore.setState({ runwayMoney: 'with_fund' })
+      setQuery({
+        data: { ...projection(null, null), if_income_stopped: ifIncomeStopped({ noFund: true }) },
+      })
+      renderReport(<CashProjectionReport budgetId="b1" />)
+      expect(screen.getByRole('button', { name: '+ Emergency fund' })).toBeDisabled()
+      expect(card('If income stopped').sub).toBe('to Jan 1, 2027Essentials, checking, cards paid')
+    })
+
+    it('keys the line by its question, and the Scheduled only line is gone', () => {
+      setQuery({ data: projection(null, null) })
+      renderReport(<CashProjectionReport budgetId="b1" />)
+      const key = document.querySelector('.chart-key')?.textContent ?? ''
+      expect(key).toContain('If income stopped')
+      expect(key).not.toContain('Scheduled only')
+      fireEvent.click(screen.getByRole('button', { name: 'About the Cash Projection report' }))
+      expect(screen.queryByText(/no random daily spending/)).toBeNull()
+      expect(screen.getByText(/credit\s+cards owe already paid/)).toBeInTheDocument()
+    })
+  })
 })
 
 describe('the savings-rate cards open what contributed', () => {
@@ -677,7 +782,6 @@ describe('the savings-rate cards open what contributed', () => {
     burn_rate_prior_60: 0,
     essentials_tagged: false,
     savings_rate: 0.25,
-    days_until_zero: null,
     income_this_month: 4000,
     expenses_this_month: 2500,
     expenses_prev_month: 0,
@@ -685,6 +789,7 @@ describe('the savings-rate cards open what contributed', () => {
     outflows_this_month: 3000,
     top_categories: [],
     means_months: [],
+    runway: overviewRunway(),
   }
 
   it('the Overview card asks for the range the Overview shows', () => {
@@ -2649,7 +2754,7 @@ describe('EssentialsReport table footer', () => {
           accounts: [],
           external: { declared: false, amount: null, as_of: null, note: null },
         },
-        runway_months: null,
+        fund_runway: runwayFigure({ money: 'fund', money_total: null, months: null }),
         class_excluded: [],
       },
     })
@@ -2691,7 +2796,7 @@ describe('EssentialsReport table footer', () => {
           accounts: [],
           external: { declared: false, amount: null, as_of: null, note: null },
         },
-        runway_months: null,
+        fund_runway: runwayFigure({ money: 'fund', money_total: null, months: null }),
         class_excluded: [],
       },
     })
@@ -2725,7 +2830,7 @@ describe('EssentialsReport headline', () => {
       accounts: [],
       external: { declared: false, amount: null, as_of: null, note: null },
     },
-    runway_months: null,
+    fund_runway: runwayFigure({ money: 'fund', money_total: null, months: null }),
     class_excluded: [],
     ...over,
   })
@@ -2833,7 +2938,7 @@ describe('EmergencyCoverageReport', () => {
       accounts: [{ id: 'a1', name: 'Cascade Point HYSA', balance: 4000 }],
       external: { declared: false, amount: null, as_of: null, note: null },
     },
-    coverage_months: 4,
+    covered: runwayFigure({ money: 'fund', money_total: 4000, card_debt: 0, months: 4 }),
     essentials: {
       as_paid: 1000,
       spread: 1000,
@@ -2917,6 +3022,28 @@ describe('EmergencyCoverageReport', () => {
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
     expect(screen.queryByText(/\/mo as paid/)).toBeNull()
   })
+
+  it('reads Covered as the runway rule: the fund, cards paid, with its date', () => {
+    // 4,000 of fund less 500 owed is 3.5 months at 1,000 — the chart's newest
+    // point is the fund alone, and the note says why the two differ.
+    setQuery({
+      data: {
+        ...base,
+        covered: runwayFigure({
+          money: 'fund',
+          money_total: 3500,
+          card_debt: 500,
+          months: 3.5,
+          runs_out_on: '2027-01-11',
+        }),
+        series: [pt('2026-08-01', 4)],
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(card('Covered').value).toBe('3.5 months')
+    expect(card('Covered').sub).toMatch(/^to Jan 11, 2027/)
+    expect(screen.getByText(/less \$500\.00 owed on your credit cards/)).toBeInTheDocument()
+  })
 })
 
 describe('info panels say what the chart draws', () => {
@@ -2960,7 +3087,7 @@ describe('info panels say what the chart draws', () => {
 
   it('Overview: which cards follow the range, and which are as of today', () => {
     // "All metrics use the selected date range except burn rates" — while Net
-    // Worth, Essentials and Days Until Zero were as of today too.
+    // Worth, Essentials and the runway card were as of today too.
     setQuery({
       data: {
         net_worth: 0,
@@ -2970,6 +3097,7 @@ describe('info panels say what the chart draws', () => {
         outflows_this_month: 0,
         top_categories: [],
         means_months: [],
+        runway: overviewRunway(),
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -2992,6 +3120,7 @@ describe('info panels say what the chart draws', () => {
         outflows_this_month: 0,
         top_categories: [],
         means_months: [],
+        runway: overviewRunway(),
       },
     })
     const saved = useReportStore.getState().filters

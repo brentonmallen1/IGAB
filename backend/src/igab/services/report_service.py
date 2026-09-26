@@ -2,6 +2,7 @@ import io
 import json
 import uuid
 from collections.abc import Sequence
+from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
 from statistics import median
@@ -49,7 +50,6 @@ from igab.domain.burn_rate import (
     burn,
     burn_as_of,
     burn_windows,
-    days_until_zero,
 )
 from igab.domain.cash_flow import (
     HUB_CLASSES,
@@ -122,6 +122,7 @@ from igab.services.report_stats import (
     volatility_stats,
     weekday_rollup,
 )
+from igab.services.runway import runway_read
 from igab.services.savings_held import held_between, held_by_month
 
 # Report payload shapes.
@@ -470,15 +471,15 @@ class ReportService:
         # and a second card saying the same number would mislead.
         essentials, essentials_tagged = await reported_essentials(self.session, budget_id, today)
 
-        # Days until zero — runway is CASH divided by burn, and the pot is
-        # the budget's cash (`sum_on_budget_balance`, the Ready-to-Assign
-        # balance term), not net worth. Net worth counts a house, a 401k and
-        # the mortgage against them: a household with a mortgage read a
-        # runway near zero while one with a brokerage read one of years, and
-        # neither is money that can be spent next week. Same figure, one
-        # home — do not respell the account set here.
-        cash_on_hand = await self.accounts.sum_on_budget_balance(budget_id, today)
-        runway = days_until_zero(cash_on_hand, now_burn.per_day)
+        # Runway — how long the money lasts if income stopped, at the
+        # Overview's choice (Essentials against the cash and the emergency
+        # fund, card debt taken out), from the one rule every runway reads
+        # (`services.runway`). This was "Days Until Zero": the cash ÷ the last
+        # thirty days' burn, which assumed every kind of spending carried on,
+        # counted checking alone and ignored both the cards and the savings —
+        # a budget whose checking never dipped below a month's pay read 17
+        # days.
+        runway = await runway_read(self.session, budget_id, today)
 
         # Top Spending is the Breakdown's first three rows, not a second query
         # kept agreeing with it. It was one — the class filter, the envelope
@@ -500,7 +501,13 @@ class ReportService:
             "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
             "savings_rate": this.savings_rate,
-            "days_until_zero": runway,
+            "runway": {
+                **asdict(runway.default),
+                "fund_chosen": runway.fund_chosen,
+                "essentials_known": runway.essentials_known,
+                "window_start": runway.window_start,
+                "window_end": runway.window_end,
+            },
             "income_this_month": this.income,
             "expenses_this_month": this.spending,
             "expenses_prev_month": expenses_prev,
@@ -2272,7 +2279,6 @@ class ReportService:
                 "p50": p.p50,
                 "p75": p.p75,
                 "p90": p.p90,
-                "deterministic": p.deterministic,
             }
             for p in projection.points
         ]
@@ -2304,10 +2310,35 @@ class ReportService:
             )
         events.sort(key=lambda e: e["date"])
 
+        # 7. If income stopped: the runway at every choice the page offers,
+        # each with its straight burn-down to zero or the horizon — the other
+        # half of "how long does my money last", on the same axis as the
+        # bands. It replaced a "Scheduled only" line (the fixed events alone),
+        # which answered no question a household asks.
+        stopped = await runway_read(self.session, budget_id, today)
+
         return {
             "start_balance": start_balance,
             "points": points,
             "events": events[:20],  # Limit to first 20 events
             "goes_negative_date": projection.goes_negative_date,
             "p10_negative_date": projection.p10_negative_date,
+            "if_income_stopped": {
+                "options": [
+                    {
+                        **asdict(option),
+                        "line": [
+                            {"date": point.day, "balance": point.balance}
+                            for point in stopped.line(option, end_date)
+                        ],
+                    }
+                    for option in stopped.options
+                ],
+                "default_spending": stopped.default.spending,
+                "default_money": stopped.default.money,
+                "fund_chosen": stopped.fund_chosen,
+                "essentials_known": stopped.essentials_known,
+                "window_start": stopped.window_start,
+                "window_end": stopped.window_end,
+            },
         }

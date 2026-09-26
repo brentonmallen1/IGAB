@@ -801,6 +801,45 @@ export interface ReportSettings {
   spread_sinking_funds: boolean
 }
 
+/** What a month costs, for a runway (backend `domain/runway.py`
+ *  `SpendingBasis`): all spending, the Cost of Living tier, or Essentials —
+ *  each the three complete months the Essentials headline averages. */
+export type RunwaySpending = 'all' | 'cost_of_living' | 'essentials'
+
+/** What money a runway spends (backend `MoneyBasis`): the budget's cash, plus
+ *  what the emergency fund holds outside it, plus every off-budget savings
+ *  account — or, on the Emergency Fund report, the fund alone. */
+export type RunwayMoney = 'checking' | 'with_fund' | 'with_savings' | 'fund'
+
+/** How long the money lasts if income stopped, at one choice — the one runway
+ *  rule, server-computed (`domain/runway.py`). Every surface that quotes a
+ *  runway reads this shape, so each can say what it read. */
+export interface RunwayFigure {
+  spending: RunwaySpending
+  money: RunwayMoney
+  /** null when nothing is tagged into the tier: unknown, not zero. */
+  monthly_spending: number | null
+  /** The money counted, on-budget card debt already subtracted; null when it
+   *  would count an emergency fund nobody has chosen. */
+  money_total: number | null
+  /** What was subtracted for the cards (owed, positive). */
+  card_debt: number
+  /** One decimal. null when nothing is being spent; 0 when the money is
+   *  already gone. */
+  months: number | null
+  /** The reader's today plus `months`. */
+  runs_out_on: string | null
+}
+
+/** The Overview's Runway card: Essentials against the cash and the emergency
+ *  fund, falling back (and saying why) when either is missing. */
+export interface OverviewRunway extends RunwayFigure {
+  fund_chosen: boolean
+  essentials_known: boolean
+  window_start: string | null
+  window_end: string | null
+}
+
 export interface DashboardMetrics {
   net_worth: number
   net_worth_prev: number
@@ -818,9 +857,9 @@ export interface DashboardMetrics {
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
   savings_rate: number | null
-  /** 0 when cash is at or below zero; null only when nothing is burning
-   *  (backend `burn_rate.days_until_zero`). */
-  days_until_zero: number | null
+  /** How long the money lasts if income stopped (backend
+   *  `services/runway.py`). */
+  runway: OverviewRunway
   income_this_month: number
   expenses_this_month: number
   /** Spending over the equal-length window before this one
@@ -1308,8 +1347,10 @@ export interface EmergencyCoverageReport {
   tagged: boolean
   /** The emergency fund and what it counted — the Essentials report's own. */
   fund: EmergencyFund
-  /** The Essentials report's own runway, quoted rather than recomputed. */
-  coverage_months: number | null
+  /** "Covered": the Essentials report's own `fund_runway`, quoted — the fund,
+   *  what the cards owe taken out, over Essentials. The series is the fund
+   *  alone, so its newest point and this differ by today's card debt. */
+  covered: RunwayFigure
   essentials: EssentialsFigures
   /** How many Essential categories are also Long-term expense. None: the
    *  spread setting has nothing to spread, so its toggle is hidden and the
@@ -1353,9 +1394,10 @@ export interface EssentialsReport {
   roadmap_range: [number, number]
   /** The emergency fund and what it counted, whatever the Guide tracks. */
   emergency_fund: EmergencyFund
-  /** How many lean months `emergency_fund.total` covers. Null when nothing
-   *  was chosen, or nothing is tagged Essential. */
-  runway_months: number | null
+  /** How long the fund lasts on Essentials, card debt taken out — the
+   *  runway rule at (Essentials, the fund); `months` null when nothing was
+   *  chosen or nothing is tagged Essential. */
+  fund_runway: RunwayFigure
   /** Tagged Essential and still not counted, by class — see
    *  `CostOfLivingReport.class_excluded`. */
   class_excluded: SpendingClassExcluded[]
@@ -1752,7 +1794,6 @@ export interface CashProjectionPoint {
   p50: number
   p75: number
   p90: number
-  deterministic: number
 }
 
 export interface CashProjectionEvent {
@@ -1772,6 +1813,27 @@ export interface CashProjectionReport {
    *  `goes_negative_date`. Backend `domain/cash_projection.py`; the softer
    *  warning reads it (`cashProjectionView.projectionWarning`). */
   p10_negative_date: string | null
+  /** The runway at every choice the page offers, each with its burn-down. */
+  if_income_stopped: IfIncomeStopped
+}
+
+/** One "If income stopped" choice: the runway, and its straight burn-down —
+ *  today's money, then zero on `runs_out_on` or the balance at the horizon
+ *  (`domain/runway.burn_down`). */
+export interface StoppedIncomeOption extends RunwayFigure {
+  line: { date: string; balance: number }[]
+}
+
+export interface IfIncomeStopped {
+  /** Every spending × money choice, in picker order. */
+  options: StoppedIncomeOption[]
+  /** The Overview's choice, which the pickers open on. */
+  default_spending: RunwaySpending
+  default_money: RunwayMoney
+  fund_chosen: boolean
+  essentials_known: boolean
+  window_start: string | null
+  window_end: string | null
 }
 
 export interface SimilarTransaction {

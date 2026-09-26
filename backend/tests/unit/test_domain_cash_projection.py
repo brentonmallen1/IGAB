@@ -274,14 +274,14 @@ class TestDayZero:
         window, history = twice_monthly_pay(TODAY)
         p = run(history, window, start="9000.00").points[0]
         assert p.day == TODAY
-        assert p.p10 == p.p25 == p.p50 == p.p75 == p.p90 == p.deterministic == D("9000.00")
+        assert p.p10 == p.p25 == p.p50 == p.p75 == p.p90 == D("9000.00")
 
     def test_a_fixed_event_booked_on_today_lands_on_day_zero_for_every_band(self):
         """An overdue schedule is booked on today and is not in the balance
-        yet. The bands and the "Scheduled only" line both carry it."""
+        yet. Every band carries it."""
         window, history = twice_monthly_pay(TODAY)
         p = run(history, window, start="9000.00", fixed={TODAY: D("-250")}).points[0]
-        assert p.p10 == p.p50 == p.p90 == p.deterministic == D("8750.00")
+        assert p.p10 == p.p25 == p.p50 == p.p75 == p.p90 == D("8750.00")
 
     def test_sampled_flows_begin_on_day_one(self):
         window = window_ending_yesterday(TODAY, 14)
@@ -299,7 +299,8 @@ class TestNothingToReplay:
         fixed = {TODAY + timedelta(days=3): D("2000"), TODAY + timedelta(days=10): D("-1200")}
         points = run([], None, start="5000", horizon=30, fixed=fixed).points
         for p in points:
-            assert p.p10 == p.p25 == p.p50 == p.p75 == p.p90 == p.deterministic
+            assert p.p10 == p.p25 == p.p50 == p.p75 == p.p90
+        assert points[0].p50 == D(5000)
         assert points[2].p50 == D(5000)
         assert points[3].p50 == D(7000)
         assert points[10].p50 == points[30].p50 == D(5800)
@@ -374,7 +375,7 @@ class TestRuns:
         window = window_ending_yesterday(TODAY, 3)
         points = run([D("-0.3333"), D("0.0049"), D("-1.005")], window, horizon=30).points
         for p in points:
-            for value in (p.p10, p.p25, p.p50, p.p75, p.p90, p.deterministic):
+            for value in (p.p10, p.p25, p.p50, p.p75, p.p90):
                 assert value == value.quantize(D("0.01"))
 
 

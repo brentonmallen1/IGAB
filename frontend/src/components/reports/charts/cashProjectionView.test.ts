@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { CashProjectionPoint } from '../../../types'
+import { ifIncomeStopped } from '../../../test-utils/runwayFixtures'
 import {
   PROJECTION_BANDS,
+  STOPPED_LABEL,
+  chosenStoppedOption,
+  moneyAvailable,
   projectionRows,
   projectionTooltipEntries,
   projectionWarning,
+  spendingAvailable,
 } from './cashProjectionView'
 
 const point = (date: string, p10: number, p50: number, p90: number): CashProjectionPoint => ({
@@ -14,7 +19,6 @@ const point = (date: string, p10: number, p50: number, p90: number): CashProject
   p50,
   p75: (p50 + p90) / 2,
   p90,
-  deterministic: 1000,
 })
 
 describe('projectionRows', () => {
@@ -48,6 +52,23 @@ describe('projectionRows', () => {
   it('is empty for no points', () => {
     expect(projectionRows([], (d) => d)).toEqual([])
   })
+
+  it('places the If income stopped line on its served days only', () => {
+    // Two served points, joined straight by the chart: the balance between
+    // them is drawn, not stated, so no row in between carries one.
+    const points = ['2026-09-26', '2026-09-27', '2026-09-28'].map((d) => point(d, 0, 500, 900))
+    const rows = projectionRows(points, (d) => d, [
+      { date: '2026-09-26', balance: 20000 },
+      { date: '2026-09-28', balance: 19934.3 },
+    ])
+    expect(rows.map((r) => r.stopped)).toEqual([20000, undefined, 19934.3])
+    expect('stopped' in rows[1]).toBe(false)
+  })
+
+  it('draws no line with no served points', () => {
+    const rows = projectionRows([point('2026-09-26', 0, 500, 900)], (d) => d)
+    expect(rows[0].stopped).toBeUndefined()
+  })
 })
 
 describe('PROJECTION_BANDS', () => {
@@ -75,8 +96,68 @@ describe('projectionTooltipEntries', () => {
       ['Median', 600],
       ['1 in 4 low', 100],
       ['1 in 10 low', -400],
-      ['Scheduled only', 1000],
     ])
+  })
+
+  it('adds the If income stopped balance on a day the server stated one', () => {
+    const [row] = projectionRows([point('2026-10-01', -400, 600, 1800)], (d) => d, [
+      { date: '2026-10-01', balance: 12000 },
+    ])
+    expect(projectionTooltipEntries(row).at(-1)).toEqual({
+      name: STOPPED_LABEL,
+      value: 12000,
+      color: 'var(--text-muted)',
+    })
+  })
+
+  it('never names the retired Scheduled only line', () => {
+    const [row] = projectionRows([point('2026-10-01', -400, 600, 1800)], (d) => d)
+    expect(projectionTooltipEntries(row).map((e) => e.name)).not.toContain('Scheduled only')
+  })
+})
+
+describe('chosenStoppedOption', () => {
+  it('opens on the served default — the Overview’s runway — until someone picks', () => {
+    const option = chosenStoppedOption(ifIncomeStopped(), null, null)
+    expect([option?.spending, option?.money]).toEqual(['essentials', 'with_fund'])
+  })
+
+  it('draws the remembered choice', () => {
+    const option = chosenStoppedOption(ifIncomeStopped(), 'all', 'with_savings')
+    expect([option?.spending, option?.money]).toEqual(['all', 'with_savings'])
+    expect(option?.months).toBe(6.3)
+  })
+
+  it('falls back to the default money when the remembered fund was un-chosen', () => {
+    const option = chosenStoppedOption(ifIncomeStopped({ noFund: true }), 'essentials', 'with_fund')
+    expect([option?.spending, option?.money]).toEqual(['essentials', 'checking'])
+  })
+
+  it('falls back to all spending when the remembered tier lost its tags', () => {
+    const option = chosenStoppedOption(ifIncomeStopped({ untagged: true }), 'essentials', null)
+    expect([option?.spending, option?.money]).toEqual(['all', 'with_fund'])
+  })
+})
+
+describe('picker availability', () => {
+  it('offers everything on a budget with tags and a fund', () => {
+    const stopped = ifIncomeStopped()
+    expect(spendingAvailable(stopped, 'essentials')).toBe(true)
+    expect(moneyAvailable(stopped, 'with_fund')).toBe(true)
+  })
+
+  it('disables + Emergency fund when no fund is chosen, and nothing else', () => {
+    const stopped = ifIncomeStopped({ noFund: true })
+    expect(moneyAvailable(stopped, 'with_fund')).toBe(false)
+    expect(moneyAvailable(stopped, 'checking')).toBe(true)
+    expect(moneyAvailable(stopped, 'with_savings')).toBe(true)
+  })
+
+  it('disables the tiers nothing is tagged into, never All', () => {
+    const stopped = ifIncomeStopped({ untagged: true })
+    expect(spendingAvailable(stopped, 'all')).toBe(true)
+    expect(spendingAvailable(stopped, 'cost_of_living')).toBe(false)
+    expect(spendingAvailable(stopped, 'essentials')).toBe(false)
   })
 })
 

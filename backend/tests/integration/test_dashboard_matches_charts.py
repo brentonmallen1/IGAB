@@ -223,7 +223,7 @@ class TestTheBurnWindowsAreTheSameWindow:
     newest point was month-to-date wearing a thirty-day label. The card ran
     `today - 30` with inclusive bounds, which is thirty-ONE days, and then
     `days_until_zero` divided it by 30. So the card overstated daily burn by
-    about 3.3% and understated runway by the same, and the two figures could
+    about 3.3% and understated Days Until Zero by the same, and the two figures could
     not agree by construction.
 
     A future-dated row is deliberately NOT tested here: `burn_rate`'s query
