@@ -102,9 +102,11 @@ async def _household(db_session, user):
     return budget, groceries
 
 
-#: Net worth as the reader's day closes: seven paychecks, the groceries and
-#: streaming through today, the car, less the loan. Not the 5,000 spike.
-NET_WORTH = D("21000") - (sum(GROCERIES) + D("40")) - D("30") + D("1000") - D("5000")
+#: Cash as the reader's day closes: seven paychecks, less the groceries and
+#: streaming through today. Not tomorrow's paycheck, nor the 5,000 spike.
+CASH = D("21000") - (sum(GROCERIES) + D("40")) - D("30")
+#: Net worth then: the cash, the car, less the loan.
+NET_WORTH = CASH + D("1000") - D("5000")
 
 
 def _no_spike(total) -> None:
@@ -267,6 +269,16 @@ CASES: list[Case] = [
         {"months": 3},
         lambda d: _eq(d["window_end"], (READER_MONTH - timedelta(days=1)).isoformat()),
     ),
+    # The path starts on the reader's today, from the cash that day closed on.
+    (
+        "cash-projection",
+        "cash-projection",
+        {"days": 30},
+        lambda d: (
+            _eq(d["points"][0]["date"], READER.isoformat()),
+            _eq(num(d["start_balance"]), CASH),
+        ),
+    ),
     (
         "emergency-fund",
         "emergency-fund",
@@ -276,9 +288,8 @@ CASES: list[Case] = [
 ]
 
 #: Report routes with no day in them: settings, favourites, the export (its
-#: dates are the caller's), the wishlist's all-time tally — and Cash
-#: Projection, whose rework threads the reader's day separately.
-NOT_DATED = {"favorites", "settings", "export", "wishlist", "cash-projection"}
+#: dates are the caller's), the wishlist's all-time tally.
+NOT_DATED = {"favorites", "settings", "export", "wishlist"}
 
 
 def _eq(actual, expected) -> None:

@@ -658,18 +658,10 @@ export function usePaydayEffectReport(budgetId: string | null, window = 14, mont
 
 // ─── Cash Projection ──────────────────────────────────────────────────────────
 
-/** Starts on the reader's today: the server's is UTC, and of an evening it is
- *  already tomorrow there. */
 export function useCashProjectionReport(budgetId: string | null, days = 90) {
   return useQuery({
     queryKey: [ROOT.reports, 'cash-projection', budgetId, days],
-    queryFn: async () => {
-      const { data } = await apiClient.get<CashProjectionReport>(
-        `/${budgetId}/reports/cash-projection`,
-        { params: { days, client_today: today() } }
-      )
-      return data
-    },
+    queryFn: () => fetchReport<CashProjectionReport>(budgetId, 'cash-projection', { days }),
     enabled: !!budgetId,
     staleTime: STALE,
   })

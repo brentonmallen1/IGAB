@@ -23,16 +23,12 @@ def report_today(today: date) -> Iterator[date]:
     `today`.
 
     Every report reads that fallback through `services/report_day.py`, so
-    that is the one clock to pin. `report_service` is pinned as well for Cash
-    Projection, which still reads its own."""
+    that is the one clock to pin."""
 
     class _Pinned(date):
         @classmethod
         def today(cls) -> date:
             return today
 
-    with (
-        patch("igab.services.report_day.date", _Pinned),
-        patch("igab.services.report_service.date", _Pinned),
-    ):
+    with patch("igab.services.report_day.date", _Pinned):
         yield today

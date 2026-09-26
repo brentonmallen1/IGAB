@@ -54,6 +54,7 @@ const HOOKS: Record<string, () => unknown> = {
   useSavingsReport: () => reports.useSavingsReport('b1'),
   useAnomaliesReport: () => reports.useAnomaliesReport('b1'),
   usePaydayEffectReport: () => reports.usePaydayEffectReport('b1'),
+  useCashProjectionReport: () => reports.useCashProjectionReport('b1'),
   useSpendingTrendsReport: () => reports.useSpendingTrendsReport('b1'),
   useIncomeBySourceReport: () => reports.useIncomeBySourceReport('b1'),
   useCategoryHistoryReport: () => reports.useCategoryHistoryReport('b1', 'c1'),
@@ -62,13 +63,8 @@ const HOOKS: Record<string, () => unknown> = {
   useWishlistDisciplineReport: () => reports.useWishlistDisciplineReport('b1'),
 }
 
-/** Hooks that are not a report read for a day. Cash Projection is the one
- *  report not yet on `fetchReport`; it moves when its own rework lands. */
-const NOT_A_DATED_REPORT = new Set([
-  'useReportSettings',
-  'useSetReportSettings',
-  'useCashProjectionReport',
-])
+/** Hooks that are not a report read for a day. */
+const NOT_A_DATED_REPORT = new Set(['useReportSettings', 'useSetReportSettings'])
 
 beforeEach(() => {
   // Only the clock: React Query's own timers must keep running.
@@ -97,6 +93,14 @@ describe('every report hook sends the reader’s day', () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalled())
     expect(apiClient.get).toHaveBeenCalledWith('/b1/reports/volatility', {
       params: { months: 6, amortize: true, client_today: '2026-08-31' },
+    })
+  })
+
+  it('starts Cash Projection on that day, over the horizon the chart asked for', async () => {
+    renderHook(() => reports.useCashProjectionReport('b1', 60), { wrapper })
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalled())
+    expect(apiClient.get).toHaveBeenCalledWith('/b1/reports/cash-projection', {
+      params: { days: 60, client_today: '2026-08-31' },
     })
   })
 

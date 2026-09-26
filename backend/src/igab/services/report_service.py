@@ -2605,14 +2605,14 @@ class ReportService:
         """Project future cash balances with uncertainty bands — the inputs
         gathered here, the simulation in `domain.cash_projection`.
 
-        `today` is the reader's (`client_today`). The container's clock is UTC,
-        so of an evening in the Americas `date.today()` is already tomorrow:
+        `today` is the reader's (`api/v1/params.ReaderToday`). The container's
+        clock is UTC, so of an evening in the Americas it is already tomorrow:
         the path started a day late, and the history ended on a day the reader
         had not finished.
         """
         from igab.db.models import ScheduledTransaction
 
-        today = today or date.today()
+        today = reader_today(today)
         end_date = today + timedelta(days=horizon_days)
 
         # 1. Current balance: the budget's CASH (`sum_on_budget_balance` —
