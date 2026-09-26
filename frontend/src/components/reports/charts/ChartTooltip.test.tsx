@@ -14,7 +14,7 @@
 import { render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChartTooltip } from './ChartTooltip'
-import { RATE_SERIES, savingsRateTooltipWith } from './savingsRateView'
+import { rateTooltip } from './savingsRateView'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
 
@@ -59,17 +59,18 @@ describe('ChartTooltip', () => {
   })
 
   it('passes the series name, so one tooltip can serve two units', () => {
-    // SavingsRateChart's own formatter: money bars plus a percentage line. The
-    // shared default rendered the rate 18.5 as "$18.50".
+    // A chart whose series are in two units — money bars and a percentage
+    // line — branches on the name. The shared default rendered a rate of
+    // 18.5 as "$18.50".
     const { formatMoney } = renderHook(() => useFormatters()).result.current
     render(
       <ChartTooltip
         active
         payload={[
           { name: 'Saved', value: 900 },
-          { name: RATE_SERIES, value: 18.5 },
+          { name: 'Rate', value: 18.5 },
         ]}
-        formatter={savingsRateTooltipWith(formatMoney)}
+        formatter={(v, name) => (name === 'Rate' ? rateTooltip(v) : formatMoney(v))}
       />
     )
     expect(screen.getByText('$900.00')).toBeInTheDocument()

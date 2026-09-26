@@ -276,7 +276,7 @@ export function sankeyExportRows(data: CashFlowReport): Record<string, unknown>[
  * The drill-down a category node opens: exactly the rows it counted.
  *
  * `entity_id` scopes a real category; a null one is a pseudo-category — the
- * Savings and Debt Payments trunks and the Uncategorized bucket — scoped by
+ * Savings and Debt payments trunks and the Uncategorized bucket — scoped by
  * the absence of a category. Those three share that and differ ONLY by class,
  * so without the node's served `activity_classes` each opened the union of
  * all three: a $500 Savings node listing $1,580. A real category sitting

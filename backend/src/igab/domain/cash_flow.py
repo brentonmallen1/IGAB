@@ -48,7 +48,7 @@ TOOLTIP_CATEGORIES = 10
 #: "Saved" adds it (`test_sankey_spent_mode_is_money_moved`).
 CLASS_BRANCH: dict[str, tuple[str, str]] = {
     ActivityClass.SAVINGS.value: ("__savings__", "To savings accounts"),
-    ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
+    ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt payments"),
 }
 #: What spent mode reads besides spending: income on the left, and the two
 #: class trunks on the right — the classes Income vs Expenses' `net`

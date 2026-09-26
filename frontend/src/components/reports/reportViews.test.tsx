@@ -729,43 +729,66 @@ describe('the savings-rate cards open what contributed', () => {
     renderReport(<SavingsRateReport budgetId="b1" />)
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Savings rate 37.5%. Show what contributed' })
+      screen.getByRole('button', { name: 'Savings rate 25.0%. Show what contributed' })
     )
 
-    const dialog = screen.getByRole('dialog', { name: 'Savings rate (with debt)' })
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate' })
     expect(hookCalls.get('useSavingsContributors')?.at(-1)).toEqual([
       'b1',
       '2026-01-01',
       '2026-03-15',
     ])
-    expect(within(dialog).getByText('37.5%')).toBeInTheDocument()
-    expect(within(dialog).getByText('(Saved + Debt principal) ÷ Income')).toBeInTheDocument()
-  })
-
-  it('the tab card without debt opens the plain rate', () => {
-    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
-    renderReport(<SavingsRateReport budgetId="b1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Include debt payments' }))
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Savings rate 25.0%. Show what contributed' })
-    )
-
-    const dialog = screen.getByRole('dialog', { name: 'Savings rate' })
+    expect(within(dialog).getByText('25.0%')).toBeInTheDocument()
     expect(within(dialog).getByText('Saved ÷ Income')).toBeInTheDocument()
     expect(dialog).toHaveTextContent('Not part of this rate.')
+  })
+
+  it('the tab opens without debt payments, as the Overview does', () => {
+    // The tab defaulted to counting them while the Overview did not, so one
+    // month read 4.9% here and 0.0% there.
+    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+    expect(screen.getByRole('button', { name: 'Include debt payments' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    expect(card('Savings rate').value).toBe('25.0%')
+    expect(card('Saved').value).toBe('$1,000.00')
+    expect(card('Debt payments').sub).toBe('not in this rate')
+  })
+
+  it('with debt payments on, every label says so and Saved adds them', () => {
+    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Include debt payments' }))
+
+    expect(card('Savings rate with debt payments').value).toBe('37.5%')
+    // The card read "Saved $1,000" beside a rate that also counted $500 of
+    // debt payments, so its figures did not divide into its rate.
+    expect(card('Saved + debt payments').value).toBe('$1,500.00')
+    expect(card('Debt payments').sub).toBe('in this rate')
+    expect(screen.queryByText('Debt Paid Down')).toBeNull()
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Savings rate with debt payments 37.5%. Show what contributed',
+      })
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate with debt payments' })
+    expect(within(dialog).getByText('37.5%')).toBeInTheDocument()
+    expect(within(dialog).getByText('(Saved + Debt payments) ÷ Income')).toBeInTheDocument()
   })
 
   it('both cards print a negative rate the same way', () => {
     // The Overview clamped to 0.0% with its own formatter; the tab printed it.
     setQuery({ data: { ...dashboard, savings_rate: -0.03 } })
     const { unmount } = renderReport(<OverviewReport budgetId="b1" />)
-    expect(card('Savings Rate').value).toBe('-3.0%')
+    expect(card('Savings rate').value).toBe('-3.0%')
     unmount()
 
-    setQuery({ data: { ...tab, summary: { ...tab.summary, savings_rate_with_debt: -0.03 } } })
+    setQuery({ data: { ...tab, summary: { ...tab.summary, savings_rate: -0.03 } } })
     renderReport(<SavingsRateReport budgetId="b1" />)
-    expect(card('Savings Rate (with debt)').value).toBe('-3.0%')
+    expect(card('Savings rate').value).toBe('-3.0%')
   })
 })
 
@@ -1007,31 +1030,93 @@ describe('DayPatternsReport', () => {
   })
 })
 
-describe('WishlistDisciplineReport resisted wishes', () => {
-  it('counts the wishes its Resisted figure sums, and lists the early drops', () => {
-    // Three wishes dropped on day three of a thirty-day wait. The card read
-    // "$300.00 — 0 talked yourself out of" and the table had no row for them.
+describe('WishlistDisciplineReport', () => {
+  const report = {
+    cooled_then_bought: 0,
+    cooled_then_dropped: 0,
+    bought_early: 0,
+    dropped_early: 0,
+    still_open: 0,
+    ready_to_decide: 0,
+    still_cooling: 0,
+    decided_count: 0,
+    waited_out_count: 0,
+    waited_out_share: null,
+    resisted_total: 0,
+    resisted_count: 0,
+    bought_total: 0,
+    bought_count: 0,
+    open_total: 0,
+    avg_days_to_buy: null,
+    avg_wish_cost: 100,
+    unplaced: 0,
+    cooling_days: 30,
+  }
+
+  it('does not credit the wait with a wish dropped before it was up', () => {
+    // One $600 wish dropped on day ten of thirty. The report led with
+    // "Resisted $600" as if the wait had done it.
     setQuery({
       data: {
-        cooled_then_bought: 0,
-        cooled_then_dropped: 0,
-        bought_early: 0,
-        dropped_early: 3,
-        still_open: 0,
-        resisted_total: 300,
-        resisted_count: 3,
-        bought_total: 0,
-        open_total: 0,
-        avg_days_to_buy: null,
-        avg_wish_cost: 100,
-        unplaced: 0,
+        ...report,
+        dropped_early: 1,
+        decided_count: 1,
+        waited_out_share: 0,
+        resisted_total: 600,
+        resisted_count: 1,
       },
     })
     renderReport(<WishlistDisciplineReport budgetId="b1" />)
 
-    expect(screen.getByText('3 talked yourself out of')).toBeInTheDocument()
+    expect(card('Waited it out')).toEqual({ value: '0%', sub: '0 of 1 wish decided' })
+    // "1 talked yourself out of" is gone, and the two money cards say the
+    // same two things in the same words.
+    expect(card('Resisted').sub).toBe('1 wish · 0 after the wait')
+    expect(screen.queryByText(/talked yourself out of/)).toBeNull()
     const row = screen.getByText('Decided against before the wait was up').closest('tr')
-    expect(row).toHaveTextContent('3')
+    expect(row).toHaveTextContent('1')
+  })
+
+  it('leads with the share of decided wishes that waited it out', () => {
+    setQuery({
+      data: {
+        ...report,
+        cooled_then_bought: 2,
+        cooled_then_dropped: 1,
+        bought_early: 1,
+        decided_count: 4,
+        waited_out_count: 3,
+        waited_out_share: 0.75,
+        resisted_total: 200,
+        resisted_count: 1,
+        bought_total: 900,
+        bought_count: 3,
+        avg_days_to_buy: 24,
+      },
+    })
+    renderReport(<WishlistDisciplineReport budgetId="b1" />)
+
+    const labels = Array.from(document.querySelectorAll('.metric-card__label')).map(
+      (l) => l.textContent
+    )
+    expect(labels[0]).toBe('Waited it out')
+    expect(card('Waited it out')).toEqual({ value: '75%', sub: '3 of 4 wishes decided' })
+    expect(card('Bought').sub).toBe('3 wishes · 2 after the wait')
+    // A mean, beside the person's own waiting period — not "Typical".
+    expect(card('Average wait')).toEqual({ value: '24d', sub: 'to buy · your wait is 30 days' })
+    expect(screen.queryByText('Typical wait')).toBeNull()
+  })
+
+  it('says how many open wishes are past their wait', () => {
+    setQuery({
+      data: { ...report, still_open: 3, ready_to_decide: 2, still_cooling: 1, open_total: 450 },
+    })
+    renderReport(<WishlistDisciplineReport budgetId="b1" />)
+
+    expect(card('Waiting').sub).toBe('3 wishes · 2 ready to decide')
+    expect(screen.getByText('Wait over, ready to decide').closest('tr')).toHaveTextContent('2')
+    expect(screen.getByText('Still in the wait').closest('tr')).toHaveTextContent('1')
+    expect(card('Waited it out')).toEqual({ value: '—', sub: 'nothing decided yet' })
   })
 })
 
@@ -1181,7 +1266,9 @@ describe('IncomeExpenseReport drill', () => {
       },
     })
     renderReport(<IncomeExpenseReport budgetId="b1" />)
-    fireEvent.click(screen.getByText('Aug 26'))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Expenses, Aug 26: $1,530.00. Show the rows' })
+    )
     const drill = useReportStore.getState().drillDown
     expect(drill).toMatchObject({
       label: 'Expenses · Aug 26',
@@ -1191,6 +1278,98 @@ describe('IncomeExpenseReport drill', () => {
       endDate: '2026-08-31',
     })
     expect(drill?.direction).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+  })
+})
+
+describe('IncomeExpenseReport table', () => {
+  const months = [
+    {
+      month: '2026-07-01',
+      partial_month: false,
+      income: 5000,
+      expenses: 3000,
+      savings: 500,
+      savings_moved: 500,
+      savings_held: 0,
+      debt_principal: 400,
+      net: 1100,
+    },
+    {
+      month: '2026-08-01',
+      partial_month: false,
+      income: 5000,
+      expenses: 4800,
+      savings: -1000,
+      savings_moved: -1000,
+      savings_held: 0,
+      debt_principal: 400,
+      net: 800,
+    },
+    {
+      month: '2026-09-01',
+      partial_month: true,
+      income: 2500,
+      expenses: 1900,
+      savings: 0,
+      savings_moved: 0,
+      savings_held: 0,
+      debt_principal: 0,
+      net: 600,
+    },
+  ]
+
+  it('lists Income, Expenses, Saved, Debt payments and Net, with the window total', () => {
+    setQuery({ data: { months, expense_classes: ['spending'] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    const headers = within(screen.getByRole('table'))
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+    expect(headers).toEqual(['Month', 'Income', 'Expenses', 'Saved', 'Debt payments', 'Net'])
+    // Saved is Saved alone — the bar used to add debt payments under the
+    // same name the ⓘ defined without them.
+    expect(cellsOf('Jul 26')).toEqual([
+      'Jul 26',
+      '$5,000.00',
+      '$3,000.00',
+      '$500.00',
+      '$400.00',
+      '$1,100.00',
+    ])
+    // The complete months only: September is a row, "so far", not a term.
+    // The label is the row's header cell; these are its figures.
+    expect(cellsOf('Total · Jul 26 – Aug 26')).toEqual([
+      '$10,000.00',
+      '$7,800.00',
+      '-$500.00',
+      '$800.00',
+      '$1,900.00',
+    ])
+    expect(screen.getByText('Sep 26 so far')).toBeInTheDocument()
+  })
+
+  it('drops the Debt payments column when there were none', () => {
+    setQuery({
+      data: {
+        months: months.map((m) => ({ ...m, debt_principal: 0 })),
+        expense_classes: ['spending'],
+      },
+    })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    expect(screen.queryByRole('columnheader', { name: 'Debt payments' })).toBeNull()
+  })
+
+  it('opens a month’s Income from its cell', () => {
+    setQuery({ data: { months, expense_classes: ['spending'] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Income, Jul 26: $5,000.00. Show the rows' })
+    )
+    expect(useReportStore.getState().drillDown).toMatchObject({
+      label: 'Income · Jul 26',
+      startDate: '2026-07-01',
+      endDate: '2026-07-31',
+    })
     useReportStore.getState().setDrillDown(null)
   })
 })
@@ -2656,6 +2835,19 @@ describe('info panels say what the chart draws', () => {
     openInfo('Income vs Expenses')
     expect(screen.getAllByText(/Net line/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/\b(blue|green|red)\b/)).toBeNull()
+  })
+
+  it('Income vs Expenses: Net is how much the budget accounts grew, not "cash flow"', () => {
+    setQuery({ data: { months: [] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    openInfo('Income vs Expenses')
+    expect(screen.getByText(/how much your budget accounts grew/)).toBeInTheDocument()
+    // "Below zero, you ran a deficit" was wrong for a month that moved money
+    // into a brokerage: Net falls, and nothing was spent.
+    expect(
+      screen.getByText(/moving money into savings or investments lowers Net/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/cash flow/i)).toBeNull()
   })
 
   it('Overview: which cards follow the range, and which are as of today', () => {

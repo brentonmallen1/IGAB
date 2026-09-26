@@ -275,7 +275,7 @@ class SankeyNode(ApiModel):
     entity_id: str | None = None
     #: On a spent-mode category node: the activity classes it counted. Its
     #: drill-down lists exactly these, because the three pseudo-nodes
-    #: (Savings, Debt Payments, Uncategorized) share "no category" and differ
+    #: (Savings, Debt payments, Uncategorized) share "no category" and differ
     #: only by class. None on every other node.
     activity_classes: list[str] | None = None
 
@@ -1465,15 +1465,32 @@ class WishlistDisciplineResponse(ApiModel):
     #: three of thirty under "waited, then decided against".
     dropped_early: int
     still_open: int
+    #: Open wishes past their cooling-off (or with none): waiting on a
+    #: decision, not on the calendar. `still_cooling` is the rest of
+    #: `still_open`.
+    ready_to_decide: int
+    still_cooling: int
+    #: Decided wishes placeable against their cooling-off period, how many of
+    #: them ended after it, and that share (None with none decided). The
+    #: report's headline: what the wait did, which Resisted alone cannot say.
+    decided_count: int
+    waited_out_count: int
+    waited_out_share: float | None
     #: Wanted and not spent — every dropped wish, whether the wait ran its
-    #: course or not. The figure the report is for.
+    #: course or not.
     resisted_total: Decimal
     #: How many wishes `resisted_total` sums; the card's count reads this.
     resisted_count: int
     bought_total: Decimal
+    #: How many wishes `bought_total` sums.
+    bought_count: int
     open_total: Decimal
-    #: None with nothing bought: an average of no days is not zero days.
+    #: Mean days from adding a wish to buying it. None with nothing bought:
+    #: an average of no days is not zero days.
     avg_days_to_buy: int | None
+    #: The person's own waiting period for new wishes, in days — what the
+    #: average wait is read against.
+    cooling_days: int
     avg_wish_cost: Decimal | None
     #: Endings we cannot place against a cooling-off period — wishes that
     #: predate the drop date, or never had one. Shown, not folded in.

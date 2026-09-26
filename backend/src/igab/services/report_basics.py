@@ -1127,16 +1127,21 @@ async def discretionary(
     }
 
 
-async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> dict:
+async def wishlist_discipline(
+    session: AsyncSession, budget_id: uuid.UUID, today: date | None = None
+) -> dict:
     """Cooling-off outcomes across the whole wishlist, open and closed.
 
     All time, deliberately: the point is the habit, and a habit measured over
     the last twelve months forgets the wish you talked yourself out of two
     years ago. The arithmetic is guide/wishlist.discipline — pure, and tested
-    a case at a time.
+    a case at a time. `today` is the reader's: it decides which open wishes
+    are past their wait. `cooling_days` is the person's own waiting period,
+    what the average wait is read against.
     """
     from igab.db.models import WishlistItem
     from igab.guide.wishlist import DisciplineInput, added_on, discipline
+    from igab.guide.wishlist_service import wishlist_settings
 
     rows = (
         (
@@ -1151,15 +1156,18 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
         .all()
     )
     stats = discipline(
-        DisciplineInput(
-            status=w.status,
-            cost=Decimal(w.cost or 0),
-            created_at=added_on(w.added_on, w.created_at),
-            cooling_until=w.cooling_until,
-            done_at=w.done_at,
-            dropped_at=w.dropped_at,
-        )
-        for w in rows
+        [
+            DisciplineInput(
+                status=w.status,
+                cost=Decimal(w.cost or 0),
+                created_at=added_on(w.added_on, w.created_at),
+                cooling_until=w.cooling_until,
+                done_at=w.done_at,
+                dropped_at=w.dropped_at,
+            )
+            for w in rows
+        ],
+        reader_today(today),
     )
     return {
         "cooled_then_bought": stats.cooled_then_bought,
@@ -1167,11 +1175,18 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
         "bought_early": stats.bought_early,
         "dropped_early": stats.dropped_early,
         "still_open": stats.still_open,
+        "ready_to_decide": stats.ready_to_decide,
+        "still_cooling": stats.still_cooling,
+        "decided_count": stats.decided_count,
+        "waited_out_count": stats.waited_out_count,
+        "waited_out_share": stats.waited_out_share,
         "resisted_total": stats.resisted_total,
         "resisted_count": stats.resisted_count,
         "bought_total": stats.bought_total,
+        "bought_count": stats.bought_count,
         "open_total": stats.open_total,
         "avg_days_to_buy": stats.avg_days_to_buy,
+        "cooling_days": (await wishlist_settings(session, budget_id))["cooling_days"],
         "avg_wish_cost": stats.avg_wish_cost,
         "unplaced": stats.unplaced,
     }

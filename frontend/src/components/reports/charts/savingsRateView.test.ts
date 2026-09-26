@@ -4,17 +4,8 @@
  * tested. Simplifying the chart to `formatter={formatMoney}` passed tsc,
  * eslint and every test while the rate 18.5 rendered as "$18.50" again.
  */
-import { renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
-import { pct, RATE_SERIES, savingsRateTooltipWith } from './savingsRateView'
-import { useFormatters } from '../../../hooks/useFormatters'
-import { useAppStore } from '../../../stores/appStore'
-
-const money = (n: number) => `$${n.toFixed(2)}`
-
-afterEach(() => {
-  useAppStore.setState({ privacyMode: false })
-})
+import { describe, expect, it } from 'vitest'
+import { keptFigure, pct, rateTooltip } from './savingsRateView'
 
 describe('pct', () => {
   it('prints a negative rate rather than flooring it at 0%', () => {
@@ -29,32 +20,41 @@ describe('pct', () => {
   })
 })
 
-describe('savingsRateTooltipWith', () => {
-  it('reads the rate line as a percentage', () => {
-    expect(savingsRateTooltipWith(money)(18.5, RATE_SERIES)).toBe('18.5%')
-  })
-
-  it('routes every bar series to the money formatter', () => {
-    const fmt = savingsRateTooltipWith(money)
-    expect(fmt(900, 'Saved')).toBe('$900.00')
-    expect(fmt(120, 'Debt Paid')).toBe('$120.00')
-    expect(fmt(3100, 'Spent')).toBe('$3100.00')
+describe('rateTooltip', () => {
+  it('reads the rate line as a percentage, never as money', () => {
+    expect(rateTooltip(18.5)).toBe('18.5%')
   })
 
   it('says the rate exactly as the metric card does', () => {
     // The tooltip had its own `${value.toFixed(1)}%` beside the card's pct.
     // The line plots the rate ×100; the card is handed the fraction.
     for (const rate of [0.185, 0.2, 0.0625, -0.4, 1]) {
-      expect(savingsRateTooltipWith(money)(rate * 100, RATE_SERIES)).toBe(pct(rate))
+      expect(rateTooltip(rate * 100)).toBe(pct(rate))
     }
   })
+})
 
-  it('masks the money bars in privacy mode', () => {
-    useAppStore.setState({ privacyMode: true })
-    const { formatMoney } = renderHook(() => useFormatters()).result.current
-    const fmt = savingsRateTooltipWith(formatMoney)
-    expect(fmt(900, 'Saved')).toBe('$••••')
-    expect(fmt(900, 'Saved')).not.toMatch(/\d/)
+describe('keptFigure', () => {
+  const summary = { savings: 1000, debt_principal: 500 }
+
+  it('is Saved alone for the plain rate', () => {
+    expect(keptFigure(summary, false)).toBe(1000)
+  })
+
+  it('adds debt payments when the rate counts them', () => {
+    // The card read "Saved $1,000" beside a 37.5% rate on $4,000 of income:
+    // the rate counted the $500 of debt payments, the card did not.
+    expect(keptFigure(summary, true)).toBe(1500)
+    expect(keptFigure(summary, true) / 4000).toBe(0.375)
+  })
+
+  it('keeps a negative Saved negative, with or without debt', () => {
+    expect(keptFigure({ savings: -1200, debt_principal: 800 }, false)).toBe(-1200)
+    expect(keptFigure({ savings: -1200, debt_principal: 800 }, true)).toBe(-400)
+  })
+
+  it('is zero with nothing kept', () => {
+    expect(keptFigure({ savings: 0, debt_principal: 0 }, true)).toBe(0)
   })
 })
 

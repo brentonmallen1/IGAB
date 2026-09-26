@@ -28,6 +28,7 @@ import {
 } from './sankeyView'
 import './CashFlowSankey.css'
 import { truncateLabel } from '../../../utils/truncateLabel'
+import { DEBT_PAYMENTS } from '../../../utils/flowLabels'
 
 interface Props {
   budgetId: string
@@ -239,7 +240,7 @@ function ClassCards({
       )}
       {debt !== 0 && (
         <MetricCard
-          label={debt > 0 ? 'Debt paid' : 'Borrowed'}
+          label={debt > 0 ? DEBT_PAYMENTS : 'Borrowed'}
           value={formatMoney(Math.abs(debt))}
         />
       )}

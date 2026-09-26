@@ -467,7 +467,7 @@ async def test_budgeted_mode_declines_to_split_rather_than_reporting_zero(api_cl
 class TestTheNodesCanBeDrilled:
     async def test_a_pseudo_category_carries_no_entity_id(self, db_session):
         """`entity_id` used to carry the sentinel string for the Savings and
-        Debt Payments trunks and the Uncategorized bucket, and the client sends
+        Debt payments trunks and the Uncategorized bucket, and the client sends
         it as a category id — `__uncategorized__` is not a UUID, so the
         drill-down 400s. Cost of Living already learned this and drills its
         Uncategorized bar by "no category" instead.
@@ -517,7 +517,7 @@ class TestTheNodesCanBeDrilled:
         assert {n["name"] for n in pseudo.values()} == {
             "Uncategorized",
             "To savings accounts",
-            "Debt Payments",
+            "Debt payments",
         }
         for node in pseudo.values():
             assert node["entity_id"] is None, node
@@ -552,7 +552,7 @@ class TestTheNodesCanBeDrilled:
 
 
 async def test_every_category_node_drills_to_exactly_what_it_counted(db_session):
-    """The three pseudo-nodes — Savings, Debt Payments, Uncategorized — have no
+    """The three pseudo-nodes — Savings, Debt payments, Uncategorized — have no
     category to drill by, so each sent "no category" and nothing else, and
     each opened the union of all three. The node now serves the classes it
     counted and the drill lists "no category" by `category_id IS NULL`, not
@@ -601,7 +601,7 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
 
     assert {name: n["activity_classes"] for name, n in pseudo.items()} == {
         "To savings accounts": ["savings"],
-        "Debt Payments": ["debt_principal"],
+        "Debt payments": ["debt_principal"],
         "Uncategorized": ["spending"],
     }
     for node in categories:

@@ -23,7 +23,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.db.models import Asset
+from igab.db.models import Asset, WishlistItem
 from igab.domain.dates import add_months, month_start, months_spanned
 from igab.main import app
 
@@ -287,11 +287,19 @@ CASES: list[Case] = [
         {"months": 3},
         lambda d: _eq(d["current_month"], READER_MONTH.isoformat()),
     ),
+    # A wish whose wait ends on the reader's tomorrow is still cooling for
+    # the reader, and ready to decide on the server's day.
+    (
+        "wishlist",
+        "wishlist",
+        {},
+        lambda d: (_eq(d["still_cooling"], 1), _eq(d["ready_to_decide"], 0)),
+    ),
 ]
 
 #: Report routes with no day in them: settings, favourites, the export (its
-#: dates are the caller's), the wishlist's all-time tally.
-NOT_DATED = {"favorites", "settings", "export", "wishlist"}
+#: dates are the caller's).
+NOT_DATED = {"favorites", "settings", "export"}
 
 
 def _eq(actual, expected) -> None:
@@ -305,6 +313,17 @@ async def test_a_report_reads_the_readers_day(api_client, db_session, path, para
     budget, groceries = await _household(db_session, api_client.test_user)
     if path == "category-history":
         params = {**params, "category_id": str(groceries.id)}
+    if path == "wishlist":
+        db_session.add(
+            WishlistItem(
+                budget_id=budget.id,
+                name="Standing desk",
+                cost=D("400"),
+                added_on=READER - timedelta(days=29),
+                cooling_until=AHEAD,
+            )
+        )
+        await db_session.flush()
 
     resp = await api_client.get(
         f"/api/v1/{budget.id}/reports/{path}",

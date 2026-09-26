@@ -98,7 +98,7 @@ class TestTheFiguresMatchTheApp:
                 "include_savings": True,
             },
         )
-        assert "debt principal" in fuller["covers"]
+        assert "debt payments" in fuller["covers"]
 
     async def test_budget_vs_actual_matches(self, ctx):
         data = await ctx.reports.budget_vs_actual(ctx.budget_id, MONTH, TODAY)

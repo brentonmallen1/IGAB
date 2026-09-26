@@ -1,5 +1,28 @@
-/** Pure view math for the Income by Source report. Its Other band is
- *  `drillDownTotals.otherBand`, which Spending Trends draws too. */
+/** Pure view math for the Income by Source report. Its stack is Spending
+ *  Trends' (`stackTrends`), Other band and all. */
+import type { TrendRow } from './spendingTrends'
+
+/** The chart-row key of the income that came with no payee. */
+export const NO_PAYEE_KEY = '__none__'
+
+/** The served sources as the shared stack's rows, keyed by payee id — never
+ *  by name, which two payees can share. */
+export function incomeSourceRows(
+  sources: readonly {
+    payee_id: string | null
+    payee_name: string
+    monthly: number[]
+    total: number
+  }[]
+): TrendRow[] {
+  return sources.map((s) => ({
+    key: s.payee_id ?? NO_PAYEE_KEY,
+    name: s.payee_name,
+    group_name: null,
+    monthly: s.monthly,
+    total: s.total,
+  }))
+}
 
 /**
  * How many payees the window counts as a SOURCE of income.

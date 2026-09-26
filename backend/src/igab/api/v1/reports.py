@@ -1002,10 +1002,12 @@ async def wishlist_discipline_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
 ) -> WishlistDisciplineResponse:
     """What the cooling-off period did. All time, because a habit measured
     over twelve months forgets the wish you talked yourself out of two years
-    ago."""
+    ago. Dated all the same: whether an open wish is past its wait is a
+    question about the reader's day."""
     return WishlistDisciplineResponse.model_validate(
-        await wishlist_discipline(report_svc.session, budget_id)
+        await wishlist_discipline(report_svc.session, budget_id, today)
     )

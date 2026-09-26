@@ -6,7 +6,9 @@ const src = (...totals: number[]) => totals.map((total, i) => ({ id: i, total })
 describe('rateFormula', () => {
   it('names the figures the dialog lists', () => {
     expect(rateFormula(false)).toBe('Saved ÷ Income')
-    expect(rateFormula(true)).toBe('(Saved + Debt principal) ÷ Income')
+    // One name for the figure: the dialog said "Debt principal" while the tab's
+    // card said "Debt Paid Down" and its chart "Debt Paid".
+    expect(rateFormula(true)).toBe('(Saved + Debt payments) ÷ Income')
   })
 })
 

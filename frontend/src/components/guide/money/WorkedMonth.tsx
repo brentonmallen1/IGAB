@@ -2,6 +2,7 @@ import { useMoneyMonth, type MoneyMonthResponse } from '../../../api/moneyRules'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
 import { pct } from '../../reports/charts/savingsRateView'
+import { DEBT_PAYMENTS, savingsRateLabel } from '../../../utils/flowLabels'
 import { ClassChip } from './ClassChip'
 import { savedParts } from './moveAnswer'
 import { WORKED_MONTH } from './workedMonthMoves'
@@ -73,10 +74,10 @@ export function WorkedMonth() {
           value={formatMoney(figures.savings)}
           note={savedParts(figures, formatMoney)}
         />
-        <Figure label="Debt principal" value={formatMoney(figures.debt_principal)} />
-        <Figure label="Savings rate" value={pct(figures.savings_rate)} emphasis />
+        <Figure label={DEBT_PAYMENTS} value={formatMoney(figures.debt_principal)} />
+        <Figure label={savingsRateLabel(false)} value={pct(figures.savings_rate)} emphasis />
         <Figure
-          label="Savings rate with debt"
+          label={savingsRateLabel(true)}
           value={pct(figures.savings_rate_with_debt)}
           emphasis
         />

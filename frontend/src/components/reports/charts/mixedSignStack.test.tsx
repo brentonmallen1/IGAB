@@ -4,7 +4,7 @@
  * `MIXED_SIGN_STACK` is one constant; what this pins is that each stacked
  * chart spreads it, which no pure test can see. Savings Rate is the chart that
  * did not: a month that drew money back out of savings (Saved negative) drew
- * its positive Debt Paid below zero. The others carried the offset inline,
+ * its positive debt payment below zero. The others carried the offset inline,
  * each under its own comment.
  *
  * recharts renders zero-size under jsdom, so the chart containers are stubbed
@@ -27,7 +27,8 @@ vi.mock('recharts', () => {
     ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
     BarChart: container,
     ComposedChart: container,
-    LineChart: container,
+    // A line chart stacks nothing — Savings Rate's rate panel is one.
+    LineChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
     Bar: nothing,
     Area: nothing,
     Line: nothing,

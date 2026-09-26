@@ -157,7 +157,7 @@ TOOLS: tuple[ToolSpec, ...] = (
             "Total spent per envelope between two dates, largest first, net of "
             "refunds, with uncategorized spending as its own line. By default this "
             "covers day-to-day spending only; set include_savings to also count "
-            "money moved to savings and debt principal."
+            "money moved to savings and debt payments."
         ),
         parameters=_obj(
             {
@@ -165,7 +165,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "end_date": _END,
                 "include_savings": {
                     "type": "boolean",
-                    "description": "Include savings contributions and debt principal.",
+                    "description": "Include savings contributions and debt payments.",
                 },
             },
             ("start_date", "end_date"),
@@ -188,10 +188,12 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="income_vs_expense",
         description=(
-            "Income, expenses, savings and debt principal per month. 'savings' is saved: "
+            "Income, expenses, savings and debt payments per month. 'savings' is saved: "
             "money moved into savings ('savings_moved') plus the balance held in Savings "
-            "envelopes that count while money is in the budget ('savings_held'). 'net' "
-            "subtracts only the moved part."
+            "envelopes that count while money is in the budget ('savings_held'). "
+            "'debt_principal' is debt payments: what was paid into tracked debts, kept "
+            "apart from 'savings'. 'net' is how much the budget accounts grew (cash, "
+            "less card debt): it subtracts only the moved part of savings."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.income_vs_expense,
@@ -203,7 +205,9 @@ TOOLS: tuple[ToolSpec, ...] = (
             "What share of income was kept, per month and overall. Saved = money moved into "
             "savings ('savings_moved') plus what Savings envelopes that count while money is in "
             "the budget came to hold "
-            "('savings_held'); the rate divides that total by income."
+            "('savings_held'); the rate divides that total by income. Debt payments are "
+            "not in it. Saving that never passes through the budget — a paycheck split "
+            "straight to savings, a 401(k) deferral — is invisible to it."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.savings_rate,

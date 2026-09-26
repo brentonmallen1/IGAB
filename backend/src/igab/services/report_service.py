@@ -440,10 +440,13 @@ class ReportService:
         # neither: they are what was left over.
         #
         # The savings rate is savings / income, the ratio the Savings Rate tab
-        # shows by default. The old (income - expenses) / income counted a
-        # brokerage transfer as an expense and reported 0% for a household
-        # saving 40%. None, not 0.0, when nothing came in: "no income recorded"
-        # and "saved nothing" are different facts.
+        # shows by default — debt payments only when its toggle adds them. (The
+        # tab used to open with them on, so this card and that tab disagreed
+        # about the same month by the month's debt payments.) The old
+        # (income - expenses) / income counted a brokerage transfer as an
+        # expense and reported 0% for a household saving 40%. None, not 0.0,
+        # when nothing came in: "no income recorded" and "saved nothing" are
+        # different facts.
         #
         # Saved is moved plus held (`domain.savings`), held read over the same
         # window the frame is cut to: the day before `start` through today at

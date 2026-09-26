@@ -44,6 +44,7 @@ from igab.guide.wishlist import (
     could_be_unsettled,
     drain_impact,
     effective_category,
+    is_cooling,
     project_summary,
     reach_for,
     review_due,
@@ -71,6 +72,17 @@ DEFAULT_SETTINGS: dict[str, int] = {
     "review_after_days": DEFAULT_REVIEW_DAYS,
 }
 STATUSES = ("open", "done", "dropped")
+
+
+async def wishlist_settings(session: AsyncSession, budget_id: uuid.UUID) -> dict[str, int]:
+    """The wishlist's settings, defaults filled in. A function rather than
+    only the service's method so the Wishlist report can read the person's
+    waiting period without building the whole service."""
+    stored = (await GuideRepository(session).state(budget_id)).get(SETTINGS_KEY, {})
+    return {
+        **DEFAULT_SETTINGS,
+        **{k: int(v) for k, v in stored.items() if k in DEFAULT_SETTINGS},
+    }
 
 
 class WishlistService:
@@ -106,11 +118,7 @@ class WishlistService:
             raise InvariantViolation("The wishlist is switched off for this budget")
 
     async def settings(self, budget_id: uuid.UUID) -> dict[str, int]:
-        stored = (await self.guide.state(budget_id)).get(SETTINGS_KEY, {})
-        return {
-            **DEFAULT_SETTINGS,
-            **{k: int(v) for k, v in stored.items() if k in DEFAULT_SETTINGS},
-        }
+        return await wishlist_settings(self.session, budget_id)
 
     async def set_settings(self, budget_id: uuid.UUID, changes: dict[str, int]) -> dict[str, int]:
         merged = {**(await self.settings(budget_id)), **changes}
@@ -349,7 +357,7 @@ class WishlistService:
                 "target_date": target.target_date if target else None,
             },
             "cooling_until": item.cooling_until,
-            "cooling": item.cooling_until is not None and item.cooling_until > today,
+            "cooling": is_cooling(item.cooling_until, today),
             "added_on": wish.created_at,
             "last_affirmed_at": item.last_affirmed_at,
             "affirmed_on": affirmed_on(item.affirmed_on, item.last_affirmed_at),

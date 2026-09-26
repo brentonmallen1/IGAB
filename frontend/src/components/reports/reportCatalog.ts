@@ -85,9 +85,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'on-budget',
     summary: 'How much of what came in you kept, month by month.',
     counts:
-      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what Savings envelopes that count while money is in the budget came to hold — ÷ income, plus debt principal when included.',
+      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what Savings envelopes that count while money is in the budget came to hold — ÷ income; debt payments only when you include them.',
     leavesOut:
-      'Transfers between budget accounts, spending, investment growth and interest inside tracked accounts.',
+      'Transfers between budget accounts, spending, investment growth and interest inside tracked accounts, and saving that never passes through the budget — a paycheck split to savings, a 401(k) deferral.',
   },
   essentials: {
     scope: 'on-budget',
@@ -101,7 +101,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     summary:
       'Everything committed each month, Essential or committed-but-not-essential, against income.',
     counts:
-      'Categories tagged Essential or Cost of living, plus every debt-principal payment, vs average income.',
+      'Categories tagged Essential or Cost of living, plus every debt payment, vs average income.',
     leavesOut: 'Savings, and untagged spending — that is the Discretionary report.',
   },
   discretionary: {
@@ -123,9 +123,10 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'income-expense': {
     scope: 'on-budget',
-    summary: 'Income against expenses each month, with the net.',
+    summary:
+      'Income against expenses each month, what you kept, and how much your budget accounts grew.',
     counts:
-      'Income, spending, saved and debt principal; net is income minus spending, money moved to savings and debt principal — money held in an envelope never left.',
+      'Income, spending, saved and debt payments; net is how much your budget accounts grew — income minus spending, money moved to savings and debt payments, since money held in an envelope never left.',
     leavesOut: 'Transfers between budget accounts, and activity inside tracked accounts.',
   },
   'income-sources': {
@@ -139,7 +140,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'wishlist',
     summary: 'What the cooling-off period did to what you wanted.',
     counts:
-      'Every wish, open or closed, all time — resisted, bought after waiting, or bought early.',
+      'Every wish, open or closed, all time — how many decisions came after the wait, what you let go and bought (after the wait or before it), and what is still open or ready to decide.',
     leavesOut: 'Purchases that never went on the wishlist.',
   },
   'burn-rate': {

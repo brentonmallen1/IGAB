@@ -1,10 +1,9 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar,
   Cell,
   ComposedChart,
   CartesianGrid,
-  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -23,10 +22,13 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
-import { reportMonthLabel, RUNNING_MONTH_OPACITY } from '../../../utils/reportMonths'
-import { DrillDownTable } from '../DrillDownTable'
+import { monthRange, reportMonthLabel, RUNNING_MONTH_OPACITY } from '../../../utils/reportMonths'
+import { DEBT_PAYMENTS, SAVED } from '../../../utils/flowLabels'
 import { ChartTooltip } from './ChartTooltip'
-import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
+import { ChartLegend } from './ChartLegend'
+import { FLOW_COLORS } from './chartColors'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
+import { windowTotals } from './incomeExpenseView'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
@@ -37,12 +39,25 @@ interface Props {
   budgetId: string
 }
 
+/** The chart's series, by the name the legend, tooltip and table say. */
+const SERIES = {
+  income: 'Income',
+  expenses: 'Expenses',
+  saved: SAVED,
+  debt: DEBT_PAYMENTS,
+  net: 'Net',
+} as const
+
+/** How far a series fades while the legend highlights another. */
+const DIMMED = 0.25
+
 export function IncomeExpenseReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
+  const [highlight, setHighlight] = useState<string | null>(null)
   const { data, isLoading, isError, error, refetch } = useIncomeExpenseReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -71,30 +86,38 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const rows = data?.months ?? []
+  const dim = (name: string) => (highlight && highlight !== name ? DIMMED : 1)
+  const monthLabel = (m: { month: string; partial_month: boolean }) =>
+    reportMonthLabel(m.month, m.partial_month, formatMonthShort)
   // The running month is drawn — lighter, and "so far" — so its partial
   // figures never read as a finished month beside the others.
   const chartData = rows.map((m) => ({
     iso: m.month,
-    month: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
+    month: monthLabel(m),
     partial: m.partial_month,
-    Income: m.income,
-    Expenses: m.expenses,
-    // Saved (moved + held) plus debt paid down; `net` stays money-moved.
-    Saved: m.savings + m.debt_principal,
+    [SERIES.income]: m.income,
+    [SERIES.expenses]: m.expenses,
+    // Saved and Debt payments stack as one bar of money kept, each its own
+    // segment. It was one bar called "Saved" that added debt payments, while
+    // the ⓘ under it defined Saved without them and the Savings Rate tab a
+    // click away drew Saved without them too: one word, two figures.
+    [SERIES.saved]: m.savings,
+    [SERIES.debt]: m.debt_principal,
     // No line point for the running month: a line joins it to the finished
     // months as if it were one. Its bars say "so far"; the table has its net.
-    Net: m.partial_month ? null : m.net,
+    [SERIES.net]: m.partial_month ? null : m.net,
   }))
-
-  const tableRows = rows.map((m) => ({
-    id: m.month,
-    name: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
-    // Positive is spending, under a column headed Expenses. A month whose
-    // refunds exceeded its spending is negative and now READS negative: the
-    // table used to abs() this, so "we got $40 back" drew as "we spent $40".
-    amount: m.expenses,
-    extra: `Net: ${formatMoney(m.net)}`,
-  }))
+  const hasDebt = rows.some((m) => m.debt_principal !== 0)
+  const bars = [
+    { key: SERIES.income, color: FLOW_COLORS.income, drill: 'income' as const },
+    { key: SERIES.expenses, color: FLOW_COLORS.spent, drill: 'expenses' as const },
+    { key: SERIES.saved, color: FLOW_COLORS.saved, stack: 'kept' },
+    ...(hasDebt ? [{ key: SERIES.debt, color: FLOW_COLORS.debtPayments, stack: 'kept' }] : []),
+  ]
+  const totals = windowTotals(rows)
+  const totalsLabel = totals
+    ? `Total · ${monthRange(totals.first, totals.last, formatMonthShort)}`
+    : null
 
   return (
     <div className="report-section surface">
@@ -102,26 +125,25 @@ export function IncomeExpenseReport({ budgetId }: Props) {
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
           <p>
-            Monthly <strong>Income</strong> and <strong>Expenses</strong> as bars, with the{' '}
-            <strong>Net</strong> line — cash flow — drawn over them.
+            Monthly <strong>Income</strong> and <strong>Expenses</strong> as bars, what you kept
+            beside them, and a Net line drawn over them.
           </p>
           <p>
-            <strong>Saved</strong> is money that stayed yours — moved into savings or investments,
-            held in a Savings envelope that counts while it’s in the budget, or used to pay down a
-            tracked debt. It sits beside expenses rather than inside them, because it isn't money
-            spent. {SAVED_DEFINITION}
+            <strong>Saved</strong> is money that stayed yours rather than being spent.{' '}
+            {SAVED_DEFINITION} <strong>Debt payments</strong> — money paid into a tracked debt —
+            stack on it as their own segment. Neither is inside Expenses, because neither is money
+            spent.
           </p>
           <p>
-            The <strong>net</strong> line counts only money that left your accounts: money held in
-            an envelope is still in them, so it does not lower net.
+            <strong>Net</strong> is how much your budget accounts grew that month: cash, less what
+            you owe on cards. It counts only money that left them — money held in an envelope is
+            still in them, so it does not lower Net. Below zero means they shrank, which is a
+            deficit only if you spent it: moving money into savings or investments lowers Net too.
           </p>
           <p>
-            Months where the Net line is above zero mean you spent less than you earned. Below zero,
-            you ran a deficit that month.
-          </p>
-          <p>
-            The picker&apos;s months are complete months. The month in progress is drawn after them,
-            lighter and marked <em>so far</em>: its pay and bills are still arriving.
+            The picker&apos;s months are complete months, and the table&apos;s total adds up those.
+            The month in progress is drawn after them, lighter and marked <em>so far</em>: its pay
+            and bills are still arriving.
           </p>
           <ReportScopeNote report="income-expense" />
         </ReportInfoButton>
@@ -151,7 +173,13 @@ export function IncomeExpenseReport({ budgetId }: Props) {
       ) : (
         <div ref={captureRef} className="report-capture">
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            {/* Saved goes below zero in a month that drew money back out of
+                savings, and Debt payments stack on it. */}
+            <ComposedChart
+              data={chartData}
+              {...MIXED_SIGN_STACK}
+              margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis
@@ -164,48 +192,129 @@ export function IncomeExpenseReport({ budgetId }: Props) {
                 offset={16}
                 isAnimationActive={false}
               />
-              <Legend />
-              <Bar
-                dataKey="Income"
-                fill={COLOR_POSITIVE}
-                radius={[2, 2, 0, 0]}
-                cursor="pointer"
-                onClick={monthBarClick('income')}
-              >
-                {chartData.map((d) => (
-                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
-                ))}
-              </Bar>
-              <Bar
-                dataKey="Expenses"
-                fill={COLOR_NEGATIVE}
-                radius={[2, 2, 0, 0]}
-                cursor="pointer"
-                onClick={monthBarClick('expenses')}
-              >
-                {chartData.map((d) => (
-                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
-                ))}
-              </Bar>
-              <Bar dataKey="Saved" fill={COLOR_NEUTRAL} radius={[2, 2, 0, 0]}>
-                {chartData.map((d) => (
-                  <Cell key={d.iso} fillOpacity={d.partial ? RUNNING_MONTH_OPACITY : 1} />
-                ))}
-              </Bar>
+              {bars.map(({ key, color, stack, drill }) => (
+                <Bar
+                  key={key}
+                  dataKey={key}
+                  stackId={stack}
+                  fill={color}
+                  radius={stack ? undefined : [2, 2, 0, 0]}
+                  cursor={drill ? 'pointer' : undefined}
+                  onClick={drill ? monthBarClick(drill) : undefined}
+                  isAnimationActive={false}
+                >
+                  {chartData.map((d) => (
+                    <Cell
+                      key={d.iso}
+                      fillOpacity={(d.partial ? RUNNING_MONTH_OPACITY : 1) * dim(key)}
+                    />
+                  ))}
+                </Bar>
+              ))}
               <Line
-                dataKey="Net"
-                stroke={COLOR_NET}
+                dataKey={SERIES.net}
+                stroke={FLOW_COLORS.line}
+                strokeOpacity={dim(SERIES.net)}
                 strokeWidth={2}
                 dot={{ r: 3 }}
-                type="monotone"
+                type="linear"
+                isAnimationActive={false}
               />
             </ComposedChart>
           </ResponsiveContainer>
-          <DrillDownTable
-            rows={tableRows}
-            amountLabel="Expenses"
-            onRowClick={(row) => drillTo(row.id, 'expenses')}
+          <ChartLegend
+            series={[
+              ...bars.map((b) => ({ name: b.key, color: b.color })),
+              { name: SERIES.net, color: FLOW_COLORS.line },
+            ]}
+            active={highlight}
+            onHover={setHighlight}
           />
+          <div className="income-expense__table">
+            <table className="report-table">
+              <caption className="sr-only">Income, expenses, saved and net by month</caption>
+              <thead>
+                <tr>
+                  <th scope="col" style={{ textAlign: 'left' }}>
+                    Month
+                  </th>
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    {SERIES.income}
+                  </th>
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    {SERIES.expenses}
+                  </th>
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    {SERIES.saved}
+                  </th>
+                  {hasDebt && (
+                    <th scope="col" style={{ textAlign: 'right' }}>
+                      {SERIES.debt}
+                    </th>
+                  )}
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    {SERIES.net}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((m) => {
+                  const label = monthLabel(m)
+                  return (
+                    <tr key={m.month}>
+                      <td>{label}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="report-table__drill"
+                          aria-label={`Income, ${label}: ${formatMoney(m.income)}. Show the rows`}
+                          onClick={() => drillTo(m.month, 'income')}
+                        >
+                          {formatMoney(m.income)}
+                        </button>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {/* Positive is spending, under a column headed
+                            Expenses. A month whose refunds exceeded its
+                            spending is negative and reads negative: the table
+                            used to abs() this, so "we got $40 back" drew as
+                            "we spent $40". */}
+                        <button
+                          type="button"
+                          className="report-table__drill"
+                          aria-label={`Expenses, ${label}: ${formatMoney(m.expenses)}. Show the rows`}
+                          onClick={() => drillTo(m.month, 'expenses')}
+                        >
+                          {formatMoney(m.expenses)}
+                        </button>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{formatMoney(m.savings)}</td>
+                      {hasDebt && (
+                        <td style={{ textAlign: 'right' }}>{formatMoney(m.debt_principal)}</td>
+                      )}
+                      <td style={{ textAlign: 'right' }}>{formatMoney(m.net)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              {totals && (
+                <tfoot>
+                  <tr className="income-expense__total">
+                    <th scope="row" style={{ textAlign: 'left' }}>
+                      {totalsLabel}
+                    </th>
+                    <td style={{ textAlign: 'right' }}>{formatMoney(totals.income)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatMoney(totals.expenses)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatMoney(totals.savings)}</td>
+                    {hasDebt && (
+                      <td style={{ textAlign: 'right' }}>{formatMoney(totals.debt_principal)}</td>
+                    )}
+                    <td style={{ textAlign: 'right' }}>{formatMoney(totals.net)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
       )}
     </div>
