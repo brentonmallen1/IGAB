@@ -734,14 +734,14 @@ describe('CashProjectionReport', () => {
       setQuery({ data: projection(null, null) })
       renderReport(<CashProjectionReport budgetId="b1" />)
       fireEvent.click(screen.getByRole('button', { name: 'All' }))
-      fireEvent.click(screen.getByRole('button', { name: '+ All savings' }))
+      fireEvent.click(screen.getByRole('button', { name: '+ Savings accounts' }))
       expect(useReportStore.getState()).toMatchObject({
         runwaySpending: 'all',
         runwayMoney: 'with_savings',
       })
       expect(card('If income stopped')).toEqual({
         value: '6.3 months',
-        sub: 'to Jan 1, 2027all spending, checking + all savings, cards paid',
+        sub: 'to Jan 1, 2027all spending, checking + savings accounts, cards paid',
       })
     })
 

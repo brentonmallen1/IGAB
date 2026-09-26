@@ -79,7 +79,7 @@ describe('runwayBasis', () => {
       'all spending, checking, cards paid'
     )
     expect(runwayBasis({ spending: 'cost_of_living', money: 'with_savings' })).toBe(
-      'cost of living, checking + all savings, cards paid'
+      'cost of living, checking + savings accounts, cards paid'
     )
     expect(runwayBasis({ spending: 'essentials', money: 'fund' })).toBe(
       'Essentials, emergency fund, cards paid'
@@ -105,7 +105,7 @@ describe('the pickers', () => {
     expect(RUNWAY_MONEY_OPTIONS.map((o) => o.label)).toEqual([
       'Checking',
       '+ Emergency fund',
-      '+ All savings',
+      '+ Savings accounts',
     ])
     expect(RUNWAY_MONEY_OPTIONS.map((o) => o.value)).not.toContain('fund')
   })

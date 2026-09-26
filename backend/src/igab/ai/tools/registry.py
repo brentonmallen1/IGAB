@@ -329,7 +329,8 @@ TOOLS: tuple[ToolSpec, ...] = (
             "date about 1 path in 10 would; and the runway if income stopped "
             "(months, and the date the money runs out, card debt taken out) for "
             "each spending basis (all, cost of living, essentials) and money "
-            "(checking, + emergency fund, + all savings). Use this for 'will I "
+            "(checking, + emergency fund, + savings accounts that hold cash — "
+            "never retirement or brokerage). Use this for 'will I "
             "make it to payday', 'can I afford this', 'how long could we last "
             "without a paycheck', and anything about running out."
         ),

@@ -19,7 +19,8 @@ One rule answers now, and states its two choices wherever it is quoted:
   reads (`guide.concepts.essentials_at`), so the three differ in membership
   and never in window.
 - **What money counts** (`MoneyBasis`): the budget's cash, plus the emergency
-  fund, plus all savings — or, on the Emergency Fund report, the fund alone.
+  fund, plus the savings accounts that hold cash — or, on the Emergency Fund
+  report, the fund alone.
 
 **Card debt is always subtracted.** What is owed on an on-budget card is paid
 from the same cash the runway spends; a household that stops earning still
@@ -29,10 +30,12 @@ runway.
 **Each dollar counts once.** Envelope money — an Emergency fund or Savings
 envelope included — is already inside the budget's cash, so "+ emergency
 fund" adds what the fund holds OUTSIDE the budget (its marked off-budget
-accounts and any amount declared as kept elsewhere) and "+ all savings" adds
-every off-budget savings account (the Savings report's accounts) and that same
-declared amount. Adding the Savings report's whole Saved total to the cash
-would count every savings envelope twice.
+accounts and any amount declared as kept elsewhere) and "+ savings accounts"
+adds every off-budget savings account that holds cash, the fund's own accounts
+among them, and that same declared amount. Adding the Savings report's whole
+Saved total to the cash would count every savings envelope twice — and a 401k
+or a brokerage account is saving, not money to live on next month
+(`txn_filters.CASH_SAVINGS_ACCOUNT`).
 
 Pure: no session, no clock. `today` is the reader's day.
 """
@@ -75,8 +78,8 @@ class MoneyBasis(StrEnum):
     CHECKING = "checking"
     #: The cash plus what the emergency fund holds outside the budget.
     WITH_FUND = "with_fund"
-    #: The cash plus every off-budget savings account and the fund's declared
-    #: outside money.
+    #: The cash plus every off-budget savings account that holds cash, and the
+    #: fund's declared outside money.
     WITH_SAVINGS = "with_savings"
     #: The emergency fund alone: the Emergency Fund report's "Covered".
     FUND = "fund"
@@ -112,8 +115,10 @@ class Holdings:
     fund_accounts: Decimal
     #: The amount declared as kept outside IGAB — outside everything.
     declared: Decimal
-    #: Every off-budget savings account (the Savings report's accounts, the
-    #: fund's marked accounts among them).
+    #: Every off-budget savings account that holds cash
+    #: (`txn_filters.CASH_SAVINGS_ACCOUNT`), and the fund's marked accounts
+    #: whatever their type — never a retirement or brokerage balance nobody
+    #: chose as the fund.
     savings_accounts: Decimal
 
 

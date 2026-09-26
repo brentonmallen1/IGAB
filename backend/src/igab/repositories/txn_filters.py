@@ -46,6 +46,7 @@ from igab.db.models import (
     Transaction,
     TransactionAttachment,
 )
+from igab.domain.account_types import CASH_ACCOUNT_TYPE_KEYS
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES, STARTING_BALANCE_PAYEE
 from igab.repositories.category_filters import (
@@ -541,6 +542,16 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 #: `test_savings_report_sections.py` pins that this and rule 5 agree on every
 #: account shape.
 SAVINGS_ACCOUNT = and_(LIVE_ACCOUNT, EMERGENCY_FUND_ACCOUNT_SHAPE)
+
+#: A savings account the runway may spend: one of the above whose type holds
+#: cash (`domain.account_types.CASH_ACCOUNT_TYPE_KEYS`) — a HYSA, or checking
+#: or cash kept off budget. Not a 401k, an IRA or a brokerage (Investment), nor
+#: crypto or a house marked as savings (Other Asset): the Savings report lists
+#: those, because money put there was saved, but reaching them takes a sale, a
+#: tax or a penalty. "How long the money lasts if income stopped" counted
+#: every savings account and read years of runway on a budget whose cash
+#: covered a small part of that, the rest being retirement and brokerage.
+CASH_SAVINGS_ACCOUNT = and_(SAVINGS_ACCOUNT, Account.account_type.in_(CASH_ACCOUNT_TYPE_KEYS))
 
 #: An account the emergency-fund picker may offer: a live, open off-budget
 #: asset. `counts_as_savings` is NOT required — the picker turns it on in the

@@ -23,6 +23,15 @@ class BuiltinAccountType:
     #: `Account.counts_as_savings` — so it is true on every type where it has
     #: no effect, which is the value the column defaults to.
     default_counts_as_savings: bool = True
+    #: Whether an account of this type holds cash: money that can be spent
+    #: next month without selling anything, paying a tax or waiting out a
+    #: penalty. The runway's "+ savings accounts" counts only savings accounts
+    #: of these types (`txn_filters.CASH_SAVINGS_ACCOUNT`). An Investment
+    #: account (a 401k, an IRA, a brokerage) is saving but not cash, and so is
+    #: an Other Asset marked as savings (crypto, a house). A custom type is not
+    #: cash: nothing on it says it is, and a runway that overstates is the
+    #: failure this exists to prevent.
+    holds_cash: bool = False
 
 
 BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
@@ -37,6 +46,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
             "between two on-budget accounts is neither income nor spending."
         ),
         sort_order=0,
+        holds_cash=True,
     ),
     BuiltinAccountType(
         key="savings",
@@ -52,6 +62,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
             "the account itself, take it off budget and turn on Counts as savings."
         ),
         sort_order=1,
+        holds_cash=True,
     ),
     BuiltinAccountType(
         key="cash",
@@ -60,6 +71,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=True,
         description="Physical cash. Works exactly like checking, just tracked by hand.",
         sort_order=2,
+        holds_cash=True,
     ),
     BuiltinAccountType(
         key="credit_card",
@@ -172,3 +184,6 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
 )
 
 BUILTIN_ACCOUNT_TYPE_KEYS = frozenset(t.key for t in BUILTIN_ACCOUNT_TYPES)
+
+#: The types whose accounts hold cash (`BuiltinAccountType.holds_cash`).
+CASH_ACCOUNT_TYPE_KEYS = frozenset(t.key for t in BUILTIN_ACCOUNT_TYPES if t.holds_cash)

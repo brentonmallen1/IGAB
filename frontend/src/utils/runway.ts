@@ -25,7 +25,7 @@ export const RUNWAY_SPENDING_OPTIONS: { value: RunwaySpending; label: string }[]
 export const RUNWAY_MONEY_OPTIONS: { value: RunwayMoney; label: string }[] = [
   { value: 'checking', label: 'Checking' },
   { value: 'with_fund', label: '+ Emergency fund' },
-  { value: 'with_savings', label: '+ All savings' },
+  { value: 'with_savings', label: '+ Savings accounts' },
 ]
 
 const SPENDING_WORDS: Record<RunwaySpending, string> = {
@@ -37,7 +37,7 @@ const SPENDING_WORDS: Record<RunwaySpending, string> = {
 const MONEY_WORDS: Record<RunwayMoney, string> = {
   checking: 'checking',
   with_fund: 'checking + emergency fund',
-  with_savings: 'checking + all savings',
+  with_savings: 'checking + savings accounts',
   fund: 'emergency fund',
 }
 

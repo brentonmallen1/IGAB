@@ -146,25 +146,6 @@ async def _saved_accounts(
     return out
 
 
-async def saved_accounts_total(session: AsyncSession, budget_id: uuid.UUID) -> Decimal:
-    """Saved's accounts part today: every off-budget savings account
-    (`SAVINGS_ACCOUNT`) at its balance — the report's `accounts_total`, and
-    the savings the runway adds to the budget's cash
-    (`services.runway_holdings`). The report's listing leaves out a closed
-    account that held nothing, which moves no sum."""
-    ids = (
-        (
-            await session.execute(
-                select(Account.id).where(Account.budget_id == budget_id, SAVINGS_ACCOUNT)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    balances = await AccountRepository(session).balances_for(list(ids))
-    return sum(balances.values(), ZERO)
-
-
 def _saved_at(
     envelopes: list[SavingsEnvelope], accounts: list[SavingsAccountRow], i: int
 ) -> Decimal | None:
@@ -300,7 +281,7 @@ async def savings_report(
 
     accounts = await _saved_accounts(session, budget_id, month_list, end_date)
     envelopes_total = _section_total(saved)
-    accounts_total = await saved_accounts_total(session, budget_id)
+    accounts_total = sum((a["current_balance"] for a in accounts), ZERO)
     monthly_totals = [_saved_at(saved, accounts, i) for i in range(len(month_list))]
     # The savings accounts' arrivals, as Net Worth marks them: the month an
     # account was linked is a step up that nobody saved.

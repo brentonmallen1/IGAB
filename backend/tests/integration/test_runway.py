@@ -31,6 +31,7 @@ from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.essentials import essentials_summary
 from igab.services.report_service import ReportService
 from igab.services.runway import runway_read, spending_figures
+from igab.services.savings_report import savings_report
 
 from .factories import (
     create_account,
@@ -276,6 +277,87 @@ async def test_an_off_budget_mortgage_is_not_money_and_not_owed(db_session):
 
     assert read.default.months == Decimal("20.0")
     assert read.default.card_debt == Decimal("500.00")
+
+
+async def _saving_but_not_cash(db_session, budget):
+    """A 401k and a brokerage account (Investment) and crypto marked as savings
+    (Other Asset): 90,000 the Savings report lists, none of it cash."""
+    for name, account_type, amount in (
+        ("Jane Doe 401k", "investment", "50000.00"),
+        ("Brokerage", "investment", "30000.00"),
+        ("Crypto", "other_asset", "10000.00"),
+    ):
+        account = await create_account(
+            db_session,
+            budget,
+            name,
+            account_type=account_type,
+            on_budget=False,
+            counts_as_savings=True,
+        )
+        await create_transaction(db_session, budget, account, amount, OPENED)
+    await db_session.flush()
+
+
+async def test_savings_accounts_count_only_those_that_hold_cash(db_session):
+    """ "+ savings accounts" read every off-budget savings account, so a 401k
+    and a brokerage account counted as months to live on; a budget with far
+    more saved in retirement than in cash read years of runway. It counts the
+    HYSAs (7,000) and the declared 1,000 and nothing else: 23,000, as before
+    the 90,000 arrived."""
+    budget = await _world(db_session)
+    await _saving_but_not_cash(db_session, budget)
+
+    read = await runway_read(db_session, budget.id, TODAY)
+
+    by_choice = {(o.spending, o.money): o for o in read.options}
+    assert by_choice[(ALL, WITH_SAVINGS)].money_total == Decimal("23000.00")
+    assert by_choice[(LEAN, WITH_SAVINGS)].months == Decimal("23.0")
+    # The fund's and the cash's figures never read the savings accounts.
+    assert by_choice[(LEAN, WITH_FUND)].money_total == Decimal("20000.00")
+    assert by_choice[(LEAN, CHECKING)].money_total == Decimal("15000.00")
+
+
+async def test_the_savings_report_still_lists_what_the_runway_leaves_out(db_session):
+    """Deliberate divergence: the 401k is saving, so the Savings report counts
+    it under Saved; it is not cash, so the runway does not. Pinned so the two
+    stay apart by exactly the accounts that are not cash."""
+    budget = await _world(db_session)
+    await _saving_but_not_cash(db_session, budget)
+
+    saved = (await savings_report(db_session, budget.id, 3, TODAY))["saved"]
+    read = await runway_read(db_session, budget.id, TODAY)
+
+    with_savings = next(o for o in read.options if (o.spending, o.money) == (ALL, WITH_SAVINGS))
+    # The HYSAs' 7,000 and the 90,000 that is not cash, where the runway
+    # counts 15,500 cash + 7,000 + 1,000 declared − 500 owed.
+    assert saved["accounts_total"] == Decimal("97000.00")
+    assert with_savings.money_total == Decimal("23000.00")
+
+
+async def test_a_fund_kept_in_an_investment_account_still_counts_with_savings(db_session):
+    """The person chose it as the fund, so "+ emergency fund" counts it — and
+    "+ savings accounts" beside it never counts less than the fund does."""
+    budget = await _world(db_session)
+    fund_account = await create_account(
+        db_session,
+        budget,
+        "Money Market",
+        account_type="investment",
+        on_budget=False,
+        counts_as_savings=True,
+    )
+    await create_transaction(db_session, budget, fund_account, "5000.00", OPENED)
+    fund_account.counts_toward_emergency_fund = True
+    await db_session.flush()
+
+    read = await runway_read(db_session, budget.id, TODAY)
+
+    by_choice = {(o.spending, o.money): o for o in read.options}
+    # 20,000 + the fund's 5,000.
+    assert by_choice[(LEAN, WITH_FUND)].money_total == Decimal("25000.00")
+    # 23,000 + the fund's 5,000.
+    assert by_choice[(LEAN, WITH_SAVINGS)].money_total == Decimal("28000.00")
 
 
 # ─── The Emergency Fund and Essentials reports read the same rule ─────────────

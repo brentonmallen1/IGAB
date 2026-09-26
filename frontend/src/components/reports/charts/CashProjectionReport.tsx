@@ -106,9 +106,11 @@ export function CashProjectionReport({ budgetId }: Props) {
             {averaged ?? 'the last three complete months'}, the months the Essentials figure reads.{' '}
             <strong>Checking</strong> is the cash in your budget’s accounts;{' '}
             <strong>+ Emergency fund</strong> adds what your emergency fund holds outside the budget
-            (envelopes are already in the cash); <strong>+ All savings</strong> adds every
-            off-budget savings account. The Overview’s <strong>Runway</strong> card is this figure
-            at Essentials and the emergency fund.
+            (envelopes are already in the cash); <strong>+ Savings accounts</strong> adds the
+            off-budget savings accounts that hold cash, and the emergency fund’s own — not a 401k,
+            an IRA or a brokerage account, which you cannot spend next month without selling. The
+            Overview’s <strong>Runway</strong> card is this figure at Essentials and the emergency
+            fund.
           </p>
           <ReportScopeNote report="projection" />
         </ReportInfoButton>
