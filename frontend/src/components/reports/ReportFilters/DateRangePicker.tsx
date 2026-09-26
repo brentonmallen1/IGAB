@@ -3,8 +3,8 @@ import { Calendar } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useReportRange } from '../../../api/reports'
 import './DateRangePicker.css'
-import { addMonths, currentMonthStart, today } from '../../../utils/dates'
-import { monthsAgoStartISO, monthWindow, thisMonthWindow } from '../../../utils/dateWindow'
+import { today } from '../../../utils/dates'
+import { lastMonthsWindow, lastMonthWindow, thisMonthWindow } from '../../../utils/dateWindow'
 
 interface Props {
   startDate: string
@@ -17,21 +17,20 @@ interface Preset {
   getValue: () => { start: string; end: string }
 }
 
-/** "Last N Months" is the current month and the N-1 before it, through today. */
+/** "Last N Months" is the last N complete months (`lastMonthsWindow`). */
 function lastMonths(n: number): Preset {
-  return {
-    label: `Last ${n} Months`,
-    getValue: () => ({ start: monthsAgoStartISO(n - 1), end: today() }),
-  }
+  return { label: `Last ${n} Months`, getValue: () => lastMonthsWindow(n) }
 }
 
 // Every preset is a dateWindow helper. The picker once kept its own
 // firstOfMonth / lastOfMonth / subtractMonths beside the module that already
 // does that arithmetic, and "This Month" was written twice — here and in the
 // report store's default — where a drift leaves the default matching no preset.
+// "This Month so far" says it on the button: a month in progress is half a
+// month, and every figure over it is month-to-date.
 const PRESETS: Preset[] = [
-  { label: 'This Month', getValue: thisMonthWindow },
-  { label: 'Last Month', getValue: () => monthWindow(addMonths(currentMonthStart(), -1)) },
+  { label: 'Last Month', getValue: lastMonthWindow },
+  { label: 'This Month so far', getValue: thisMonthWindow },
   lastMonths(3),
   lastMonths(6),
   lastMonths(12),

@@ -17,7 +17,7 @@ import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting
  * only arithmetic is months × essentials, the gap, and how long the gap
  * takes at what you put aside — all served, none re-derived here.
  *
- * Essentials is the 90-day figure with yearly Long-term expense bills spread
+ * Essentials is the last three complete months with yearly Long-term expense bills spread
  * over twelve months when the budget's setting is on; the toggle is here
  * because the target moves with it, and the other figure is named beside it.
  */

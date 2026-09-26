@@ -80,6 +80,7 @@ import { SpendingTrendsReport } from './charts/SpendingTrendsReport'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
 import { VarianceReport } from './charts/VarianceChart'
 import { VolatilityReport } from './charts/VolatilityChart'
+import { today } from '../../utils/dates'
 
 const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Overview', OverviewReport],
@@ -437,7 +438,7 @@ describe('OverviewReport metric cards', () => {
     })
     expect(screen.getByRole('button', { name: /^Living below your means/ })).toBeInTheDocument()
     // Right after it, the same reading over the served months, whatever the range.
-    expect(card('Means trend')).toEqual({ value: 'Keeping 12%', sub: '3-month average' })
+    expect(card('Means trend')).toEqual({ value: 'Keeping 12%', sub: 'over 3 months' })
     expect(
       screen.getByRole('img', { name: '1 of the last 2 months below your means' })
     ).toBeInTheDocument()
@@ -486,7 +487,7 @@ describe('OverviewReport metric cards', () => {
     })
     // The Spent card reads the same "no prior, no percentage" rule.
     const spent = screen
-      .getByText('Spent This Period', { selector: '.metric-card__label' })
+      .getByText('Spent', { selector: '.metric-card__label' })
       .closest('.metric-card')
     expect(spent?.querySelector('.metric-card__delta')).toBeNull()
   })
@@ -523,13 +524,21 @@ describe('OverviewReport metric cards', () => {
         outflows_this_month: '0',
         top_categories: [],
         means_months: [],
-        essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+        essentials: {
+          as_paid: 2800,
+          spread: 2200,
+          spread_on: true,
+          monthly: 2200,
+          window_start: '2026-06-01',
+          window_end: '2026-08-31',
+        },
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
+    // The months it averages first (D6), then the target, then the other figure.
     expect(card('Essentials / month')).toEqual({
       value: '$2,200.00',
-      sub: '6-month reserve: $13,200.00$2,200.00/mo spread · $2,800.00/mo as paid',
+      sub: 'Jun 26 – Aug 26 average6-month target: $13,200.00$2,200.00/mo spread · $2,800.00/mo as paid',
     })
   })
 
@@ -2486,9 +2495,34 @@ describe('info panels say what the chart draws', () => {
     })
     renderReport(<OverviewReport budgetId="b1" />)
     openInfo('Overview Dashboard')
-    expect(screen.getByText(/follow the selected date range/)).toBeInTheDocument()
-    expect(screen.getByText(/are as of today/)).toBeInTheDocument()
+    expect(screen.getByText(/follows the date range/)).toBeInTheDocument()
+    expect(screen.getByText(/does not\s+move with the range/)).toBeInTheDocument()
     expect(screen.queryByText(/All metrics use the selected date range/)).toBeNull()
+    // It said the Essentials card was "those same 90 days"; it is three
+    // complete months (D6), and the burn ends yesterday.
+    expect(screen.queryByText(/90 days/)).toBeNull()
+  })
+
+  it('Overview: groups the cards into this period and now, and says "so far"', () => {
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 0,
+        burn_rate_prior_60: 0,
+        income_this_month: 0,
+        outflows_this_month: 0,
+        top_categories: [],
+        means_months: [],
+      },
+    })
+    const saved = useReportStore.getState().filters
+    const t = today()
+    useReportStore.setState({ filters: { ...saved, startDate: `${t.slice(0, 7)}-01`, endDate: t } })
+    renderReport(<OverviewReport budgetId="b1" />)
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(headings[0]).toMatch(/^This period · \w{3} \d{2} so far$/)
+    expect(headings[1]).toBe('Now')
+    useReportStore.setState({ filters: saved })
   })
 })
 

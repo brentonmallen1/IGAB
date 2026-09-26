@@ -304,20 +304,19 @@ export function meansTrendValue(reading: MeansReading): string {
   return margin.direction === 'under' ? `Keeping ${margin.pct}%` : `Short ${margin.pct}%`
 }
 
-/** A signed margin as the trend states it beside another: "4%", "−9%". */
-export function signedMarginText(margin: MeansMargin): string {
-  const signed = signedMargin(margin)
-  return signed < 0 ? `−${-signed}%` : `${signed}%`
-}
-
-/** The Means trend card's sub line: "3-month average · up from 4%". */
+/** The Means trend card's sub line, under its value ("Short 7%"): "over 3
+ *  months · was keeping 1%". It read "3-month average · up from −9%" — an
+ *  average that is a pooled figure, and a signed percentage beside a value in
+ *  words, so "Short 7%, up from −9%" took a second look to see that things
+ *  got better. The earlier pool is said the way the value is. */
 export function meansTrendSub(trend: MeansTrend): string {
   if (trend.monthsWithIncome === 0) return 'Needs a month with income'
   if (!trend.recent.margin) return `No income in the last ${MEANS_TREND_POOL_MONTHS} months`
-  const base = `${MEANS_TREND_POOL_MONTHS}-month average`
-  if (!trend.direction || !trend.prior?.margin) return base
-  if (trend.direction === 'steady') return `${base} · steady`
-  return `${base} · ${trend.direction} from ${signedMarginText(trend.prior.margin)}`
+  const base = `over ${MEANS_TREND_POOL_MONTHS} months`
+  if (!trend.prior?.margin) return base
+  if (trend.direction === 'steady')
+    return `${base} · the same as the ${MEANS_TREND_POOL_MONTHS} before`
+  return `${base} · was ${meansTrendValue(trend.prior).toLowerCase()}`
 }
 
 /** What the strip says to a screen reader: "7 of the last 12 months below your

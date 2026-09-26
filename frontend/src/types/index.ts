@@ -779,7 +779,7 @@ export type AssignStrategy =
 /** What a lean month costs, both ways — served by the dashboard, the
  *  Essentials and Emergency Fund reports, the Guide's essential-expenses signal
  *  and the sizer. Home: `guide/concepts.py::essentials_monthly`, read through
- *  `services/essentials.py`. `as_paid` is the 90-day figure as bills landed;
+ *  `services/essentials.py`. `as_paid` is the last three complete months as bills landed;
  *  `spread` swaps Long-term expense bills for a twelfth of the year's;
  *  `spread_on` is the budget's setting and `monthly` the one it selects. */
 export interface EssentialsFigures {
@@ -1201,9 +1201,9 @@ export interface EmergencyFund {
 export interface CoveragePoint {
   month: string
   fund_balance: number
-  /** Trailing three-month average of essential spending — the Guide's 90-day
-   *  window said in months, so this line and the roadmap's target cannot tell
-   *  different stories about the same household. */
+  /** The essentials figure as of this month (backend `essentials_at`): the
+   *  three complete months ending here, so the newest point IS the headline and
+   *  this line and the roadmap's target cannot tell different stories. */
   essentials: number
   /** Null, never zero, for a month with no essential spending to divide by. */
   coverage_months: number | null
@@ -1784,7 +1784,7 @@ export interface DiscretionaryGroup {
 /** Spending outside Cost of living (backend
  *  `domain.activity_class.DISCRETIONARY_ROW`): SPENDING-class rows in no
  *  category tagged Essential or Cost of living, net of refunds. Not the Cost of
- *  Living report's Non-essential, which is Cost of living minus Essentials. */
+ *  Living report's "Committed, not essential", which is Cost of living minus Essentials. */
 export interface DiscretionaryReport {
   months: string[]
   /** How many months `avg_monthly` divides by: every entry of `months`, all

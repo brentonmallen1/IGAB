@@ -4,6 +4,13 @@ import { apiClient, apiErrorMessage } from './client'
 import type { SignalKey } from '../content/roadmap'
 import { ROOT } from './queryKeys'
 import type { EmergencyFund, EssentialsFigures } from '../types'
+import { today } from '../utils/dates'
+
+/** The reader's day, for a Guide read that measures months: the essentials
+ *  figure is the last three COMPLETE months, and which months those are is
+ *  the reader's call, not the server's UTC clock (`api/v1/params.ReaderToday`,
+ *  the reports' `fetchReport` does the same). */
+const readerDay = () => ({ params: { client_today: today() } })
 
 /** How a concept came to be answered. */
 export type SignalSource =
@@ -221,7 +228,8 @@ export function useCardExamples(budgetId: string | null) {
 export function useGuideSignals(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.guideSignals, budgetId],
-    queryFn: () => apiClient.get<SignalsResponse>(`/${budgetId}/guide/signals`).then((r) => r.data),
+    queryFn: () =>
+      apiClient.get<SignalsResponse>(`/${budgetId}/guide/signals`, readerDay()).then((r) => r.data),
     enabled: !!budgetId && enabled,
     // Signals are derived from the whole budget, so almost any edit could move
     // them. Short and refetched on demand rather than aggressively live.
@@ -365,7 +373,8 @@ export interface Checkup {
 export function useGuideCheckup(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.guideCheckup, budgetId],
-    queryFn: () => apiClient.get<Checkup>(`/${budgetId}/guide/checkup`).then((r) => r.data),
+    queryFn: () =>
+      apiClient.get<Checkup>(`/${budgetId}/guide/checkup`, readerDay()).then((r) => r.data),
     // Gated on the preference by the caller: with reviews off, no request at all.
     enabled: !!budgetId && enabled,
     staleTime: 30_000,
@@ -375,7 +384,10 @@ export function useGuideCheckup(budgetId: string | null, enabled = true) {
 export function useRunHealthReport(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => apiClient.post<Checkup>(`/${budgetId}/guide/checkup/run`).then((r) => r.data),
+    mutationFn: () =>
+      apiClient
+        .post<Checkup>(`/${budgetId}/guide/checkup/run`, undefined, readerDay())
+        .then((r) => r.data),
     // The run returns the same payload the GET would, freshly stamped.
     onSuccess: (checkup) => qc.setQueryData([ROOT.guideCheckup, budgetId], checkup),
   })
@@ -512,7 +524,9 @@ function useScenario<Req, Res>(kind: string, budgetId: string | null, body: Req 
   return useQuery({
     queryKey: [ROOT.guideScenario, kind, budgetId, body],
     queryFn: () =>
-      apiClient.post<Res>(`/${budgetId}/guide/scenarios/${kind}`, body).then((r) => r.data),
+      apiClient
+        .post<Res>(`/${budgetId}/guide/scenarios/${kind}`, body, readerDay())
+        .then((r) => r.data),
     enabled: !!budgetId && body !== null,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
