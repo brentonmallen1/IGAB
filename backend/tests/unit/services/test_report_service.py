@@ -500,22 +500,34 @@ class TestSpendingGrouped:
 
 
 def spend_row(**kwargs):
-    """A day-patterns row. The class filter moved out of the WHERE and into a
-    Python partition, so every row now carries its class and category."""
+    """A `ReportService._spending_query` row: every reader of the one spending
+    definition gets the same columns, so a fixture states them all. Each row
+    is its own purchase unless a `txn_id` says otherwise."""
     kwargs.setdefault("cls", "spending")
     kwargs.setdefault("id", uuid.uuid4())
+    kwargs.setdefault("name", "Shopping")
+    kwargs.setdefault("group_id", GRP_1)
+    kwargs.setdefault("group_name", "Everyday")
+    kwargs.setdefault("payee_id", PAYEE_1)
+    kwargs.setdefault("payee_name", "Amazon")
+    kwargs.setdefault("txn_id", uuid.uuid4())
     return row(**kwargs)
+
+
+def day_session(rows, earliest=None):
+    """The rows, then when the budget's history starts."""
+    return make_session(mock_result(rows), earliest_result(earliest))
 
 
 class TestDayPatterns:
     async def test_seven_days_always_returned(self):
-        svc = ReportService(make_session(mock_result([])))
+        svc = ReportService(day_session([]))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         assert len(days) == 7
         assert {r["day_of_week"] for r in days} == set(range(7))
 
     async def test_day_names_correct(self):
-        svc = ReportService(make_session(mock_result([])))
+        svc = ReportService(day_session([]))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         by_idx = {r["day_of_week"]: r["day_name"] for r in days}
         assert by_idx[0] == "Monday"
@@ -528,7 +540,7 @@ class TestDayPatterns:
             spend_row(date=date(2026, 1, 5), amount=D("-50.00")),
             spend_row(date=date(2026, 1, 6), amount=D("-200.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(day_session(rows))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
 
         monday = next(r for r in days if r["day_name"] == "Monday")
@@ -537,19 +549,55 @@ class TestDayPatterns:
         assert monday["count"] == 2
         assert tuesday["total"] == D("200.0")
 
-    async def test_avg_transaction(self):
+    async def test_the_average_is_per_calendar_monday_quiet_ones_included(self):
+        """Two Mondays in the window, one with 300 spent: a typical Monday is
+        150. The average per transaction said 150 too, by coincidence — with
+        three purchases that Monday it would have said 100."""
         rows = [
             spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
-            spend_row(date=date(2026, 1, 5), amount=D("-200.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-120.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-80.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        svc = ReportService(day_session(rows))
+        days = (await svc.day_patterns(BUDGET, date(2026, 1, 5), date(2026, 1, 18)))["days"]
         monday = next(r for r in days if r["day_name"] == "Monday")
-        assert monday["avg_transaction"] == pytest.approx(D("150.0"), rel=D("0.01"))
+        assert monday["weekdays"] == 2
+        assert monday["avg_per_day"] == D("150.00")
+        assert monday["count"] == 3
+
+    async def test_days_before_the_history_are_not_quiet_days(self):
+        """A range reaching back before the first transaction divides by the
+        Mondays since it, not by Mondays nobody recorded."""
+        rows = [spend_row(date=date(2026, 1, 12), amount=D("-90.00"))]
+        svc = ReportService(day_session(rows, earliest=date(2026, 1, 12)))
+        result = await svc.day_patterns(BUDGET, date(2026, 1, 1), date(2026, 1, 25))
+        monday = next(r for r in result["days"] if r["day_name"] == "Monday")
+        assert result["window_start"] == date(2026, 1, 12)
+        assert monday["weekdays"] == 2
+        assert monday["avg_per_day"] == D("45.00")
+
+    async def test_a_split_is_one_purchase(self):
+        """Two legs of one trip share a `txn_id`: one purchase on the chart."""
+        trip = uuid.uuid4()
+        rows = [
+            spend_row(date=date(2026, 1, 5), amount=D("-60.00"), txn_id=trip),
+            spend_row(date=date(2026, 1, 5), amount=D("-40.00"), txn_id=trip),
+        ]
+        days = (await ReportService(day_session(rows)).day_patterns(BUDGET, JAN, APR))["days"]
+        assert days[0]["count"] == 1
+        assert days[0]["total"] == D("100.00")
+
+    async def test_a_refund_lowers_its_day(self):
+        rows = [
+            spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("30.00")),
+        ]
+        days = (await ReportService(day_session(rows)).day_patterns(BUDGET, JAN, APR))["days"]
+        assert days[0]["total"] == D("70.00")
 
     async def test_empty_days_return_zero_not_missing(self):
         rows = [spend_row(date=date(2026, 1, 5), amount=D("-100.00"))]  # Monday only
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(day_session(rows))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         sunday = next(r for r in days if r["day_name"] == "Sunday")
         assert sunday["total"] == D("0")
@@ -563,7 +611,7 @@ class TestDayPatterns:
             spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
             spend_row(date=date(2026, 1, 5), amount=D("-900.00"), cls="savings", id=cat),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(day_session(rows))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         monday = next(r for r in days if r["day_name"] == "Monday")
         assert monday["total"] == D("100.0")
@@ -573,12 +621,10 @@ class TestDayPatterns:
         cat = uuid.uuid4()
         rows = [spend_row(date=date(2026, 1, 5), amount=D("-900.00"), cls="savings", id=cat)]
 
-        unscoped = await ReportService(make_session(mock_result(rows))).day_patterns(
-            BUDGET, JAN, APR
-        )
+        unscoped = await ReportService(day_session(rows)).day_patterns(BUDGET, JAN, APR)
         assert unscoped["class_excluded"] is None
 
-        scoped = await ReportService(make_session(mock_result(rows))).day_patterns(
+        scoped = await ReportService(day_session(rows)).day_patterns(
             BUDGET, JAN, APR, category_ids=[cat]
         )
         assert scoped["class_excluded"] == [
@@ -596,13 +642,18 @@ class TestDayPatterns:
 
 class TestPayeeAnalysis:
     def _txn(self, txn_date, amount, payee_id=None, payee_name="Amazon", cat_name="Shopping"):
-        return row(
+        return spend_row(
             date=txn_date,
             amount=amount,
             payee_id=payee_id or PAYEE_1,
             payee_name=payee_name,
-            category_id=CAT_A,
-            category_name=cat_name,
+            id=CAT_A,
+            name=cat_name,
+        )
+
+    async def _analysis(self, rows, start=JAN, end=APR, **kwargs):
+        return await ReportService(make_session(mock_result(rows))).payee_analysis(
+            BUDGET, start, end, **kwargs
         )
 
     async def test_is_recurring_three_or_more_months(self):
@@ -611,18 +662,36 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 2, 15), D("-50.00")),
             self._txn(date(2026, 3, 15), D("-50.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees[0]["is_recurring"] is True
+        report = await self._analysis(rows)
+        assert report["recurring_min_months"] == 3
+        assert report["payees"][0]["is_recurring"] is True
 
     async def test_not_recurring_two_months(self):
         rows = [
             self._txn(date(2026, 1, 15), D("-50.00")),
             self._txn(date(2026, 2, 15), D("-50.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees[0]["is_recurring"] is False
+        report = await self._analysis(rows)
+        assert report["payees"][0]["is_recurring"] is False
+
+    async def test_over_a_year_three_months_is_not_a_habit(self):
+        """Recurring is relative to the window: over twelve months it takes
+        six. A fixed three called a payee seen in three scattered months of a
+        year recurring."""
+        rows = [
+            self._txn(date(2026, 1, 15), D("-50.00")),
+            self._txn(date(2026, 5, 15), D("-50.00")),
+            self._txn(date(2026, 9, 15), D("-50.00")),
+        ]
+        report = await self._analysis(rows, JAN, date(2026, 12, 31))
+        assert report["recurring_min_months"] == 6
+        assert report["payees"][0]["is_recurring"] is False
+
+    async def test_a_short_window_calls_nothing_recurring_and_says_so(self):
+        rows = [self._txn(date(2026, 1, 15), D("-50.00"))]
+        report = await self._analysis(rows, JAN, date(2026, 2, 28))
+        assert report["recurring_min_months"] is None
+        assert report["payees"][0]["is_recurring"] is False
 
     async def test_monthly_trend(self):
         rows = [
@@ -630,10 +699,8 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 20), D("-50.00")),
             self._txn(date(2026, 2, 5), D("-75.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-
-        trend = {t["month"]: t["total"] for t in payees[0]["monthly_trend"]}
+        report = await self._analysis(rows)
+        trend = {t["month"]: t["total"] for t in report["payees"][0]["monthly_trend"]}
         assert trend[date(2026, 1, 1)] == D("150.0")
         assert trend[date(2026, 2, 1)] == D("75.0")
 
@@ -642,29 +709,35 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 1), D("-100.00")),
             self._txn(date(2026, 1, 2), D("-200.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, grand_total, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees[0]["total"] == D("300.0")
-        assert payees[0]["count"] == 2
-        assert grand_total == D("300.0")
+        report = await self._analysis(rows)
+        assert report["payees"][0]["total"] == D("300.0")
+        assert report["payees"][0]["count"] == 2
+        assert report["total"] == D("300.0")
+
+    async def test_a_refund_lowers_its_payee(self):
+        rows = [
+            self._txn(date(2026, 1, 1), D("-100.00")),
+            self._txn(date(2026, 1, 9), D("40.00")),
+        ]
+        report = await self._analysis(rows)
+        assert report["payees"][0]["total"] == D("60.00")
+        assert report["total"] == D("60.00")
 
     async def test_top_categories(self):
         rows = [
             self._txn(date(2026, 1, 1), D("-100.00"), cat_name="Groceries"),
             self._txn(date(2026, 1, 2), D("-300.00"), cat_name="Electronics"),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        top = {c["category_name"]: c["total"] for c in payees[0]["top_categories"]}
+        report = await self._analysis(rows)
+        top = {c["category_name"]: c["total"] for c in report["payees"][0]["top_categories"]}
         assert top["Electronics"] == D("300.0")
         assert top["Groceries"] == D("100.0")
 
     async def test_empty_returns_empty(self):
-        svc = ReportService(make_session(mock_result([])))
-        payees, total, count, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees == []
-        assert total == D("0")
-        assert count == 0
+        report = await self._analysis([])
+        assert report["payees"] == []
+        assert report["total"] == D("0")
+        assert report["payee_count"] == 0
 
     async def test_the_total_and_count_span_every_payee_not_the_ranked_ones(self):
         # The cap is what this report IS — a ranking, not a page — so both
@@ -677,11 +750,11 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 2), D("-300.00"), PAYEE_2, "Cascade Grocers"),
             self._txn(date(2026, 1, 3), D("-100.00"), third, "Alder Street Cafe"),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, total, count, _to80 = await svc.payee_analysis(BUDGET, JAN, APR, limit=2)
+        report = await self._analysis(rows, limit=2)
+        payees = report["payees"]
         assert [p["payee_name"] for p in payees] == ["Harborstone Realty", "Cascade Grocers"]
-        assert total == D("800.0")
-        assert count == 3
+        assert report["total"] == D("800.0")
+        assert report["payee_count"] == 3
         # 400 / 800, not 400 / 700.
         assert round(payees[0]["pct"], 1) == 50.0
 
@@ -910,7 +983,7 @@ class TestSeasonality:
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def srow(d, amt):
-                return row(date=d, amount=amt, category_id=CAT_A, category_name="Groceries")
+                return spend_row(date=d, amount=amt, id=CAT_A, name="Groceries")
 
             # Two complete months before February: December and January.
             rows = [srow(date(2025, 12, 10), D("-120.00")), srow(date(2026, 1, 10), D("-100.00"))]
@@ -922,7 +995,7 @@ class TestSeasonality:
         # always a blank column and December's cells had none.
         assert result["months"] == [date(2025, 12, 1), date(2026, 1, 1)]
         assert {c["month"] for c in result["cells"]} <= set(result["months"])
-        assert any(c["id"] == str(CAT_A) for c in result["categories"])
+        assert any(c["id"] == CAT_A for c in result["categories"])
         jan_cell = next(c for c in result["cells"] if c["month"] == date(2026, 1, 1))
         assert jan_cell["total"] == D("100.0")
 

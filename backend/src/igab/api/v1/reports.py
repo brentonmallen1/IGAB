@@ -40,12 +40,8 @@ from igab.api.v1.schemas.report import (
     MeansMonth,
     NetWorthPoint,
     NetWorthResponse,
-    PaydayEffectDay,
     PaydayEffectResponse,
     PayeeAnalysisResponse,
-    PayeeSpending,
-    PayeeTopCategory,
-    PayeeTrend,
     PlanRealityCategory,
     PlanRealityResponse,
     ReportFavoritesResponse,
@@ -89,6 +85,7 @@ from igab.dependencies import (
 )
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
 from igab.domain.dates import report_months
+from igab.domain.money_moves import REPORT_FAMILY_CLASSES, ReportFamily
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
@@ -282,7 +279,10 @@ async def income_expense_report(
     months: ReportMonths = 12,
 ) -> IncomeExpenseResponse:
     data = await report_svc.income_vs_expense(budget_id, months, today)
-    return IncomeExpenseResponse(months=[IncomeExpenseMonth.model_validate(m) for m in data])
+    return IncomeExpenseResponse(
+        months=[IncomeExpenseMonth.model_validate(m) for m in data],
+        expense_classes=[c.value for c in REPORT_FAMILY_CLASSES[ReportFamily.SPENDING]],
+    )
 
 
 @router.get("/{budget_id}/reports/export")
@@ -532,6 +532,7 @@ async def spending_grouped_report(
         ],
         view_unavailable=notes["view_unavailable"],
         filter_unavailable=scope.filter_unavailable,
+        counted_classes=notes["counted_classes"],
     )
 
 
@@ -572,14 +573,19 @@ async def spending_trends_report(
         scope.category_ids,
         parse_uuid_list(account_ids),
         _spending_classes(include_savings),
+        today,
     )
     return SpendingTrendsResponse(
         months=data["months"],
         series=[SpendingTrendSeries.model_validate(e) for e in data["series"]],
         monthly_totals=data["monthly_totals"],
         total=data["total"],
+        monthly_average=data["monthly_average"],
+        months_averaged=data["months_averaged"],
+        latest_complete=data["latest_complete"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
         filter_unavailable=scope.filter_unavailable,
+        counted_classes=data["counted_classes"],
     )
 
 
@@ -654,12 +660,10 @@ async def seasonality_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     today: ReaderToday,
     months: ReportMonths = 12,
+    include_savings: bool = False,
 ) -> SeasonalityResponse:
-    data = await report_svc.seasonality(budget_id, months, today)
-    return SeasonalityResponse(
-        cells=data["cells"],
-        months=data["months"],
-        categories=data["categories"],
+    return SeasonalityResponse.model_validate(
+        await report_svc.seasonality(budget_id, months, today, _spending_classes(include_savings))
     )
 
 
@@ -690,26 +694,8 @@ async def payee_analysis_report(
     end = end_date or today
     p_ids = parse_uuid_list(payee_ids)
     acct_ids = parse_uuid_list(account_ids)
-    payees, total, payee_count, payees_to_80pct = await report_svc.payee_analysis(
-        budget_id, start, end, limit, p_ids, acct_ids
-    )
-    return PayeeAnalysisResponse(
-        payees=[
-            PayeeSpending(
-                payee_id=p["payee_id"],
-                payee_name=p["payee_name"],
-                total=p["total"],
-                count=p["count"],
-                pct=p["pct"],
-                monthly_trend=[PayeeTrend.model_validate(t) for t in p["monthly_trend"]],
-                top_categories=[PayeeTopCategory.model_validate(c) for c in p["top_categories"]],
-                is_recurring=p["is_recurring"],
-            )
-            for p in payees
-        ],
-        total=total,
-        payee_count=payee_count,
-        payees_to_80pct=payees_to_80pct,
+    return PayeeAnalysisResponse.model_validate(
+        await report_svc.payee_analysis(budget_id, start, end, limit, p_ids, acct_ids)
     )
 
 
@@ -742,7 +728,7 @@ async def day_patterns_report(
         tag_repo=tag_repo,
     )
     acct_ids = parse_uuid_list(account_ids)
-    data = await report_svc.day_patterns(budget_id, start, end, scope.category_ids, acct_ids)
+    data = await report_svc.day_patterns(budget_id, start, end, scope.category_ids, acct_ids, today)
     return DayPatternsResponse(
         days=[DayPatternItem.model_validate(d) for d in data["days"]],
         class_excluded=[
@@ -750,6 +736,8 @@ async def day_patterns_report(
         ],
         filter_unavailable=scope.filter_unavailable,
         counted_classes=data["counted_classes"],
+        window_start=data["window_start"],
+        window_end=data["window_end"],
     )
 
 
@@ -771,6 +759,8 @@ async def timeline_report(
     filter_id: uuid.UUID | None = None,
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
+    #: Money out only — the page's default view (`large_transactions`).
+    outflows_only: bool = False,
 ) -> TimelineResponse:
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
@@ -784,7 +774,7 @@ async def timeline_report(
     )
     acct_ids = parse_uuid_list(account_ids)
     data = await report_svc.large_transactions(
-        budget_id, start, end, limit, scope.category_ids, acct_ids
+        budget_id, start, end, limit, scope.category_ids, acct_ids, outflows_only
     )
     return TimelineResponse(
         transactions=[TimelineTransaction.model_validate(t) for t in data],
@@ -907,13 +897,9 @@ async def payday_effect_report(
     window: PaydayWindow = 14,
     months: ReportMonths = 12,
 ) -> PaydayEffectResponse:
-    """Payday effect — average daily spending for N days after income events."""
-    data = await report_svc.payday_effect(budget_id, window, months, today)
-    return PaydayEffectResponse(
-        days=[PaydayEffectDay.model_validate(d) for d in data["days"]],
-        baseline_daily=data["baseline_daily"],
-        event_count=data["event_count"],
-        payday_floor=data["payday_floor"],
+    """Payday effect — median discretionary spending on the N days after a payday."""
+    return PaydayEffectResponse.model_validate(
+        await report_svc.payday_effect(budget_id, window, months, today)
     )
 
 

@@ -186,3 +186,42 @@ def weekday_occurrences(month: date, weekday: int) -> int:
     days = calendar.monthrange(first.year, first.month)[1]
     offset = (weekday - first.weekday()) % 7
     return (days - offset + 6) // 7 if offset < days else 0
+
+
+def weekday_counts(start: date, end: date) -> list[int]:
+    """How many Mondays, Tuesdays … Sundays fall in [start, end], both ends
+    included — seven counts, Monday first. All zero when `end` is before
+    `start`.
+
+    The divisor for a per-weekday average: "a typical Saturday" is the
+    Saturdays' total over every Saturday in the window, the quiet ones
+    included. Dividing by the Saturdays that had spending — or by the number
+    of transactions — reads a household that shops once a fortnight as
+    spending twice what it does.
+    """
+    days = (end - start).days + 1
+    if days <= 0:
+        return [0] * 7
+    weeks, rest = divmod(days, 7)
+    counts = [weeks] * 7
+    for i in range(rest):
+        counts[(start.weekday() + i) % 7] += 1
+    return counts
+
+
+def complete_months(start: date, end: date, today: date) -> list[date]:
+    """The months wholly inside [start, end] that are over by `today`, oldest
+    first — what a per-month average over a range the reader picked may
+    divide by.
+
+    `complete_month_window` answers this for a report that picks its own
+    window; this is for a range whose ends can fall mid-month. 1 January to
+    today, on 26 September, holds eight complete months and a running ninth:
+    dividing its total by nine spread 26 days of September across a whole
+    month and read every month low.
+    """
+    return [
+        m
+        for m in month_starts(start, end)
+        if m >= start and month_end(m) <= end and month_end(m) < today
+    ]

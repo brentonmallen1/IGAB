@@ -39,10 +39,11 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     class_magnitude,
 )
-from igab.domain.dates import complete_month_window, month_starts
+from igab.domain.dates import complete_month_window, complete_months, month_starts
 from igab.domain.money import quantize_cents
 from igab.domain.money_moves import flows
 from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
+from igab.domain.spending import UNCATEGORIZED, spent
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
@@ -98,57 +99,63 @@ async def spending_trends(
     category_ids: list[uuid.UUID] | None = None,
     account_ids: list[uuid.UUID] | None = None,
     include_classes: Sequence[ActivityClass] | None = None,
+    today: date | None = None,
 ) -> dict:
-    """Spending per category per month over the window.
+    """Spending per category per month over the window: `_spending_rows`, so
+    net of refunds with an Uncategorized series (id None), the same spending
+    the Breakdown and Income vs Expenses report.
 
     `category_ids` is the resolved scope — explicit picks, a saved
     filter's effective set, a tag's members — already merged by the
     route. Months with nothing spent are zero, never missing, so every
     series is the same length as `months`.
+
+    **The average divides by complete months only** (`complete_months`),
+    served with how many there were. The page divided the window's total by
+    every month on the axis, the running one included, so on the 3rd of a
+    month the "Average / month" sat a third of a month low. `latest_complete`
+    says whether the last month on the axis is one of them, so the page can
+    call it "so far" rather than "Latest month".
     """
+    today = reader_today(today)
     months = month_starts(start_date.replace(day=1), end_date)
     index = {m: i for i, m in enumerate(months)}
-    # The class set comes from `_spending_query` too: this was the one of
-    # three spending rollups that never widened for an explicit account
-    # selection, so a tracked account drew nothing here beside a populated
-    # Pareto over the identical selection.
-    q, included = svc._spending_query(
+    found = await svc._spending_rows(
         budget_id, start_date, end_date, category_ids, account_ids, include_classes
     )
-    rows = (await svc.session.execute(q)).all()
-    counted = [r for r in rows if r.cls in included]
-    other_class = [r for r in rows if r.cls not in included]
 
-    series: dict[uuid.UUID, dict] = {}
-    for r in counted:
+    series: dict[uuid.UUID | None, dict] = {}
+    for r in found.counted:
         entry = series.setdefault(
             r.id,
             {
                 "id": r.id,
-                "name": r.name,
+                "name": r.name or UNCATEGORIZED,
                 "group_id": r.group_id,
-                "group_name": r.group_name,
-                "monthly": [Decimal("0")] * len(months),
-                "total": Decimal("0"),
+                "group_name": r.group_name or UNCATEGORIZED,
+                "monthly": [[] for _ in months],
             },
         )
-        magnitude = abs(r.amount)
-        entry["monthly"][index[r.date.replace(day=1)]] += magnitude
-        entry["total"] += magnitude
+        entry["monthly"][index[r.date.replace(day=1)]].append(r.amount)
+    for e in series.values():
+        e["monthly"] = [quantize_cents(spent(amounts)) for amounts in e["monthly"]]
+        e["total"] = sum(e["monthly"], Decimal("0"))
     ordered = sorted(series.values(), key=lambda e: e["total"], reverse=True)
-    for e in ordered:
-        e["monthly"] = [quantize_cents(v) for v in e["monthly"]]
-        e["total"] = quantize_cents(e["total"])
     monthly_totals = [
-        quantize_cents(sum((e["monthly"][i] for e in ordered), Decimal("0")))
-        for i in range(len(months))
+        sum((e["monthly"][i] for e in ordered), Decimal("0")) for i in range(len(months))
     ]
+    averaged = complete_months(start_date, end_date, today)
+    averaged_total = sum((monthly_totals[index[m]] for m in averaged), Decimal("0"))
     return {
         "months": months,
         "series": ordered,
         "monthly_totals": monthly_totals,
-        "total": quantize_cents(sum(monthly_totals, Decimal("0"))),
-        "class_excluded": class_excluded_note(other_class, scoped=bool(category_ids)) or [],
+        "total": sum(monthly_totals, Decimal("0")),
+        "monthly_average": (quantize_cents(averaged_total / len(averaged)) if averaged else None),
+        "months_averaged": len(averaged),
+        "latest_complete": bool(months) and months[-1] in averaged,
+        "class_excluded": class_excluded_note(found.excluded, scoped=bool(category_ids)) or [],
+        "counted_classes": found.classes,
     }
 
 
@@ -804,10 +811,11 @@ def class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | No
     )
 
 
-#: What the null-group bucket is called. One spelling: the report labels the
-#: bar with it and the client tests it to decide that a drill-down means "no
-#: category at all" rather than "these ids".
-UNCATEGORIZED_GROUP = "Uncategorized"
+#: What the null-group bucket is called: `domain.spending.UNCATEGORIZED`, the
+#: one spelling every spending report's Uncategorized line uses. The client
+#: tests it to decide that a drill-down means "no category at all" rather than
+#: "these ids".
+UNCATEGORIZED_GROUP = UNCATEGORIZED
 
 
 async def cost_of_living(

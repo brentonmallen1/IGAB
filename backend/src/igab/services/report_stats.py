@@ -23,8 +23,10 @@ import polars as pl
 
 from igab.domain.activity_class import class_label
 from igab.domain.amortize import spread_forward
+from igab.domain.concentration import items_to_share
 from igab.domain.dates import month_start
 from igab.domain.money import quantize_cents
+from igab.domain.spending import UNCATEGORIZED, recurring_months, spent
 
 
 def _amortized(filled: pl.DataFrame) -> pl.DataFrame:
@@ -266,58 +268,155 @@ def timeline_rows(rows, parent_classes: dict) -> list[dict]:
     return out
 
 
-#: A payee seen in this many distinct months is treated as recurring.
-RECURRING_MONTHS = 3
+#: Monday first, the order `date.weekday()` numbers them and the API serves.
+DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
-def payee_breakdown(df: pl.DataFrame, payee_agg: pl.DataFrame, grand_total: Decimal) -> list[dict]:
-    """One row per ranked payee: the trend, its biggest envelopes, and whether
-    it recurs.
+def payee_rollup(rows: Sequence[Any], window_months: int, limit: int) -> dict:
+    """Payee Analysis from `ReportService._spending_query` rows: the `limit`
+    largest payees, the total over EVERY payee, how many there were, and how
+    many of the largest make up 80% of the spending.
 
-    `payee_agg` is already ranked and capped; `grand_total` spans EVERY payee,
-    so `pct` is a share of the period rather than of the rows that survived
-    the cap. Passing the truncated frame's own sum here is the defect this
-    signature exists to make visible.
+    Net of refunds (`domain.spending.spent`), like every spending figure: a
+    returned order lowers its shop's total, so a payee can end a window
+    negative, and sorts last.
+
+    **`count` is purchases, not rows.** Split legs share their parent's
+    `txn_id`, so a supermarket trip itemised across three envelopes is one
+    visit, not three — the count used to read the legs.
+
+    `pct` and the 80% count are measured before the cap. The total and every
+    share were once computed from the top 25 alone, so "Total Spent" was a
+    subtotal and every share was inflated against it; and the Pareto card
+    looked for 80% in 25 rows against a total over every payee, so it
+    vanished for exactly the diffuse spending it exists to point out.
+
+    Recurring is relative to the window (`domain.spending.recurring_months`);
+    the threshold is served so the page can state it.
     """
-    payees: list[dict] = []
-    for row in payee_agg.iter_rows(named=True):
-        pid = row["payee_id"]
-        payee_df = df.filter(pl.col("payee_id") == pid)
-        by_month = payee_df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
-
-        trend = by_month.group_by("month").agg(pl.col("amount").sum().alias("total")).sort("month")
-        monthly_trend = [
-            {"month": r["month"], "total": Decimal(str(round(r["total"], 4)))}
-            for r in trend.iter_rows(named=True)
-        ]
-
-        top_cats = (
-            payee_df.filter(pl.col("category_name") != "Uncategorized")
-            .group_by("category_name")
-            .agg(pl.col("amount").sum().alias("total"))
-            .sort("total", descending=True)
-            .head(3)
+    by_payee: dict[Any, dict] = {}
+    for r in rows:
+        p = by_payee.setdefault(
+            r.payee_id,
+            {
+                "name": r.payee_name or "Unknown",
+                "rows": [],
+                "txns": set(),
+                "months": {},
+                "cats": {},
+            },
         )
-        top_categories = [
-            {"category_name": r["category_name"], "total": Decimal(str(round(r["total"], 4)))}
-            for r in top_cats.iter_rows(named=True)
-        ]
+        p["rows"].append(r.amount)
+        p["txns"].add(r.txn_id)
+        p["months"].setdefault(month_start(r.date), []).append(r.amount)
+        if r.name is not None:
+            p["cats"].setdefault(r.name, []).append(r.amount)
+    totals = {pid: spent(p["rows"]) for pid, p in by_payee.items()}
+    ranked = sorted(by_payee, key=lambda pid: totals[pid], reverse=True)
+    grand_total = sum(totals.values(), Decimal("0"))
+    need = recurring_months(window_months)
 
+    payees: list[dict] = []
+    for pid in ranked[:limit]:
+        p = by_payee[pid]
+        cats = sorted(
+            ((name, spent(amounts)) for name, amounts in p["cats"].items()),
+            key=lambda c: c[1],
+            reverse=True,
+        )[:3]
         payees.append(
             {
-                "payee_id": pid,
-                "payee_name": row["payee_name"],
-                "total": Decimal(str(round(row["total"], 4))),
-                "count": int(row["count"]),
-                "pct": (
-                    float(Decimal(str(row["total"])) / grand_total * 100) if grand_total else 0.0
-                ),
-                "monthly_trend": monthly_trend,
-                "top_categories": top_categories,
-                "is_recurring": by_month["month"].n_unique() >= RECURRING_MONTHS,
+                "payee_id": str(pid),
+                "payee_name": p["name"],
+                "total": quantize_cents(totals[pid]),
+                "count": len(p["txns"]),
+                "pct": float(totals[pid] / grand_total * 100) if grand_total > 0 else 0.0,
+                "monthly_trend": [
+                    {"month": m, "total": quantize_cents(spent(amounts))}
+                    for m, amounts in sorted(p["months"].items())
+                ],
+                "top_categories": [
+                    {"category_name": name, "total": quantize_cents(total)} for name, total in cats
+                ],
+                "is_recurring": need is not None and len(p["months"]) >= need,
             }
         )
-    return payees
+    return {
+        "payees": payees,
+        "total": quantize_cents(grand_total),
+        "payee_count": len(by_payee),
+        "payees_to_80pct": items_to_share([totals[pid] for pid in ranked]),
+        "recurring_min_months": need,
+    }
+
+
+def weekday_rollup(rows: Sequence[Any], weekdays: Sequence[int]) -> list[dict]:
+    """Day Patterns from `ReportService._spending_query` rows: each weekday's
+    net spending, its purchases, and its average per calendar day.
+
+    `weekdays` is how many of each weekday the window holds
+    (`domain.dates.weekday_counts`), and **it is the divisor**: a quiet
+    Saturday is a Saturday with nothing spent, not a Saturday that did not
+    happen. The chart once served the average per transaction, which says
+    nothing about which day costs the most — a week of one big shop and six
+    coffees made the shop's day look extravagant and the coffee days frugal
+    in exactly the wrong proportion. None where the window holds no such
+    weekday.
+    """
+    amounts: list[list[Decimal]] = [[] for _ in range(7)]
+    txns: list[set] = [set() for _ in range(7)]
+    for r in rows:
+        dow = r.date.weekday()
+        amounts[dow].append(r.amount)
+        txns[dow].add(r.txn_id)
+    out = []
+    for i in range(7):
+        total = spent(amounts[i])
+        out.append(
+            {
+                "day_of_week": i,
+                "day_name": DAY_NAMES[i],
+                "total": quantize_cents(total),
+                "count": len(txns[i]),
+                "weekdays": weekdays[i],
+                "avg_per_day": quantize_cents(total / weekdays[i]) if weekdays[i] else None,
+            }
+        )
+    return out
+
+
+def category_month_grid(rows: Sequence[Any], top: int) -> dict:
+    """Seasonality from `ReportService._spending_query` rows: net spending per
+    category per month, and the `top` categories by net total over the window.
+
+    Uncategorized spending is a row of its own (id None) rather than missing:
+    the heatmap and Spending Trends read one row set, and a household whose
+    unfiled purchases spike in December should see that spike. `category_count`
+    is every category that spent, so the page can say "top 20 of 34".
+    """
+    cells: dict[tuple[Any, date], list[Decimal]] = {}
+    names: dict[Any, str] = {}
+    for r in rows:
+        names[r.id] = r.name or UNCATEGORIZED
+        cells.setdefault((r.id, month_start(r.date)), []).append(r.amount)
+    net = {key: spent(amounts) for key, amounts in cells.items()}
+    by_cat: dict[Any, Decimal] = {}
+    for (cid, _month), total in net.items():
+        by_cat[cid] = by_cat.get(cid, Decimal("0")) + total
+    ranked = sorted(by_cat, key=lambda cid: by_cat[cid], reverse=True)
+    return {
+        "cells": [
+            {
+                "category_id": cid,
+                "category_name": names[cid],
+                "month": month,
+                "total": quantize_cents(total),
+            }
+            for (cid, month), total in sorted(net.items(), key=lambda kv: (kv[0][1], -kv[1]))
+        ],
+        "categories": [{"id": cid, "name": names[cid]} for cid in ranked[:top]],
+        "category_count": len(ranked),
+    }
 
 
 def balance_sheet(
