@@ -5,11 +5,13 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.repositories.account_repo import AccountRepository
 
 from .factories import (
     create_account,
     create_budget,
+    create_payee,
     create_transaction,
     create_transfer,
     money,
@@ -327,7 +329,15 @@ async def test_an_overpaid_card_still_floors_at_zero(api_client, db_session):
 # nowhere to carry the rate either, so the user supplies the terms.
 
 
-async def _loan_with_terms(api_client, db_session, *, rate: str | None, balance: str = "24000.00"):
+async def _loan_with_terms(
+    api_client,
+    db_session,
+    *,
+    rate: str | None,
+    balance: str = "24000.00",
+    opened: date | None = None,
+    opening_payee: str | None = None,
+):
     budget = await create_budget(db_session, api_client.test_user)
     made = await api_client.post(
         f"/api/v1/{budget.id}/accounts",
@@ -336,11 +346,17 @@ async def _loan_with_terms(api_client, db_session, *, rate: str | None, balance:
     account_id = made.json()["id"]
     account = await AccountRepository(db_session).get(uuid.UUID(account_id))
     assert account is not None
-    # Dated well before this month: the origination row is a plain outflow
-    # too, and a loan opened in the same month as a payment would be read as
-    # that month's interest charge.
+    # Dated well before this month by default: an origination row under any
+    # name but Starting Balance is a plain outflow too, and a loan opened in
+    # the same month as a payment would be read as that month's interest.
+    payee = await create_payee(db_session, budget, opening_payee) if opening_payee else None
     await create_transaction(
-        db_session, budget, account, Decimal(f"-{balance}"), _month_start(TODAY, 6)
+        db_session,
+        budget,
+        account,
+        Decimal(f"-{balance}"),
+        opened or _month_start(TODAY, 6),
+        payee=payee,
     )
 
     listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
@@ -409,3 +425,27 @@ async def test_a_payment_alone_does_not_suppress_the_estimate(api_client, db_ses
     assert money(row["current_balance"]) == Decimal("23500.00")
     assert money(row["estimated_interest_this_month"]) == Decimal("117.50")
     assert money(row["balance_with_estimate"]) == Decimal("23617.50")
+
+
+async def test_a_starting_balance_beside_a_payment_is_not_the_months_interest(
+    api_client, db_session
+):
+    """A first sync anchors a tracked loan the day before its oldest row —
+    often in the month a payment arrived. Read as a plain outflow, the whole
+    24,000 opening was that month's interest charge, and it suppressed the
+    estimate as though the month had been reconciled. A Starting Balance row
+    is where the ledger begins (`DEBT_INTEREST_ROW`), so the month reads as a
+    payment alone: the same 117.50 as the test above."""
+    budget, account, companion = await _loan_with_terms(
+        api_client,
+        db_session,
+        rate="6",
+        opened=_month_start(TODAY),
+        opening_payee=STARTING_BALANCE_PAYEE,
+    )
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("23500.00")
+    assert money(row["estimated_interest_this_month"]) == Decimal("117.50")

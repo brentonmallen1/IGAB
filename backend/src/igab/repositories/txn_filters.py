@@ -47,7 +47,7 @@ from igab.db.models import (
     TransactionAttachment,
 )
 from igab.domain.enums import ScheduleFrequency
-from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
+from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES, STARTING_BALANCE_PAYEE
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
     IS_SINKING_FUND,
@@ -271,17 +271,34 @@ TRANSFER_PAYEE = (
 TRANSFER_LEG = or_(Transaction.transfer_id.isnot(None), TRANSFER_PAYEE)
 NON_TRANSFER = ~TRANSFER_LEG
 
+
+def _payee_named(names: Collection[str]) -> ColumnElement[bool]:
+    """The row's payee is exactly one of `names`. EXISTS for the same NULL
+    reason as TRANSFER_PAYEE above: a payee-less row must read as "no",
+    never as UNKNOWN. Exact, case and all — these are the names IGAB's own
+    writers and a YNAB export spell, not something a person typed."""
+    return (
+        select(Payee.id)
+        .where(Payee.id == Transaction.payee_id, Payee.name.in_(names))
+        .correlate(Transaction)
+        .exists()
+    )
+
+
 # A row under one of the auto-generated bookkeeping names is a ledger
 # correction, not spending anybody did — the set and its story live in
-# `domain/payee_names.py` beside the writers' own spellings. EXISTS for the
-# same NULL reason as TRANSFER_PAYEE above: a payee-less row must read as
-# "not an adjustment", never as UNKNOWN.
-BALANCE_ADJUSTMENT_ROW = (
-    select(Payee.id)
-    .where(Payee.id == Transaction.payee_id, Payee.name.in_(BALANCE_ADJUSTMENT_PAYEES))
-    .correlate(Transaction)
-    .exists()
-)
+# `domain/payee_names.py` beside the writers' own spellings.
+BALANCE_ADJUSTMENT_ROW = _payee_named(BALANCE_ADJUSTMENT_PAYEES)
+
+#: An account's starting balance: the one bookkeeping name of the three that
+#: says where the account's counting begins. The activity classifier reads it
+#: (`OPENING_BALANCE`), so no report counts an opening as income or spending.
+#:
+#: Deliberately NOT the whole `BALANCE_ADJUSTMENT_PAYEES` set. A
+#: reconciliation adjustment is a correction to a ledger already being
+#: counted, and on a cash account it can stand for real spending nobody
+#: recorded — so it keeps whatever class its shape gives it.
+STARTING_BALANCE_ROW = _payee_named((STARTING_BALANCE_PAYEE,))
 
 #: A row that could still be joined to a partner: live, whole (not a split
 #: parent and not one of its children), and not already linked.
@@ -490,7 +507,7 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 )
 
 #: An account whose balance is savings: a live off-budget asset that counts as
-#: savings — the shape above, which is also the account the classifier's rule 3
+#: savings — the shape above, which is also the account the classifier's rule 4
 #: (`domain/activity_class.py`, TRANSFER_TO_TRACKED_ASSET) sends saved money
 #: into. The Savings report lists these under Saved.
 #:
@@ -498,7 +515,7 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 #: already in the envelopes, and the envelopes say what each dollar is for.
 #: Closed accounts stay in — a closed account's past balances were savings —
 #: and the report omits one that held nothing in its window.
-#: `test_savings_report_sections.py` pins that this and rule 3 agree on every
+#: `test_savings_report_sections.py` pins that this and rule 4 agree on every
 #: account shape.
 SAVINGS_ACCOUNT = and_(LIVE_ACCOUNT, EMERGENCY_FUND_ACCOUNT_SHAPE)
 
@@ -662,9 +679,19 @@ RECEIPT_CANDIDATE_ROW = and_(
 #: and the reports call it interest & fees too, and counting it here would
 #: make YNAB's balance adjustments into payments. `PLAIN_DEPOSIT_ROW` exists
 #: so the liability page can say that such rows are being left out.
+#:
+#: The starting balance is neither kind, as the classifier says
+#: (`OPENING_BALANCE`): the row that opens a loan with its whole principal is
+#: where the ledger begins, not a charge. Only a month with a payment in it
+#: reads interest (`liability_service._charged_interest`), and that guard
+#: still covers an opening row under any other name — but a first sync
+#: anchors a tracked loan the day before its oldest row, often in a month a
+#: payment arrived, and the whole principal then read as that month's
+#: interest and suppressed the estimate.
+_PLAIN_LEDGER_ROW = and_(BALANCE_ROW, NON_TRANSFER, not_(STARTING_BALANCE_ROW))
 LOAN_PAYMENT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, TRANSFER_LEG)
-DEBT_INTEREST_ROW = and_(BALANCE_ROW, Transaction.amount < 0, NON_TRANSFER)
-PLAIN_DEPOSIT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, NON_TRANSFER)
+DEBT_INTEREST_ROW = and_(_PLAIN_LEDGER_ROW, Transaction.amount < 0)
+PLAIN_DEPOSIT_ROW = and_(_PLAIN_LEDGER_ROW, Transaction.amount > 0)
 
 #: The counterpart of a transfer leg is one of the budget's cash accounts.
 #: Two-valued: EXISTS, never NULL, so it is safe under negation.

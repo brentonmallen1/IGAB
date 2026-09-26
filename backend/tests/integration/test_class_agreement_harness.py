@@ -21,7 +21,7 @@ import pytest
 from sqlalchemy import case, literal, select
 from sqlalchemy.orm import aliased
 
-from igab.db.models import Account, Transaction
+from igab.db.models import Account, Payee, Transaction
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     ACTIVITY_CLASS_SUBQUERY,
@@ -32,6 +32,7 @@ from igab.domain.activity_class import (
     ActivityReason,
     apply_class_joins,
 )
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 
@@ -65,7 +66,7 @@ SHIPPED = ClassImpl(name="joined", cls=ACTIVITY_CLASS, reason=ACTIVITY_REASON)
 
 
 async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
-    """Two of the eight rules never fire over the sample budget.
+    """Two of the nine rules never fire over the sample budget.
 
     Found by the drop-a-rule check below, which is the whole reason it is
     parameterised over every rule rather than testing one: realistic data is
@@ -223,6 +224,43 @@ class TestTheFixtureExercisesEveryRule:
                     ActivityClass.SAVINGS.value,
                     ActivityReason.TAGGED_SAVINGS.value,
                 ),
+            }
+
+    async def test_the_sample_openings_take_the_starting_balance_rule(self, db_session):
+        """No coverage row is needed for this rule: the sample opens its
+        accounts under the Starting Balance payee, on all four sides of the
+        budget — cash, cards, a tracked loan, a tracked brokerage. So the
+        drop-a-rule check below exercises it over real shapes, and here both
+        implementations must call every one of those rows an opening."""
+        budget = await _full_budget(db_session)
+        for cls, reason in (
+            (ACTIVITY_CLASS, ACTIVITY_REASON),
+            (ACTIVITY_CLASS_SUBQUERY, ACTIVITY_REASON_SUBQUERY),
+        ):
+            q = (
+                select(Account.on_budget, Account.classification, cls, reason)
+                .select_from(Transaction)
+                .join(Account, Account.id == Transaction.account_id)
+                .join(Payee, Payee.id == Transaction.payee_id)
+                .where(
+                    Transaction.budget_id == budget.id,
+                    Payee.name == STARTING_BALANCE_PAYEE,
+                    NOT_DELETED,
+                    POSTED,
+                    LEAF,
+                )
+            )
+            if cls is ACTIVITY_CLASS:
+                q = apply_class_joins(q)
+            rows = (await db_session.execute(q)).all()
+            assert {(r[2], r[3]) for r in rows} == {
+                (ActivityClass.OPENING_BALANCE.value, ActivityReason.STARTING_BALANCE.value)
+            }
+            assert {(r[0], r[1]) for r in rows} >= {
+                (True, "asset"),
+                (True, "liability"),
+                (False, "asset"),
+                (False, "liability"),
             }
 
 
@@ -385,5 +423,28 @@ class TestTheShippedImplementationMatchesTheOracle:
         # A payee with no transfer account at all, on an uncategorised row.
         plain = await create_payee(db_session, budget, "Corner Shop")
         await create_transaction(db_session, budget, checking, "-15.00", ANCHOR, payee=plain)
+
+        # The starting-balance rule reads the payee's NAME, which the joined
+        # side takes from the payee it already joins and the oracle from its
+        # own EXISTS. A name that only starts like it, a payee-less row (above)
+        # and an opening linked to the move that funded it — the transfer
+        # guard, read through both sides' transfer inputs.
+        cafe = await create_payee(db_session, budget, f"{STARTING_BALANCE_PAYEE} Cafe")
+        await create_transaction(db_session, budget, checking, "-12.00", ANCHOR, payee=cafe)
+        # The sample's own Starting Balance payee: names are unique per budget.
+        starting = (
+            await db_session.execute(
+                select(Payee).where(
+                    Payee.budget_id == budget.id, Payee.name == STARTING_BALANCE_PAYEE
+                )
+            )
+        ).scalar_one()
+        funded = await create_transaction(db_session, budget, checking, "-300.00", ANCHOR)
+        opened = await create_transaction(
+            db_session, budget, gone, "300.00", ANCHOR, payee=starting, transfer_id=funded.id
+        )
+        funded.transfer_id = opened.id
+        await create_transaction(db_session, budget, checking, "250.00", ANCHOR, payee=starting)
+        await db_session.flush()
 
         await assert_class_agreement(db_session, budget.id, ORACLE, SHIPPED)

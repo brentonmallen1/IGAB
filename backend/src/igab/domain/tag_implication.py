@@ -7,7 +7,7 @@ once, in `IMPLIES`, and everything that asks "which tags make a category count
 as tagged X" derives its answer from it:
 
 - `category_filters.SAVINGS_CATEGORY_KEYS` — what makes a category a savings
-  category (the classifier's rule 1, `SAVINGS_ROLE`, the Savings report);
+  category (the classifier's rule 2, `SAVINGS_ROLE`, the Savings report);
 - `activity_class.TIER_TAG_KEYS` — which tags each necessity tier reads;
 - `tag_hints.suggest_review_tags` — the import review never offers a tag a
   held or offered one already implies;

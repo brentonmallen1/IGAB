@@ -16,7 +16,8 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from igab.db.models import Category
+from igab.db.models import Category, Payee
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import (
@@ -253,6 +254,42 @@ async def test_the_discretionary_tab_has_something_to_show(db_session):
         assert {"Dining Out", "Coffee", "Shopping"} <= lines, tier
         # Tagged Essential or Cost of living: counted on the other tab.
         assert not lines & {"Rent", "Groceries", "Streaming", CAT_HOME_MAINT}, tier
+
+
+async def test_the_discretionary_uncategorized_line_holds_no_starting_balance(db_session):
+    """The card scenarios link cards owing money, under the Starting Balance
+    payee and uncategorized — debt no envelope paid for. Classed SPENDING,
+    those openings were most of the tab's Uncategorized line: $11,100 of the
+    full sample's $12,000, and all $3,420 of the starter's, a "chosen" spend
+    nobody chose. They are OPENING_BALANCE now, so the line holds only real
+    uncategorized spending, and it totals the rows its drill opens."""
+    for tier in ("starter", "full"):
+        budget, _ = await _world(db_session, tier)
+        report = await discretionary(ReportService(db_session), budget.id, 12)
+        starting = (
+            await db_session.execute(
+                select(Payee.id).where(
+                    Payee.budget_id == budget.id, Payee.name == STARTING_BALANCE_PAYEE
+                )
+            )
+        ).scalar_one()
+        rows, _, total = await TransactionRepository(db_session).list_for_budget(
+            budget.id,
+            start_date=report["window_start"],
+            end_date=report["window_end"],
+            scope="leaf",
+            posted_only=True,
+            cash_flow_only=True,
+            discretionary=True,
+            no_category=True,
+            limit=1000,
+        )
+        assert starting not in {r.payee_id for r in rows}, tier
+        line = next(
+            (g["total"] for g in report["groups"] if g["group_name"] == "Uncategorized"),
+            Decimal("0"),
+        )
+        assert line == -total, tier
 
 
 async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):

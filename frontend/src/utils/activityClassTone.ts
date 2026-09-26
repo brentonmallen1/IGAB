@@ -15,6 +15,8 @@ const TONE_BY_CLASS: Record<string, ActivityClassTone> = {
   investment_return: 'neutral',
   debt_interest: 'expense',
   transfer_internal: 'neutral',
+  // Where an account's counting begins, not money that moved in or out.
+  opening_balance: 'neutral',
 }
 
 /**

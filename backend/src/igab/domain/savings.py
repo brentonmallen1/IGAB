@@ -4,7 +4,7 @@ envelopes came to hold.
 A Savings category counts in one of two ways (`category_filters.SAVINGS_ROLE`):
 
 - **sent out** — its outflows are savings the moment they leave. The
-  classifier's rule 1 classes them SAVINGS, so they are already in the
+  classifier's rule 2 classes them SAVINGS, so they are already in the
   SAVINGS-class flows and nothing here adds to them.
 - **kept here** — the envelope's balance *is* the savings. Assigning to it is
   saving; spending from it is dissaving; moving it on to a tracked savings

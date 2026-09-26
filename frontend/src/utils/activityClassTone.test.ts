@@ -24,4 +24,10 @@ describe('activityClassTone', () => {
     expect(activityClassTone('income')).toBe('income')
     expect(activityClassTone('transfer_internal')).toBe('neutral')
   })
+
+  it('draws a starting balance as neutral, neither income nor an expense', () => {
+    // A checking account's opening deposit is positive and a card's opening
+    // debt negative; neither is money that moved.
+    expect(activityClassTone('opening_balance')).toBe('neutral')
+  })
 })

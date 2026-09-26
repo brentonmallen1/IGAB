@@ -237,9 +237,9 @@ CASES = [
     ),
     ("to an investment marked not savings", "checking", "-800.00", None, "art", SPENDING),
     ("from an investment marked not savings", "checking", "800.00", None, "art", INCOME),
-    # The brokerage's leg of buying a car with it: rule 5 without the carve-out,
+    # The brokerage's leg of buying a car with it: rule 6 without the carve-out,
     # which is for on-budget legs only. (The car's leg of the same move is
-    # rule 3, which does not ask which side of the budget the leg is on, and
+    # rule 4, which does not ask which side of the budget the leg is on, and
     # is not pinned here.)
     ("brokerage to a car", "brokerage", "-4500.00", None, "vehicle", INTERNAL),
     # The flag is read for assets only.
@@ -299,7 +299,7 @@ class TestTheFarSideOfATransferIsNeverDoubleCounted:
     @pytest.mark.parametrize("target", ["brokerage", "loan", "vehicle", "crypto", "art"])
     async def test_tracked_side_is_internal(self, db_session, target, amount):
         """Including a car's side of its own sale. The on-budget leg's carve-out
-        from rule 5 must not reach this leg: it would fall to rule 6 and call
+        from rule 6 must not reach this leg: it would fall to rule 7 and call
         the sale an investment loss inside the vehicle account."""
         w = await _world(db_session)
         out = await _linked(db_session, w, w.checking, getattr(w, target), amount)
@@ -381,7 +381,7 @@ class TestOrphanedLegsClassifyLikeLinkedOnes:
 # ─── Savings modes ────────────────────────────────────────────────────────────
 #
 # A Savings category counts its savings either when money is sent out of it
-# (rule 1, what the Savings tag always meant) or while it is kept here (its
+# (rule 2, what the Savings tag always meant) or while it is kept here (its
 # rows class by where the money went). The upgrade stored no mode anywhere, so
 # NULL must class exactly as the Savings tag did before modes existed.
 
@@ -438,7 +438,7 @@ class TestSavingsModes:
     async def test_a_savings_category_with_no_mode_classes_exactly_as_before(
         self, db_session, mode, case, account, amount, category, counterpart, expected
     ):
-        """Before modes, a Savings-tagged leg was SAVINGS by rule 1 in every
+        """Before modes, a Savings-tagged leg was SAVINGS by rule 2 in every
         shape — the tag beat every inference. Written by hand, not derived."""
         w = await _world(db_session)
         w.fund.savings_mode = mode

@@ -715,6 +715,11 @@ class CostOfLivingGroup(CostSeries):
 #: The classes worth naming when a report leaves them out. A row that fell to
 #: TRANSFER_INTERNAL is not an absence anyone is looking for; a mortgage
 #: payment is.
+#:
+#: OPENING_BALANCE is not either. A starting balance is not activity in the
+#: category it may be filed to, and the note's remedy — "Include savings &
+#: debt payments" — could never add it back, so naming it would point at a
+#: control that does nothing.
 EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
     {
         ActivityClass.SAVINGS.value,

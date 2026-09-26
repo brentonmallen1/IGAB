@@ -5,7 +5,7 @@
   off-budget accounts that count as savings (`txn_filters.SAVINGS_ACCOUNT`).
 - **On the way to savings** — what sent-out Savings envelopes
   (`category_filters.SENDS_SAVINGS`) hold until the money leaves. It counts as
-  saved when it is sent (the classifier's rule 1), so it is shown beside Saved
+  saved when it is sent (the classifier's rule 2), so it is shown beside Saved
   and never added to it.
 - **Sinking funds** — Long-term expense envelopes that are not savings
   (`category_filters.IS_SINKING_FUND`), with their target progress. Spoken for
