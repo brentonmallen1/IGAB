@@ -499,7 +499,7 @@ class EssentialsReportResponse(ApiModel):
 
     `essentials` is the Guide's figure (rolling 90 days ÷ 3, sinking-fund bills
     spread when the budget's setting is on) and what the
-    Overview card shows; the per-category table averages over `months`
+    Overview card shows; the per-category table averages over `months_averaged`
     complete months instead. `tagged` is False until something carries the
     tag — then every figure is 0 and the UI says where to apply it.
     """
@@ -508,6 +508,9 @@ class EssentialsReportResponse(ApiModel):
     months: int
     window_start: date
     window_end: date
+    #: The complete months the table's averages divide by: `months`, or fewer
+    #: when the budget's history is younger (`history_window`).
+    months_averaged: int
     #: Served whether or not anything is tagged — zeros when nothing is.
     essentials: EssentialsFigures
     monthly_total_average: Decimal

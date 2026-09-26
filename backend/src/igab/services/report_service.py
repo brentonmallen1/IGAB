@@ -46,7 +46,6 @@ from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
     clamped_month_end,
-    complete_month_window,
     month_starts,
     months_spanned,
     previous_window,
@@ -86,6 +85,7 @@ from igab.repositories.txn_filters import (
 from igab.services.essentials import reported_essentials
 from igab.services.report_basics import (
     class_excluded_note,
+    history_window,
     means_months,
 )
 from igab.services.report_day import reader_today
@@ -204,16 +204,6 @@ class ReportService:
             "earliest_month": earliest.replace(day=1) if earliest else None,
             "months_available": months_spanned(earliest, reader_today(today)) if earliest else 0,
         }
-
-    async def _complete_window(
-        self, budget_id: uuid.UUID, months: int, today: date
-    ) -> tuple[date, date]:
-        """The last `months` complete months before the reader's `today`, never
-        reaching before this budget's history — the window volatility,
-        seasonality and anomalies all read. `complete_month_window` says why it
-        clamps; this only supplies where the history starts."""
-        earliest = await self.txns.earliest_date(budget_id)
-        return complete_month_window(today, months, earliest)
 
     # ─── Existing ─────────────────────────────────────────────────────────────
 
@@ -1583,7 +1573,7 @@ class ReportService:
         stopped being the same the day this one moved: the panel added the
         partial current month the statistics leave out and dropped the oldest.
         """
-        start, end = await self._complete_window(budget_id, months, reader_today(today))
+        start, end = await history_window(self.session, budget_id, months, reader_today(today))
 
         q = (
             select(
@@ -1798,7 +1788,7 @@ class ReportService:
         # the newest column was always blank and the oldest month's cells had
         # no column at all — yet still set the colour scale and the top-20
         # ranking, the undrawn-cell defect the window was moved to fix.
-        start, end = await self._complete_window(budget_id, months, reader_today(today))
+        start, end = await history_window(self.session, budget_id, months, reader_today(today))
         months_list = month_starts(start, end)
 
         q = (
@@ -2347,7 +2337,7 @@ class ReportService:
         through last month's end.
         """
         today = reader_today(today)
-        start_date, _ = await self._complete_window(budget_id, months, today)
+        start_date, _ = await history_window(self.session, budget_id, months, today)
 
         # Get spending per category per month
         month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
@@ -2410,7 +2400,7 @@ class ReportService:
         drag it down; dropping it would only hide the newest paydays.
         """
         end_date = reader_today(today)
-        start_date, _ = complete_month_window(end_date, months)
+        start_date, _ = await history_window(self.session, budget_id, months, end_date)
 
         # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
         # a transfer into checking is not a payday, and the outflow leg of a

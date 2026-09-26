@@ -1795,6 +1795,7 @@ describe('EssentialsReport table footer', () => {
         months: 3,
         window_start: '2026-06-01',
         window_end: '2026-08-31',
+        months_averaged: 3,
         essentials: { as_paid: 6.67, spread: 6.67, spread_on: true, monthly: 6.67 },
         monthly_total_average: 6.67,
         categories: [
@@ -1834,6 +1835,50 @@ describe('EssentialsReport table footer', () => {
     expect(footer).toHaveTextContent('$20.00')
     expect(footer).not.toHaveTextContent('$20.01')
   })
+
+  it('names the months it divided by, not the setting, on a young budget', () => {
+    // "All time" on a budget three complete months old: the table averaged
+    // three, and said "the last 12" — or the last 4 — beside it.
+    setQuery({
+      data: {
+        tagged: true,
+        months: 12,
+        window_start: '2026-06-01',
+        window_end: '2026-08-31',
+        months_averaged: 3,
+        essentials: { as_paid: 1200, spread: 1200, spread_on: false, monthly: 1200 },
+        monthly_total_average: 1200,
+        categories: [
+          {
+            category_id: 'c1',
+            name: 'Rent',
+            group_name: 'Bills',
+            total: 3600,
+            monthly_average: 1200,
+            months_with_spend: 3,
+          },
+        ],
+        monthly_series: [],
+        reserve: [],
+        roadmap_range: [3, 6],
+        emergency_fund: {
+          set_up: false,
+          total: null,
+          categories: [],
+          accounts: [],
+          external: { declared: false, amount: null, as_of: null, note: null },
+        },
+        runway_months: null,
+        class_excluded: [],
+      },
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(screen.getByText(/The table averages the last/)).toHaveTextContent(
+      'The table averages the last 3 complete months'
+    )
+    expect(screen.getByText('Rent').closest('tr')).toHaveTextContent('3/3')
+    expect(screen.queryByText(/last 12/)).not.toBeInTheDocument()
+  })
 })
 
 describe('EssentialsReport headline', () => {
@@ -1842,6 +1887,7 @@ describe('EssentialsReport headline', () => {
     months: 12,
     window_start: '2025-09-01',
     window_end: '2026-08-31',
+    months_averaged: 12,
     essentials,
     monthly_total_average: 2000,
     categories: [],

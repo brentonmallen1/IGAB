@@ -70,6 +70,26 @@ def _payee_key(payee_id: uuid.UUID | None) -> str:
     return str(payee_id) if payee_id else _NO_PAYEE_KEY
 
 
+async def history_window(
+    session: AsyncSession, budget_id: uuid.UUID, months: int, today: date
+) -> tuple[date, date]:
+    """The last `months` complete months before the reader's `today`, never
+    reaching before this budget's first transaction: the window of every
+    report that averages per month.
+
+    `complete_month_window` is the arithmetic and says why the clamp matters;
+    this supplies where the history starts, which only the database knows.
+    Volatility, seasonality and anomalies read it. Income by Source, Cost of
+    Living, Discretionary, Subscriptions and the Essentials table called the
+    arithmetic without the history, so "All time" — which counts the running
+    month the window leaves out — asked for one month before the first
+    transaction, and every average divided by a month nobody recorded: three
+    complete months of history, averaged over four, read a quarter low.
+    """
+    earliest = await TransactionRepository(session).earliest_date(budget_id)
+    return complete_month_window(today, months, earliest)
+
+
 async def spending_trends(
     svc: ReportService,
     budget_id: uuid.UUID,
@@ -151,8 +171,8 @@ async def income_by_source(
     rule is `INCOME_ROW`, which both Sankey modes read too; budgeted mode
     summed positive split parents by sign until it did.
     """
-    # N complete months, like every averaging report (`complete_month_window`).
-    start_date, end_date = complete_month_window(reader_today(today), months)
+    # N complete months of this budget's history, like every averaging report.
+    start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
     q = (
@@ -417,10 +437,9 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     Independent of the Overview's selected range on purpose: the trend is
     "the last year", and a one-month range would leave it a single bar.
     """
-    earliest = await svc.txns.earliest_date(budget_id)
-    if earliest is None:
+    if await svc.txns.earliest_date(budget_id) is None:
         return []
-    start, end = complete_month_window(today, MEANS_TREND_MONTHS, earliest)
+    start, end = await history_window(svc.session, budget_id, MEANS_TREND_MONTHS, today)
     by_month = await svc._monthly_class_totals(budget_id, start, end)
     rows = []
     for month in month_starts(start, end):
@@ -566,10 +585,10 @@ async def subscriptions_report(
         return empty
 
     # N COMPLETE months — the meaning every averaging report gives `months`
-    # (`complete_month_window`). This took N calendar months through today and
+    # (`history_window`). This took N calendar months through today and
     # averaged the N−1 complete ones, so Subscriptions and Cost of Living read
     # one month fewer than Essentials over the same setting.
-    start_date, end_date = complete_month_window(reader_today(today), months)
+    start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
 
     q = (
@@ -822,7 +841,7 @@ async def cost_of_living(
     # flat: rent of 3,000 a month plus a 1,200 premium twelve months back read
     # 3,000 here and 3,100 there.
     today = reader_today(today)
-    start_date, end_date = complete_month_window(today, months)
+    start_date, end_date = await history_window(session, budget_id, months, today)
     month_list = month_starts(start_date, end_date)
 
     repo = TransactionRepository(session)
@@ -980,7 +999,7 @@ async def discretionary(
     construction (see `DISCRETIONARY_ROW`). The share between them is the
     page's arithmetic: two served figures and no missing input.
     """
-    start_date, end_date = complete_month_window(reader_today(today), months)
+    start_date, end_date = await history_window(svc.session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     rows, basis = await svc.txns.discretionary_by_category_month(budget_id, start_date, end_date)
     tagged = basis_is_chosen(basis)

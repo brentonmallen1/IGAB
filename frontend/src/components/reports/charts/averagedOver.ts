@@ -12,9 +12,9 @@
  * by it, and Subscriptions is bounded by it.
  */
 
-/** "11 complete months", "1 complete month" — the fragment both labels end
- *  on, so the two cards cannot disagree about the plural either. */
-function completeMonths(monthsAveraged: number): string {
+/** "11 complete months", "1 complete month" — the fragment every label ends
+ *  on (and the Essentials table's note), so none can disagree about the plural. */
+export function completeMonths(monthsAveraged: number): string {
   return `${monthsAveraged} complete ${monthsAveraged === 1 ? 'month' : 'months'}`
 }
 

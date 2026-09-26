@@ -59,6 +59,12 @@ async def _setup(db_session):
     return budget, checking, tag_repo, streaming
 
 
+async def _history_from(db_session, budget, checking, n: int) -> None:
+    """An untagged row `n` months back, so the budget's history reaches past
+    the window and the window is all `months` of it (`history_window`)."""
+    await create_transaction(db_session, budget, checking, "-10.00", months_ago(n))
+
+
 async def _tag_payee(db_session, budget, tag_repo, streaming, name):
     """A payee whose charges are filed to the subscription category. Kept
     under its old name so the cases below read as they did: the payee is
@@ -105,6 +111,7 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     # Untagged payee: never a subscription, no matter the cadence
     rent = await create_payee(db_session, budget, "Rent")
     await create_transaction(db_session, budget, checking, "-1000.00", months_ago(1), payee=rent)
+    await _history_from(db_session, budget, checking, 14)
 
     data = await subscriptions_report(db_session, budget.id, months=12)
 
@@ -246,6 +253,7 @@ async def test_a_service_charged_only_this_month_is_not_averaged_yet(db_session)
     await create_transaction(
         db_session, budget, checking, "-9.00", TODAY, payee=pixelworks, category=sub_cat
     )
+    await _history_from(db_session, budget, checking, 14)
 
     data = await subscriptions_report(db_session, budget.id, months=12)
 

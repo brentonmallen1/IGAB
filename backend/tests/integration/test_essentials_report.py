@@ -230,8 +230,10 @@ async def test_lists_every_tagged_category_even_with_no_spending(db_session):
     assert all(c["months_with_spend"] == 0 for c in quiet_rows)
 
     # Adding zeros changes no total: the figure was always the sum of all of
-    # them, which is what made the apparent cap so convincing.
-    assert report["monthly_total_average"] == Decimal("200.00")  # 1200 / 6
+    # them, which is what made the apparent cap so convincing. The history
+    # starts last month, so that is the one complete month it divides by.
+    assert report["months_averaged"] == 1
+    assert report["monthly_total_average"] == Decimal("1200.00")
 
 
 async def test_archived_categories_leave_the_essentials_list(db_session):

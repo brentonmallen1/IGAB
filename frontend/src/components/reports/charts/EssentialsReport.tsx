@@ -26,6 +26,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NET } from './chartColors'
 import { columnTotal, shareOfLeanMonth, worstMonth } from './essentialsView'
+import { completeMonths } from './averagedOver'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 import './EssentialsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
@@ -58,6 +59,10 @@ export function EssentialsReport({ budgetId }: Props) {
   if (!data) return <div className="reports-empty">No data available.</div>
 
   const [rangeLow, rangeHigh] = data.roadmap_range
+  // The months the table divided by — the setting, or fewer on a budget
+  // younger than it. Quoting the setting said "the last 12" over three.
+  const averaged = data.months_averaged
+  const averagedMonths = completeMonths(averaged)
   const headline = data.essentials.monthly
   const other = otherFigureNote(data.essentials, formatMoney)
   const worst = worstMonth(data.monthly_series)
@@ -77,7 +82,7 @@ export function EssentialsReport({ budgetId }: Props) {
               cut in an emergency. The narrower of the two necessity tiers: the Cost of Living
               report adds what is committed but sheddable, and shows the difference. The headline is
               the last 90 days averaged per month, the same figure the Guide’s emergency-fund target
-              uses; the table averages the last {months} complete months.
+              uses; the table averages the last {averagedMonths}.
             </p>
             <p>
               With <strong>Spread yearly bills over 12 months</strong> on, bills in categories
@@ -192,7 +197,7 @@ export function EssentialsReport({ budgetId }: Props) {
             </p>
 
             <p className="essentials-report__note">
-              The table averages the last {months} <strong>complete</strong> months (
+              The table averages the last <strong>{averagedMonths}</strong> (
               {formatMoney(data.monthly_total_average)}/mo); the headline is the rolling 90 days
               {data.essentials.spread_on ? ', with yearly bills spread over 12 months' : ''}. The
               two differ when recent spending has shifted.
@@ -259,7 +264,7 @@ export function EssentialsReport({ budgetId }: Props) {
                         </td>
                         <td className="essentials-report__num tabular">{formatMoney(c.total)}</td>
                         <td className="essentials-report__num tabular">
-                          {c.months_with_spend}/{months}
+                          {c.months_with_spend}/{averaged}
                         </td>
                       </tr>
                     )

@@ -1211,6 +1211,9 @@ export interface EssentialsReport {
   months: number
   window_start: string
   window_end: string
+  /** The complete months the table's averages divide by: `months`, or fewer
+   *  when the budget's history is younger (backend `history_window`). */
+  months_averaged: number
   essentials: EssentialsFigures
   monthly_total_average: number
   categories: {

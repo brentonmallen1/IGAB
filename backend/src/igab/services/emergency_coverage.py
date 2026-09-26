@@ -39,8 +39,8 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.domain.dates import complete_month_window, month_start, month_starts
 from igab.domain.dates import month_end as _month_end
-from igab.domain.dates import month_start
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
@@ -52,7 +52,7 @@ from igab.guide.concepts import (
 from igab.guide.detection import budget_service_from
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.emergency_fund import EmergencyFund, fund_balance_at
-from igab.services.essentials import essentials_summary
+from igab.services.essentials import essential_rows, essentials_headline, monthly_series
 from igab.services.report_day import reader_today
 
 
@@ -99,24 +99,32 @@ class EmergencyCoverageService:
         # than a second derivation pinned equal by a comment.
         budgets = budget_service_from(self.session)
 
-        # The essentials window needs a run-up: the first point's denominator
-        # spreads sinking-fund bills over twelve months, so it needs the eleven
-        # months before it (the three-month average needs only two of them).
-        lead_in = SPREAD_MONTHS - 1
-        summary = await essentials_summary(
-            self.session, budget_id, months=months + lead_in, today=today
-        )
         # The composition the Essentials report quotes — one reading, so the
         # newest point, the headline and every other surface share a total.
+        summary = await essentials_headline(self.session, budget_id, today)
         fund: EmergencyFund = summary["emergency_fund"]
         external = fund.external
         spread_on = summary["essentials"].spread_on
-        series = summary["monthly_series"]
+
+        # The essentials window needs a run-up: the first point's denominator
+        # spreads sinking-fund bills over twelve months, so it needs the eleven
+        # months before it (the three-month average needs only two of them).
+        #
+        # NOT the Essentials table's `history_window`, deliberately. That one
+        # is an average and must not divide by months before the history; this
+        # is a series of trailing averages that cut at the history themselves
+        # (`history_index`), and whose twelve-month spread reads the months
+        # before it as zeros by definition (`spread_average`). Clamping here
+        # would shorten the series under the lead-in and drop real points.
+        lead_in = SPREAD_MONTHS - 1
+        start, end = complete_month_window(today, months + lead_in)
+        months_list = month_starts(start, end)
+        rows = await essential_rows(self.session, budget_id, start, end, tagged=summary["tagged"])
+        series = monthly_series(rows, months_list)
         totals = [row["total"] for row in series]
         sinking = [row["sinking_total"] for row in series]
         first_data = history_index(
-            [row["month"] for row in series],
-            await TransactionRepository(self.session).earliest_date(budget_id),
+            months_list, await TransactionRepository(self.session).earliest_date(budget_id)
         )
 
         first_of_month = month_start(today)
