@@ -9,6 +9,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import {
   flatTiles,
   groupTiles,
+  isTile,
   tileFontSize,
   tileLabel,
   treemapGroups,
@@ -205,16 +206,18 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   )
 }
 
-function TreemapContent(props: {
+export function TreemapContent(props: {
   x?: number
   y?: number
   width?: number
   height?: number
+  depth?: number
   name?: string
   size?: number
   fill?: string
 }) {
   const { formatMoney } = useFormatters()
+  if (!isTile(props)) return null
   const {
     x = 0,
     y = 0,
