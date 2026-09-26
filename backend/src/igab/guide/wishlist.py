@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from igab.domain.dates import add_months, report_months
+from igab.domain.dates import add_months, months_ending
 from igab.domain.money import quantize_cents
 
 ZERO = Decimal("0")
@@ -143,7 +143,7 @@ def trailing_average(
 ) -> Decimal:
     """Average assigned over this month and the ones before it, missing
     months counted as nothing — the fallback pace when no target says one."""
-    total = sum((assigned_by_month.get(m, ZERO) for m in report_months(month, months)), ZERO)
+    total = sum((assigned_by_month.get(m, ZERO) for m in months_ending(month, months)), ZERO)
     return quantize_cents(total / months)
 
 

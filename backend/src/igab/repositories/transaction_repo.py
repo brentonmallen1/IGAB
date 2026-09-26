@@ -36,10 +36,10 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     tier_scope,
 )
-from igab.guide.concepts import EssentialsWindows, essentials_since, sinking_since
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
     IS_CATEGORIZABLE,
+    IS_SINKING_FUND,
     LIVE_CATEGORY,
     NOT_ARCHIVED_ANYWHERE,
     tagged_category_ids,
@@ -1291,39 +1291,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         ).scalar_one()
         return Decimal(total), basis
 
-    async def essential_windows(
-        self,
-        budget_id: uuid.UUID,
-        today: date,
-        bound_categories: Sequence[uuid.UUID] | None = None,
-        tier: NecessityTier = NecessityTier.ESSENTIAL,
-    ) -> tuple[EssentialsWindows, str]:
-        """The three signed sums `guide.concepts.essentials_monthly` reads, in
-        one query over `essential_spend`'s scope, and the rule that scoped it.
-
-        One scan of the 365-day window with FILTERed sums, so the 90-day total
-        and its sinking-fund part are the same rows by construction — the
-        spread figure subtracts one from the other, and two queries would be
-        two chances to disagree about a row.
-        """
-        scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
-        recent = Transaction.date >= essentials_since(today)
-
-        def _sum(*where):
-            return func.coalesce(func.sum(Transaction.amount).filter(*where), 0)
-
-        q = (
-            select(_sum(recent), _sum(recent, IN_SINKING_FUND), _sum(IN_SINKING_FUND))
-            .select_from(Transaction)
-            .where(*self._necessity_where(budget_id, sinking_since(today), today, scope))
-        )
-        row = (await self.session.execute(apply_class_joins(q))).one()
-        windows = EssentialsWindows(*(Decimal(v) for v in row))
-        return windows, basis
-
     async def essential_tagged_categories(self, budget_id: uuid.UUID) -> list:
-        """(id, name, group_name) for every category tagged Essential that is
-        still on the budget.
+        """(id, name, group_name, sinking) for every category tagged Essential
+        that is still on the budget; `sinking` is whether it is also a
+        Long-term expense (`IS_SINKING_FUND`).
 
         The reports built on `essential_spend_by_category_month` are built from
         TRANSACTION rows, so a tagged category that has not been spent in the
@@ -1353,6 +1324,8 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Category.id,
                 Category.name,
                 CategoryGroup.name.label("group_name"),
+                # Also a Long-term expense: what the spread setting spreads.
+                IS_SINKING_FUND.label("sinking"),
             )
             .select_from(Category)
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)

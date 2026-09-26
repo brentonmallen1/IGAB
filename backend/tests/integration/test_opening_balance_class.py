@@ -429,19 +429,22 @@ class TestTheReportsThisMonth:
     async def test_the_overview_and_burn_rate(self, db_session):
         budget, _ = await _household(db_session, _today())
         today = _today()
+        # The burn ends yesterday (`burn_as_of`), so it is read tomorrow.
+        tomorrow = today + timedelta(days=1)
         reports = ReportService(db_session)
-        cards = await reports.dashboard_metrics(budget.id, today.replace(day=1), today, today)
+        cards = await reports.dashboard_metrics(budget.id, today.replace(day=1), today, tomorrow)
         assert cards["income_this_month"] == INCOME
         assert cards["expenses_this_month"] == SPENDING
         assert cards["burn_rate_30"] == SPENDING
-        burn = await reports.burn_rate(budget.id, months=1, today=today)
+        burn = await reports.burn_rate(budget.id, months=1, today=tomorrow)
         assert burn[-1]["rolling_30"] == SPENDING
 
     async def test_the_savings_rate_divides_by_real_income(self, db_session):
         budget, _ = await _household(db_session, _today())
-        rate = await ReportService(db_session).savings_rate(budget.id, months=1)
-        assert rate["summary"]["income"] == INCOME
-        assert rate["summary"]["spending"] == SPENDING
+        # Today's month is running: its row, not the complete-month summary.
+        rate = (await ReportService(db_session).savings_rate(budget.id, months=1))["months"][-1]
+        assert rate["income"] == INCOME
+        assert rate["spending"] == SPENDING
 
     async def test_the_sankey_draws_neither_side_of_an_opening(self, db_session):
         budget, _ = await _household(db_session, _today())
@@ -596,7 +599,15 @@ class TestThePlanReportsLeaveAFiledOpeningOut:
         pvr = await reports.plan_vs_reality(budget.id, months=1)
         assert bva["total_spent"] == D("80.00")
         assert variance[-1]["actual_spent"] == D("80.00")
-        assert pvr["total_spent"] == D("80.00")
+        # This month is running, so its cells carry it; the totals are the
+        # complete months'.
+        running = [
+            cell["spent"]
+            for c in pvr["categories"]
+            for cell in c["monthly"]
+            if cell["month"] == pvr["running_month"]
+        ]
+        assert sum(running, D("0")) == D("80.00")
 
 
 # ─── The budget never reads a class ──────────────────────────────────────────

@@ -155,26 +155,28 @@ class TestIncomeVsExpense:
     def _rows(*triples):
         return [row(month=m, cls=c, total=t) for m, c, t in triples]
 
+    @staticmethod
+    def _svc(rows) -> ReportService:
+        # The window asks where the history starts first (`budget_window`).
+        return ReportService(make_session(earliest_result(None), mock_result(rows)))
+
     async def test_buckets_by_month(self):
         today = date.today()
         first = today.replace(day=1)
         last_month = add_months(first, -1)
 
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (last_month, "income", D("3000.00")),
-                        (last_month, "spending", D("-500.00")),
-                        (first, "income", D("3000.00")),
-                        (first, "spending", D("-800.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (last_month, "income", D("3000.00")),
+                (last_month, "spending", D("-500.00")),
+                (first, "income", D("3000.00")),
+                (first, "spending", D("-800.00")),
             )
         )
         result = await svc.income_vs_expense(BUDGET, months=2)
 
-        assert len(result) == 2
+        # Two complete months, then the running one.
+        assert len(result) == 3
         prev = next(r for r in result if r["month"] == last_month)
         curr = next(r for r in result if r["month"] == first)
 
@@ -183,44 +185,44 @@ class TestIncomeVsExpense:
         assert curr["income"] == D("3000.00")
         assert curr["expenses"] == D("800.00")
 
+    async def test_n_months_are_n_complete_months_and_the_running_one(self):
+        """D5: "2 months" drew one complete month and the running one; now it
+        is two complete months, and the running month is flagged apart."""
+        first = date.today().replace(day=1)
+        result = await self._svc([]).income_vs_expense(BUDGET, months=2)
+        assert [r["month"] for r in result] == [add_months(first, -2), add_months(first, -1), first]
+        assert [r["partial_month"] for r in result] == [False, False, True]
+
     async def test_savings_is_broken_out_of_expenses(self):
         """The point of the change: money moved into savings is not spending."""
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (first, "income", D("3000.00")),
-                        (first, "spending", D("-800.00")),
-                        (first, "savings", D("-1000.00")),
-                        (first, "debt_principal", D("-200.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (first, "income", D("3000.00")),
+                (first, "spending", D("-800.00")),
+                (first, "savings", D("-1000.00")),
+                (first, "debt_principal", D("-200.00")),
             )
         )
         result = await svc.income_vs_expense(BUDGET, months=1)
-        assert result[0]["expenses"] == D("800.00")
-        assert result[0]["savings"] == D("1000.00")
-        assert result[0]["debt_principal"] == D("200.00")
+        assert result[-1]["expenses"] == D("800.00")
+        assert result[-1]["savings"] == D("1000.00")
+        assert result[-1]["debt_principal"] == D("200.00")
 
     async def test_the_parts_reconcile(self):
         """net must stay income minus everything that left the accounts, or a
         stacked chart drifts away from its own total. Money-moved: with
         nothing held, saved and moved are the same figure."""
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (first, "income", D("3000.00")),
-                        (first, "spending", D("-800.00")),
-                        (first, "savings", D("-1000.00")),
-                        (first, "debt_principal", D("-200.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (first, "income", D("3000.00")),
+                (first, "spending", D("-800.00")),
+                (first, "savings", D("-1000.00")),
+                (first, "debt_principal", D("-200.00")),
             )
         )
-        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        r = (await svc.income_vs_expense(BUDGET, months=1))[-1]
         assert r["net"] == r["income"] - r["expenses"] - r["savings_moved"] - r["debt_principal"]
         assert r["savings"] == r["savings_moved"] == D("1000.00")
         assert r["savings_held"] == D("0")
@@ -228,24 +230,19 @@ class TestIncomeVsExpense:
 
     async def test_internal_transfers_are_ignored(self):
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (first, "income", D("1000.00")),
-                        (first, "transfer_internal", D("-400.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (first, "income", D("1000.00")),
+                (first, "transfer_internal", D("-400.00")),
             )
         )
-        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        r = (await svc.income_vs_expense(BUDGET, months=1))[-1]
         assert r["expenses"] == D("0")
         assert r["net"] == D("1000.00")
 
     async def test_empty_fills_all_months_with_zeros(self):
-        svc = ReportService(make_session(mock_result([])))
-        result = await svc.income_vs_expense(BUDGET, months=3)
-        assert len(result) == 3
+        result = await self._svc([]).income_vs_expense(BUDGET, months=3)
+        assert len(result) == 4
         for r in result:
             assert r["income"] == D("0")
             assert r["expenses"] == D("0")
@@ -254,11 +251,9 @@ class TestIncomeVsExpense:
 
     async def test_expenses_are_absolute_values(self):
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(mock_result(self._rows((first, "spending", D("-300.00")))))
-        )
+        svc = self._svc(self._rows((first, "spending", D("-300.00"))))
         result = await svc.income_vs_expense(BUDGET, months=1)
-        assert result[0]["expenses"] == D("300.00")
+        assert result[-1]["expenses"] == D("300.00")
 
 
 # ─── dashboard_metrics ────────────────────────────────────────────────────────
@@ -377,12 +372,17 @@ class TestBudgetVsActual:
 
 
 class TestCumulativeVariance:
+    @staticmethod
+    def _svc(assigns, spends) -> ReportService:
+        return ReportService(
+            make_session(earliest_result(None), mock_result(assigns), mock_result(spends))
+        )
+
     async def test_cumulative_carries_forward(self):
         # Use real current dates to avoid patching the date class (which breaks isinstance).
-        today = date.today()
-        first = today.replace(day=1)
-        m1 = add_months(first, -1)  # last month
-        m2 = first  # current month
+        first = date.today().replace(day=1)
+        m1 = add_months(first, -2)
+        m2 = add_months(first, -1)
 
         assigns = [
             row(month=m1, assigned=D("500.00")),
@@ -392,10 +392,9 @@ class TestCumulativeVariance:
             row(date=m1.replace(day=15), amount=D("-400.00")),
             row(date=m2.replace(day=10), amount=D("-600.00")),
         ]
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.cumulative_variance(BUDGET, months=2)
+        result = await self._svc(assigns, spends).cumulative_variance(BUDGET, months=2)
 
-        assert len(result) == 2
+        assert len(result) == 3
         r0 = next(r for r in result if r["month"] == m1)
         r1 = next(r for r in result if r["month"] == m2)
         assert r0["monthly_variance"] == D("100.00")
@@ -403,16 +402,31 @@ class TestCumulativeVariance:
         assert r1["monthly_variance"] == D("-100.00")
         assert r1["cumulative_variance"] == D("0.00")
 
+    async def test_the_running_month_is_drawn_but_not_in_the_drift(self):
+        """Its whole assignment lands on the 1st while its spending arrives
+        over the month: counted, the drift leapt "under budget" every 1st."""
+        first = date.today().replace(day=1)
+        last = add_months(first, -1)
+        assigns = [row(month=last, assigned=D("400.00")), row(month=first, assigned=D("900.00"))]
+        spends = [row(date=first, amount=D("-100.00"))]
+        result = await self._svc(assigns, spends).cumulative_variance(BUDGET, months=1)
+
+        done, running = result
+        assert (done["partial_month"], running["partial_month"]) == (False, True)
+        assert done["cumulative_variance"] == D("400.00")
+        # Its own figures so far are served; its drift is not.
+        assert running["budget_assigned"] == D("900.00")
+        assert running["actual_spent"] == D("100.00")
+        assert running["monthly_variance"] == D("800.00")
+        assert running["cumulative_variance"] is None
+
     async def test_months_with_no_data_count_as_zero(self):
-        today = date.today()
-        first = today.replace(day=1)
-        m1 = add_months(first, -1)
-        m2 = first
+        first = date.today().replace(day=1)
+        m1 = add_months(first, -2)
+        m2 = add_months(first, -1)
 
         assigns = [row(month=m1, assigned=D("400.00"))]
-        spends = []
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.cumulative_variance(BUDGET, months=2)
+        result = await self._svc(assigns, []).cumulative_variance(BUDGET, months=2)
 
         r1 = next(r for r in result if r["month"] == m1)
         r2 = next(r for r in result if r["month"] == m2)
@@ -690,31 +704,26 @@ class TestPayeeAnalysis:
 
 
 class TestBurnRate:
-    # The newest point's window ends at TODAY, so test dates anchor there.
+    # The newest point's windows end YESTERDAY (`burn_as_of`): today almost
+    # never has synced rows, so a window ending today read one quiet day low.
+    # Test dates anchor there — `as_of` below — and each case runs mid-month,
+    # on the day before a month ends, and on a 1st, whose yesterday is the
+    # last day of the month before.
     #
-    # These used to anchor to the current month's last day, with a comment
-    # saying dates relative to today "drift out of the window as the month
-    # progresses and made these tests calendar-flaky". That flakiness was the
-    # bug talking: the window ran to `_last_day` of the current month, which is
-    # a future date, so the newest point was month-to-date wearing a "30-day"
-    # label — and it contradicted the Overview's "30-Day Burn Rate", a genuine
-    # trailing thirty days, every day of the month. Anchored on today the
-    # window is stable and the label is true.
-    #
-    # The service clock is pinned. These read the real `date.today()`, and
-    # near a month's end the old `_last_day` window covered the same rows as
-    # the trailing one — so a revert passed on the 26th-30th of a 30-day month
-    # and the future-reaching window could ship on those days. Each case runs
-    # mid-month and on the day before a month ends; never ON a last day, where
-    # "tomorrow" is next month and both windows miss it.
+    # The service clock is pinned. These read the real `date.today()`, and a
+    # window reaching into the future could otherwise pass on some days of
+    # the month and ship.
 
-    @pytest.fixture(params=[date(2026, 9, 10), date(2026, 9, 29), date(2026, 2, 27)], ids=str)
+    @pytest.fixture(
+        params=[date(2026, 9, 10), date(2026, 9, 29), date(2026, 2, 27), date(2026, 10, 1)],
+        ids=str,
+    )
     def today(self, request):
         with report_today(request.param) as today:
             yield today
 
     async def _newest(self, rows, **kwargs) -> dict:
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
         return (await svc.burn_rate(BUDGET, months=1, **kwargs))[-1]
 
     @staticmethod
@@ -722,28 +731,33 @@ class TestBurnRate:
         """One (date, class, signed total) row, as the grouped query returns it."""
         return row(date=day, cls=cls, amount=D(amount))
 
-    async def test_rolling_30_sums_the_last_30_days(self, today):
+    async def test_rolling_30_sums_the_30_days_to_yesterday(self, today):
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=25), "-200.00"),
-            self._spend(today - timedelta(days=3), "-300.00"),
+            self._spend(as_of - timedelta(days=25), "-200.00"),
+            self._spend(as_of - timedelta(days=3), "-300.00"),
         ]
         assert (await self._newest(rows))["rolling_30"] == D("500.00")
 
-    async def test_the_30_day_window_is_today_and_the_29_days_before(self, today):
-        """Day 30 counting today as day 1 is in; day 31 is the prior window's."""
+    async def test_the_30_day_window_is_yesterday_and_the_29_days_before(self, today):
+        """Day 30 counting yesterday as day 1 is in; day 31 is the prior
+        window's."""
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=30), "-700.00"),
-            self._spend(today - timedelta(days=29), "-200.00"),
-            self._spend(today, "-300.00"),
+            self._spend(as_of - timedelta(days=30), "-700.00"),
+            self._spend(as_of - timedelta(days=29), "-200.00"),
+            self._spend(as_of, "-300.00"),
         ]
         newest = await self._newest(rows)
         assert newest["rolling_30"] == D("500.00")
         assert newest["prior_60"] == D("350.00")
 
-    async def test_the_newest_window_does_not_reach_past_today(self, today):
-        """A row dated tomorrow is not money that has been burned."""
+    async def test_today_is_not_in_the_newest_burn(self, today):
+        """A row dated today — the day the bank has not finished posting —
+        counts tomorrow, and a row dated tomorrow is not money burned."""
         rows = [
             self._spend(today - timedelta(days=2), "-300.00"),
+            self._spend(today, "-400.00"),
             self._spend(today + timedelta(days=1), "-900.00"),
         ]
         newest = await self._newest(rows)
@@ -753,29 +767,43 @@ class TestBurnRate:
     async def test_prior_60_is_the_sixty_days_before_the_thirty_halved(self, today):
         # 1,200 in days 31–90 is 600 per thirty; the 300 inside the last
         # thirty is not part of it, as it was of the old ninety-day average.
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=85), "-600.00"),
-            self._spend(today - timedelta(days=50), "-600.00"),
-            self._spend(today - timedelta(days=10), "-300.00"),
+            self._spend(as_of - timedelta(days=85), "-600.00"),
+            self._spend(as_of - timedelta(days=50), "-600.00"),
+            self._spend(as_of - timedelta(days=10), "-300.00"),
         ]
         cur = await self._newest(rows)
         assert cur["prior_60"] == D("600.00")
         assert cur["rolling_30"] == D("300.00")
 
     async def test_the_prior_window_ends_on_day_90(self, today):
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=90), "-300.00"),
-            self._spend(today - timedelta(days=89), "-900.00"),
+            self._spend(as_of - timedelta(days=90), "-300.00"),
+            self._spend(as_of - timedelta(days=89), "-900.00"),
         ]
         assert (await self._newest(rows))["prior_60"] == D("450.00")
 
     async def test_the_readers_today_overrides_the_server_clock(self, today):
-        """`client_today` a day ahead: tomorrow's row is the reader's today."""
+        """`client_today` a day ahead: the server's today is the reader's
+        yesterday, so its row is in the reader's newest burn."""
         ahead = today + timedelta(days=1)
-        rows = [self._spend(ahead, "-250.00")]
+        rows = [self._spend(today, "-250.00")]
         newest = await self._newest(rows, today=ahead)
         assert newest["rolling_30"] == D("250.00")
         assert newest["date"] == ahead.replace(day=1)
+
+    async def test_a_complete_months_point_ends_on_its_last_day(self, today):
+        """Every point but the running month's is the thirty days to that
+        month's last day: "12 months" is twelve complete months of points."""
+        last_month_end = today.replace(day=1) - timedelta(days=1)
+        rows = [self._spend(last_month_end, "-120.00")]
+        svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+        points = await svc.burn_rate(BUDGET, months=1)
+        assert len(points) == 2
+        assert points[0]["date"] == last_month_end.replace(day=1)
+        assert points[0]["rolling_30"] == D("120.00")
 
 
 # ─── net_worth_history ────────────────────────────────────────────────────────

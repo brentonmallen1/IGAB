@@ -116,8 +116,9 @@ class TestTheMortgageIsACostOfLiving:
         a household's costs must cover the roof over it."""
         budget, *_ = await _household(db_session)
         report = await essentials_summary(db_session, budget.id, 2)
-        # Rolling 90 days ÷ 3, over one month's activity: 3400 / 3.
-        assert report["essentials"].monthly == D("1133.33")
+        # The last three complete months, over the one month of history
+        # there is: 3,400 — not 3,400 ÷ 3 as the rolling ninety days read.
+        assert report["essentials"].monthly == D("3400.00")
 
     async def test_the_loan_side_of_the_transfer_is_not_counted_twice(self, db_session):
         """The inflow leg lands on an off-budget account, which every reader

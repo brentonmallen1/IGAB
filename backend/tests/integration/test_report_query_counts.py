@@ -209,8 +209,9 @@ class TestCategoryHistoryIsTheBudgetPagesFigure:
     async def test_an_anchored_budget_walks_from_the_anchor(self, db_session, api_client):
         """YNAB-imported budgets start the walk from the import anchor. Here
         the category is anchored at 120 two months before its first activity.
-        The page clamps navigation at the anchor, so months before it have no
-        page figure: one before the budget's history is absent, not zero."""
+        The page clamps navigation at the anchor; the report's window never
+        reaches before the budget's first transaction (`ReportWindow`), which
+        here is in the anchor month, so it opens on the anchor."""
         budget = await create_budget(db_session, api_client.test_user)
         checking = await create_account(db_session, budget, "Checking")
         group = await create_category_group(db_session, budget, "Everyday")
@@ -225,6 +226,11 @@ class TestCategoryHistoryIsTheBudgetPagesFigure:
                 amount=Decimal("120.00"),
             )
         )
+        # The history starts in the anchor month, with a row the envelope
+        # never sees (uncategorized).
+        await create_transaction(
+            db_session, budget, checking, "-1.00", anchor_month + timedelta(days=4)
+        )
         after = [add_months(THIS, -2), add_months(THIS, -1)]
         for month, assigned, spent in zip(
             after, ("100.00", "50.00"), ("-80.00", "-30.00"), strict=True
@@ -235,14 +241,14 @@ class TestCategoryHistoryIsTheBudgetPagesFigure:
             )
         await db_session.flush()
 
+        # Asked for more than the history holds: the window starts with it.
         history = await _history(api_client, budget, groceries.id, 5)
-        assert history[1:] == await _page(
+        assert history == await _page(
             db_session, budget, groceries.id, [anchor_month, *after, THIS]
         )
         # The anchor month reads the anchor; then 120 + 100 − 80 = 140, and
         # 140 + 50 − 30 = 160. Walked from zero these would read 20 and 40.
         assert [h[3] for h in history] == [
-            None,
             Decimal("120.00"),
             Decimal("140.00"),
             Decimal("160.00"),

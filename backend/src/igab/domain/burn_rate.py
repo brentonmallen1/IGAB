@@ -23,12 +23,15 @@ a comparison that could not show a change:
 change a reader expects. `MONTH_DAYS` is what "a month" means for a trailing
 window counted in days; `LOOKBACK_DAYS` is the whole span both windows cover.
 
-**The Guide reads the same ninety days.** `guide.concepts` takes its
-essentials window from `LOOKBACK_DAYS`/`LOOKBACK_MONTHS`, so on the Overview the
-Essentials card and this one read one span, and a register tagged all
-Essential can never quote an essentials month the burn's ninety days do not
-contain. Changing the comparison here moves the Guide's window with it — on
-purpose, and pinned by `test_report_windows.py`.
+**The newest burn ends yesterday** (`burn_as_of`). Today is almost always
+empty — a bank feed posts yesterday's rows today — so a window ending today
+counts one quiet day and reads low every morning. The Overview card and the
+chart's running-month point both end there.
+
+**The Guide's essentials figure is NOT this window.** It was the same ninety
+days once; it is now the last three complete months
+(`guide.concepts.essentials_at`), because a rolling ninety days jumped by a
+whole mortgage payment the day one entered or left it.
 
 **Which rows.** The caller hands in signed per-day, per-class totals over
 `txn_filters.CLASS_TOTAL_ROW` — the rows Spent This Period and Essentials sum
@@ -76,6 +79,14 @@ class BurnWindows:
     recent_end: date
     prior_start: date
     prior_end: date
+
+
+def burn_as_of(today: date) -> date:
+    """The day the newest burn ends: yesterday, the last day a bank feed has
+    finished posting. Ending on today counted a day that is nearly always
+    empty, so a steady household's 30-day burn read about a thirtieth low
+    each morning and its runway a day long."""
+    return today - timedelta(days=1)
 
 
 def burn_windows(as_of: date) -> BurnWindows:

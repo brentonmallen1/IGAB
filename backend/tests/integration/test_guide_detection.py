@@ -11,6 +11,7 @@ from decimal import Decimal
 
 import pytest
 
+from igab.domain.dates import add_months
 from igab.guide.detection import GuideDetection, liability_service_from
 from igab.repositories.tag_repo import TagRepository
 
@@ -28,6 +29,8 @@ from .factories import (
 )
 
 TODAY = date.today()
+#: The 10th of last month: inside the last complete month whatever today is.
+LAST = add_months(TODAY.replace(day=1), -1).replace(day=10)
 THIS_MONTH = TODAY.replace(day=1)
 
 
@@ -152,13 +155,15 @@ class TestEssentialExpenses:
         group = await create_category_group(db_session, budget, "Spending")
         rent = await create_category(db_session, budget, group, "Rent")
         fun = await create_category(db_session, budget, group, "Dining")
-        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
-        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        # Last month: the essentials figure reads complete months only.
+        await create_transaction(db_session, budget, account, "-3000.00", LAST, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", LAST, category=fun)
 
         found = await GuideDetection(db_session).essential_expenses(
             budget.id, bound={"category": (rent.id,)}
         )
-        assert found.value == Decimal("1000.00")
+        # One complete month of history, averaged over the one month it has.
+        assert found.value == Decimal("3000.00")
         assert "you told us are essential" in found.reason
 
     async def test_an_essential_tag_narrows_detection(self, db_session):
@@ -169,8 +174,9 @@ class TestEssentialExpenses:
         group = await create_category_group(db_session, budget, "Spending")
         rent = await create_category(db_session, budget, group, "Rent")
         fun = await create_category(db_session, budget, group, "Dining")
-        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
-        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        # Last month: the essentials figure reads complete months only.
+        await create_transaction(db_session, budget, account, "-3000.00", LAST, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", LAST, category=fun)
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
         essential = next(
@@ -179,7 +185,7 @@ class TestEssentialExpenses:
         await tags.set_category_tags(rent.id, [essential.id])
 
         found = await GuideDetection(db_session).essential_expenses(budget.id)
-        assert found.value == Decimal("1000.00")
+        assert found.value == Decimal("3000.00")
         # Categories only: a payee tag counts for nothing, so the Guide must not
         # say it narrowed to the payees someone tagged.
         assert found.reason == "the categories you tagged Essential"
@@ -192,8 +198,9 @@ class TestEssentialExpenses:
         group = await create_category_group(db_session, budget, "Spending")
         rent = await create_category(db_session, budget, group, "Rent")
         fun = await create_category(db_session, budget, group, "Dining")
-        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
-        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        # Last month: the essentials figure reads complete months only.
+        await create_transaction(db_session, budget, account, "-3000.00", LAST, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", LAST, category=fun)
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
         essential = next(
@@ -204,7 +211,7 @@ class TestEssentialExpenses:
         found = await GuideDetection(db_session).essential_expenses(
             budget.id, bound={"category": (fun.id,)}
         )
-        assert found.value == Decimal("200.00"), "the user's explicit binding wins"
+        assert found.value == Decimal("600.00"), "the user's explicit binding wins"
         assert "you told us are essential" in found.reason
 
 

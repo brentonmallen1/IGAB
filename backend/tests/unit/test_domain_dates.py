@@ -6,7 +6,7 @@ and discard the day on purpose. Mixing them up is how a yearly schedule dated
 written three different ways.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -14,12 +14,15 @@ from igab.domain.dates import (
     add_months,
     clamped_month_end,
     complete_month_window,
+    complete_months_within,
+    history_index,
     month_end,
     month_start,
     month_starts,
     months_between,
+    months_ending,
     months_spanned,
-    report_months,
+    report_window,
     trailing_start,
     weekday_occurrences,
 )
@@ -92,7 +95,7 @@ class TestMonthBuckets:
         assert month_end(date(2024, 1, 1)) == date(2024, 1, 31)
 
     def test_bucket_shift_keeps_day_one(self):
-        # The composition `report_months` is built from.
+        # The composition `months_ending` is built from.
         assert add_months(month_start(date(2024, 3, 31)), -2) == date(2024, 1, 1)
 
 
@@ -252,42 +255,143 @@ class TestMonthStarts:
         assert month_starts(date(2024, 5, 1), date(2024, 4, 30)) == []
 
 
-class TestReportMonths:
-    """A series axis: exactly N buckets, the newest one the running month."""
+class TestReportWindow:
+    """What "the last N months" means on every report: N complete months,
+    and the running month beside them, never among them (D5)."""
 
-    def test_twelve_is_twelve(self):
-        # Savings and Subscriptions each drew thirteen: subtract twelve, then
-        # include the current month as well.
-        axis = report_months(date(2026, 9, 11), 12)
-        assert len(axis) == 12
-        assert axis[0] == date(2025, 10, 1)
-        assert axis[-1] == date(2026, 9, 1)
+    def test_twelve_complete_months_and_the_running_one(self):
+        # The one "12 months" picker gave some reports twelve complete months,
+        # others eleven and the running one, and Anomalies thirteen.
+        w = report_window(date(2026, 9, 11), 12)
+        assert len(w.complete) == 12
+        assert w.complete[0] == date(2025, 9, 1)
+        assert w.complete[-1] == date(2026, 8, 1)
+        assert w.running == date(2026, 9, 1)
+        assert w.axis == [*w.complete, date(2026, 9, 1)]
 
-    def test_one_is_the_running_month(self):
-        assert report_months(date(2026, 9, 30), 1) == [date(2026, 9, 1)]
+    @pytest.mark.parametrize(
+        "today",
+        # The reader's first day, a mid-month day, the running month's last
+        # day, and a leap day: every one is twelve complete months.
+        [date(2026, 10, 1), date(2026, 10, 17), date(2026, 10, 31), date(2028, 2, 29)],
+    )
+    def test_n_complete_months_on_every_day_of_the_month(self, today):
+        w = report_window(today, 12)
+        assert len(w.complete) == 12
+        assert w.running == today.replace(day=1)
+        assert w.running not in w.complete
+        assert w.complete_end == w.running - timedelta(days=1)
+
+    def test_the_first_is_a_whole_new_running_month(self):
+        # On 1 October September is complete the moment the day turns: it
+        # leaves the running slot and joins the averaged months.
+        before = report_window(date(2026, 9, 30), 3)
+        after = report_window(date(2026, 10, 1), 3)
+        assert before.running == date(2026, 9, 1)
+        assert date(2026, 9, 1) not in before.complete
+        assert after.complete[-1] == date(2026, 9, 1)
+        assert after.running == date(2026, 10, 1)
+
+    def test_crosses_a_year(self):
+        w = report_window(date(2026, 1, 3), 3)
+        assert w.complete == (date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1))
+        assert w.complete_end == date(2025, 12, 31)
+        assert w.running == date(2026, 1, 1)
+
+    def test_is_running_names_only_todays_month(self):
+        w = report_window(date(2026, 9, 11), 12)
+        assert w.is_running(date(2026, 9, 1))
+        assert w.is_running(date(2026, 9, 30))
+        assert not w.is_running(date(2026, 8, 31))
+
+    def test_never_reaches_before_the_history(self):
+        w = report_window(date(2026, 9, 10), 12, date(2026, 7, 5))
+        assert w.complete == (date(2026, 7, 1), date(2026, 8, 1))
+        assert w.start == date(2026, 7, 1)
+
+    def test_history_starting_this_month_is_the_running_month_alone(self):
+        w = report_window(date(2026, 9, 10), 12, date(2026, 9, 2))
+        assert w.complete == ()
+        assert w.axis == [date(2026, 9, 1)]
+        # The same empty bounds `complete_month_window` gives.
+        assert w.start > w.complete_end
+
+    def test_agrees_with_the_averaging_window(self):
+        # One rule: the complete months are exactly `complete_month_window`'s.
+        today = date(2026, 9, 11)
+        assert list(report_window(today, 12).complete) == month_starts(
+            *complete_month_window(today, 12)
+        )
+
+    def test_the_axis_matches_the_bounds_a_query_would_use(self):
+        today = date(2026, 1, 31)
+        w = report_window(today, 6)
+        assert month_starts(w.start, today) == w.axis
+
+
+class TestMonthsEnding:
+    """Calendar arithmetic for a rule that means "this month and before" —
+    NOT a report window."""
+
+    def test_ends_with_the_given_month(self):
+        assert months_ending(date(2026, 9, 30), 3) == [
+            date(2026, 7, 1),
+            date(2026, 8, 1),
+            date(2026, 9, 1),
+        ]
 
     def test_crosses_a_year_oldest_first(self):
-        assert report_months(date(2024, 2, 29), 4) == [
+        assert months_ending(date(2024, 2, 29), 4) == [
             date(2023, 11, 1),
             date(2023, 12, 1),
             date(2024, 1, 1),
             date(2024, 2, 1),
         ]
 
-    def test_differs_from_the_averaging_window_by_the_running_month(self):
-        # The two windows a report can read, side by side: the same length,
-        # one month apart. A series draws "now"; an average leaves it out.
-        today = date(2026, 9, 11)
-        averaged = month_starts(*complete_month_window(today, 12))
-        assert len(averaged) == len(report_months(today, 12))
-        assert report_months(today, 12)[:-1] == averaged[1:]
 
-    def test_matches_the_bounds_a_query_would_use(self):
-        # The axis and a query over `month_starts(first, today)` agree, which
-        # is the drift `month_starts`' docstring warns about.
-        today = date(2026, 1, 31)
-        axis = report_months(today, 6)
-        assert month_starts(axis[0], today) == axis
+class TestCompleteMonthsWithin:
+    """The months a date range holds whole and that are over — what Spending
+    Trends' average divides by."""
+
+    def test_a_year_to_date_range_leaves_the_running_month_out(self):
+        months = complete_months_within(date(2026, 1, 1), date(2026, 9, 11), date(2026, 9, 11))
+        assert months == [date(2026, m, 1) for m in range(1, 9)]
+
+    def test_a_range_from_mid_month_leaves_its_first_month_out(self):
+        months = complete_months_within(date(2026, 3, 15), date(2026, 6, 30), date(2026, 9, 11))
+        assert months == [date(2026, 4, 1), date(2026, 5, 1), date(2026, 6, 1)]
+
+    def test_a_range_ending_mid_month_leaves_its_last_month_out(self):
+        months = complete_months_within(date(2026, 3, 1), date(2026, 5, 20), date(2026, 9, 11))
+        assert months == [date(2026, 3, 1), date(2026, 4, 1)]
+
+    def test_this_month_so_far_has_none(self):
+        assert complete_months_within(date(2026, 9, 1), date(2026, 9, 11), date(2026, 9, 11)) == []
+
+    def test_last_month_on_the_first_is_complete(self):
+        assert complete_months_within(date(2026, 9, 1), date(2026, 9, 30), date(2026, 10, 1)) == [
+            date(2026, 9, 1)
+        ]
+
+    def test_the_running_month_is_never_complete_even_whole(self):
+        # A range through the 30th, read on the 30th: the day is not over.
+        assert complete_months_within(date(2026, 9, 1), date(2026, 9, 30), date(2026, 9, 30)) == []
+
+
+class TestHistoryIndex:
+    MONTHS = [date(2026, m, 1) for m in range(1, 5)]
+
+    def test_no_history_cuts_nothing(self):
+        assert history_index(self.MONTHS, None) == 0
+
+    def test_history_before_the_months_cuts_nothing(self):
+        assert history_index(self.MONTHS, date(2025, 11, 20)) == 0
+
+    def test_mid_month_history_starts_that_month(self):
+        assert history_index(self.MONTHS, date(2026, 3, 13)) == 2
+
+    def test_history_after_every_month_is_past_the_end(self):
+        assert history_index(self.MONTHS, date(2026, 6, 1)) == 4
 
 
 class TestClampedMonthEnd:

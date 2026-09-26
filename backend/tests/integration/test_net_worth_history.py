@@ -155,7 +155,9 @@ class TestNetWorthHistory:
         points = await ReportService(db_session).net_worth_history(budget.id, months=3)
 
         assert [p["date"] for p in points][-1] == MONTH_START
+        # Three complete month-ends, then today.
         assert [p["net_worth"] for p in points] == [
+            Decimal("0"),
             Decimal("0"),
             Decimal("0"),
             Decimal("-8000.00"),

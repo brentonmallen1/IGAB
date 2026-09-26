@@ -42,7 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Budget, Category, CategoryGroup, CategoryTarget
 from igab.domain.carryover import next_carryover
-from igab.domain.dates import add_months, clamped_month_end, report_months
+from igab.domain.dates import add_months, clamped_month_end, report_window
 from igab.domain.drains import drains_total, shape_drains
 from igab.domain.enums import TargetStatus, TargetType
 from igab.repositories.account_repo import AccountRepository
@@ -152,12 +152,15 @@ def _section_total(envelopes: list[SavingsEnvelope]) -> Decimal:
 async def savings_report(
     session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
 ) -> dict:
-    """Saved, On the way to savings and Sinking funds over the last `months`,
-    the newest being the reader's `today`."""
+    """Saved, On the way to savings and Sinking funds over the last `months`
+    complete months and the running one (`report_window`), the newest point
+    being the reader's `today`. Balances, so not clamped to the first
+    transaction: an envelope holds money from its first assignment, which is
+    no transaction at all."""
     # No early return, tagged or not: two returned two empties (`months`
     # [] beside the window) and one dropped the drains this path keeps.
     end_date = reader_today(today)
-    month_list = report_months(end_date, months)
+    month_list = report_window(end_date, months).axis
     start_date = month_list[0]
 
     # What pulled from savings: moves out of every Savings or Emergency fund

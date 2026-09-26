@@ -204,6 +204,9 @@ async def income_vs_expense(ctx: ToolContext, args: dict) -> dict:
     shaped = [
         {
             "month": r["month"].isoformat() if isinstance(r["month"], date) else str(r["month"]),
+            # The running month's figures are month-to-date, as the chart
+            # labels them "so far" — said here in the anomaly tool's words.
+            "month_still_running": r["partial_month"],
             "income": money(r["income"]),
             "expenses": money(r["expenses"]),
             "savings": money(r["savings"]),
@@ -231,6 +234,7 @@ async def savings_rate(ctx: ToolContext, args: dict) -> dict:
                 "savings_moved": money(m.get("savings_moved")),
                 "savings_held": money(m.get("savings_held")),
                 "savings_rate": m.get("savings_rate"),
+                "month_still_running": m.get("partial_month"),
             }
             for m in data.get("months", [])[:36]
         ],
@@ -512,7 +516,7 @@ async def guide_checkup(ctx: ToolContext, args: dict) -> dict:
     your checkup", and a question the user asked the chat is not them running
     their health report.
     """
-    data = await ctx.guide.checkup(ctx.budget_id)
+    data = await ctx.guide.checkup(ctx.budget_id, today=ctx.today)
     if not data.get("enabled", False):
         # Off means off. Reporting empty findings as "nothing wrong" would
         # invent a clean bill of health nobody issued.

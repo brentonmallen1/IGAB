@@ -8,7 +8,7 @@ intended one — a rule that quietly stops matching would still partition
 correctly while putting money in the wrong bucket.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -419,11 +419,13 @@ class TestACategorizedOnBudgetLegIsSpending:
 
         reports = ReportService(db_session)
         by_cat, total = await reports.spending_by_category(w.budget.id, today.replace(day=1), today)
-        rate = await reports.savings_rate(w.budget.id, months=1)
-        burn = await reports.burn_rate(w.budget.id, months=1)
+        # Today's month is running: its row. The burn ends yesterday, so it is
+        # read tomorrow.
+        rate = (await reports.savings_rate(w.budget.id, months=1))["months"][-1]
+        burn = await reports.burn_rate(w.budget.id, months=1, today=today + timedelta(days=1))
 
         assert [(c["name"], c["total"]) for c in by_cat] == [("Property Tax", Decimal("195.00"))]
         assert total == Decimal("195.00")
-        assert rate["summary"]["spending"] == Decimal("195.00")
-        assert rate["summary"]["savings"] == Decimal("0")
+        assert rate["spending"] == Decimal("195.00")
+        assert rate["savings"] == Decimal("0")
         assert burn[-1]["rolling_30"] == Decimal("195.00")

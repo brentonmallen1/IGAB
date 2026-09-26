@@ -43,7 +43,14 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
-from igab.domain.burn_rate import Burn, DayClassTotal, burn, burn_windows, days_until_zero
+from igab.domain.burn_rate import (
+    Burn,
+    DayClassTotal,
+    burn,
+    burn_as_of,
+    burn_windows,
+    days_until_zero,
+)
 
 # Aliased: `report_basics.history_window` is the per-month reports' window;
 # this one is the projection sampler's whole-week stretch of days.
@@ -51,11 +58,11 @@ from igab.domain.cash_projection import history_window as projection_history
 from igab.domain.cash_projection import project, zero_filled
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
-    clamped_month_end,
+    ReportWindow,
     month_starts,
     months_spanned,
     previous_window,
-    report_months,
+    report_window,
 )
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
@@ -90,6 +97,7 @@ from igab.repositories.txn_filters import (
 )
 from igab.services.essentials import reported_essentials
 from igab.services.report_basics import (
+    budget_window,
     class_excluded_note,
     history_window,
     means_months,
@@ -269,7 +277,7 @@ class ReportService:
         them would double the apparent flow.
         """
         today = reader_today(today)
-        series = await self._class_series(budget_id, months, today)
+        window, series = await self._class_series(budget_id, months, today)
         held = await held_by_month(self.session, budget_id, [m for m, _ in series], today)
         results = []
         for (month_start, buckets), month_held in zip(series, held, strict=True):
@@ -277,6 +285,7 @@ class ReportService:
             results.append(
                 {
                     "month": month_start,
+                    "partial_month": window.is_running(month_start),
                     "income": f.income,
                     "expenses": f.spending,
                     "savings": f.savings,
@@ -435,7 +444,7 @@ class ReportService:
         # (`domain.burn_rate`), so the card and the chart agree by construction
         # rather than by a comment claiming they do: one such comment already
         # sat over a card and a chart that disagreed about refunds.
-        (now_burn,) = await self._burns(budget_id, [today])
+        (now_burn,) = await self._burns(budget_id, [burn_as_of(today)])
 
         # What a lean month costs — the Guide's figure, from the Guide's window,
         # so this card and the roadmap's emergency-fund target never disagree.
@@ -640,11 +649,16 @@ class ReportService:
         months: int = 12,
         today: date | None = None,
     ) -> list[dict]:
-        """Net worth at each of the last `months` month ends, the newest being
-        today. An empty register needs no branch of its own: stated assets and
-        unmanaged debts still stand on every point."""
+        """Net worth at the end of each of the last `months` complete months,
+        then today (`report_window`). An empty register needs no branch of its
+        own: stated assets and unmanaged debts still stand on every point.
+
+        Not clamped to the first transaction, as the flow reports are: a
+        balance exists before the register does — a stated asset, a debt
+        recorded by hand — and a month-end with nothing in it is a real zero,
+        not an unrecorded month."""
         today = reader_today(today)
-        grid = report_months(today, months)
+        grid = report_window(today, months).axis
         sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid], today)
         return [{"date": month, **sheet} for month, sheet in zip(grid, sheets, strict=True)]
 
@@ -691,22 +705,23 @@ class ReportService:
         today: date | None = None,
     ) -> list[dict]:
         """Per month: the trailing thirty days ending on the month's last day
-        (today, for this month) and the sixty days before them, per thirty
-        days — `domain.burn_rate`, the rule the Overview's card reads.
+        and the sixty days before them, per thirty days — `domain.burn_rate`,
+        the rule the Overview's card reads. The last `months` complete months
+        (`budget_window`), then the running month, whose point is the card's:
+        both windows ending yesterday (`burn_as_of`).
 
-        Clamped to today: the newest point is a genuine trailing thirty days,
-        the Overview's "30-Day Burn Rate", not month-to-date under its label.
         A rolling window deliberately does not tile the calendar — over a
         31-day month one day falls in no window, over a 28-day month one
         falls in two. That is what "rolling" means, and `rolling_30` says so;
         a per-calendar-month figure is what Spending Trends is for.
         """
         today = reader_today(today)
-        grid = report_months(today, months)
-        burns = await self._burns(budget_id, [clamped_month_end(m, today) for m in grid])
+        window = await budget_window(self.session, budget_id, months, today)
+        as_ofs = [burn_as_of(today) if window.is_running(m) else _month_end(m) for m in window.axis]
+        burns = await self._burns(budget_id, as_ofs)
         return [
             {"date": month_start, "rolling_30": b.recent, "prior_60": b.prior}
-            for month_start, b in zip(grid, burns, strict=True)
+            for month_start, b in zip(window.axis, burns, strict=True)
         ]
 
     async def _burns(self, budget_id: uuid.UUID, as_ofs: Sequence[date]) -> list[Burn]:
@@ -1337,7 +1352,17 @@ class ReportService:
         months: int = 12,
         today: date | None = None,
     ) -> list[dict]:
-        months_list = report_months(reader_today(today), months)
+        """Assigned against spent per month, and the running drift of the
+        complete months (`budget_window`).
+
+        The running month is served with its figures so far and NO cumulative
+        figure: its whole assignment is in on the 1st while its spending
+        arrives over thirty days, so adding it made the drift leap "under
+        budget" at the start of every month and drift back by its end.
+        """
+        today = reader_today(today)
+        window = await budget_window(self.session, budget_id, months, today)
+        months_list = window.axis
 
         assign_q = (
             select(BudgetAssignment.month, BudgetAssignment.assigned)
@@ -1355,8 +1380,8 @@ class ReportService:
         )
         assignments = (await self.session.execute(assign_q)).all()
 
-        start = months_list[0]
-        end = _month_end(months_list[-1])
+        start = window.start
+        end = today
         # planned_spend_filter: the spent side must live in the same universe
         # as the assigned side, or the subtraction compounds an
         # apples-to-oranges gap every month. The predicate's docstring lists
@@ -1386,14 +1411,17 @@ class ReportService:
             assigned = assign_by_month.get(month, Decimal("0"))
             spent = spend_by_month.get(month, Decimal("0"))
             variance = assigned - spent
-            cumulative += variance
+            running = window.is_running(month)
+            if not running:
+                cumulative += variance
             results.append(
                 {
                     "month": month,
+                    "partial_month": running,
                     "budget_assigned": assigned,
                     "actual_spent": spent,
                     "monthly_variance": variance,
-                    "cumulative_variance": cumulative,
+                    "cumulative_variance": None if running else cumulative,
                 }
             )
 
@@ -1427,8 +1455,16 @@ class ReportService:
         while the other two said nothing was spent — and `chronic` feeds the
         Guide's chronic-overspend check, so saving could be reported as a bad
         habit.
+
+        The window is `budget_window`'s: `months` complete months, and the
+        running month drawn beside them as `running_month`. Every verdict and
+        total — chronic, months over, the headline sums — reads the complete
+        months alone: a month whose assignment is all in and whose spending is
+        a week old is neither over nor under yet.
         """
-        months_list = report_months(reader_today(today), months)
+        today = reader_today(today)
+        window = await budget_window(self.session, budget_id, months, today)
+        months_list = window.axis
 
         assign_q = (
             select(
@@ -1458,8 +1494,8 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.date >= months_list[0],
-                Transaction.date <= _month_end(months_list[-1]),
+                Transaction.date >= window.start,
+                Transaction.date <= today,
                 planned_spend_filter(),
             )
         )
@@ -1491,7 +1527,7 @@ class ReportService:
             entry = cat_entry(r.category_id, r.category_name, r.group_name)
             entry["spent"][m] += abs(Decimal(str(r.amount)))
 
-        recent = set(months_list[-6:])
+        recent = set(window.complete[-6:])
         categories: list[ChronicCategory] = []
         total_assigned = zero
         total_spent = zero
@@ -1510,7 +1546,7 @@ class ReportService:
                 # envelope was coloured as overspent while the chronic flag
                 # beside it disagreed. `plan_outcome` says why the plan floors.
                 outcome = plan_outcome(assigned, spent)
-                if assigned != zero or spent != zero:
+                if not window.is_running(m) and (assigned != zero or spent != zero):
                     months_active += 1
                     if outcome.over:
                         months_over += 1
@@ -1520,8 +1556,8 @@ class ReportService:
                 monthly.append(
                     {"month": m, "assigned": assigned, "spent": spent, "variance": outcome.variance}
                 )
-            cat_assigned = sum(entry["assigned"].values(), zero)
-            cat_spent = sum(entry["spent"].values(), zero)
+            cat_assigned = sum((entry["assigned"][m] for m in window.complete), zero)
+            cat_spent = sum((entry["spent"][m] for m in window.complete), zero)
             chronic = recent_over >= 3
             if chronic:
                 chronic_count += 1
@@ -1553,6 +1589,7 @@ class ReportService:
         )
         return {
             "months": months_list,
+            "running_month": window.running,
             "categories": categories,
             "total_assigned": total_assigned,
             "total_spent": total_spent,
@@ -2220,8 +2257,9 @@ class ReportService:
 
     async def _class_series(
         self, budget_id: uuid.UUID, months: int, today: date
-    ) -> list[tuple[date, dict[str, Decimal]]]:
-        """The last `months` calendar months, oldest first, with class totals.
+    ) -> tuple[ReportWindow, list[tuple[date, dict[str, Decimal]]]]:
+        """The window (`budget_window`) and each of its months, oldest first,
+        with class totals — the running month last.
 
         `income_vs_expense` and `savings_rate` each walked
         `_monthly_class_totals` with their own copy of this reversed range, so
@@ -2230,13 +2268,13 @@ class ReportService:
         present with an empty bucket: a gap in the series is a gap in the
         chart, not a shorter chart.
 
-        The rows run from the first month's start through `today`, which the
-        caller reads once — `savings_rate` serves that window, and a second
-        clock read could name a day the rows were not read through.
+        The rows run from the window's start through `today`, which the
+        caller reads once — a second clock read could name a day the rows
+        were not read through.
         """
-        axis = report_months(today, months)
-        by_month = await self._monthly_class_totals(budget_id, axis[0], today)
-        return [(month, by_month.get(month, {})) for month in axis]
+        window = await budget_window(self.session, budget_id, months, today)
+        by_month = await self._monthly_class_totals(budget_id, window.start, today)
+        return window, [(month, by_month.get(month, {})) for month in window.axis]
 
     async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
         """The arranger for one view (`domain/view_arrangement.py`, the rule
@@ -2310,27 +2348,35 @@ class ReportService:
         """
 
         today = reader_today(today)
-        class_series = await self._class_series(budget_id, months, today)
+        window, class_series = await self._class_series(budget_id, months, today)
         axis = [month for month, _ in class_series]
         held = await held_by_month(self.session, budget_id, axis, today)
         series: list[dict] = []
-        window: dict[str, Decimal] = {}
+        totals: dict[str, Decimal] = {}
+        held_total = Decimal("0")
         for (month, buckets), month_held in zip(class_series, held, strict=True):
+            running = window.is_running(month)
+            month_figures = _rate_figures(figures(buckets, month_held))
+            series.append({"month": month, "partial_month": running, **month_figures})
+            # The headline is the complete months alone (`ReportWindow`): a
+            # few days of a new month — the bills in, the pay not yet — turned
+            # a +0.8% year into -1.8%.
+            if running:
+                continue
+            held_total += month_held
             for cls, amount in buckets.items():
-                window[cls] = window.get(cls, Decimal("0")) + amount
-            series.append({"month": month, **_rate_figures(figures(buckets, month_held))})
+                totals[cls] = totals.get(cls, Decimal("0")) + amount
 
-        # Held over the window is the months' held added up — `month_cuts`
-        # are the window's cuts, so this is `held_between(start, today)`.
         return {
             "months": series,
             # The window the summary covers, served rather than rebuilt from
-            # `months` on the client: the last month is read through today, not
-            # its end, and the savings-rate dialog asks for the contributors
-            # of exactly these rows.
-            "start_date": class_series[0][0],
-            "end_date": today,
-            "summary": _rate_figures(figures(window, sum(held, Decimal("0")))),
+            # `months` on the client: the savings-rate dialog asks for the
+            # contributors of exactly these rows. Complete months only, so it
+            # ends on the last day of last month; empty (start after end) on a
+            # budget whose history starts this month.
+            "start_date": window.start,
+            "end_date": window.complete_end,
+            "summary": _rate_figures(figures(totals, held_total)),
         }
 
     # ─── Anomaly Detection ────────────────────────────────────────────────────

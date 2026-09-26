@@ -30,6 +30,11 @@ class SpendingReportResponse(ApiModel):
 
 class IncomeExpenseMonth(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     income: Decimal
     #: Money spent. Saving and debt principal are reported separately — both
     #: leave the budget, but neither is spending.
@@ -60,13 +65,15 @@ class TopCategory(ApiModel):
 
 
 class EssentialsFigures(ApiModel):
-    """What a lean month costs, both ways (`guide.concepts.EssentialsMonthly`).
+    """What a lean month costs, both ways (`guide.concepts.essentials_at`).
 
-    `as_paid` is the 90-day figure as bills landed; `spread` swaps the
-    sinking-fund (Long-term expense) bills in it for a twelfth of the last
-    365 days' worth. `spread_on` is the budget's setting and `monthly` the one
-    it selects — what every target, runway and reserve reads. Both are always
-    served, so a surface can show the other beside it.
+    `as_paid` is the last three complete months' average as bills landed;
+    `spread` swaps the sinking-fund (Long-term expense) bills in it for a
+    twelfth of the last twelve complete months' worth. `spread_on` is the
+    budget's setting and `monthly` the one it selects — what every target,
+    runway and reserve reads. Both are always served, so a surface can show
+    the other beside it. `window_start`/`window_end` are the complete months
+    averaged, so a card can say which; None before any history.
     """
 
     # Validated from the dataclass itself: `monthly` is its property, and the
@@ -77,6 +84,8 @@ class EssentialsFigures(ApiModel):
     spread: Decimal
     spread_on: bool
     monthly: Decimal
+    window_start: date | None
+    window_end: date | None
 
 
 class FundPartOut(ApiModel):
@@ -351,6 +360,10 @@ class PlanRealityCategory(ApiModel):
 
 class PlanRealityResponse(ApiModel):
     months: list[date]
+    #: The newest of `months`, still running (`domain.dates.ReportWindow`):
+    #: its cells are month-to-date, drawn apart and labelled "so far", and no
+    #: verdict or total — chronic, months over, the headline sums — reads it.
+    running_month: date
     categories: list[PlanRealityCategory]
     total_assigned: Decimal
     total_spent: Decimal
@@ -362,10 +375,18 @@ class PlanRealityResponse(ApiModel):
 
 class VariancePoint(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     budget_assigned: Decimal
     actual_spent: Decimal
     monthly_variance: Decimal
-    cumulative_variance: Decimal
+    #: The drift of the complete months through this one. None on the running
+    #: month: its whole assignment lands on the 1st and its spending over
+    #: thirty days, so counting it read "under budget" every month's start.
+    cumulative_variance: Decimal | None
 
 
 class VarianceResponse(ApiModel):
@@ -504,8 +525,8 @@ class ReserveTarget(ApiModel):
 class EssentialsReportResponse(ApiModel):
     """What a lean month costs, from what the household tagged Essential.
 
-    `essentials` is the Guide's figure (rolling 90 days ÷ 3, sinking-fund bills
-    spread when the budget's setting is on) and what the
+    `essentials` is the Guide's figure (the last three complete months,
+    sinking-fund bills spread when the budget's setting is on) and what the
     Overview card shows; the per-category table averages over `months_averaged`
     complete months instead. `tagged` is False until something carries the
     tag — then every figure is 0 and the UI says where to apply it.
@@ -520,6 +541,10 @@ class EssentialsReportResponse(ApiModel):
     months_averaged: int
     #: Served whether or not anything is tagged — zeros when nothing is.
     essentials: EssentialsFigures
+    #: How many Essential categories are also Long-term expense. None means
+    #: the spread setting has nothing to spread, so the page hides its toggle
+    #: and says why.
+    long_term_essentials: int
     monthly_total_average: Decimal
     categories: list[EssentialsCategory]
     monthly_series: list[EssentialsMonth]
@@ -871,6 +896,11 @@ class SavingsReportResponse(ApiModel):
 
 class SavingsRateMonth(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     income: Decimal
     spending: Decimal
     #: Saved: savings_moved + savings_held (`domain.savings`).
@@ -898,8 +928,10 @@ class SavingsRateSummary(ApiModel):
 
 class SavingsRateResponse(ApiModel):
     months: list[SavingsRateMonth]
-    #: The dates `summary` covers: the first month's start through today.
-    #: The savings-rate dialog asks /savings-contributors for exactly this.
+    #: The dates `summary` covers: the complete months only, first day of the
+    #: oldest through the last day of last month. Empty (start after end) when
+    #: the history starts this month. The savings-rate dialog asks
+    #: /savings-contributors for exactly this.
     start_date: date
     end_date: date
     summary: SavingsRateSummary
@@ -1068,6 +1100,15 @@ class SpendingTrendsResponse(ApiModel):
     #: Sum over every series per month, so a total line needs no client math.
     monthly_totals: list[Decimal]
     total: Decimal
+    #: `total` over the months the range holds whole and that are over
+    #: (`domain.dates.complete_months_within`) — `months_averaged` of them.
+    #: None when there is none: a range inside the running month has no
+    #: complete month to average.
+    avg_monthly: Decimal | None
+    months_averaged: int
+    #: The running month when the range draws it: month-to-date, labelled
+    #: "so far", never in `avg_monthly`. None when the range ends before it.
+    running_month: date | None
     #: Present only when the user scoped the report (categories, a filter, a
     #: tag): activity in that scope a spending report will not count.
     class_excluded: list[SpendingClassExcluded] = []
@@ -1107,6 +1148,11 @@ class IncomeBySourceResponse(ApiModel):
 
 class CategoryHistoryMonth(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     assigned: Decimal
     activity: Decimal
     #: None for an income category: "Income categories do not hold money", so
@@ -1161,6 +1207,11 @@ class CostOfLivingResponse(ApiModel):
     #: is not what a household could not cut, so the figure is unknown.
     avg_monthly_essentials: Decimal | None
     avg_monthly_income: Decimal
+    #: Spending outside both tiers over the same window — the Discretionary
+    #: report's own rows — so the verdict can lay take-home out whole:
+    #: committed + discretionary + left over. None when nothing is tagged, as
+    #: that report serves it. The left-over is composed in `necessityView.ts`.
+    avg_monthly_discretionary: Decimal | None
     #: The gap between the tiers (cost of living less essentials) and the two
     #: ratios against take-home are NOT served. They are arithmetic on the
     #: three averages above, which the client already has and no backend path
@@ -1241,6 +1292,11 @@ class DiscretionaryResponse(ApiModel):
     #: construction. The share between them is composed on the client
     #: (`discretionaryView.ts`) — two served figures, no missing input.
     spending_total: Decimal | None
+    #: The Cost of living tier over the same window, positive — the other half
+    #: of spending. Cost of living + this report's `total` is `spending_total`
+    #: plus the debt payments the tier counts by class; the page says so in
+    #: one line (`discretionaryView.tierSumLine`). None when `tagged` is False.
+    cost_of_living_total: Decimal | None
     #: Biggest first, the Uncategorized line among them by size.
     groups: list[DiscretionaryGroup]
 
@@ -1308,9 +1364,8 @@ class CoveragePoint(ApiModel):
     month: date
     #: What the fund held at the end of this month.
     fund_balance: Decimal
-    #: The trailing three-month average of essential spending — the Guide's
-    #: 90-day window said in months, so this line and the roadmap's target
-    #: cannot tell different stories about the same household.
+    #: The essentials figure as of this month (`guide.concepts.essentials_at`),
+    #: the one the headline is — the newest point IS the headline.
     essentials: Decimal
     #: None, never zero, for a month with no essential spending to divide by.
     coverage_months: Decimal | None
@@ -1336,6 +1391,10 @@ class EmergencyCoverageResponse(ApiModel):
     coverage_months: Decimal | None
     #: The Essentials report's own figures, quoted; the targets read `.monthly`.
     essentials: EssentialsFigures
+    #: How many Essential categories are also Long-term expense. None means
+    #: the spread setting has nothing to spread, so the page hides its toggle
+    #: and says why.
+    long_term_essentials: int
     target_low: Decimal
     target_high: Decimal
     target_range: tuple[int, int]

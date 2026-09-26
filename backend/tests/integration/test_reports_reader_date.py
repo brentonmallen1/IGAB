@@ -239,7 +239,9 @@ CASES: list[Case] = [
         "savings-rate",
         "savings-rate",
         {"months": 3},
-        lambda d: _eq(d["end_date"], READER.isoformat()),
+        # The summary's window is the reader's complete months (D5): it ends
+        # the day before the reader's month began, not on the server's.
+        lambda d: _eq(d["end_date"], (READER_MONTH - timedelta(days=1)).isoformat()),
     ),
     (
         "savings-contributors",

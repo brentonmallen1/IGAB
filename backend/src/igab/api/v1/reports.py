@@ -88,7 +88,6 @@ from igab.dependencies import (
     get_tag_repo,
 )
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
-from igab.domain.dates import report_months
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
@@ -97,6 +96,7 @@ from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.essentials import essentials_summary
 from igab.services.liability_service import LiabilityService
 from igab.services.report_basics import (
+    budget_window,
     cost_of_living,
     discretionary,
     income_by_source,
@@ -436,6 +436,7 @@ async def plan_vs_reality_report(
     data = await report_svc.plan_vs_reality(budget_id, months, today)
     return PlanRealityResponse(
         months=data["months"],
+        running_month=data["running_month"],
         categories=[PlanRealityCategory.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_spent=data["total_spent"],
@@ -572,12 +573,16 @@ async def spending_trends_report(
         scope.category_ids,
         parse_uuid_list(account_ids),
         _spending_classes(include_savings),
+        today,
     )
     return SpendingTrendsResponse(
         months=data["months"],
         series=[SpendingTrendSeries.model_validate(e) for e in data["series"]],
         monthly_totals=data["monthly_totals"],
         total=data["total"],
+        avg_monthly=data["avg_monthly"],
+        months_averaged=data["months_averaged"],
+        running_month=data["running_month"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
         filter_unavailable=scope.filter_unavailable,
     )
@@ -617,7 +622,10 @@ async def category_history_report(
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    month_list = report_months(today, months)
+    # `months` complete months and the running one (`budget_window`); the
+    # running month is flagged so no headline adds a partial month in.
+    window = await budget_window(category_repo.session, budget_id, months, today)
+    month_list = window.axis
     # `envelope_series`, the Budget page's own month-by-month figures (card
     # correction and card reserves included), assembled once for the span —
     # and `in_system_group` comes off the row rather than being re-derived
@@ -634,6 +642,7 @@ async def category_history_report(
     out = [
         CategoryHistoryMonth(
             month=month,
+            partial_month=window.is_running(month),
             assigned=assigned,
             activity=activity,
             available=None if series.in_system_group else available,
@@ -956,6 +965,7 @@ async def cost_of_living_report(
         avg_monthly_cost_of_living=data["avg_monthly_cost_of_living"],
         avg_monthly_essentials=data["avg_monthly_essentials"],
         avg_monthly_income=data["avg_monthly_income"],
+        avg_monthly_discretionary=data["avg_monthly_discretionary"],
         basis=data["basis"],
         tagged=data["tagged"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],

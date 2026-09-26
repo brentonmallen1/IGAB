@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.domain.dates import add_months
+from igab.domain.dates import add_months, month_end
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_basics import income_by_source, spending_trends
 from igab.services.report_service import ReportService
@@ -71,6 +71,39 @@ class TestSpendingTrends:
         # Largest first, so the chart's top series is the one that matters.
         assert body["series"][0]["name"] == "Groceries"
         assert body["series"][0]["group_name"] == "Everyday"
+
+    async def test_the_average_divides_by_complete_months_only(self, db_session, api_client):
+        """D5: the range runs through today, so it draws the running month —
+        named, and never averaged. The average divided the window's 290 by
+        both months drawn (145) while this month was still being spent."""
+        budget, *_ = await _setup(db_session, api_client)
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-trends",
+            params={"start_date": LAST.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        body = r.json()
+        assert body["running_month"] == THIS.isoformat()
+        assert body["months_averaged"] == 1
+        assert Decimal(str(body["avg_monthly"])) == Decimal("100.00")
+
+    async def test_a_range_inside_the_running_month_has_no_average(self, db_session, api_client):
+        budget, *_ = await _setup(db_session, api_client)
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-trends",
+            params={"start_date": THIS.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        body = r.json()
+        assert (body["months_averaged"], body["avg_monthly"]) == (0, None)
+
+    async def test_a_past_range_has_no_running_month(self, db_session, api_client):
+        budget, *_ = await _setup(db_session, api_client)
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-trends",
+            params={"start_date": LAST.isoformat(), "end_date": month_end(LAST).isoformat()},
+        )
+        body = r.json()
+        assert body["running_month"] is None
+        assert body["months_averaged"] == 1
 
     async def test_a_saved_filter_scopes_it_and_a_tag_joins_the_scope(self, db_session, api_client):
         budget, _, _, groceries, fun = await _setup(db_session, api_client)
@@ -227,7 +260,10 @@ class TestCategoryHistory:
             f"/api/v1/{budget.id}/reports/category-history",
             params={"category_id": str(groceries.id), "months": 1},
         )
-        assert Decimal(str(r.json()["months"][0]["available"])) == Decimal("50.00")
+        # One complete month and the running one: this month's is the last row.
+        months = r.json()["months"]
+        assert [m["partial_month"] for m in months] == [False, True]
+        assert Decimal(str(months[-1]["available"])) == Decimal("50.00")
 
     async def test_another_budgets_category_is_not_found(self, db_session, api_client):
         budget, *_ = await _setup(db_session, api_client)
@@ -260,9 +296,10 @@ class TestEssentialsRunway:
         r = await api_client.get(f"/api/v1/{budget.id}/reports/essentials")
         assert r.status_code == 200, r.text
         body = r.json()
-        # 250 of essential spend in the last 90 days ÷ 3 = 83.33 a month.
+        # The last three complete months, and the history holds one: last
+        # month's 100 of essentials. This month's 150 is still running.
         headline = Decimal(str(body["essentials"]["monthly"]))
-        assert headline == Decimal("83.33")
+        assert headline == Decimal("100.00")
         assert [c["name"] for c in body["emergency_fund"]["categories"]] == ["Emergency Fund"]
         assert body["emergency_fund"]["set_up"] is True
         assert Decimal(str(body["emergency_fund"]["total"])) == Decimal("500.00")

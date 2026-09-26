@@ -49,6 +49,7 @@ from igab.services.category_service import CategoryService
 from igab.services.emergency_fund import EmergencyFund, emergency_fund
 from igab.services.essentials import essentials_figures
 from igab.services.liability_service import LiabilityService
+from igab.services.report_day import reader_today
 
 TWO_PLACES = Decimal("0.01")
 
@@ -189,7 +190,10 @@ class GuideDetection:
         )
 
     async def essential_expenses(
-        self, budget_id: uuid.UUID, bound: dict[str, tuple[uuid.UUID, ...]] | None = None
+        self,
+        budget_id: uuid.UUID,
+        bound: dict[str, tuple[uuid.UUID, ...]] | None = None,
+        today: date | None = None,
     ) -> Finding:
         """Roughly what a month costs — what an emergency fund is measured against.
 
@@ -198,14 +202,21 @@ class GuideDetection:
         roadmap's target and the reports quote one figure — spread or as paid,
         as the budget's setting says. Precedence: categories the user bound
         here, else what they tagged Essential, else all spending.
+
+        As of the reader's `today`: this read the server's clock while the
+        Overview card beside the roadmap read the reader's, so on a month's
+        last evening west of UTC the target counted a month the card did not.
         """
         figures, basis = await essentials_figures(
-            self.session, budget_id, date.today(), bound.get("category") if bound else None
+            self.session,
+            budget_id,
+            reader_today(today),
+            bound.get("category") if bound else None,
         )
         reason = {
             "bound": "the categories you told us are essential",
             "tag": "the categories you tagged Essential",
-            "all": "your average spending over the last 90 days",
+            "all": "your average spending over the last 3 complete months",
         }[basis]
         return Finding(
             concept_key="essential_expenses",

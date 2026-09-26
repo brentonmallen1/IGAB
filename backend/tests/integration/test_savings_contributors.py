@@ -292,14 +292,19 @@ class TestAgreesWithTheCards:
         window, the contributors carry the summary's three figures."""
         w = await _world(db_session)
         await _seed_month(db_session, w, date(2026, 1, 20))
-        await _seed_month(db_session, w, date(2026, 3, 10))
-        # Before the three-month window: in neither.
+        await _seed_month(db_session, w, date(2026, 2, 10))
+        # Before the two-month window: in neither.
         await create_transfer(
             db_session, w["budget"], w["checking"], w["hysa"], "777.77", date(2025, 12, 31)
         )
+        # In the running month, which the summary leaves out (D5): in neither.
+        await create_transfer(
+            db_session, w["budget"], w["checking"], w["hysa"], "333.33", date(2026, 3, 10)
+        )
 
-        tab = await ReportService(db_session).savings_rate(w["budget"].id, months=3)
-        assert (tab["start_date"], tab["end_date"]) == (date(2026, 1, 1), TODAY)
+        tab = await ReportService(db_session).savings_rate(w["budget"].id, months=2)
+        # The complete months only: January and February, not March so far.
+        assert (tab["start_date"], tab["end_date"]) == (date(2026, 1, 1), date(2026, 2, 28))
 
         data = await savings_contributors(
             db_session, w["budget"].id, tab["start_date"], tab["end_date"]
@@ -385,4 +390,5 @@ class TestEndpoint:
                 f"/api/v1/{budget.id}/reports/savings-rate", params={"months": 2}
             )
         assert resp.status_code == 200, resp.text
-        assert (resp.json()["start_date"], resp.json()["end_date"]) == ("2026-02-01", "2026-03-15")
+        # Two complete months, through the last day of February.
+        assert (resp.json()["start_date"], resp.json()["end_date"]) == ("2026-01-01", "2026-02-28")

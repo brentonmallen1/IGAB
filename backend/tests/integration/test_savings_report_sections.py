@@ -11,8 +11,8 @@
   envelopes.
 
 Names are the shared invented vocabulary; amounts are round enough to check on
-paper. The clock is pinned mid-March, so the window for `months=3` is January to
-March.
+paper. The clock is pinned mid-March, so the window for `months=2` is January to
+March: two complete months and the running one.
 """
 
 from datetime import date
@@ -79,7 +79,7 @@ async def _hysa(db_session, w, name="Cascade Point HYSA", **kw):
 
 
 async def _report(db_session, w) -> dict:
-    return await savings_report(db_session, w["budget"].id, months=3)
+    return await savings_report(db_session, w["budget"].id, months=2)
 
 
 def _names(section: dict) -> list[str]:
@@ -341,7 +341,7 @@ async def test_the_endpoint_serves_every_section(db_session, api_client):
     await _hysa(db_session, w, "Harborstone Reserve")
     await db_session.commit()
 
-    resp = await api_client.get(f"/api/v1/{budget.id}/reports/savings", params={"months": 3})
+    resp = await api_client.get(f"/api/v1/{budget.id}/reports/savings", params={"months": 2})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()

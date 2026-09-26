@@ -58,6 +58,7 @@ from igab.services.budget_service import BudgetService
 from igab.services.category_service import CategoryArchivePreview
 from igab.services.change_log import ChangeRecorder, binding_rows_dump
 from igab.services.liability_service import LiabilityService
+from igab.services.report_day import reader_today
 from igab.services.report_service import ReportService
 from igab.services.target_service import TargetService
 
@@ -202,8 +203,9 @@ class GuideService:
 
     # ── signals ──────────────────────────────────────────────────────────────
 
-    async def signals(self, budget_id: uuid.UUID) -> dict[str, Any]:
-        """Every concept, resolved and — where it applies — detected.
+    async def signals(self, budget_id: uuid.UUID, today: date | None = None) -> dict[str, Any]:
+        """Every concept, resolved and — where it applies — detected, as of
+        the reader's `today` (`report_day.reader_today`).
 
         With personalisation off this returns the concept list and nothing
         else: no detection query runs at all, which is what "off" has to mean
@@ -222,7 +224,8 @@ class GuideService:
                 ],
             }
 
-        essentials = await self._maybe_detect("essential_expenses", resolutions, budget_id)
+        today = reader_today(today)
+        essentials = await self._maybe_detect("essential_expenses", resolutions, budget_id, today)
 
         out: list[dict[str, Any]] = []
         for key in keys:
@@ -252,22 +255,22 @@ class GuideService:
                 )
                 continue
 
-            finding = await self._detect(key, resolution, budget_id)
+            finding = await self._detect(key, resolution, budget_id, today)
             payload = self._present(concept.key, finding, resolution, essentials)
             out.append(payload)
 
         return {"personalization": True, "concepts": out}
 
     async def _maybe_detect(
-        self, key: str, resolutions: dict[str, Resolution], budget_id: uuid.UUID
+        self, key: str, resolutions: dict[str, Resolution], budget_id: uuid.UUID, today: date
     ) -> Finding | None:
         resolution = resolutions.get(key)
         if resolution is None or not resolution.runs_detection:
             return None
-        return await self._detect(key, resolution, budget_id)
+        return await self._detect(key, resolution, budget_id, today)
 
     async def _detect(
-        self, key: str, resolution: Resolution, budget_id: uuid.UUID
+        self, key: str, resolution: Resolution, budget_id: uuid.UUID, today: date
     ) -> Finding | None:
         bound = resolution.entities or None
         match key:
@@ -276,7 +279,7 @@ class GuideService:
             case "emergency_fund":
                 return await self.detection.emergency_fund(budget_id)
             case "essential_expenses":
-                return await self.detection.essential_expenses(budget_id, bound)
+                return await self.detection.essential_expenses(budget_id, bound, today)
             case "high_interest_debt":
                 return await self.detection.high_interest_debt(budget_id)
             case "moderate_interest_debt":
@@ -379,7 +382,9 @@ class GuideService:
 
     # ── the checkup ──────────────────────────────────────────────────────────
 
-    async def checkup(self, budget_id: uuid.UUID, *, stamp: bool = False) -> dict[str, Any]:
+    async def checkup(
+        self, budget_id: uuid.UUID, *, stamp: bool = False, today: date | None = None
+    ) -> dict[str, Any]:
         """Metrics against their targets, and every finding that fires.
 
         One computation feeds three surfaces — the Checkup tab, the health
@@ -388,7 +393,7 @@ class GuideService:
         for the household member who finds the whole thing stressful.
         """
         prefs = await self.preferences(budget_id)
-        today = date.today()
+        today = reader_today(today)
         state = await self.repo.state(budget_id)
         last_run = state.get(CHECKUP_KEY, {}).get("last_run")
         if not prefs["checkup"]:
@@ -400,7 +405,7 @@ class GuideService:
                 "findings": [],
             }
 
-        signals = await self.signals(budget_id)
+        signals = await self.signals(budget_id, today)
         by_key = {c["key"]: c for c in signals["concepts"]}
 
         plan = await self.reports.plan_vs_reality(budget_id, today=today)
@@ -497,7 +502,11 @@ class GuideService:
         return loan_compare(loans, as_of)
 
     async def emergency_fund_plan(
-        self, budget_id: uuid.UUID, months: int, monthly_contribution: Decimal
+        self,
+        budget_id: uuid.UUID,
+        months: int,
+        monthly_contribution: Decimal,
+        today: date | None = None,
     ) -> EmergencyFundPlan:
         """Size an emergency fund from the signals the roadmap already shows.
 
@@ -506,7 +515,8 @@ class GuideService:
         elsewhere, which counts here as it does there and, as everywhere in
         the Guide, nowhere else.
         """
-        signals = await self.signals(budget_id)
+        today = reader_today(today)
+        signals = await self.signals(budget_id, today)
         by_key = {c["key"]: c for c in signals["concepts"]}
         essentials = by_key.get("essential_expenses", {})
         return emergency_fund(
@@ -514,7 +524,7 @@ class GuideService:
             essentials_monthly=essentials.get("value"),
             months=months,
             monthly_contribution=monthly_contribution,
-            today=date.today(),
+            today=today,
             essentials=essentials.get("essentials"),
         )
 

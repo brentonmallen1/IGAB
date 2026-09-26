@@ -717,10 +717,17 @@ class TestScenarios:
         account = await create_account(db_session, budget, account_type="checking")
         bills = await create_category_group(db_session, budget, "Bills")
         rent = await create_category(db_session, budget, bills, "Rent")
-        # 3,000 of spending over the last 90 days: essentials read 1,000 a month.
-        await create_transaction(
-            db_session, budget, account, "-3000.00", TODAY - timedelta(days=10), category=rent
-        )
+        # 1,000 of rent in each of the last three complete months: essentials
+        # read 1,000 a month whatever day it is.
+        for back in (1, 2, 3):
+            await create_transaction(
+                db_session,
+                budget,
+                account,
+                "-1000.00",
+                add_months(THIS_MONTH, -back).replace(day=10),
+                category=rent,
+            )
         savings = await create_category_group(db_session, budget, "Savings")
         ef = await create_category(db_session, budget, savings, "Emergency Fund")
         await tag_with_system_tags(db_session, ef, "emergency_fund")
