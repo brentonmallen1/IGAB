@@ -179,34 +179,39 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   'spending-trends': {
     scope: 'categories',
     summary: 'Spending month by month in the categories you choose.',
-    counts: 'Spending only, unless you include savings and debt payments.',
+    counts:
+      'Spending only, net of refunds, with uncategorized spending as its own line; the average is over complete months. Include savings and debt payments to add them.',
     leavesOut:
       'Transfers, and savings and debt payments unless you include them — a note says how much.',
   },
   'spending-breakdown': {
     scope: 'categories',
     summary: "Where the period's spending went, by group then category.",
-    counts: 'Spending only, unless you include savings and debt payments.',
+    counts:
+      'Spending only, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments.',
     leavesOut: 'Transfers, and savings and debt payments unless you include them.',
   },
   pareto: {
     scope: 'on-budget-filterable',
     summary: 'Where spending concentrates — the 80/20 view.',
     counts:
-      'Spending only by group, category or payee, unless you include savings and debt payments.',
+      'Spending only by group, category or payee, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments.',
     leavesOut: 'Transfers, and savings and debt payments unless you include them.',
   },
   treemap: {
     scope: 'on-budget-filterable',
     summary: 'Spending as rectangles sized by amount.',
-    counts: 'Spending only by group or category, unless you include savings and debt payments.',
-    leavesOut: 'Transfers, and savings and debt payments unless you include them.',
+    counts:
+      'Spending only by group or category, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments.',
+    leavesOut:
+      'Transfers, savings and debt payments unless you include them, and any line whose refunds outweigh its spending — it has no area to draw.',
   },
   seasonality: {
     scope: 'categories',
-    summary: 'A category × month heatmap of spending peaks.',
-    counts: 'Every categorized outflow, whatever its class — savings and debt outflows appear.',
-    leavesOut: 'Uncategorized rows.',
+    summary: 'A category × month heatmap of spending peaks, shaded within each category.',
+    counts:
+      'Spending only, net of refunds, with uncategorized spending as its own line, over complete months, unless you include savings and debt payments.',
+    leavesOut: 'The month in progress, and all but the 20 largest categories.',
   },
   subscriptions: {
     scope: 'on-budget',
@@ -230,18 +235,19 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   payees: {
     scope: 'on-budget-filterable',
     summary: 'Your top payees by spending, and which ones recur.',
-    counts: 'Spending only, per payee.',
-    leavesOut: 'Savings, debt payments and transfers.',
+    counts:
+      'Spending only, per payee, net of refunds; a purchase split across envelopes counts once.',
+    leavesOut: 'Savings, debt payments, transfers, and spending with no payee.',
   },
   'day-patterns': {
     scope: 'on-budget-filterable',
-    summary: 'Spending by day of the week.',
-    counts: 'Spending only.',
+    summary: 'A typical day of each weekday, by the bank posting date.',
+    counts: 'Spending only, net of refunds, divided by how many of each weekday the range holds.',
     leavesOut: 'Savings, debt payments and transfers.',
   },
   timeline: {
     scope: 'on-budget-filterable',
-    summary: 'Your largest transactions, newest first.',
+    summary: 'Your largest transactions, newest first — money out unless you choose All.',
     counts: 'Spending and income, with savings and debt payments labelled apart.',
     leavesOut: 'Transfers between budget accounts.',
   },
@@ -252,10 +258,11 @@ export const REPORT_SECTIONS: Record<ReportSectionId, ReportSectionEntry> = {
     label: 'Payday Effect',
     tab: 'day-patterns',
     scope: 'on-budget',
-    summary: 'Spending in the days after each payday against your baseline.',
+    summary: "The median payday's spending on each day after it, against a typical day.",
     counts:
-      'Spending only, around paydays: income deposits of a minimum amount into cash accounts.',
-    leavesOut: 'Subscriptions, and transfers or card credits as paydays.',
+      'Discretionary spending only, net of refunds, around paydays: income deposits of a minimum amount into cash accounts.',
+    leavesOut:
+      'Essential and Cost of living categories, subscriptions, and transfers or card credits as paydays.',
   },
 }
 

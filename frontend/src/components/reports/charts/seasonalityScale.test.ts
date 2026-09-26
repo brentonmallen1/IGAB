@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './seasonalityScale'
+import { abbreviateValue, buildCellMap, intensityPct, rowMaxima } from './seasonalityScale'
 import { PRIVACY_MASK } from '../../../utils/money'
 import { compactMoney } from '../../../utils/moneyAxis'
 
@@ -20,29 +20,41 @@ describe('buildCellMap', () => {
   })
 })
 
-describe('maxCellValue', () => {
-  it('finds the hottest cell', () => {
-    expect(maxCellValue(cells)).toBe(900)
+describe('the Uncategorized row', () => {
+  it('is keyed apart from every category', () => {
+    const map = buildCellMap([{ category_id: null, month: '2026-01-01', total: 40 }])
+    expect(map.get('__uncategorized__|2026-01-01')).toBe(40)
+  })
+})
+
+describe('rowMaxima', () => {
+  it("finds each row's busiest month, not the grid's", () => {
+    // One scale for the grid let the biggest row set it, and every other
+    // row's seasonality sat in the palest shade.
+    const maxima = rowMaxima(cells)
+    expect(maxima.get('c1')).toBe(120.5)
+    expect(maxima.get('c2')).toBe(900)
   })
 
-  it('floors at 1 so an empty grid never divides by zero', () => {
-    expect(maxCellValue([])).toBe(1)
+  it('has no top for a row of refunds only', () => {
+    expect(rowMaxima([{ category_id: 'r', month: '2026-01-01', total: -90 }]).has('r')).toBe(false)
   })
 })
 
 describe('intensityPct', () => {
-  it('scales linearly to the max and rounds', () => {
-    expect(intensityPct(450, 900)).toBe(50)
-    expect(intensityPct(900, 900)).toBe(100)
+  it("scales to the row's busiest month and rounds", () => {
+    expect(intensityPct(60.25, 120.5)).toBe(50)
+    expect(intensityPct(120.5, 120.5)).toBe(100)
   })
 
   it('caps at 100 even past the max', () => {
     expect(intensityPct(1200, 900)).toBe(100)
   })
 
-  it('is null for empty cells or an empty scale', () => {
+  it('is null for an empty cell, a refund, or a row with no top', () => {
     expect(intensityPct(0, 900)).toBeNull()
-    expect(intensityPct(10, 0)).toBeNull()
+    expect(intensityPct(-90, 900)).toBeNull()
+    expect(intensityPct(10, undefined)).toBeNull()
   })
 })
 

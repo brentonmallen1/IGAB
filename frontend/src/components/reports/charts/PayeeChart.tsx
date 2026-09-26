@@ -23,6 +23,7 @@ import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { PAYEE_RANKED } from './reportControls'
+import { payeeSubName, recurringRule } from './payeeView'
 
 interface Props {
   budgetId: string
@@ -64,17 +65,23 @@ export function PayeeReport({ budgetId }: Props) {
     fullName: p.payee_name,
     payeeId: p.payee_id,
     Amount: p.total,
-    Visits: p.count,
+    Purchases: p.count,
     isRecurring: p.is_recurring,
   }))
 
+  /** Every leaf row of the classes the ranking counted, at this payee of
+   *  record, whichever way it went. It listed parent rows of every class
+   *  with outflows only, so a returned order was missing from a list whose
+   *  bar it had lowered — and a split's savings leg was in a list whose bar
+   *  had left it out. */
   function drillTo(payeeId: string, name: string) {
+    if (!data) return
     setDrillDown({
       kind: 'payee',
       label: name,
-      scope: 'parent',
-      direction: 'outflow',
+      scope: 'leaf',
       payeeIds: [payeeId],
+      activityClasses: data.counted_classes,
       startDate: filters.startDate,
       endDate: filters.endDate,
     })
@@ -83,7 +90,7 @@ export function PayeeReport({ budgetId }: Props) {
   const tableRows = displayed.map((p) => ({
     id: p.payee_id,
     name: p.payee_name,
-    subName: p.is_recurring ? 'Recurring' : `${p.count} transactions`,
+    subName: payeeSubName(p),
     amount: p.total,
     pct: p.pct,
   }))
@@ -96,6 +103,7 @@ export function PayeeReport({ budgetId }: Props) {
   // means no payees, and nothing below draws.
   const payeeCount = data?.payee_count ?? 0
   const ranked = payees.length
+  const rule = recurringRule(data?.recurring_min_months ?? null)
 
   return (
     <div className="report-section surface">
@@ -103,9 +111,11 @@ export function PayeeReport({ budgetId }: Props) {
         <h2 className="report-section__title">Payee Analysis</h2>
         <ReportInfoButton title="Payee Analysis">
           <p>
-            Ranks your top payees by total spending in the selected period.{' '}
-            <strong>Highlighted bars</strong> indicate recurring payees (appeared in 3+ different
-            months).
+            Ranks your top payees by total spending in the selected period, net of refunds: a return
+            lowers its shop&apos;s total. A payee is <strong>recurring</strong> when it was paid in
+            at least half the months of the range, and in no fewer than three; a range shorter than
+            three months calls nothing recurring. The count is purchases — a trip split across
+            envelopes is one.
           </p>
           <p>
             The chart and table show the <strong>{TOP_SHOWN} largest</strong> payees (Recurring
@@ -121,9 +131,7 @@ export function PayeeReport({ budgetId }: Props) {
           <ReportScopeNote report="payees" />
           <SpendingClassNote />
         </ReportInfoButton>
-        <p className="report-section__subtitle">
-          Top payees by spending. Recurring = appeared in 3+ months.
-        </p>
+        <p className="report-section__subtitle">Top payees by spending. {rule}.</p>
         <div className="flex-row ms-auto">
           <button
             className={`report-btn ${view === 'top' ? 'report-btn--active' : ''}`}
@@ -136,6 +144,8 @@ export function PayeeReport({ budgetId }: Props) {
             className={`report-btn ${view === 'recurring' ? 'report-btn--active' : ''}`}
             onClick={() => setView('recurring')}
             type="button"
+            disabled={data?.recurring_min_months === null}
+            title={data?.recurring_min_months === null ? rule : undefined}
           >
             Recurring ({recurring.length})
           </button>
@@ -247,11 +257,11 @@ export function PayeeReport({ budgetId }: Props) {
             <div className="chart-key">
               <span className="chart-key__item">
                 <span className="chart-key__swatch" style={{ background: CHART_COLORS[0] }} />
-                One-off
+                Occasional
               </span>
               <span className="chart-key__item">
                 <span className="chart-key__swatch" style={{ background: CHART_COLORS[1] }} />
-                Recurring (3+ months)
+                {rule}
               </span>
             </div>
             <DrillDownTable

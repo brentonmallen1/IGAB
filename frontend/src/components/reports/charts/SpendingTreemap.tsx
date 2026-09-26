@@ -1,20 +1,23 @@
 import { useState, useMemo, useRef } from 'react'
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { ChevronRight } from 'lucide-react'
-import { resolveGroupBy, spendingDrillClasses, useReportStore } from '../../../stores/reportStore'
+import { resolveGroupBy, useReportStore } from '../../../stores/reportStore'
 import { useSpendingGroupedReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import {
+  drawableTiles,
   flatTiles,
+  groupColorKey,
   groupTiles,
   isTile,
   tileFontSize,
   tileLabel,
   treemapGroups,
-  type TreeNode,
 } from './treemapTiles'
+import { ChartLegend } from './ChartLegend'
+import { categoryTarget } from '../drillScope'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -45,6 +48,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
     filters.viewId
   )
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [highlight, setHighlight] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
   // Reset the drill when the group-by mode OR the view changes (state adjusted
@@ -67,13 +71,20 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 
   // groupBy=group → show only top-level groups (no drill-down)
   // groupBy=category → show all categories flat (colored by group)
-  const visibleItems: TreeNode[] = useMemo(() => {
-    if (groupBy === 'category') return flatTiles(items, groups)
+  const { drawn: visibleItems, undrawn } = useMemo(() => {
+    if (groupBy === 'category') return drawableTiles(flatTiles(items, groups, grandTotal))
     // group (or payee fallback) → group-level boxes, or the selected group's
     // categories once drilled (category mode already returned above)
-    if (selectedGroup) return groups.get(selectedGroup)?.children ?? []
-    return groupTiles(groups, grandTotal)
+    if (selectedGroup) return drawableTiles(groups.get(selectedGroup)?.children ?? [])
+    return drawableTiles(groupTiles(groups, grandTotal))
   }, [groupBy, selectedGroup, groups, items, grandTotal])
+  const colorKey = useMemo(() => groupColorKey(groups), [groups])
+  // Pointing at a group in the key fades every other group's tiles, which is
+  // what tells two groups apart once the palette repeats.
+  const shown = useMemo(
+    () => visibleItems.map((t) => ({ ...t, dimmed: !!highlight && t.groupName !== highlight })),
+    [visibleItems, highlight]
+  )
 
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -91,8 +102,13 @@ export function SpendingTreemapReport({ budgetId }: Props) {
           </p>
           <p>
             <strong>Group</strong> mode: shows category groups only. <strong>Category</strong> mode:
-            shows all categories flat, colored by group. Use the global <em>Group by</em> filter to
-            switch. In Group mode you can click a tile to drill into its categories.
+            shows all categories flat, shaded by group, with a key to the groups below. Use the
+            global <em>Group by</em> filter to switch. In Group mode you can click a tile to drill
+            into its categories.
+          </p>
+          <p>
+            Share is of what is on screen: the whole period, or the group you drilled into — as on
+            the Breakdown.
           </p>
           <p>Clicking a category tile opens the list of transactions behind it below the chart.</p>
           <ReportScopeNote report="treemap" />
@@ -145,7 +161,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         <div ref={captureRef} className="report-capture">
           <ResponsiveContainer width="100%" height={chartHeight}>
             <Treemap
-              data={visibleItems}
+              data={shown}
               dataKey="size"
               aspectRatio={4 / 3}
               stroke="var(--bg-primary)"
@@ -158,17 +174,16 @@ export function SpendingTreemapReport({ budgetId }: Props) {
                   return
                 }
                 // Category tiles (flat mode, or drilled into a group) open the
-                // transaction panel below the chart
+                // transaction panel below the chart: every row of the classes
+                // the tiles were sized from, refunds included.
                 const item = visibleItems.find((i) => i.name === node.name)
-                if (item?.id) {
+                if (item && data) {
                   setDrillDown({
                     kind: 'category',
                     label: item.name,
                     scope: 'leaf',
-                    direction: 'outflow',
-                    categoryIds: [item.id],
-                    // Same classes the tiles were sized from.
-                    activityClasses: spendingDrillClasses(includeSavings),
+                    ...categoryTarget([item.categoryId]),
+                    activityClasses: data.counted_classes,
                     startDate: filters.startDate,
                     endDate: filters.endDate,
                   })
@@ -200,7 +215,17 @@ export function SpendingTreemapReport({ budgetId }: Props) {
               />
             </Treemap>
           </ResponsiveContainer>
+          {groupBy === 'category' && (
+            <ChartLegend series={colorKey} active={highlight} onHover={setHighlight} />
+          )}
         </div>
+      )}
+      {undrawn > 0 && (
+        <p className="report-section__subtitle">
+          Refunds outweighed spending on {undrawn} {undrawn === 1 ? 'line' : 'lines'}, so{' '}
+          {undrawn === 1 ? 'it has' : 'they have'} no area to draw; the total still counts{' '}
+          {undrawn === 1 ? 'it' : 'them'}.
+        </p>
       )}
     </div>
   )
@@ -215,6 +240,7 @@ export function TreemapContent(props: {
   name?: string
   size?: number
   fill?: string
+  dimmed?: boolean
 }) {
   const { formatMoney } = useFormatters()
   if (!isTile(props)) return null
@@ -226,16 +252,18 @@ export function TreemapContent(props: {
     name = '',
     size = 0,
     fill = 'var(--chart-1)',
+    dimmed = false,
   } = props
+  const opacity = dimmed ? 0.25 : 0.85
   if (width < 30 || height < 20)
     return (
       <g>
-        <rect x={x} y={y} width={width} height={height} fill={fill} />
+        <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={opacity} />
       </g>
     )
   return (
     <g>
-      <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={0.85} rx={3} />
+      <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={opacity} rx={3} />
       {height > 30 && (
         <text
           x={x + width / 2}

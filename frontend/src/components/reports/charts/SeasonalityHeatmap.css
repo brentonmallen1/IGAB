@@ -14,6 +14,17 @@
   font-size: var(--font-size-sm);
 }
 
+/* The category column stays put while the months scroll under it: on a
+   phone the grid opens on the newest month (scrolled right), and a row of
+   figures with its name scrolled off is a row of anonymous numbers. */
+.heatmap__cat-header,
+.heatmap__cat-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface-raised);
+}
+
 .heatmap__cat-header {
   text-align: left;
   padding: 6px var(--spacing-sm);
@@ -40,6 +51,8 @@
   padding: 4px var(--spacing-sm);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+  font-weight: normal;
+  text-align: left;
   /* No max-width or ellipsis here: the row heading is cut in TS by
      truncateLabel, which every chart shares. The CSS copy never fired — 20
      characters fit inside its 180px — so it was free to say anything. */

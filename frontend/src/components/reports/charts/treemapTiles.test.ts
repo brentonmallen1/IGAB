@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { chartColor } from './chartColors'
 import {
+  drawableTiles,
   flatTiles,
+  groupColorKey,
   groupTiles,
   isTile,
   tileFontSize,
@@ -26,13 +28,12 @@ describe('isTile', () => {
   })
 })
 
-const item = (id: string, parent_id: string | null, total: number) => ({
+const item = (id: string | null, parent_id: string | null, total: number) => ({
   id,
-  name: id,
+  name: id ?? 'Uncategorized',
   parent_id,
-  parent_name: parent_id ? `Group ${parent_id}` : null,
+  parent_name: parent_id ? `Group ${parent_id}` : 'Uncategorized',
   total,
-  pct: 0,
 })
 
 const ITEMS = [item('rent', 'home', 900), item('dining', 'fun', 200), item('power', 'home', 120)]
@@ -53,7 +54,7 @@ describe('treemap colours', () => {
       ['fun', { name: 'Fun', total: 200, colorIdx: 1, children: [] }],
       ['home', { name: 'Home', total: 1020, colorIdx: 0, children: [] }],
     ])
-    const fills = Object.fromEntries(flatTiles(ITEMS, groups).map((t) => [t.id, t.fill]))
+    const fills = Object.fromEntries(flatTiles(ITEMS, groups, 1220).map((t) => [t.id, t.fill]))
     expect(fills).toEqual({ rent: chartColor(0), power: chartColor(0), dining: chartColor(1) })
   })
 
@@ -69,7 +70,7 @@ describe('treemap colours', () => {
   it('draws a group tile and its categories in one colour, in every mode', () => {
     const groups = treemapGroups(ITEMS)
     const groupFill = Object.fromEntries(groupTiles(groups, 1220).map((t) => [t.name, t.fill]))
-    for (const tile of flatTiles(ITEMS, groups)) {
+    for (const tile of flatTiles(ITEMS, groups, 1220)) {
       expect(tile.fill).toBe(groupFill[tile.parent_name as string])
     }
     for (const g of groups.values()) {
@@ -106,5 +107,55 @@ describe('tileFontSize', () => {
   it('is 12px until the tile is too narrow for it', () => {
     expect(tileFontSize(200)).toBe(12)
     expect(tileFontSize(70)).toBe(10)
+  })
+})
+
+describe('share', () => {
+  it('is of the group once drilled into, as the Breakdown states it', () => {
+    // A drilled group's tiles stated their share of the whole period beside
+    // a Breakdown that says "of what is on screen".
+    const home = treemapGroups(ITEMS).get('home')!
+    const rent = home.children.find((c) => c.name === 'rent')!
+    expect(rent.pct).toBeCloseTo((900 / 1020) * 100, 5)
+  })
+
+  it('is of the whole period in category mode', () => {
+    const groups = treemapGroups(ITEMS)
+    const rent = flatTiles(ITEMS, groups, 1220).find((t) => t.name === 'rent')!
+    expect(rent.pct).toBeCloseTo((900 / 1220) * 100, 5)
+  })
+})
+
+describe('the Uncategorized line', () => {
+  it('is a tile of its own that opens by "no category"', () => {
+    const items = [...ITEMS, item(null, null, 40)]
+    const tile = flatTiles(items, treemapGroups(items), 1260).find((t) => t.categoryId === null)!
+    expect(tile).toMatchObject({ id: '__uncategorized__', name: 'Uncategorized' })
+  })
+})
+
+describe('drawableTiles', () => {
+  it('leaves off a line that netted to nothing or below, and counts it', () => {
+    // Net of refunds: a category that took back more than it spent has no
+    // area. It stays in the total; the page says how many were left off.
+    const items = [...ITEMS, item('returns', 'fun', -90), item('quiet', 'fun', 0)]
+    const { drawn, undrawn } = drawableTiles(flatTiles(items, treemapGroups(items), 1130))
+    expect(drawn.map((t) => t.name)).toEqual(['rent', 'dining', 'power'])
+    expect(undrawn).toBe(2)
+  })
+})
+
+describe('groupColorKey', () => {
+  it('names each group once, in the colour its tiles wear', () => {
+    // Category mode shaded every tile by its group and named no group.
+    const groups = treemapGroups(ITEMS)
+    expect(groupColorKey(groups)).toEqual([
+      { name: 'Group home', color: chartColor(0) },
+      { name: 'Group fun', color: chartColor(1) },
+    ])
+    for (const tile of flatTiles(ITEMS, groups, 1220)) {
+      const key = groupColorKey(groups).find((k) => k.name === tile.groupName)!
+      expect(tile.fill).toBe(key.color)
+    }
   })
 })

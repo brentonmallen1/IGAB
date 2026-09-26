@@ -35,3 +35,28 @@ export function drillScope(scope: ReportScope, ownCategoryIds?: string[]): Drill
     filterId: scope.filterId ?? undefined,
   }
 }
+
+/** The client key of a category line: its id, or this for the Uncategorized
+ *  line, which has none (served with `id: null`). A key no id can be, so a
+ *  category someone named "Uncategorized" is not the line. */
+export const UNCATEGORIZED_KEY = '__uncategorized__'
+
+export function categoryKey(id: string | null): string {
+  return id ?? UNCATEGORIZED_KEY
+}
+
+/**
+ * Which rows a category line — or a group of them — opens.
+ *
+ * The Uncategorized line has no id, so it opens by `noCategory`; an empty
+ * `categoryIds` would filter nothing and list the whole window. A group is
+ * either categories or the Uncategorized line alone (the server files
+ * uncategorized spending under a group of its own), so the two are never
+ * sent together — they would AND, and match nothing.
+ */
+export function categoryTarget(
+  ids: readonly (string | null)[]
+): Pick<DrillScope, 'categoryIds'> & { noCategory?: true } {
+  const real = ids.filter((id): id is string => id !== null)
+  return real.length === 0 ? { noCategory: true } : { categoryIds: real }
+}

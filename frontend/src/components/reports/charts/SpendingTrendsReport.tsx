@@ -17,7 +17,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { ChartLegend } from './ChartLegend'
@@ -38,7 +38,7 @@ interface Props {
  * follows a tag follows it here too.
  */
 export function SpendingTrendsReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMonth, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(340)
   const { filters } = useReportStore()
@@ -65,8 +65,8 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   // Lines draw the named series alone: they are not a stack, and an Other
   // line would be a series nobody asked to follow.
   const stacked = useMemo(
-    () => (data ? stackTrends(data, rolled, formatMonth) : { rows: [], series: [] }),
-    [data, rolled, formatMonth]
+    () => (data ? stackTrends(data, rolled, formatMonthShort) : { rows: [], series: [] }),
+    [data, rolled, formatMonthShort]
   )
   const series =
     chart === 'stacked' ? stacked.series : stacked.series.filter((s) => s.key !== OTHER_KEY)
@@ -75,7 +75,10 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const avg = data.months.length ? data.total / data.months.length : 0
+  // Served, over complete months only: `total / months.length` counted the
+  // running month as a whole one and read low all month.
+  const avg = data.monthly_average
+  const lastMonth = data.months[data.months.length - 1]
   const last = data.monthly_totals[data.monthly_totals.length - 1] ?? 0
 
   return (
@@ -92,7 +95,12 @@ export function SpendingTrendsReport({ budgetId }: Props) {
             Savings and debt payments are left out unless you include them; a note says how much
             that was, so a car payment that is missing is never mistaken for lost data.
           </p>
+          <p>
+            The average counts complete months only; a month still running is shown as &ldquo;so
+            far&rdquo; and left out of it.
+          </p>
           <ReportScopeNote report="spending-trends" />
+          <SpendingClassNote />
         </ReportInfoButton>
         <div className="flex-row">
           <button
@@ -141,8 +149,23 @@ export function SpendingTrendsReport({ budgetId }: Props) {
         <div ref={captureRef} className="report-capture">
           <MetricRow>
             <MetricCard label="Total" value={formatMoney(data.total)} />
-            <MetricCard label="Average / month" value={formatMoney(avg)} />
-            <MetricCard label="Latest month" value={formatMoney(last)} />
+            <MetricCard
+              label="Average / month"
+              value={avg === null ? '—' : formatMoney(avg)}
+              sub={
+                avg === null
+                  ? 'No complete month yet'
+                  : `Over ${data.months_averaged} complete month${data.months_averaged === 1 ? '' : 's'}`
+              }
+            />
+            {lastMonth && (
+              <MetricCard
+                label={
+                  data.latest_complete ? formatMonth(lastMonth) : `${formatMonth(lastMonth)} so far`
+                }
+                value={formatMoney(last)}
+              />
+            )}
           </MetricRow>
 
           <div className="report-chart" style={{ height: chartHeight }}>
@@ -253,7 +276,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                 </th>
                 {data.months.map((m) => (
                   <th key={m} scope="col" style={{ textAlign: 'right' }}>
-                    {formatMonth(m)}
+                    {formatMonthShort(m)}
                   </th>
                 ))}
                 <th scope="col" style={{ textAlign: 'right' }}>

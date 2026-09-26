@@ -7,7 +7,7 @@
  * a drill-down exists not to do.
  */
 import { describe, expect, it } from 'vitest'
-import { drillScope } from './drillScope'
+import { UNCATEGORIZED_KEY, categoryKey, categoryTarget, drillScope } from './drillScope'
 
 const SCOPE = { categoryIds: ['c1'], tagIds: ['t1'], filterId: 'f1' }
 
@@ -59,5 +59,23 @@ describe('a chart drilling into a day, a month or a payee', () => {
       tagIds: undefined,
       filterId: 'f1',
     })
+  })
+})
+
+describe('the Uncategorized line', () => {
+  // Every spending report lists uncategorized spending as its own line, served
+  // with `id: null`. The Breakdown and Trends used to leave it out entirely.
+  it('is keyed apart from every category, including one named for it', () => {
+    expect(categoryKey(null)).toBe(UNCATEGORIZED_KEY)
+    expect(categoryKey('c1')).toBe('c1')
+  })
+
+  it('opens by "no category", never by an empty id list', () => {
+    // `categoryIds: []` filters nothing and lists the whole window.
+    expect(categoryTarget([null])).toEqual({ noCategory: true })
+  })
+
+  it('leaves a category line opening by its ids', () => {
+    expect(categoryTarget(['c1', 'c2'])).toEqual({ categoryIds: ['c1', 'c2'] })
   })
 })

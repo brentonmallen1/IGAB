@@ -39,10 +39,12 @@ export function ReportScopeNote({ report }: { report: ReportTab | ReportSectionI
 export function SpendingClassNote() {
   return (
     <p className="info-pop__note">
-      Counts spending only. Money moved into savings or investments, or used to pay down a tracked
-      debt, leaves your budget but stays yours — so it is not counted here. Buying something tracked
-      that does not count as savings, like a car, is spending and is counted. Open any transaction
-      to see how it is classified and why.
+      Counts spending only, net of refunds: money back into a category lowers what it spent, and a
+      category that took back more than it spent shows a negative figure. Spending with no category
+      is its own Uncategorized line. Money moved into savings or investments, or used to pay down a
+      tracked debt, leaves your budget but stays yours — so it is not counted here. Buying something
+      tracked that does not count as savings, like a car, is spending and is counted. Open any
+      transaction to see how it is classified and why.
     </p>
   )
 }

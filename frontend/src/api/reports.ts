@@ -489,10 +489,20 @@ export function useEssentialsReport(budgetId: string | null, months = 12) {
   })
 }
 
-export function useSeasonalityReport(budgetId: string | null, months = 12) {
+export function useSeasonalityReport(
+  budgetId: string | null,
+  months = 12,
+  /** Count savings and debt payments too, as on every other spending report.
+   *  The heatmap used to count every class with no way to say otherwise. */
+  includeSavings = false
+) {
   return useQuery({
-    queryKey: [ROOT.reports, 'seasonality', budgetId, months],
-    queryFn: () => fetchReport<SeasonalityReport>(budgetId, 'seasonality', { months }),
+    queryKey: [ROOT.reports, 'seasonality', budgetId, months, includeSavings],
+    queryFn: () =>
+      fetchReport<SeasonalityReport>(budgetId, 'seasonality', {
+        months,
+        include_savings: includeSavings ? 'true' : undefined,
+      }),
     enabled: !!budgetId,
     staleTime: STALE,
   })
@@ -567,7 +577,9 @@ export function useTimelineReport(
   endDate?: string,
   limit = 50,
   scope?: ReportScope,
-  accountIds?: string[]
+  accountIds?: string[],
+  /** Money out only — the page's default view. */
+  outflowsOnly = false
 ) {
   const scopeQuery = scopeParams(scope)
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
@@ -581,6 +593,7 @@ export function useTimelineReport(
       limit,
       scopeQuery,
       acctParam,
+      outflowsOnly,
     ],
     queryFn: () =>
       fetchReport<TimelineReport>(budgetId, 'large-transactions', {
@@ -589,6 +602,7 @@ export function useTimelineReport(
         limit,
         ...scopeQuery,
         account_ids: acctParam,
+        outflows_only: outflowsOnly ? 'true' : undefined,
       }),
     enabled: !!budgetId,
     staleTime: STALE,

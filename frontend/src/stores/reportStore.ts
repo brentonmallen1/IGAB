@@ -102,15 +102,6 @@ export function getGroupTabs(groupId: TabGroup): TabDef[] {
 
 export type GroupBy = 'group' | 'category' | 'payee'
 
-/** Which activity classes a spending chart is counting, given its
- *  "Include savings & debt payments" toggle. Drill-downs pass this so the
- *  transaction list totals what the chart totals — the one list must never
- *  contradict the bar that opened it. Mirrors `_spending_classes` on the
- *  server; keep the two in step. */
-export function spendingDrillClasses(includeSavings: boolean): string[] {
-  return includeSavings ? ['spending', 'savings', 'debt_principal'] : ['spending']
-}
-
 /** The drill-down behind a figure that nets one set of classes over a window:
  *  every leaf row of those classes, whichever way it went.
  *
@@ -140,14 +131,21 @@ export function incomeDrill(
   return netClassDrill(label, ['income'], window)
 }
 
-/** The drill-down behind an Expenses figure — spending net of refunds, the
- *  SPENDING class alone (savings and debt principal are figures of their
- *  own). Leaf rows, because classes live on leaves, not on a split parent. */
+/** The drill-down behind a spending figure: every leaf row of the classes
+ *  the report served as counted (`counted_classes`, or Income vs Expenses'
+ *  `expense_classes`), whichever way it went — spending is net of refunds.
+ *
+ *  The classes are the server's. They were a client copy,
+ *  `spendingDrillClasses`, under a comment asking the next reader to keep it
+ *  in step with the server's; a copy that is right today is a list that
+ *  totals differently from its bar the day the class set moves. Leaf rows,
+ *  because classes live on leaves, not on a split parent. */
 export function expensesDrill(
   label: string,
-  window: { startDate: string; endDate: string }
+  window: { startDate: string; endDate: string },
+  classes: string[]
 ): DrillDownContext {
-  return netClassDrill(label, spendingDrillClasses(false), window)
+  return netClassDrill(label, classes, window)
 }
 
 export interface TabFilterSupport {
@@ -164,6 +162,9 @@ export interface TabFilterSupport {
    *  groupBy is shared across tabs, so a mode picked on one tab can be one
    *  another cannot draw — see resolveGroupBy. */
   groupByModes?: GroupBy[]
+  /** What a mode changes about the filters above, for a tab whose modes read
+   *  different reports — see `filterSupport`. */
+  byMode?: Partial<Record<GroupBy, Partial<Omit<TabFilterSupport, 'byMode'>>>>
 }
 
 /** Which shared filters each report actually consumes — the filter bar dims
@@ -206,6 +207,11 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   },
   variance: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   volatility: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  // Its modes read two reports. Category and group read the grouped
+  // rollup, which takes the category scope and a view but no payees; payee
+  // mode reads Payee Analysis, which takes payees and neither of the others.
+  // All five were lit in every mode, so a category picked in payee mode
+  // appeared to apply while the bars ignored it.
   pareto: {
     dates: true,
     categories: true,
@@ -213,6 +219,11 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     accounts: true,
     groupBy: true,
     views: true,
+    byMode: {
+      category: { payees: false },
+      group: { payees: false },
+      payee: { categories: false, views: false },
+    },
   },
   treemap: {
     dates: true,
@@ -305,6 +316,15 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   wishlist: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
   timeline: { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
+}
+
+/** Which filters a tab applies in the mode it is drawing — what the filter
+ *  bar dims and what the phone's chip counts. `TAB_FILTER_SUPPORT` with the
+ *  tab's `byMode` overrides for its resolved mode. */
+export function filterSupport(tab: ReportTab, groupBy: GroupBy): TabFilterSupport {
+  const support = TAB_FILTER_SUPPORT[tab]
+  if (!support.byMode) return support
+  return { ...support, ...support.byMode[resolveGroupBy(tab, groupBy)] }
 }
 
 /** The mode a tab actually draws for the stored preference.

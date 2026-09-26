@@ -14,15 +14,22 @@ import type { SpendingGroupItem } from '../../../types'
 import { chartColor } from './chartColors'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { shareOfTotal } from '../drillDownTotals'
+import { categoryKey } from '../drillScope'
 
 export interface TreeNode {
   name: string
   id: string
+  /** The category a tile opens: its id, or null for the Uncategorized line
+   *  (`categoryTarget`). Null on a group tile too, which opens its group. */
+  categoryId: string | null
   parent_id: string | null
   parent_name: string | null
+  /** The group whose colour the tile wears — what the colour key names. */
+  groupName: string
   size: number
-  /** Share of the grand total; null when there is no positive total to be
-   *  a share of (see `shareOfTotal`). */
+  /** Share of what is on screen — the whole period, or the group drilled
+   *  into — as the Breakdown states it. Null when there is no positive total
+   *  to be a share of (see `shareOfTotal`). */
   pct: number | null
   fill?: string
   // Recharts' Treemap data points must satisfy TreemapDataType's index signature.
@@ -37,44 +44,74 @@ export interface TreemapGroup {
   children: TreeNode[]
 }
 
-type Item = Pick<SpendingGroupItem, 'id' | 'name' | 'parent_id' | 'parent_name' | 'total' | 'pct'>
+type Item = Pick<SpendingGroupItem, 'id' | 'name' | 'parent_id' | 'parent_name' | 'total'>
 
 const groupKey = (item: Item) => item.parent_id ?? '__none__'
 
-function categoryTile(item: Item, group: TreemapGroup): TreeNode {
+function categoryTile(item: Item, group: TreemapGroup, shownTotal: number): TreeNode {
   return {
     name: item.name,
-    id: item.id,
+    id: categoryKey(item.id),
+    categoryId: item.id,
     parent_id: item.parent_id,
     parent_name: item.parent_name,
+    groupName: group.name,
     size: item.total,
-    pct: item.pct,
+    pct: shareOfTotal(item.total, shownTotal),
     fill: chartColor(group.colorIdx),
   }
 }
 
-/** Categories bucketed by group, each group given the next colour slot. */
+/** Categories bucketed by group, each group given the next colour slot. A
+ *  group's children state their share of the group — what is on screen once
+ *  it is drilled into. The tile used to state its share of the whole period
+ *  there, beside a Breakdown that said "of what is on screen". */
 export function treemapGroups(items: readonly Item[]): Map<string, TreemapGroup> {
   const map = new Map<string, TreemapGroup>()
+  const members = new Map<string, Item[]>()
   for (const item of items) {
     const gid = groupKey(item)
     let g = map.get(gid)
     if (!g) {
       g = { name: item.parent_name ?? 'Other', total: 0, colorIdx: map.size, children: [] }
       map.set(gid, g)
+      members.set(gid, [])
     }
     g.total += item.total
-    g.children.push(categoryTile(item, g))
+    members.get(gid)!.push(item)
+  }
+  for (const [gid, g] of map) {
+    g.children = members.get(gid)!.map((item) => categoryTile(item, g, g.total))
   }
   return map
 }
 
-/** Category mode: every category flat, coloured by its group. */
+/** Category mode: every category flat, coloured by its group, each a share
+ *  of the whole period. */
 export function flatTiles(
   items: readonly Item[],
-  groups: ReadonlyMap<string, TreemapGroup>
+  groups: ReadonlyMap<string, TreemapGroup>,
+  grandTotal: number
 ): TreeNode[] {
-  return items.map((item) => categoryTile(item, groups.get(groupKey(item))!))
+  return items.map((item) => categoryTile(item, groups.get(groupKey(item))!, grandTotal))
+}
+
+/** What a treemap can draw: a tile's area is its spending, so a line that
+ *  took back more in refunds than it spent — net negative, or nothing at
+ *  all — has no area. It stays in the report's total; the page says how
+ *  many it left off. */
+export function drawableTiles(tiles: readonly TreeNode[]): {
+  drawn: TreeNode[]
+  undrawn: number
+} {
+  const drawn = tiles.filter((t) => t.size > 0)
+  return { drawn, undrawn: tiles.length - drawn.length }
+}
+
+/** The key to category mode's colours: each group once, in slot order. A
+ *  flat treemap shades every category by its group and named none of them. */
+export function groupColorKey(groups: ReadonlyMap<string, TreemapGroup>) {
+  return [...groups.values()].map((g) => ({ name: g.name, color: chartColor(g.colorIdx) }))
 }
 
 /** Group mode, undrilled: one tile per group. */
@@ -85,8 +122,10 @@ export function groupTiles(
   return [...groups.values()].map((g) => ({
     name: g.name,
     id: g.name,
+    categoryId: null,
     parent_id: null,
     parent_name: null,
+    groupName: g.name,
     size: g.total,
     pct: shareOfTotal(g.total, grandTotal),
     fill: chartColor(g.colorIdx),

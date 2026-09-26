@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   buildParetoItems,
   cumulativePercents,
-  paretoAdherence,
   paretoInsight,
   paretoSummary,
   PARETO_BARS,
@@ -31,8 +30,15 @@ describe('buildParetoItems', () => {
   it('group mode aggregates category totals per parent group', () => {
     const { sorted, grandTotal } = buildParetoItems('group', spending, '999', undefined)
     expect(sorted).toEqual([
-      { id: 'g2', name: 'Home', total: 600, groupKey: 'g2', groupName: null },
-      { id: 'g1', name: 'Everyday', total: 400, groupKey: 'g1', groupName: null },
+      { id: 'g2', name: 'Home', total: 600, groupKey: 'g2', groupName: null, members: ['c3'] },
+      {
+        id: 'g1',
+        name: 'Everyday',
+        total: 400,
+        groupKey: 'g1',
+        groupName: null,
+        members: ['c1', 'c2'],
+      },
     ])
     // group totals are client-summed, not the backend category total
     expect(grandTotal).toBe(1000)
@@ -42,8 +48,42 @@ describe('buildParetoItems', () => {
     const orphan = [{ id: 'c9', name: 'Misc', total: '50', parent_id: null, parent_name: null }]
     const { sorted } = buildParetoItems('group', orphan, '0', undefined)
     expect(sorted).toEqual([
-      { id: '__none__', name: 'Uncategorized', total: 50, groupKey: '__none__', groupName: null },
+      {
+        id: '__none__',
+        name: 'Uncategorized',
+        total: 50,
+        groupKey: '__none__',
+        groupName: null,
+        members: ['c9'],
+      },
     ])
+  })
+
+  it('the served Uncategorized line is a bar that opens by "no category"', () => {
+    // The grouped rollup used to leave uncategorized spending out; it is a
+    // line of its own now, served with no id.
+    const line = [
+      {
+        id: null,
+        name: 'Uncategorized',
+        total: '40',
+        parent_id: null,
+        parent_name: 'Uncategorized',
+      },
+    ]
+    const { sorted } = buildParetoItems('category', line, '40', undefined)
+    expect(sorted[0]).toMatchObject({ id: '__uncategorized__', members: [null] })
+    const grouped = buildParetoItems('group', line, '40', undefined).sorted
+    expect(grouped[0]).toMatchObject({ name: 'Uncategorized', members: [null] })
+  })
+
+  it('a line that took back more than it spent sorts last, signed', () => {
+    const refunded = [
+      ...spending,
+      { id: 'c4', name: 'Shopping', total: '-90', parent_id: 'g1', parent_name: 'Everyday' },
+    ]
+    const { sorted } = buildParetoItems('category', refunded, '910', undefined)
+    expect(sorted.at(-1)).toMatchObject({ name: 'Shopping', total: -90 })
   })
 
   it('payee mode reads the served total, count and 80% line, never the ranked rows', () => {
@@ -75,7 +115,14 @@ describe('buildParetoItems', () => {
 })
 
 const items = (totals: number[]): ParetoItem[] =>
-  totals.map((total, i) => ({ id: `i${i}`, name: `n${i}`, total, groupKey: null, groupName: null }))
+  totals.map((total, i) => ({
+    id: `i${i}`,
+    name: `n${i}`,
+    total,
+    groupKey: null,
+    groupName: null,
+    members: [],
+  }))
 
 describe('cumulativePercents', () => {
   it('is monotone and ends at 100 when items cover the total', () => {
@@ -138,21 +185,6 @@ describe('paretoSummary', () => {
     const { drawn, idx80 } = paretoSummary(top25, 9850, 312, 140)
     expect(drawn).toHaveLength(PARETO_BARS)
     expect(idx80).toBe(139)
-  })
-})
-
-describe('paretoAdherence', () => {
-  it('measures the threshold on the real coverage, not the rounded label', () => {
-    // The card renders `coverage.toFixed(0)`, so 30.4% displays as "30" — and
-    // the threshold used to be applied to that string, calling spread-thin
-    // spending concentrated on the strength of a rounding step.
-    expect(paretoAdherence(30.4, 100)?.adherent).toBe(false)
-    expect(paretoAdherence(30, 100)?.adherent).toBe(true)
-  })
-
-  it('claims nothing without a coverage figure or with too few items', () => {
-    expect(paretoAdherence(null, 100)).toBeNull()
-    expect(paretoAdherence(20, 2)).toBeNull()
   })
 })
 

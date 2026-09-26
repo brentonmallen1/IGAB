@@ -28,8 +28,12 @@ const data: SpendingTrendsReport = {
   ],
   monthly_totals: [1500, 1590],
   total: 3090,
+  monthly_average: 1500,
+  months_averaged: 1,
+  latest_complete: false,
   class_excluded: [],
   filter_unavailable: false,
+  counted_classes: ['spending'],
 }
 
 describe('rollupTrends', () => {
@@ -145,5 +149,28 @@ describe('the stacked Spending Trends chart', () => {
     expect(screen.getByText('Total')).toBeInTheDocument()
     expect(screen.getByText('$1200')).toBeInTheDocument()
     expect(screen.queryByText(/^All/)).toBeNull()
+  })
+})
+
+describe('the Uncategorized series', () => {
+  it('is keyed apart from every category, and rolls up under its own group', () => {
+    // Trends used to leave uncategorized spending out; it is served with no
+    // id and no group id now.
+    const withLine: SpendingTrendsReport = {
+      ...data,
+      series: [
+        ...data.series,
+        {
+          id: null,
+          name: 'Uncategorized',
+          group_id: null,
+          group_name: 'Uncategorized',
+          monthly: [20, 0],
+          total: 20,
+        },
+      ],
+    }
+    expect(rollupTrends(withLine, 'category').at(-1)?.key).toBe('__uncategorized__')
+    expect(rollupTrends(withLine, 'group').map((r) => r.name)).toContain('Uncategorized')
   })
 })
