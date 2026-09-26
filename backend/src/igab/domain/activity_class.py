@@ -1219,8 +1219,8 @@ def tier_scope(tier: NecessityTier):
 #: Both start from `CLASS_TOTAL_ROW`, ask one class, and split it on the tag
 #: arm `tier_scope` builds from `TIER_TAG_KEYS` — here negated. So it is never
 #: "spending minus Cost of living": those row sets differ in class (debt
-#: principal) and sign convention (the spending rollups are gross), and the
-#: difference can go negative. Pinned in tests/integration/test_discretionary.py.
+#: principal), and the difference can go negative. Pinned in
+#: tests/integration/test_discretionary.py.
 #:
 #: Net of refunds, like the tiers' tag arms: a refund filed to Dining Out
 #: reduces the figure the way it reduces the envelope's activity. An

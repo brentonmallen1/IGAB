@@ -649,7 +649,7 @@ async def category_history_report(
     series = (await budget_service.envelope_series(budget_id, [category_id], month_list))[
         category_id
     ]
-    spent = await spent_series(report_svc.session, budget_id, category_id, month_list, today)
+    spent = await spent_series(report_svc.session, budget_id, category_id, window, today)
     out = [
         CategoryHistoryMonth(
             month=month,

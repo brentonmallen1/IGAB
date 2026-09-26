@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup, Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
-from igab.domain.dates import month_end, month_start, month_starts
+from igab.domain.dates import ReportWindow, month_starts
 from igab.domain.money import quantize_cents
 from igab.domain.plan import plan_effect
 from igab.repositories.category_filters import (
@@ -221,7 +221,7 @@ async def spent_series(
     session: AsyncSession,
     budget_id: uuid.UUID,
     category_id: uuid.UUID,
-    month_list: Sequence[date],
+    window: ReportWindow,
     today: date,
 ) -> SpentSeries:
     """Category History's Spent: the ledger for one category, month by month.
@@ -232,22 +232,24 @@ async def spent_series(
     at all there, and as the whole bill on Plan vs Reality one tab over. This
     is the plan family's figure, so the two tabs agree.
 
-    The average is over the COMPLETE months in the list: the month in
-    progress is month-to-date, and averaging it in read a steady category as
-    falling every month until the month closed.
+    One figure per month of `window.axis`, and the average over
+    `window.complete` alone — the window's own statement of which months are
+    over. The month in progress is month-to-date, and averaging it in read a
+    steady category as falling every month until the month closed. This
+    spelled "complete" again, as "before the running month", beside the
+    window that already said it.
     """
     ledger = await plan_ledger(
         session,
         budget_id,
-        month_list[0],
-        month_end(month_list[-1]),
+        window.start,
+        today,
         category_ids=[category_id],
         assignments=False,
     )
     cat = ledger.get(category_id)
-    cells = [cat.months.get(m, PlanMonth()) if cat else PlanMonth() for m in month_list]
-    running = month_start(today)
-    complete = [c.spent for m, c in zip(month_list, cells, strict=True) if m < running]
+    cells = [cat.months.get(m, PlanMonth()) if cat else PlanMonth() for m in window.axis]
+    complete = [cat.months.get(m, PlanMonth()).spent if cat else ZERO for m in window.complete]
     average = quantize_cents(sum(complete, ZERO) / len(complete)) if complete else ZERO
     return SpentSeries(
         spent=[c.spent for c in cells],

@@ -492,7 +492,7 @@ SINKING_FUND_KEY = "long_term_expense"
 
 #: A live category tagged Long-term expense that is NOT a savings category. The
 #: essentials figures spread its bills over twelve months
-#: (`guide.concepts.essentials_monthly`). A category tagged both is not a
+#: (`guide.concepts.essentials_at`). A category tagged both is not a
 #: sinking fund: no silent precedence between the two tags — its outflows count
 #: as saved or held, which is not a bill to spread, and the inspector says so.
 IS_SINKING_FUND = and_(
