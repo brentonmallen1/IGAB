@@ -11,6 +11,7 @@
  * default: the tooltip renders exactly what the formatter returns, and it
  * hands over the series name so a mixed-unit chart can branch.
  */
+import type { ComponentProps } from 'react'
 import { render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChartTooltip } from './ChartTooltip'
@@ -114,67 +115,13 @@ describe('ChartTooltip', () => {
  * whole change is removing. Required prop (tsc) + eslint rule are the guards.
  */
 
-describe('a stacked tooltip whose chart draws only some of the series', () => {
-  it('heads its own sum as the rows it lists and states the whole beside it', () => {
-    // Spending Trends stacks the ten largest series and printed their subtotal
-    // as "Total", inches above a table row headed All carrying a larger
-    // number. Same rule as `DrillDownTable`: the total is the sum of the rows
-    // listed, and a wider figure is drawn beside it.
-    render(
-      <ChartTooltip
-        active
-        payload={[
-          { name: 'Rent', value: 1800 },
-          { name: 'Groceries', value: 600 },
-        ]}
-        label="Sep 26"
-        showTotal
-        wider={{ total: 3200, label: 'categories' }}
-        formatter={(v) => `$${v}`}
-      />
-    )
-    // The drill table's wording, from the drill table's function: this
-    // tooltip said "Shown" where the table says "Total of the N shown".
-    expect(screen.getByText('Total of the 2 shown')).toBeInTheDocument()
-    expect(screen.getByText('$2400')).toBeInTheDocument()
-    expect(screen.getByText('All categories')).toBeInTheDocument()
-    expect(screen.getByText('$3200')).toBeInTheDocument()
-    expect(screen.queryByText('Total')).toBeNull()
-  })
+// The `wider` prop is gone: no chart passed it. Pinned at the type level, so
+// it cannot come back unused — tsc fails this line while the prop exists.
+type TooltipHasWider = 'wider' extends keyof ComponentProps<typeof ChartTooltip> ? true : false
+const tooltipHasNoWider: TooltipHasWider = false
 
-  it('still says "Total" when the drawn series are every series', () => {
-    render(
-      <ChartTooltip
-        active
-        payload={[
-          { name: 'Rent', value: 1800 },
-          { name: 'Groceries', value: 600 },
-        ]}
-        showTotal
-        wider={{ total: 2400, label: 'categories' }}
-        formatter={(v) => `$${v}`}
-      />
-    )
-    expect(screen.getByText('Total')).toBeInTheDocument()
-    expect(screen.queryByText('All categories')).toBeNull()
-  })
-
-  it('reads a rounding cent between its rows and the whole as the whole set', () => {
-    // The tooltip carried its own `>= 0.005` literal beside the table's CENT;
-    // it now asks `isPartial`, so the two cannot disagree about one set.
-    render(
-      <ChartTooltip
-        active
-        payload={[
-          { name: 'Rent', value: 1800 },
-          { name: 'Groceries', value: 600 },
-        ]}
-        showTotal
-        wider={{ total: 2400.004, label: 'categories' }}
-        formatter={(v) => `$${v}`}
-      />
-    )
-    expect(screen.getByText('Total')).toBeInTheDocument()
-    expect(screen.queryByText('All categories')).toBeNull()
+describe('ChartTooltip props', () => {
+  it('takes no wider set: every stack it totals is drawn whole', () => {
+    expect(tooltipHasNoWider).toBe(false)
   })
 })
