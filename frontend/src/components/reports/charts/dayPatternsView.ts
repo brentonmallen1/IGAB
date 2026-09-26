@@ -6,7 +6,7 @@
  */
 import type { DayPatternItem, PaydayEffectDay } from '../../../types'
 
-/** The weekdays with the highest and lowest typical day. Ranked by the
+/** The weekdays with the highest and lowest average day. Ranked by the
  *  per-day average, not the window's total: a window of five Saturdays and
  *  four Sundays gave Saturday a fifth more total for spending the same. */
 export function busiestAndQuietest(

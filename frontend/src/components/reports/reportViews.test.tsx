@@ -941,8 +941,9 @@ describe('DayPatternsReport', () => {
   it('ranks the weekdays by a typical day, not by their totals', () => {
     setQuery({ data: both })
     renderReport(<DayPatternsReport budgetId="b1" />)
-    expect(card('Busiest day')).toEqual({ value: 'Tuesday', sub: '$60.00 on a typical one' })
-    expect(card('Quietest day')).toEqual({ value: 'Monday', sub: '$20.00 on a typical one' })
+    // "Average", not "typical": typical means the median everywhere else.
+    expect(card('Busiest day')).toEqual({ value: 'Tuesday', sub: '$60.00 on an average Tuesday' })
+    expect(card('Quietest day')).toEqual({ value: 'Monday', sub: '$20.00 on an average Monday' })
     // It says which date it reads: a Saturday shop can post on Monday.
     expect(screen.getByText(/by the bank.s posting date/)).toBeInTheDocument()
   })

@@ -106,9 +106,9 @@ export function DayPatternsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Day-of-Week Spending Patterns</h2>
           <ReportInfoButton title="Day-of-Week Patterns">
             <p>
-              Each bar is a <strong>typical</strong> such day: that weekday&apos;s spending over the
-              period divided by how many of it the period held, the quiet ones included. The busiest
-              is drawn in a second colour. Hover a bar for its total.
+              Each bar is an <strong>average</strong> such day: that weekday&apos;s spending over
+              the period divided by how many of it the period held, the quiet ones included. The
+              busiest is drawn in a second colour. Hover a bar for its total.
             </p>
             <p>
               Days are the bank&apos;s <strong>posting date</strong>, which can trail the purchase —
@@ -136,8 +136,8 @@ export function DayPatternsReport({ budgetId }: Props) {
           </div>
         </div>
         <p className="report-section__subtitle">
-          A typical day of each weekday, by the bank&apos;s posting date
-          {data && ` · ${formatDate(data.window_start)} – ${formatDate(data.window_end)}`}
+          An average day of each weekday, by the bank&apos;s posting date.
+          {data && ` ${formatDate(data.window_start)} – ${formatDate(data.window_end)}`}
         </p>
 
         <div ref={captureRef} className="report-capture">
@@ -146,12 +146,12 @@ export function DayPatternsReport({ budgetId }: Props) {
               <MetricCard
                 label="Busiest day"
                 value={extremes.busiest.day_name}
-                sub={`${formatMoneyOrDash(extremes.busiest.avg_per_day)} on a typical one`}
+                sub={`${formatMoneyOrDash(extremes.busiest.avg_per_day)} on an average ${extremes.busiest.day_name}`}
               />
               <MetricCard
                 label="Quietest day"
                 value={extremes.quietest.day_name}
-                sub={`${formatMoneyOrDash(extremes.quietest.avg_per_day)} on a typical one`}
+                sub={`${formatMoneyOrDash(extremes.quietest.avg_per_day)} on an average ${extremes.quietest.day_name}`}
               />
             </MetricRow>
           )}
@@ -185,7 +185,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                       <div className="chart-tooltip">
                         <div className="chart-tooltip__label">{row.fullName}</div>
                         <div className="chart-tooltip__row">
-                          <span className="chart-tooltip__name">A typical one</span>
+                          <span className="chart-tooltip__name">An average one</span>
                           <span className="chart-tooltip__value">{formatMoney(row.avg)}</span>
                         </div>
                         <div className="chart-tooltip__row">

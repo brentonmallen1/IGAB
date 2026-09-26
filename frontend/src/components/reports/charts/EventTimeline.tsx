@@ -86,7 +86,7 @@ export function TimelineReport({ budgetId }: Props) {
           <ReportScopeNote report="timeline" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
-          Largest transactions — size indicates relative magnitude.
+          Newest first; a dot&apos;s size is relative to the largest here.
         </p>
         <div className="flex-row ms-auto">
           <button

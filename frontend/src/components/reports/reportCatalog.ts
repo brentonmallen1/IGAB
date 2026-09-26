@@ -241,7 +241,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'day-patterns': {
     scope: 'on-budget-filterable',
-    summary: 'A typical day of each weekday, by the bank posting date.',
+    summary: 'An average day of each weekday, by the bank posting date.',
     counts: 'Spending only, net of refunds, divided by how many of each weekday the range holds.',
     leavesOut: 'Savings, debt payments and transfers.',
   },

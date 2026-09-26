@@ -147,7 +147,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
       </div>
       <p className="report-section__subtitle">
         {groupBy === 'category'
-          ? 'All categories shown flat, colored by group. Click a tile to see its transactions.'
+          ? 'Every category, shaded by its group — the key is below. Click a tile to see its transactions.'
           : selectedGroup
             ? 'Showing categories in selected group. Click a tile to see its transactions.'
             : 'Click a group to drill down into its categories.'}
