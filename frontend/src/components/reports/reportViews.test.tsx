@@ -999,6 +999,37 @@ describe('IncomeSourcesReport average', () => {
   })
 })
 
+describe('VarianceReport cards', () => {
+  it('names the newest point the running month, not last month', () => {
+    // The series ends with the month in progress; "Last Month Spent" read
+    // half a month as a whole one.
+    setQuery({
+      data: {
+        points: [
+          {
+            month: '2026-08-01',
+            budget_assigned: 3000,
+            actual_spent: 2900,
+            monthly_variance: 100,
+            cumulative_variance: 100,
+          },
+          {
+            month: '2026-09-01',
+            budget_assigned: 3000,
+            actual_spent: 1200,
+            monthly_variance: 1800,
+            cumulative_variance: 1900,
+          },
+        ],
+      },
+    })
+    renderReport(<VarianceReport budgetId="b1" />)
+    expect(card('Spent this month so far').value).toBe('$1,200.00')
+    expect(card('Assigned this month so far').value).toBe('$3,000.00')
+    expect(screen.queryByText(/Last Month/)).toBeNull()
+  })
+})
+
 describe('IncomeExpenseReport drill', () => {
   it('opens a month’s Expenses with its refunds, so the list totals the row', () => {
     setQuery({

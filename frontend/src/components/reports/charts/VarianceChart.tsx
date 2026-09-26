@@ -95,8 +95,14 @@ export function VarianceReport({ budgetId }: Props) {
               value={formatMoney(latest.cumulative_variance)}
               sub={latest.cumulative_variance > 0 ? 'Under budget overall' : 'Over budget overall'}
             />
-            <MetricCard label="Last Month Assigned" value={formatMoney(latest.budget_assigned)} />
-            <MetricCard label="Last Month Spent" value={formatMoney(latest.actual_spent)} />
+            {/* The newest point is the running month (`report_months`), not
+                last month: "Last Month Spent" read a half-finished month as a
+                whole one. */}
+            <MetricCard
+              label="Assigned this month so far"
+              value={formatMoney(latest.budget_assigned)}
+            />
+            <MetricCard label="Spent this month so far" value={formatMoney(latest.actual_spent)} />
           </MetricRow>
         )}
 
