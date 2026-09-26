@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import { useEssentialsReport } from '../../../api/reports'
 import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
-import { otherFigureNote } from '../../../utils/essentialsFigures'
+import { otherFigureNote, spreadsBills } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -67,6 +67,7 @@ export function EssentialsReport({ budgetId }: Props) {
   const headline = data.essentials.monthly
   const other = otherFigureNote(data.essentials, formatMoney)
   const worst = worstMonth(data.monthly_series)
+  const spreading = spreadsBills(data.essentials, data.long_term_essentials)
   const worstOver = worst ? worstOverHeadline(worst.total, headline) : null
   // The months the headline averages, named wherever it is quoted.
   const headlineMonths =
@@ -231,8 +232,8 @@ export function EssentialsReport({ budgetId }: Props) {
             <p className="essentials-report__note">
               The table averages the last <strong>{averagedMonths}</strong> (
               {formatMoney(data.monthly_total_average)}/mo); the headline averages {headlineMonths}
-              {data.essentials.spread_on ? ', with yearly bills spread over 12 months' : ''}. The
-              two differ when recent spending has shifted.
+              {spreading ? ', with yearly bills spread over 12 months' : ''}. The two differ when
+              recent spending has shifted.
             </p>
 
             <div className="essentials-report__table-wrap">
@@ -360,7 +361,7 @@ export function EssentialsReport({ budgetId }: Props) {
               <p className="essentials-report__chart-key">
                 Bars: each complete month as paid. Dashed line: the headline, the average of{' '}
                 {headlineMonths}
-                {data.essentials.spread_on ? ' with yearly bills spread' : ''}.
+                {spreading ? ' with yearly bills spread' : ''}.
               </p>
             </div>
           </div>

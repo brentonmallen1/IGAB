@@ -80,7 +80,9 @@ export function IncomeExpenseReport({ budgetId }: Props) {
     Expenses: m.expenses,
     // Saved (moved + held) plus debt paid down; `net` stays money-moved.
     Saved: m.savings + m.debt_principal,
-    Net: m.net,
+    // No line point for the running month: a line joins it to the finished
+    // months as if it were one. Its bars say "so far"; the table has its net.
+    Net: m.partial_month ? null : m.net,
   }))
 
   const tableRows = rows.map((m) => ({

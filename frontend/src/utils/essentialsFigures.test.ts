@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EssentialsFigures } from '../types'
-import { otherFigureNote } from './essentialsFigures'
+import { otherFigureNote, spreadsBills } from './essentialsFigures'
 
 const money = (n: number) =>
   `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -34,5 +34,14 @@ describe('otherFigureNote', () => {
   it('says nothing without figures', () => {
     expect(otherFigureNote(null, money)).toBeNull()
     expect(otherFigureNote(undefined, money)).toBeNull()
+  })
+})
+
+describe('spreadsBills', () => {
+  it('needs the setting on and a Long-term expense among the Essentials', () => {
+    expect(spreadsBills(figures(), 2)).toBe(true)
+    // On by default, so it said "spread" for a household with no yearly bill.
+    expect(spreadsBills(figures(), 0)).toBe(false)
+    expect(spreadsBills(figures({ spread_on: false }), 2)).toBe(false)
   })
 })

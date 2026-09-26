@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import { useEmergencyCoverageReport } from '../../../api/reports'
 import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
-import { otherFigureNote } from '../../../utils/essentialsFigures'
+import { otherFigureNote, spreadsBills } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
@@ -217,7 +217,9 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               Coverage is the fund divided by what a lean month costs —{' '}
               {formatMoney(data.essentials.monthly)}/month, the average of{' '}
               {averaged ?? 'the last three complete months'}
-              {data.essentials.spread_on ? ', with yearly bills spread over 12 months' : ''}
+              {spreadsBills(data.essentials, data.long_term_essentials)
+                ? ', with yearly bills spread over 12 months'
+                : ''}
               {other && ` (${other})`}. The{' '}
               <Link to="/reports?tab=essentials">Essentials report</Link> breaks that figure down by
               category.
