@@ -248,6 +248,9 @@ class BurnRateResponse(ApiModel):
 class SankeyNode(ApiModel):
     id: str
     name: str
+    #: Left of the hub: "income_payee", "inflow" (refunds, from savings,
+    #: borrowed, re-planned) or "shortfall". The hub is "budget". Right of it:
+    #: "category_group" (and its "category" children) or "left_over".
     type: str
     #: The entity this node stands for, when it stands for one. `id` is a
     #: display key that may compose several ids (a category node is keyed by
@@ -274,11 +277,15 @@ class CategoryPayee(ApiModel):
 
 
 class CashFlowResponse(ApiModel):
+    """`domain.cash_flow`: sources → the hub ("__budget__") → groups →
+    categories, with the two sides balanced by a Left over or Shortfall node."""
+
     nodes: list[SankeyNode]
     links: list[SankeyLink]
+    #: INCOME_ROW, net — Income vs Expenses' income.
     total_income: Decimal
-    #: Everything that left the budget. The links off the budget node sum to
-    #: this — flow conservation, whatever the branches are.
+    #: What the right side draws, Left over aside: the links off the hub to
+    #: category groups sum to this.
     total_expense: Decimal
     #: How that outflow splits. Required, and None only in budgeted mode,
     #: which draws from assignments where activity class has no meaning —
@@ -291,8 +298,20 @@ class CashFlowResponse(ApiModel):
     total_spending: Decimal | None
     total_savings: Decimal | None
     total_debt_principal: Decimal | None
+    #: Budgeted mode: assignments net of re-planning. None in spent mode.
+    total_assigned: Decimal | None
+    #: Spent mode: money in less money out — Income vs Expenses' `net` for the
+    #: same window. None in budgeted mode, which has no such figure: income
+    #: less assigned is not the growth of anything.
+    net: Decimal | None
+    #: Per category node: its payees netted, those that net to an outflow, the
+    #: largest ten and "Other payees".
     category_payees: dict[str, list[CategoryPayee]]
     group_categories: dict[str, list[CategoryPayee]]
+    #: Per category node whose payees are wider than it (a refund from a payee
+    #: with no charge in the window): what came back, and what to call it.
+    #: The payee level draws it as a source so that level balances too.
+    category_returns: dict[str, CategoryPayee]
 
 
 # ─── Budget vs Actual ─────────────────────────────────────────────────────────

@@ -944,7 +944,12 @@ export interface BurnRateReport {
 export interface SankeyNode {
   id: string
   name: string
-  type: 'income_payee' | 'budget' | 'category_group' | 'category' | 'expense_payee'
+  /** Left of the hub: an income source, an `inflow` (refunds, from savings,
+   *  borrowed, re-planned) or the `shortfall` that balances the sides. The
+   *  hub is `budget`. Right of it: groups (and their categories) or the
+   *  `left_over` sink. Backend `domain/cash_flow.py`. */
+  type:
+    'income_payee' | 'inflow' | 'shortfall' | 'budget' | 'category_group' | 'category' | 'left_over'
   /** The entity this node stands for. `id` is a display key that may compose
    *  several ids — a category node is keyed by (group, category) so one
    *  category can sit under both its own group and the savings trunk. */
@@ -967,21 +972,35 @@ export interface CategoryPayee {
   total: number
 }
 
+/** Sources → the hub (`__budget__`) → groups → categories, both sides of
+ *  the hub balanced by a Left over or Shortfall node. Spent mode is net: a
+ *  refund comes off its category, a withdrawal off what was saved. Backend
+ *  `domain/cash_flow.py`. */
 export interface CashFlowReport {
   nodes: SankeyNode[]
   links: SankeyLink[]
+  /** Income vs Expenses' income for the same window. */
   total_income: number
-  /** Everything that left the budget — the links off the budget node sum to
-   *  this. `total_spending` + `total_savings` + `total_debt_principal` is how
-   *  it splits; a card labelled "Expenses" must use the first, not this. */
+  /** What the right side draws, Left over aside. */
   total_expense: number
-  /** null in budgeted mode, which draws from assignments and has no activity
-   *  class to split by — "not claimed", never zero. */
+  /** Net per class, as Income vs Expenses reads them. null in budgeted mode,
+   *  which draws from assignments and has no activity class to split by —
+   *  "not claimed", never zero. Savings and debt can be negative: more drawn
+   *  out, or borrowed, than put in. */
   total_spending: number | string | null
   total_savings: number | string | null
   total_debt_principal: number | string | null
+  /** Budgeted mode: assignments net of re-planning. null in spent mode. */
+  total_assigned: number | string | null
+  /** Spent mode: money in less money out — Income vs Expenses' `net` for the
+   *  same window. null in budgeted mode, which has no such figure. */
+  net: number | string | null
   category_payees: Record<string, CategoryPayee[]>
   group_categories: Record<string, CategoryPayee[]>
+  /** Per category node whose drawn payees are wider than it: what came back
+   *  (a refund from a payee with no charge in the window), drawn as a source
+   *  at the payee level so that level balances too. */
+  category_returns: Record<string, CategoryPayee>
 }
 
 export interface BudgetActualItem {

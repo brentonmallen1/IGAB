@@ -137,10 +137,10 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'cash-flow': {
     scope: 'on-budget-filterable',
-    summary: 'A Sankey of income flowing into spending, spent or budgeted.',
+    summary: 'Where the money went: what came in, and where it went, spent or budgeted.',
     counts:
-      'Income into spending by group, with a debt trunk and a To savings accounts trunk of money moved to savings — not what envelopes hold.',
-    leavesOut: 'Transfers between budget accounts.',
+      'Income, refunds, money drawn from savings and borrowing on the left; spending by group, money moved to savings accounts and debt payments on the right — each net, with Left over or Shortfall making the two sides equal.',
+    leavesOut: 'Transfers between budget accounts, and starting balances.',
   },
   projection: {
     scope: 'cash-projection',
