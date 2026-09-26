@@ -1204,7 +1204,9 @@ describe('IncomeExpenseReport drill', () => {
       },
     })
     renderReport(<IncomeExpenseReport budgetId="b1" />)
-    fireEvent.click(screen.getByText('Aug 26'))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Expenses, Aug 26: $1,530.00. Show the rows' })
+    )
     const drill = useReportStore.getState().drillDown
     expect(drill).toMatchObject({
       label: 'Expenses · Aug 26',
@@ -1214,6 +1216,98 @@ describe('IncomeExpenseReport drill', () => {
       endDate: '2026-08-31',
     })
     expect(drill?.direction).toBeUndefined()
+    useReportStore.getState().setDrillDown(null)
+  })
+})
+
+describe('IncomeExpenseReport table', () => {
+  const months = [
+    {
+      month: '2026-07-01',
+      partial_month: false,
+      income: 5000,
+      expenses: 3000,
+      savings: 500,
+      savings_moved: 500,
+      savings_held: 0,
+      debt_principal: 400,
+      net: 1100,
+    },
+    {
+      month: '2026-08-01',
+      partial_month: false,
+      income: 5000,
+      expenses: 4800,
+      savings: -1000,
+      savings_moved: -1000,
+      savings_held: 0,
+      debt_principal: 400,
+      net: 800,
+    },
+    {
+      month: '2026-09-01',
+      partial_month: true,
+      income: 2500,
+      expenses: 1900,
+      savings: 0,
+      savings_moved: 0,
+      savings_held: 0,
+      debt_principal: 0,
+      net: 600,
+    },
+  ]
+
+  it('lists Income, Expenses, Saved, Debt payments and Net, with the window total', () => {
+    setQuery({ data: { months, expense_classes: ['spending'] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    const headers = within(screen.getByRole('table'))
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+    expect(headers).toEqual(['Month', 'Income', 'Expenses', 'Saved', 'Debt payments', 'Net'])
+    // Saved is Saved alone — the bar used to add debt payments under the
+    // same name the ⓘ defined without them.
+    expect(cellsOf('Jul 26')).toEqual([
+      'Jul 26',
+      '$5,000.00',
+      '$3,000.00',
+      '$500.00',
+      '$400.00',
+      '$1,100.00',
+    ])
+    // The complete months only: September is a row, "so far", not a term.
+    // The label is the row's header cell; these are its figures.
+    expect(cellsOf('Total · Jul 26 – Aug 26')).toEqual([
+      '$10,000.00',
+      '$7,800.00',
+      '-$500.00',
+      '$800.00',
+      '$1,900.00',
+    ])
+    expect(screen.getByText('Sep 26 so far')).toBeInTheDocument()
+  })
+
+  it('drops the Debt payments column when there were none', () => {
+    setQuery({
+      data: {
+        months: months.map((m) => ({ ...m, debt_principal: 0 })),
+        expense_classes: ['spending'],
+      },
+    })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    expect(screen.queryByRole('columnheader', { name: 'Debt payments' })).toBeNull()
+  })
+
+  it('opens a month’s Income from its cell', () => {
+    setQuery({ data: { months, expense_classes: ['spending'] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Income, Jul 26: $5,000.00. Show the rows' })
+    )
+    expect(useReportStore.getState().drillDown).toMatchObject({
+      label: 'Income · Jul 26',
+      startDate: '2026-07-01',
+      endDate: '2026-07-31',
+    })
     useReportStore.getState().setDrillDown(null)
   })
 })
@@ -2679,6 +2773,19 @@ describe('info panels say what the chart draws', () => {
     openInfo('Income vs Expenses')
     expect(screen.getAllByText(/Net line/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/\b(blue|green|red)\b/)).toBeNull()
+  })
+
+  it('Income vs Expenses: Net is how much the budget accounts grew, not "cash flow"', () => {
+    setQuery({ data: { months: [] } })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    openInfo('Income vs Expenses')
+    expect(screen.getByText(/how much your budget accounts grew/)).toBeInTheDocument()
+    // "Below zero, you ran a deficit" was wrong for a month that moved money
+    // into a brokerage: Net falls, and nothing was spent.
+    expect(
+      screen.getByText(/moving money into savings or investments lowers Net/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/cash flow/i)).toBeNull()
   })
 
   it('Overview: which cards follow the range, and which are as of today', () => {

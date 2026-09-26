@@ -123,9 +123,10 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'income-expense': {
     scope: 'on-budget',
-    summary: 'Income against expenses each month, with the net.',
+    summary:
+      'Income against expenses each month, what you kept, and how much your budget accounts grew.',
     counts:
-      'Income, spending, saved and debt principal; net is income minus spending, money moved to savings and debt principal — money held in an envelope never left.',
+      'Income, spending, saved and debt payments; net is how much your budget accounts grew — income minus spending, money moved to savings and debt payments, since money held in an envelope never left.',
     leavesOut: 'Transfers between budget accounts, and activity inside tracked accounts.',
   },
   'income-sources': {

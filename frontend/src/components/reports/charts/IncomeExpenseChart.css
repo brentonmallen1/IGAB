@@ -1,1 +1,26 @@
 /* .report-btn--active lives in pages/ReportsPage/ReportsPage.css with .report-btn. */
+
+/* Five or six money columns do not fit a phone: the table scrolls inside its
+   own box rather than widening the page. */
+.income-expense__table {
+  overflow-x: auto;
+  margin-top: var(--spacing-md);
+}
+
+.income-expense__table td,
+.income-expense__table th {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The window's total — the complete months — under the months it adds up. */
+.income-expense__table .income-expense__total th,
+.income-expense__table .income-expense__total td {
+  border-top: 2px solid var(--border-color);
+  border-bottom: none;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--font-size-sm);
+}
