@@ -80,6 +80,7 @@ from igab.repositories.txn_filters import (
     account_scope,
     category_tagged,
     in_category_scope,
+    join_split_parent,
     none_of,
     reapplied_by_schedule,
     reapplied_by_subscriptions,
@@ -908,23 +909,24 @@ class ReportService:
     ) -> dict:
         """Sankey based on actual transactions (includes payee data)."""
         q = (
-            select(
-                Transaction.id,
-                Transaction.amount,
-                # A split leg created in the app carries no payee: the parent
-                # names where the money came from, as in payee_analysis.
-                PAYEE_OF_RECORD.label("payee_id"),
-                Transaction.category_id,
-                Transaction.transfer_id,
-                Transaction.is_split,
-                Payee.name.label("payee_name"),
-                Category.name.label("category_name"),
-                CategoryGroup.id.label("group_id"),
-                CategoryGroup.name.label("group_name"),
-                ACTIVITY_CLASS.label("activity_class"),
-                INCOME_ROW.label("is_income"),
+            join_split_parent(
+                select(
+                    Transaction.id,
+                    Transaction.amount,
+                    # A split leg created in the app carries no payee: the parent
+                    # names where the money came from, as in payee_analysis.
+                    PAYEE_OF_RECORD.label("payee_id"),
+                    Transaction.category_id,
+                    Transaction.transfer_id,
+                    Transaction.is_split,
+                    Payee.name.label("payee_name"),
+                    Category.name.label("category_name"),
+                    CategoryGroup.id.label("group_id"),
+                    CategoryGroup.name.label("group_name"),
+                    ACTIVITY_CLASS.label("activity_class"),
+                    INCOME_ROW.label("is_income"),
+                )
             )
-            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .outerjoin(CategoryGroup, Category.category_group_id == CategoryGroup.id)
@@ -1865,15 +1867,16 @@ class ReportService:
         cap as a period-wide fact.
         """
         q = (
-            select(
-                Transaction.date,
-                Transaction.amount,
-                PAYEE_OF_RECORD.label("payee_id"),
-                Transaction.category_id,
-                Payee.name.label("payee_name"),
-                Category.name.label("category_name"),
+            join_split_parent(
+                select(
+                    Transaction.date,
+                    Transaction.amount,
+                    PAYEE_OF_RECORD.label("payee_id"),
+                    Transaction.category_id,
+                    Payee.name.label("payee_name"),
+                    Category.name.label("category_name"),
+                )
             )
-            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(

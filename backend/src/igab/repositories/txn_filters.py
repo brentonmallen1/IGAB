@@ -720,9 +720,17 @@ CARD_PAYMENT_FROM_CASH = and_(Transaction.amount > 0, TRANSFER_LEG, COUNTERPART_
 _leg = aliased(Transaction)
 
 #: A split leg's parent, for a rule that reads what the legs itemise. Any
-#: query using `PAYEE_OF_RECORD` needs
-#: `.outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)`.
+#: query using `PAYEE_OF_RECORD` needs `join_split_parent`.
 SPLIT_PARENT = aliased(Transaction)
+
+
+def join_split_parent(stmt: Select) -> Select:
+    """Bring in `SPLIT_PARENT` for a query that reads `PAYEE_OF_RECORD`.
+
+    An outer join: a row that is not a split leg has no parent, and must stay.
+    """
+    return stmt.outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
+
 
 #: Payee of record for a leaf row: its own, falling back to its split parent's.
 #: Splits are one trip to the shop with the legs itemised, so the parent names

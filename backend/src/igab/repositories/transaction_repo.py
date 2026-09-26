@@ -71,6 +71,7 @@ from igab.repositories.txn_filters import (
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
     in_category_scope,
+    join_split_parent,
     orphaned_link,
     search_matches,
     sync_created_pending,
@@ -363,6 +364,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         if parts.payee_join:
             rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
+        if parts.split_parent_join:
+            rows_q = join_split_parent(rows_q)
+            totals_q = join_split_parent(totals_q)
         if order == "register":
             # The ladder lives in txn_filters (REGISTER_LADDER): pending,
             # unfiled, unapproved, uncleared, cleared, reconciled. Paging in

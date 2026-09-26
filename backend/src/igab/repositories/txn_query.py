@@ -52,9 +52,11 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     NOT_RECONCILED,
     PARENT_ROW,
+    PAYEE_OF_RECORD,
     POSTED,
     UNPAIRED_TRANSFER_LEG,
     in_category_scope,
+    join_split_parent,
     search_matches,
 )
 
@@ -108,6 +110,9 @@ class WhereParts:
     class_joins: bool = False
     #: `search` matches on payee name, which needs the payee table.
     payee_join: bool = False
+    #: A payee filter reads `PAYEE_OF_RECORD`, which needs the row's split
+    #: parent: apply `join_split_parent`.
+    split_parent_join: bool = False
 
 
 def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | None) -> list:
@@ -177,8 +182,18 @@ def _relations(f: TransactionFilters, scope: str) -> list:
         )
     if f.no_category:
         where.append(Transaction.category_id.is_(None))
-    if f.payee_ids:
-        where.append(Transaction.payee_id.in_(f.payee_ids))
+    # The payee of record: a split leg's own payee, else its parent's. The
+    # legs of a split usually carry none — the parent names the shop — so on
+    # leaf scope the raw column dropped every leg, and the Pareto payee bar
+    # (which ranks by payee of record) opened a list short by every split
+    # purchase. A parent row has no split parent, so on parent scope, the
+    # register's, this is the row's own payee exactly as before.
+    #
+    # `is not None`: an empty list is a filter that matches nothing. The
+    # assistant's tools pass [] for a payee name that resolved to nobody, and
+    # a truthiness test turned that into "every payee".
+    if f.payee_ids is not None:
+        where.append(PAYEE_OF_RECORD.in_(f.payee_ids))
     if f.account_ids:
         where.append(Transaction.account_id.in_(f.account_ids))
     if f.is_transfer is not None:
@@ -257,6 +272,7 @@ def build_where(
         ],
         class_joins=bool(f.activity_classes) or f.necessity_tier is not None or f.discretionary,
         payee_join=bool(f.search),
+        split_parent_join=f.payee_ids is not None,
     )
 
 
@@ -391,6 +407,8 @@ async def grouped_totals(
     q: Select = select(label, value, func.count().label("rows")).select_from(Transaction)
     if parts.class_joins:
         q = apply_class_joins(q)
+    if parts.split_parent_join:
+        q = join_split_parent(q)
     needs = dimension.needs
     if parts.payee_join and "payee" not in needs:
         needs = needs + ("payee",)
