@@ -1030,31 +1030,93 @@ describe('DayPatternsReport', () => {
   })
 })
 
-describe('WishlistDisciplineReport resisted wishes', () => {
-  it('counts the wishes its Resisted figure sums, and lists the early drops', () => {
-    // Three wishes dropped on day three of a thirty-day wait. The card read
-    // "$300.00 — 0 talked yourself out of" and the table had no row for them.
+describe('WishlistDisciplineReport', () => {
+  const report = {
+    cooled_then_bought: 0,
+    cooled_then_dropped: 0,
+    bought_early: 0,
+    dropped_early: 0,
+    still_open: 0,
+    ready_to_decide: 0,
+    still_cooling: 0,
+    decided_count: 0,
+    waited_out_count: 0,
+    waited_out_share: null,
+    resisted_total: 0,
+    resisted_count: 0,
+    bought_total: 0,
+    bought_count: 0,
+    open_total: 0,
+    avg_days_to_buy: null,
+    avg_wish_cost: 100,
+    unplaced: 0,
+    cooling_days: 30,
+  }
+
+  it('does not credit the wait with a wish dropped before it was up', () => {
+    // One $600 wish dropped on day ten of thirty. The report led with
+    // "Resisted $600" as if the wait had done it.
     setQuery({
       data: {
-        cooled_then_bought: 0,
-        cooled_then_dropped: 0,
-        bought_early: 0,
-        dropped_early: 3,
-        still_open: 0,
-        resisted_total: 300,
-        resisted_count: 3,
-        bought_total: 0,
-        open_total: 0,
-        avg_days_to_buy: null,
-        avg_wish_cost: 100,
-        unplaced: 0,
+        ...report,
+        dropped_early: 1,
+        decided_count: 1,
+        waited_out_share: 0,
+        resisted_total: 600,
+        resisted_count: 1,
       },
     })
     renderReport(<WishlistDisciplineReport budgetId="b1" />)
 
-    expect(screen.getByText('3 talked yourself out of')).toBeInTheDocument()
+    expect(card('Waited it out')).toEqual({ value: '0%', sub: '0 of 1 wish decided' })
+    // "1 talked yourself out of" is gone, and the two money cards say the
+    // same two things in the same words.
+    expect(card('Resisted').sub).toBe('1 wish · 0 after the wait')
+    expect(screen.queryByText(/talked yourself out of/)).toBeNull()
     const row = screen.getByText('Decided against before the wait was up').closest('tr')
-    expect(row).toHaveTextContent('3')
+    expect(row).toHaveTextContent('1')
+  })
+
+  it('leads with the share of decided wishes that waited it out', () => {
+    setQuery({
+      data: {
+        ...report,
+        cooled_then_bought: 2,
+        cooled_then_dropped: 1,
+        bought_early: 1,
+        decided_count: 4,
+        waited_out_count: 3,
+        waited_out_share: 0.75,
+        resisted_total: 200,
+        resisted_count: 1,
+        bought_total: 900,
+        bought_count: 3,
+        avg_days_to_buy: 24,
+      },
+    })
+    renderReport(<WishlistDisciplineReport budgetId="b1" />)
+
+    const labels = Array.from(document.querySelectorAll('.metric-card__label')).map(
+      (l) => l.textContent
+    )
+    expect(labels[0]).toBe('Waited it out')
+    expect(card('Waited it out')).toEqual({ value: '75%', sub: '3 of 4 wishes decided' })
+    expect(card('Bought').sub).toBe('3 wishes · 2 after the wait')
+    // A mean, beside the person's own waiting period — not "Typical".
+    expect(card('Average wait')).toEqual({ value: '24d', sub: 'to buy · your wait is 30 days' })
+    expect(screen.queryByText('Typical wait')).toBeNull()
+  })
+
+  it('says how many open wishes are past their wait', () => {
+    setQuery({
+      data: { ...report, still_open: 3, ready_to_decide: 2, still_cooling: 1, open_total: 450 },
+    })
+    renderReport(<WishlistDisciplineReport budgetId="b1" />)
+
+    expect(card('Waiting').sub).toBe('3 wishes · 2 ready to decide')
+    expect(screen.getByText('Wait over, ready to decide').closest('tr')).toHaveTextContent('2')
+    expect(screen.getByText('Still in the wait').closest('tr')).toHaveTextContent('1')
+    expect(card('Waited it out')).toEqual({ value: '—', sub: 'nothing decided yet' })
   })
 })
 

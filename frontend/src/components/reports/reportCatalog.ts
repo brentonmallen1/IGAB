@@ -140,7 +140,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'wishlist',
     summary: 'What the cooling-off period did to what you wanted.',
     counts:
-      'Every wish, open or closed, all time — resisted, bought after waiting, or bought early.',
+      'Every wish, open or closed, all time — how many decisions came after the wait, what you let go and bought (after the wait or before it), and what is still open or ready to decide.',
     leavesOut: 'Purchases that never went on the wishlist.',
   },
   'burn-rate': {

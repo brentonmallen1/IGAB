@@ -1958,13 +1958,30 @@ export interface WishlistDisciplineReport {
    *  something the cooling-off period did. */
   dropped_early: number
   still_open: number
+  /** Open wishes past their wait (or with none) — waiting on a decision, not
+   *  the calendar — and the rest of `still_open`. Served: whether a wish is
+   *  cooling is the server's `guide.wishlist.is_cooling`, on the reader's
+   *  day. */
+  ready_to_decide: number
+  still_cooling: number
+  /** Decided wishes the server can place against their wait, how many came
+   *  after it, and that share — the report's headline. Null with nothing
+   *  decided, which is not 0%. */
+  decided_count: number
+  waited_out_count: number
+  waited_out_share: number | null
   /** Every dropped wish's cost, waited on or not. */
   resisted_total: number
   /** How many wishes `resisted_total` sums — the card's count. */
   resisted_count: number
   bought_total: number
+  /** How many wishes `bought_total` sums. */
+  bought_count: number
   open_total: number
+  /** Mean days from adding a wish to buying it. */
   avg_days_to_buy: number | null
   avg_wish_cost: number | null
   unplaced: number
+  /** The person's own waiting period for new wishes, in days. */
+  cooling_days: number
 }
