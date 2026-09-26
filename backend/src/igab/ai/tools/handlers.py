@@ -183,6 +183,11 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
             "category": c["category_name"],
             "group": c["category_group_name"],
             "assigned": money(c["assigned"]),
+            # Money moved into the envelope raises its plan; `planned` is
+            # what `variance` is measured against, so the assistant never
+            # compares a bill paid from a savings transfer with `assigned`.
+            "moved_in": money(c["moved_in"]),
+            "planned": money(c["plan"]),
             "spent": money(c["spent"]),
             "variance": money(c["variance"]),
         }
@@ -190,6 +195,7 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     ]
     result = clip(rows)
     result["total_assigned"] = money(data["total_assigned"])
+    result["total_planned"] = money(data["total_plan"])
     result["total_spent"] = money(data["total_spent"])
     # The report's headline, so the assistant cannot quote a raw
     # assigned-minus-spent that the rows above disagree with.
@@ -723,7 +729,7 @@ async def burn_rate(ctx: ToolContext, args: dict) -> dict:
 async def spending_anomalies(ctx: ToolContext, args: dict) -> dict:
     """Category-months well off their own baseline, worst first.
 
-    The threshold and the baseline rule belong to `report_stats.anomaly_rows`
+    The threshold and the baseline rule belong to `report_stats.anomaly_scan`
     and are not re-decided here — a tool with its own idea of "unusual" would
     disagree with the report the user can open beside it.
     """
@@ -735,6 +741,7 @@ async def spending_anomalies(ctx: ToolContext, args: dict) -> dict:
             "month": _iso(row["month"]),
             "spent": money(row["actual"]),
             "usual": money(row["baseline_mean"]),
+            "usual_range": [money(row["usual_low"]), money(row["usual_high"])],
             "direction": row["direction"],
             "month_still_running": row["partial_month"],
         }

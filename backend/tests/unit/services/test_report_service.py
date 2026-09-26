@@ -29,6 +29,24 @@ def row(**kwargs):
     return Row(**kwargs)
 
 
+def ledger_row(category_id, day: date, amount, name="Groceries", group="Everyday", cls="spending"):
+    """One bucket of `plan_ledger`'s rows query: what `plan_effect` reads
+    (class, savings envelope, sign) beside the summed amount. The class is
+    decided in SQL, so a mock states it — which is why the rules themselves
+    are tested against a real database (`test_report_envelope_rules.py`)."""
+    return row(
+        category_id=category_id,
+        month=day.replace(day=1),
+        cls=cls,
+        savings_envelope=False,
+        inflow=amount > 0,
+        amount=amount,
+        category_name=name,
+        group_name=group,
+        sinking=False,
+    )
+
+
 def mock_result(rows: list) -> MagicMock:
     """Result that responds to .all()."""
     r = MagicMock()
@@ -279,12 +297,13 @@ class TestBudgetVsActual:
             assigned=assigned,
             category_name=cat_name,
             group_name=group_name,
+            sinking=False,
         )
 
     def _spend(self, cat_id, amount, name="Groceries", group="Everyday"):
         # The names travel with the spend rows now: a category spent from but
         # never assigned to in the window used to be served as "Unknown".
-        return row(category_id=cat_id, amount=amount, category_name=name, group_name=group)
+        return ledger_row(cat_id, JAN, amount, name, group)
 
     async def test_basic_variance(self):
         assigns = [self._assignment(CAT_A, JAN, D("500.00"))]
@@ -338,7 +357,9 @@ class TestBudgetVsActual:
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
 
-        assert result["total_assigned"] - result["total_spent"] == D("-450.00")
+        # The drained envelope planned nothing and spent nothing, so it is not
+        # a row — "$0 / $0" is not a finding — and the totals are the rows'.
+        assert [c["category_name"] for c in result["categories"]] == ["B"]
         assert result["total_variance"] == D("-150.00")
         assert result["total_variance"] == sum(c["variance"] for c in result["categories"])
 
@@ -348,6 +369,8 @@ class TestBudgetVsActual:
         assert result == {
             "categories": [],
             "total_assigned": D("0"),
+            "total_moved_in": D("0"),
+            "total_plan": D("0"),
             "total_spent": D("0"),
             "total_variance": D("0"),
         }
@@ -385,12 +408,19 @@ class TestCumulativeVariance:
         m2 = first  # current month
 
         assigns = [
-            row(month=m1, assigned=D("500.00")),
-            row(month=m2, assigned=D("500.00")),
+            row(
+                category_id=CAT_A,
+                month=m,
+                assigned=D("500.00"),
+                category_name="Groceries",
+                group_name="Food",
+                sinking=False,
+            )
+            for m in (m1, m2)
         ]
         spends = [
-            row(date=m1.replace(day=15), amount=D("-400.00")),
-            row(date=m2.replace(day=10), amount=D("-600.00")),
+            ledger_row(CAT_A, m1.replace(day=15), D("-400.00")),
+            ledger_row(CAT_A, m2.replace(day=10), D("-600.00")),
         ]
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.cumulative_variance(BUDGET, months=2)
@@ -409,7 +439,16 @@ class TestCumulativeVariance:
         m1 = add_months(first, -1)
         m2 = first
 
-        assigns = [row(month=m1, assigned=D("400.00"))]
+        assigns = [
+            row(
+                category_id=CAT_A,
+                month=m1,
+                assigned=D("400.00"),
+                category_name="Groceries",
+                group_name="Food",
+                sinking=False,
+            )
+        ]
         spends = []
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.cumulative_variance(BUDGET, months=2)
@@ -867,13 +906,7 @@ class TestCategoryVolatility:
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def vrow(d, amt):
-                return row(
-                    date=d,
-                    amount=amt,
-                    category_id=CAT_A,
-                    category_name="Groceries",
-                    group_name="Food",
-                )
+                return ledger_row(CAT_A, d, amt, "Groceries", "Food")
 
             # months=3 with today in March means the three COMPLETE months
             # Dec, Jan, Feb. March is the partial current month and is out —
@@ -910,13 +943,7 @@ class TestCategoryVolatility:
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def vrow(d, amt):
-                return row(
-                    date=d,
-                    amount=amt,
-                    category_id=CAT_A,
-                    category_name="Property Tax",
-                    group_name="Long Term",
-                )
+                return ledger_row(CAT_A, d, amt, "Property Tax", "Long Term")
 
             # Two charges of 600 in a six-month window: Jan and Apr.
             rows = [vrow(date(2026, 1, 20), D("-600.00")), vrow(date(2026, 4, 20), D("-600.00"))]
@@ -943,13 +970,7 @@ class TestCategoryVolatility:
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def vrow(d):
-                return row(
-                    date=d,
-                    amount=D("-600.00"),
-                    category_id=CAT_A,
-                    category_name="Property Tax",
-                    group_name="Long Term",
-                )
+                return ledger_row(CAT_A, d, D("-600.00"), "Property Tax", "Long Term")
 
             # Jan–Jun, 600 in Jan and Apr: 200 a month once spread.
             rows = [vrow(date(2026, 1, 20)), vrow(date(2026, 4, 20))]

@@ -211,8 +211,21 @@ SPENDABLE = and_(LIVE_CATEGORY, not_(LINKED_TO_CARD), not_(IN_SYSTEM_GROUP))
 #: gap opens only on rows an older delete path or an import left behind — and
 #: those are exactly the rows a person would notice missing from a total.
 #: Pinned by `test_report_envelope_rules.py`, which fails if the gap widens.
-BUDGETED_ENVELOPE = and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP))
+#:
+#: **The plan family also leaves out a card's envelope, on both sides**
+#: (`PLANNED_ENVELOPE`). Its assignments are paydown — `get_budget_summary`
+#: overwrites its balance from card arithmetic and nothing may be filed to it —
+#: so there is no spending for them to be measured against. Counted as a plan,
+#: every card read as an envelope assigned and never spent: a phantom
+#: underspend on Budget vs Actual and a Variance line that climbed with every
+#: paydown. `SPENT_ENVELOPE` keeps it, because a row an older import filed
+#: there still moved money, and the spending reports must not under-report.
+#: So within the plan family the one-term divergence (liveness) still holds —
+#: `BUDGETED_ENVELOPE` is `PLANNED_ENVELOPE` plus `LIVE_CATEGORY`, by
+#: construction.
 SPENT_ENVELOPE = not_(IN_SYSTEM_GROUP)
+PLANNED_ENVELOPE = and_(SPENT_ENVELOPE, not_(LINKED_TO_CARD))
+BUDGETED_ENVELOPE = and_(LIVE_CATEGORY, PLANNED_ENVELOPE)
 
 #: A group holding nothing but card envelopes. The budget grid never
 #: draws it — every one of its rows belongs to the cards section — so

@@ -163,30 +163,32 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   'budget-actual': {
     scope: 'categories',
-    summary: 'What you assigned to each category against what you spent.',
+    summary: "Each category's plan against what it spent.",
     counts:
-      'Assigned vs spent, where spent includes outflows from Savings and Emergency fund envelopes.',
+      'Plan — assigned plus money moved into the envelope — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes.',
     leavesOut:
-      'Refunds do not reduce spent; money moved out of an envelope lowers its plan instead.',
+      'Card payment envelopes, starting balances, and categories that planned and spent nothing. Money moved out of an envelope lowers its plan.',
   },
   'category-history': {
     scope: 'categories',
     summary: "One category's assigned, spent and available, month by month.",
-    counts: "The budget page's own figures for each month.",
-    leavesOut: 'Nothing is re-derived — other categories are one pick away.',
+    counts:
+      "The budget page's assigned, activity and available; Spent is net of refunds, as the plan reports count it.",
+    leavesOut:
+      'Money moved into the envelope is not spending; the average leaves out the month in progress.',
   },
   variance: {
     scope: 'categories',
-    summary: 'The running total of assigned minus spent.',
-    counts:
-      'Assigned vs spent each month, where spent includes outflows from Savings and Emergency fund envelopes.',
-    leavesOut: 'Refunds do not reduce spent.',
+    summary: 'The running total of plan minus spent.',
+    counts: "Each month's category plans — assigned plus money moved in — vs spent net of refunds.",
+    leavesOut: 'Card payment envelopes and starting balances.',
   },
   volatility: {
     scope: 'categories',
     summary: 'How much each category swings month to month.',
-    counts: 'Every categorized outflow, whatever its class — savings and debt outflows appear.',
-    leavesOut: 'Uncategorized rows, and categories with fewer than two months of data.',
+    counts: 'Spending per category and month, net of refunds, as the plan reports count it.',
+    leavesOut:
+      'Uncategorized rows, savings and debt payments out of ordinary envelopes, and categories with fewer than two months of data.',
   },
   'spending-trends': {
     scope: 'categories',
@@ -236,14 +238,16 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'categories',
     summary: "Each month's plan against that month's spending, ignoring carryover.",
     counts:
-      'Assigned vs spent per category-month, where spent includes outflows from Savings and Emergency fund envelopes.',
-    leavesOut: 'Carryover from earlier months, and refunds do not reduce spent.',
+      'Plan — assigned plus money moved in — vs spent net of refunds, per category-month. Over means past the plan by $1 and 1%.',
+    leavesOut: 'Carryover from earlier months, and card payment envelopes.',
   },
   anomalies: {
     scope: 'categories',
     summary: 'Category-months well above or below their usual spending.',
-    counts: 'Every categorized outflow, whatever its class — savings and debt outflows appear.',
-    leavesOut: 'Uncategorized rows.',
+    counts:
+      'Spending per category and month, net of refunds; a quiet month counts as zero, and each month is judged against the months before it.',
+    leavesOut:
+      'Uncategorized rows, sinking funds, and categories with under six months behind them.',
   },
   payees: {
     scope: 'on-budget-filterable',

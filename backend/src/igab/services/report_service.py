@@ -35,7 +35,6 @@ from igab.domain.activity_class import (
     ActivityClass,
     apply_class_joins,
     counted_classes,
-    planned_spend_filter,
     rolled_up_classes,
     split_leg_classes,
 )
@@ -60,9 +59,10 @@ from igab.domain.dates import (
     weekday_counts,
 )
 from igab.domain.dates import month_end as _month_end
+from igab.domain.dates import month_start as _month_start
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.money_moves import Figures, figures, flows
-from igab.domain.plan import plan_outcome, total_variance
+from igab.domain.plan import CHRONIC_WINDOW, is_chronic, plan_outcome, total_variance
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.spending import UNCATEGORIZED, spent
 from igab.domain.view_arrangement import arrange_by_view
@@ -81,7 +81,6 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     PAYEE_OF_RECORD,
     POSTED,
-    SPENDING_OUTFLOW,
     SPENDING_ROW,
     SUBSCRIPTION_CHARGE,
     account_scope,
@@ -93,14 +92,16 @@ from igab.repositories.txn_filters import (
     reapplied_by_subscriptions,
 )
 from igab.services.essentials import reported_essentials
+from igab.services.plan_ledger import PlanMonth, ledger_rows, plan_ledger
 from igab.services.report_basics import (
     class_excluded_note,
     history_window,
     means_months,
 )
 from igab.services.report_day import reader_today
+from igab.services.report_scope import scoped
 from igab.services.report_stats import (
-    anomaly_rows,
+    anomaly_scan,
     balance_sheet,
     category_month_grid,
     payee_rollup,
@@ -126,8 +127,12 @@ from igab.services.savings_held import held_between, held_by_month
 class ChronicMonth(TypedDict):
     month: date
     assigned: Decimal
+    moved_in: Decimal
+    plan: Decimal
     spent: Decimal
     variance: Decimal
+    over: bool
+    active: bool
 
 
 class ChronicCategory(TypedDict):
@@ -138,9 +143,11 @@ class ChronicCategory(TypedDict):
     months_over: int
     months_active: int
     total_assigned: Decimal
+    total_moved_in: Decimal
     total_spent: Decimal
     avg_overspend: Decimal
     chronic: bool
+    sinking_fund: bool
 
 
 #: The smallest inflow that counts as a payday.
@@ -165,25 +172,6 @@ class SpendingRows(NamedTuple):
 #: How many categories the Seasonality heatmap draws, largest first. The
 #: count of the rest is served beside them, so the page says "top 20 of N".
 SEASONALITY_TOP = 20
-
-
-def scoped(q, column, ids: Sequence[uuid.UUID] | None):
-    """Apply a category (or account) scope to a report query.
-
-    The one statement of a distinction the reports have to keep: **None means
-    no scope was asked for; an empty list means a scope was asked for and
-    nothing matched.** `if ids:` conflates them, and the conflation is not
-    academic — scope a report to a tag nobody has applied yet and it answers
-    with the entire budget, which reads as the tag being ignored.
-
-    `in_([])` renders as a false predicate, so an empty scope correctly returns
-    no rows.
-
-    Written once because it was written five times: every report query builder
-    below had its own `if category_ids:`, and a sixth would have been written
-    the same way.
-    """
-    return q if ids is None else q.where(column.in_(ids))
 
 
 def _rate_figures(f: Figures) -> dict:
@@ -920,123 +908,57 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        months_in_range = month_starts(start_date, end_date)
+        """Each category's plan for the window against what it spent.
 
-        # Assignments for those months
-        assign_q = (
-            select(
-                BudgetAssignment.category_id,
-                BudgetAssignment.month,
-                BudgetAssignment.assigned,
-                Category.name.label("category_name"),
-                CategoryGroup.name.label("group_name"),
-            )
-            .join(Category, BudgetAssignment.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                BudgetAssignment.budget_id == budget_id,
-                BudgetAssignment.month.in_(months_in_range),
-                BUDGETED_ENVELOPE,
-            )
+        The plan is the window's assignments plus money moved into the
+        envelope, and spent is net of refunds — `plan_ledger` reads both and
+        `domain.plan` says why. A category that planned nothing and spent
+        nothing is not a row: "$0 / $0" is not a finding, and a drained
+        envelope, floored to no plan, was one of those.
+
+        The totals are the served rows summed, so the headline cannot say
+        something the rows under it do not (`plan.total_variance`).
+        """
+        ledger = await plan_ledger(
+            self.session, budget_id, start_date, end_date, category_ids=category_ids
         )
-
-        # Activity (expenses) in range — leaf rows so split children count.
-        # planned_spend_filter: one universe with the assigned side above;
-        # this query was the byte-identical twin of cumulative_variance's
-        # before the predicate was extracted.
-        # The names travel with the rows. This selected only the id and the
-        # amount, so a category that was spent from but never assigned to
-        # inside the window had no name to reach for and was served as
-        # "Unknown" with a blank group — on a report whose whole job is to
-        # name the envelope that went off plan. `SPENT_ENVELOPE` keeps a
-        # deleted category, which is exactly the row that has no assignment.
-        spend_q = (
-            select(
-                Transaction.category_id,
-                Transaction.amount,
-                Category.name.label("category_name"),
-                CategoryGroup.name.label("group_name"),
-            )
-            .join(Category, Category.id == Transaction.category_id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                planned_spend_filter(),
-            )
-        )
-        spend_q = apply_class_joins(spend_q)
-        assign_q = scoped(assign_q, BudgetAssignment.category_id, category_ids)
-        spend_q = scoped(spend_q, Transaction.category_id, category_ids)
-
-        assignments = (await self.session.execute(assign_q)).all()
-        spending = (await self.session.execute(spend_q)).all()
-
-        if not assignments and not spending:
-            return {
-                "categories": [],
-                "total_assigned": Decimal("0"),
-                "total_spent": Decimal("0"),
-                "total_variance": Decimal("0"),
-            }
-
-        # Aggregate assignments by category
-        assign_by_cat: dict[str, dict] = {}
-        for r in assignments:
-            cid = str(r.category_id)
-            if cid not in assign_by_cat:
-                assign_by_cat[cid] = {
-                    "category_id": cid,
-                    "category_name": r.category_name,
-                    "category_group_name": r.group_name,
-                    "assigned": Decimal("0"),
-                    "spent": Decimal("0"),
-                }
-            assign_by_cat[cid]["assigned"] += Decimal(str(r.assigned))
-
-        # Aggregate spending by category
-        for r in spending:
-            cid = str(r.category_id)
-            if cid not in assign_by_cat:
-                assign_by_cat[cid] = {
-                    "category_id": cid,
-                    "category_name": r.category_name,
-                    "category_group_name": r.group_name,
-                    "assigned": Decimal("0"),
-                    "spent": Decimal("0"),
-                }
-            assign_by_cat[cid]["spent"] += abs(Decimal(str(r.amount)))
-
-        categories = []
+        zero = Decimal("0")
+        categories: list[dict] = []
         outcomes = []
-        total_assigned = Decimal("0")
-        total_spent = Decimal("0")
-
-        for item in sorted(assign_by_cat.values(), key=lambda x: x["spent"], reverse=True):
-            # The window's plan, floored — the same verdict Plan vs Reality
-            # serves per month, so a drained envelope is not red here and
-            # neutral there. `overspent` is served so the chart stops
-            # deciding it from the raw assignment.
-            outcome = plan_outcome(item["assigned"], item["spent"])
+        totals = {"assigned": zero, "moved_in": zero, "plan": zero, "spent": zero}
+        for cat in ledger.values():
+            t = cat.total()
+            outcome = plan_outcome(t.assigned, t.spent, moved_in=t.moved_in)
+            if outcome.plan == zero and t.spent == zero:
+                continue
+            # `overspent` is served so the chart stops deciding it from the
+            # raw assignment; `plan` so it never adds moved-in money itself.
             outcomes.append(outcome)
             categories.append(
                 {
-                    **item,
+                    "category_id": str(cat.category_id),
+                    "category_name": cat.name,
+                    "category_group_name": cat.group,
+                    "assigned": t.assigned,
+                    "moved_in": t.moved_in,
+                    "plan": outcome.plan,
+                    "spent": t.spent,
                     "variance": outcome.variance,
                     "variance_pct": outcome.variance_pct,
                     "overspent": outcome.over,
                 }
             )
-            total_assigned += item["assigned"]
-            total_spent += item["spent"]
-
+            totals["assigned"] += t.assigned
+            totals["moved_in"] += t.moved_in
+            totals["plan"] += outcome.plan
+            totals["spent"] += t.spent
+        categories.sort(key=lambda c: (-c["spent"], c["category_name"]))
         return {
             "categories": categories,
-            "total_assigned": total_assigned,
-            "total_spent": total_spent,
-            # The headline is the rows' verdicts summed, so it cannot say
-            # something the rows under it do not (`plan.total_variance`).
+            "total_assigned": totals["assigned"],
+            "total_moved_in": totals["moved_in"],
+            "total_plan": totals["plan"],
+            "total_spent": totals["spent"],
             "total_variance": total_variance(outcomes),
         }
 
@@ -1048,66 +970,48 @@ class ReportService:
         months: int = 12,
         today: date | None = None,
     ) -> list[dict]:
+        """Each month's plan against its spending, and the running sum.
+
+        A month's variance is its categories' verdicts summed — the column
+        totals of Plan vs Reality's matrix — not `assigned - spent` over the
+        whole budget. That raw difference read money moved out of one
+        envelope and spent from another as an overrun (the second's plan came
+        from the first's carryover, which a monthly plan cannot see), and it
+        read a transfer from savings into an envelope as spending with no plan
+        behind it. `planned - actual_spent` is `monthly_variance` by
+        construction.
+        """
         months_list = report_months(reader_today(today), months)
-
-        assign_q = (
-            select(BudgetAssignment.month, BudgetAssignment.assigned)
-            .join(Category, BudgetAssignment.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                BudgetAssignment.budget_id == budget_id,
-                BudgetAssignment.month.in_(months_list),
-                # BUDGETED_ENVELOPE already carries LIVE_CATEGORY; the inline
-                # `Category.is_deleted == False` beside it was a restatement of
-                # the constant's own term, which is how a rule acquires a
-                # second definition that can later disagree with the first.
-                BUDGETED_ENVELOPE,
-            )
+        ledger = await plan_ledger(
+            self.session, budget_id, months_list[0], _month_end(months_list[-1])
         )
-        assignments = (await self.session.execute(assign_q)).all()
-
-        start = months_list[0]
-        end = _month_end(months_list[-1])
-        # planned_spend_filter: the spent side must live in the same universe
-        # as the assigned side, or the subtraction compounds an
-        # apples-to-oranges gap every month. The predicate's docstring lists
-        # exactly what the old inline copy missed.
-        spend_q = select(Transaction.date, Transaction.amount).where(
-            Transaction.budget_id == budget_id,
-            Transaction.date >= start,
-            Transaction.date <= end,
-            planned_spend_filter(),
-        )
-        spend_q = apply_class_joins(spend_q)
-        spending = (await self.session.execute(spend_q)).all()
-
-        assign_by_month: dict[date, Decimal] = {}
-        for r in assignments:
-            m = r.month if isinstance(r.month, date) else date.fromisoformat(str(r.month))
-            assign_by_month[m] = assign_by_month.get(m, Decimal("0")) + Decimal(str(r.assigned))
-
-        spend_by_month: dict[date, Decimal] = {}
-        for r in spending:
-            m = r.date.replace(day=1)
-            spend_by_month[m] = spend_by_month.get(m, Decimal("0")) + abs(Decimal(str(r.amount)))
-
+        zero = Decimal("0")
         results = []
-        cumulative = Decimal("0")
+        cumulative = zero
         for month in months_list:
-            assigned = assign_by_month.get(month, Decimal("0"))
-            spent = spend_by_month.get(month, Decimal("0"))
-            variance = assigned - spent
+            assigned = moved_in = planned = spent = variance = zero
+            for cat in ledger.values():
+                cell = cat.months.get(month)
+                if cell is None:
+                    continue
+                outcome = plan_outcome(cell.assigned, cell.spent, moved_in=cell.moved_in)
+                assigned += cell.assigned
+                moved_in += cell.moved_in
+                planned += outcome.plan
+                spent += cell.spent
+                variance += outcome.variance
             cumulative += variance
             results.append(
                 {
                     "month": month,
                     "budget_assigned": assigned,
+                    "moved_in": moved_in,
+                    "planned": planned,
                     "actual_spent": spent,
                     "monthly_variance": variance,
                     "cumulative_variance": cumulative,
                 }
             )
-
         return results
 
     # ─── Plan vs Reality ─────────────────────────────────────────────────────
@@ -1118,110 +1022,50 @@ class ReportService:
         months: int = 12,
         today: date | None = None,
     ) -> dict:
-        """Assigned vs actually spent, per category per month.
+        """Each category's plan against its spending, per month.
 
         Deliberately ignores carryover: this report measures monthly plan
-        discipline (did the month's spending fit the month's assignment?),
-        not envelope health — a category living off January's surplus still
-        reads as over-plan in February if nothing was assigned then.
+        discipline (did the month's spending fit the month's plan?), not
+        envelope health — a category living off January's surplus still
+        reads as over-plan in February if nothing was assigned or moved in.
 
-        A month counts as "over" when `plan_outcome` says so — spending above
-        the assignment floored at zero — among active months (any assignment
-        or spending). Chronic = over in 3+ of the last 6 months of the window
-        — the signal that a plan is habitually wrong rather than occasionally
-        unlucky.
+        The plan and spent are `plan_ledger`'s, the universe Budget vs Actual
+        and Cumulative Variance count. A month counts as "over" when
+        `plan_outcome` says so — past the plan by a dollar and 1% of it —
+        and a category is chronic by `plan.is_chronic`, over the window's
+        last `CHRONIC_WINDOW` months. The Guide's chronic-overspend check
+        reads the served flag, so saving, a transfer into an envelope, a few
+        cents of rounding or a sinking fund paying its bill can never be
+        reported as a bad habit.
 
-        "Spent" is `planned_spend_filter()`, the universe Budget vs Actual
-        and Cumulative Variance count. This report had its
-        own inline set with neither half, so a categorized transfer into a
-        brokerage or a row on a tracking account counted here as overspending
-        while the other two said nothing was spent — and `chronic` feeds the
-        Guide's chronic-overspend check, so saving could be reported as a bad
-        habit.
+        A category with no active month — nothing planned and nothing spent
+        anywhere in the window — is not a row.
         """
-        months_list = report_months(reader_today(today), months)
-
-        assign_q = (
-            select(
-                BudgetAssignment.category_id,
-                BudgetAssignment.month,
-                BudgetAssignment.assigned,
-                Category.name.label("category_name"),
-                CategoryGroup.name.label("group_name"),
-            )
-            .join(Category, BudgetAssignment.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                BudgetAssignment.budget_id == budget_id,
-                BudgetAssignment.month.in_(months_list),
-                BUDGETED_ENVELOPE,
-            )
+        reader = reader_today(today)
+        months_list = report_months(reader, months)
+        ledger = await plan_ledger(
+            self.session, budget_id, months_list[0], _month_end(months_list[-1])
         )
-        spend_q = (
-            select(
-                Transaction.category_id,
-                Transaction.date,
-                Transaction.amount,
-                Category.name.label("category_name"),
-                CategoryGroup.name.label("group_name"),
-            )
-            .join(Category, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.date >= months_list[0],
-                Transaction.date <= _month_end(months_list[-1]),
-                planned_spend_filter(),
-            )
-        )
-        spend_q = apply_class_joins(spend_q)
-        assignments = (await self.session.execute(assign_q)).all()
-        spending = (await self.session.execute(spend_q)).all()
 
         zero = Decimal("0")
-        cats: dict[str, dict] = {}
-
-        def cat_entry(category_id, name: str, group: str) -> dict:
-            cid = str(category_id)
-            if cid not in cats:
-                cats[cid] = {
-                    "category_id": cid,
-                    "category_name": name,
-                    "category_group_name": group,
-                    "assigned": dict.fromkeys(months_list, zero),
-                    "spent": dict.fromkeys(months_list, zero),
-                }
-            return cats[cid]
-
-        for r in assignments:
-            m = r.month if isinstance(r.month, date) else date.fromisoformat(str(r.month))
-            entry = cat_entry(r.category_id, r.category_name, r.group_name)
-            entry["assigned"][m] += Decimal(str(r.assigned))
-        for r in spending:
-            m = r.date.replace(day=1)
-            entry = cat_entry(r.category_id, r.category_name, r.group_name)
-            entry["spent"][m] += abs(Decimal(str(r.amount)))
-
-        recent = set(months_list[-6:])
+        recent = set(months_list[-CHRONIC_WINDOW:])
         categories: list[ChronicCategory] = []
-        total_assigned = zero
-        total_spent = zero
+        total_assigned = total_moved_in = total_spent = zero
         chronic_count = 0
-        for entry in cats.values():
+        for cat in ledger.values():
             monthly: list[ChronicMonth] = []
             months_over = 0
             months_active = 0
             recent_over = 0
             over_total = zero
             for m in months_list:
-                assigned = entry["assigned"][m]
-                spent = entry["spent"][m]
-                # One verdict for the chronic count AND the cell's variance,
-                # because the matrix tints a negative variance red: a drained
-                # envelope was coloured as overspent while the chronic flag
-                # beside it disagreed. `plan_outcome` says why the plan floors.
-                outcome = plan_outcome(assigned, spent)
-                if assigned != zero or spent != zero:
+                cell = cat.months.get(m) or PlanMonth()
+                # One verdict for the chronic count, the cell's tint AND its
+                # variance: a drained envelope was once coloured as overspent
+                # while the chronic flag beside it disagreed.
+                outcome = plan_outcome(cell.assigned, cell.spent, moved_in=cell.moved_in)
+                active = outcome.plan != zero or cell.spent != zero
+                if active:
                     months_active += 1
                     if outcome.over:
                         months_over += 1
@@ -1229,30 +1073,43 @@ class ReportService:
                         if m in recent:
                             recent_over += 1
                 monthly.append(
-                    {"month": m, "assigned": assigned, "spent": spent, "variance": outcome.variance}
+                    {
+                        "month": m,
+                        "assigned": cell.assigned,
+                        "moved_in": cell.moved_in,
+                        "plan": outcome.plan,
+                        "spent": cell.spent,
+                        "variance": outcome.variance,
+                        "over": outcome.over,
+                        "active": active,
+                    }
                 )
-            cat_assigned = sum(entry["assigned"].values(), zero)
-            cat_spent = sum(entry["spent"].values(), zero)
-            chronic = recent_over >= 3
+            if months_active == 0:
+                continue
+            chronic = is_chronic(recent_over, sinking_fund=cat.sinking_fund)
             if chronic:
                 chronic_count += 1
+            t = cat.total()
             avg_overspend = quantize_cents(over_total / months_over) if months_over else zero
             categories.append(
                 {
-                    "category_id": entry["category_id"],
-                    "category_name": entry["category_name"],
-                    "category_group_name": entry["category_group_name"],
+                    "category_id": str(cat.category_id),
+                    "category_name": cat.name,
+                    "category_group_name": cat.group,
                     "monthly": monthly,
                     "months_over": months_over,
                     "months_active": months_active,
-                    "total_assigned": cat_assigned,
-                    "total_spent": cat_spent,
+                    "total_assigned": t.assigned,
+                    "total_moved_in": t.moved_in,
+                    "total_spent": t.spent,
                     "avg_overspend": avg_overspend,
                     "chronic": chronic,
+                    "sinking_fund": cat.sinking_fund,
                 }
             )
-            total_assigned += cat_assigned
-            total_spent += cat_spent
+            total_assigned += t.assigned
+            total_moved_in += t.moved_in
+            total_spent += t.spent
 
         categories.sort(
             key=lambda c: (
@@ -1262,10 +1119,16 @@ class ReportService:
                 c["category_name"],
             )
         )
+        # Which column is still being written. Served, like Anomalies'
+        # `partial_month`: the window is the server's, read for the reader's
+        # day, and the page marks that column "so far" rather than guessing.
+        running = _month_start(reader)
         return {
             "months": months_list,
+            "running_month": running if running in months_list else None,
             "categories": categories,
             "total_assigned": total_assigned,
+            "total_moved_in": total_moved_in,
             "total_spent": total_spent,
             "chronic_count": chronic_count,
         }
@@ -1295,27 +1158,14 @@ class ReportService:
         partial current month the statistics leave out and dropped the oldest.
         """
         start, end = await history_window(self.session, budget_id, months, reader_today(today))
-
-        q = (
-            select(
-                Transaction.date,
-                Transaction.amount,
-                Transaction.category_id,
-                Category.name.label("category_name"),
-                CategoryGroup.name.label("group_name"),
-            )
-            .join(Category, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.date >= start,
-                Transaction.date <= end,
-                SPENDING_OUTFLOW,
-            )
-        )
-        rows = (await self.session.execute(q)).all()
+        # Spent as the plan family counts it, net of refunds: this was
+        # `abs(amount)` of every outflow of every class, so a transfer to a
+        # brokerage swung a category and a refund made a month bigger.
+        ledger = await plan_ledger(self.session, budget_id, start, end, assignments=False)
         return {
-            "categories": volatility_stats(rows, month_starts(start, end), amortize=amortize),
+            "categories": volatility_stats(
+                ledger_rows(ledger), month_starts(start, end), amortize=amortize
+            ),
             "window_start": start,
             "window_end": end,
         }
@@ -1914,55 +1764,37 @@ class ReportService:
 
         Complete months make every baseline, and the month in progress is
         scored against them but flagged only when it is HIGH — the rule, and
-        why it diverges, live at `report_stats.anomaly_rows`. The window
+        why it diverges, live at `report_stats.anomaly_scan`. The window
         therefore runs from the complete-month start through TODAY, not
         through last month's end.
         """
         today = reader_today(today)
         start_date, _ = await history_window(self.session, budget_id, months, today)
-
-        # Get spending per category per month
-        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
-        q = (
-            select(
-                Category.id.label("category_id"),
-                Category.name.label("category_name"),
-                CategoryGroup.name.label("group_name"),
-                month_col,
-                func.sum(Transaction.amount).label("total"),
-            )
-            .join(Transaction, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.date >= start_date,
-                Transaction.date <= today,
-                SPENDING_OUTFLOW,
-            )
-            .group_by(
-                Category.id,
-                Category.name,
-                CategoryGroup.name,
-                month_col,
-            )
+        ledger = await plan_ledger(self.session, budget_id, start_date, today, assignments=False)
+        # A sinking fund is not tested: months of nothing and then the bill it
+        # saved for is the plan working, and flagged as a spike it was the
+        # most disciplined envelope in the budget reading as the least.
+        tested = {cid: cat for cid, cat in ledger.items() if not cat.sinking_fund}
+        skipped = sum(
+            1
+            for cat in ledger.values()
+            if cat.sinking_fund and any(c.spent != 0 for c in cat.months.values())
         )
-        rows = (await self.session.execute(q)).all()
-
-        anomalies = anomaly_rows(
+        scan = anomaly_scan(
             [
-                (
-                    str(r.category_id),
-                    r.category_name,
-                    r.group_name,
-                    r.month.date() if hasattr(r.month, "date") else r.month,
-                    r.total,
-                )
-                for r in rows
+                (str(r.category_id), r.category_name, r.group_name, r.date, -r.amount)
+                for r in ledger_rows(tested)
             ],
+            months=month_starts(start_date, today),
             today=today,
             threshold=threshold,
         )
-        return {"anomalies": anomalies}
+        return {
+            "anomalies": scan.anomalies,
+            "categories_seen": scan.categories,
+            "categories_tested": scan.tested,
+            "sinking_funds_skipped": skipped,
+        }
 
     # ─── Payday Effect ─────────────────────────────────────────────────────────
 

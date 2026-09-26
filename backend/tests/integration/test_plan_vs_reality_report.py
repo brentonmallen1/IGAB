@@ -223,14 +223,12 @@ async def test_a_drained_envelope_is_not_a_chronic_overspender(db_session, api_c
     await db_session.commit()
 
     body = await _fetch(api_client, budget.id, months=6)
-    cat = _cat(body, drained.id)
 
-    assert cat["chronic"] is False
-    assert cat["months_over"] == 0
     assert body["chronic_count"] == 0
-    # The plan was nothing and nothing was spent, so the cell reads zero
-    # rather than -300 — which the matrix would have tinted as an overspend.
-    assert D(_cell(cat, _months_back(0))["variance"]) == D("0")
+    # The plan was nothing and nothing was spent in every month, so there is
+    # no row at all: a row of "$0 / $0" cells is not a finding, and before
+    # the floor each of them was tinted as a 300 overspend.
+    assert [c for c in body["categories"] if c["category_id"] == str(drained.id)] == []
 
 
 async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, api_client):
@@ -280,11 +278,12 @@ class TestBudgetVsActualGivesTheSameVerdict:
         await db_session.commit()
 
         bva, pvr = await self._both(api_client, budget.id)
-        item = _cat(bva, drained.id)
 
-        assert item["overspent"] is False
-        assert D(item["variance"]) == D("0")
-        assert _cat(pvr, drained.id)["months_over"] == 0
+        # Planned nothing, spent nothing: on neither report as a row, so on
+        # neither as an overrun. Both used to disagree about it.
+        assert [c for c in bva["categories"] if c["category_id"] == str(drained.id)] == []
+        assert [c for c in pvr["categories"] if c["category_id"] == str(drained.id)] == []
+        assert D(bva["total_variance"]) == D("0")
 
     async def test_real_spending_is_over_by_the_same_amount_on_both(self, db_session, api_client):
         budget = await create_budget(db_session, api_client.test_user)

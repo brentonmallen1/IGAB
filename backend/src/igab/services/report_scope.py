@@ -25,6 +25,7 @@ with the entire budget.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
@@ -96,3 +97,23 @@ async def resolve_category_scope(
         category_ids=sorted(scope, key=str),
         filter_unavailable=filter_unavailable,
     )
+
+
+def scoped(q, column, ids: Sequence[uuid.UUID] | None):
+    """Apply a category (or account) scope to a report query.
+
+    The one statement of a distinction the reports have to keep: **None means
+    no scope was asked for; an empty list means a scope was asked for and
+    nothing matched.** `if ids:` conflates them, and the conflation is not
+    academic — scope a report to a tag nobody has applied yet and it answers
+    with the entire budget, which reads as the tag being ignored.
+
+    `in_([])` renders as a false predicate, so an empty scope correctly returns
+    no rows.
+
+    Written once because it was written five times: every report query builder
+    in `report_service` had its own `if category_ids:`, and a sixth would have
+    been written the same way. Here beside the scope it applies, so the plan
+    ledger (`services/plan_ledger.py`) reads it without importing the service.
+    """
+    return q if ids is None else q.where(column.in_(ids))

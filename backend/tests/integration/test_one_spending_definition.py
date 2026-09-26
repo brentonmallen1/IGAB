@@ -20,10 +20,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, select
 
-from igab.db.models import Transaction
-from igab.repositories.txn_filters import ON_BUDGET_ACCOUNT, SPENDING_OUTFLOW, SPENDING_ROW
 from igab.services.report_basics import spending_trends
 from igab.services.report_service import ReportService
 
@@ -329,27 +326,6 @@ class TestDrillsTotalWhatChartsTotal:
         budget, _ = await _household(db_session, api_client)
         body = await _get(api_client, budget, "income-expense", months=3)
         assert body["expense_classes"] == ["spending"]
-
-
-class TestTheGrossCutIsTheOutflowsAlone:
-    """`SPENDING_OUTFLOW` — what the plan family, Volatility and Anomalies
-    still read — differs from the net row set by exactly the spending-class
-    inflows. Bounded so the gap cannot widen unnoticed."""
-
-    async def test_the_gap_is_the_refunds(self, db_session, api_client):
-        budget, _ = await _household(db_session, api_client)
-
-        async def total(predicate):
-            q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                Transaction.budget_id == budget.id,
-                ON_BUDGET_ACCOUNT,
-                Transaction.category_id.isnot(None),
-                predicate,
-            )
-            return (await db_session.execute(q)).scalar_one()
-
-        # The two refunds: 50 to Groceries, 90 to Shopping.
-        assert await total(SPENDING_ROW) - await total(SPENDING_OUTFLOW) == Decimal("140.00")
 
 
 class TestSpendingTrendsAveragesCompleteMonths:

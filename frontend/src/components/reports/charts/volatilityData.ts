@@ -59,6 +59,29 @@ export function coefficientOfVariation(mean: number, stdDev: number): number {
   return mean > 0 ? (stdDev / mean) * 100 : 0
 }
 
+/** The average a category needs before its swing is ranked. Under it a
+ *  "300% swing" is a few dollars one month and none the next — the top of a
+ *  ranking by swing would be nothing but those. They are listed after. */
+export const VOLATILITY_MIN_MEAN = 25
+
+/**
+ * Categories with enough history, most variable first: by swing (σ as a share
+ * of the average) among those averaging at least `VOLATILITY_MIN_MEAN`, the
+ * small ones after in the same order.
+ *
+ * It was the server's order, largest average first, so a report about what
+ * swings opened on the mortgage — the steadiest thing in the budget, and the
+ * biggest — and the category that actually jumped around sat twelfth.
+ */
+export function rankByVariability<T extends VolatilityCategoryLike>(categories: T[]): T[] {
+  const swing = (c: T) => coefficientOfVariation(Number(c.mean), Number(c.std_dev))
+  const small = (c: T) => (Number(c.mean) < VOLATILITY_MIN_MEAN ? 1 : 0)
+  return filterVolatile(categories)
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => small(a.c) - small(b.c) || swing(b.c) - swing(a.c) || a.i - b.i)
+    .map(({ c }) => c)
+}
+
 /**
  * What an export of the report is named and carries.
  *

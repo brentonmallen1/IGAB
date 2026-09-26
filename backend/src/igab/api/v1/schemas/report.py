@@ -327,7 +327,15 @@ class BudgetActualItem(ApiModel):
     category_id: uuid.UUID
     category_name: str
     category_group_name: str
+    #: The window's budget assignments, as the budget grid shows them.
     assigned: Decimal
+    #: Money moved into the envelope — a transfer from savings, a deposit
+    #: filed to it (`domain.plan.plan_effect`). It raises the plan.
+    moved_in: Decimal
+    #: `assigned + moved_in`, floored at zero: what `variance` is measured
+    #: against. Served so the chart never adds the two itself.
+    plan: Decimal
+    #: Net of refunds. Negative only when refunds beat the spending.
     spent: Decimal
     #: Against the plan floored at zero (`domain.plan`), like Plan vs Reality.
     variance: Decimal
@@ -340,6 +348,9 @@ class BudgetActualItem(ApiModel):
 class BudgetActualResponse(ApiModel):
     categories: list[BudgetActualItem]
     total_assigned: Decimal
+    total_moved_in: Decimal
+    #: The rows' plans summed; `total_plan - total_spent == total_variance`.
+    total_plan: Decimal
     total_spent: Decimal
     #: The rows' floored variances summed (`plan.total_variance`) — the
     #: headline. Not `total_assigned - total_spent`, which disagrees with the
@@ -357,8 +368,17 @@ class BudgetActualResponse(ApiModel):
 class PlanRealityCell(ApiModel):
     month: date
     assigned: Decimal
+    moved_in: Decimal
+    #: `assigned + moved_in` floored at zero (`domain.plan.plan_outcome`).
+    plan: Decimal
     spent: Decimal
     variance: Decimal
+    #: The verdict — past the plan by a dollar and 1% of it. The cell's tint
+    #: reads this, never the variance's sign.
+    over: bool
+    #: Anything planned or spent this month: the cells the matrix fills and
+    #: `months_active` counts.
+    active: bool
 
 
 class PlanRealityCategory(ApiModel):
@@ -369,15 +389,24 @@ class PlanRealityCategory(ApiModel):
     months_over: int
     months_active: int
     total_assigned: Decimal
+    total_moved_in: Decimal
     total_spent: Decimal
     avg_overspend: Decimal
+    #: `domain.plan.is_chronic`. The Guide's checkup reads this flag.
     chronic: bool
+    #: Tagged Long-term expense, which is never chronic — said, so the page
+    #: can explain an over-plan month that carries no flag.
+    sinking_fund: bool
 
 
 class PlanRealityResponse(ApiModel):
     months: list[date]
+    #: The month still in progress when the window reaches it, else None —
+    #: its column is month-to-date and the page says "so far".
+    running_month: date | None
     categories: list[PlanRealityCategory]
     total_assigned: Decimal
+    total_moved_in: Decimal
     total_spent: Decimal
     chronic_count: int
 
@@ -388,6 +417,11 @@ class PlanRealityResponse(ApiModel):
 class VariancePoint(ApiModel):
     month: date
     budget_assigned: Decimal
+    moved_in: Decimal
+    #: The month's category plans summed, each floored at zero:
+    #: `planned - actual_spent == monthly_variance`.
+    planned: Decimal
+    #: Net of refunds.
     actual_spent: Decimal
     monthly_variance: Decimal
     cumulative_variance: Decimal
@@ -1050,18 +1084,29 @@ class AnomalyItem(ApiModel):
     month: date
     actual: Decimal
     baseline_mean: Decimal
+    #: The baseline's mean one σ either way, floored at zero.
+    usual_low: Decimal
+    usual_high: Decimal
     z_score: float
     direction: str  # 'high' or 'low'
     #: True when `month` is the month still in progress, whose figure is
     #: month-to-date. Required, not optional: a path that forgets it would
     #: present an unfinished month as a closed one. Such rows are always
-    #: `direction == 'high'` — `report_stats.anomaly_rows` says why.
+    #: `direction == 'high'` — `report_stats.anomaly_scan` says why.
     partial_month: bool
-    history: list[Decimal]  # trailing 12 months for sparkline
+    #: Twelve calendar months ending with `month`; None before the category's
+    #: first spending in the window.
+    history: list[Decimal | None]
 
 
 class AnomalyReportResponse(ApiModel):
     anomalies: list[AnomalyItem]
+    #: Categories with spending in the window, sinking funds aside.
+    categories_seen: int
+    #: Of those, how many had enough earlier months to be scored.
+    categories_tested: int
+    #: Long-term expense categories with spending, which are never tested.
+    sinking_funds_skipped: int
 
 
 # ─── Payday Effect Report ────────────────────────────────────────────────────
@@ -1214,6 +1259,10 @@ class CategoryHistoryMonth(ApiModel):
     month: date
     assigned: Decimal
     activity: Decimal
+    #: Spent as every plan report counts it (`services/plan_ledger.py`): net
+    #: of refunds, and not the money moved in, which `activity` nets away.
+    spent: Decimal
+    moved_in: Decimal
     #: None for an income category: "Income categories do not hold money", so
     #: their `available` is a lifetime carryover the budget page never draws.
     #: Their monthly activity is meaningful and is still served. None too for
@@ -1229,6 +1278,10 @@ class CategoryHistoryReportResponse(ApiModel):
     category_id: uuid.UUID
     category_name: str
     months: list[CategoryHistoryMonth]
+    #: `spent` averaged over the window's COMPLETE months — the running month
+    #: is month-to-date and would pull the average down.
+    average_spent: Decimal
+    months_averaged: int
 
 
 # ─── Cost of Living ──────────────────────────────────────────────────────────

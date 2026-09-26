@@ -1012,6 +1012,13 @@ export interface BudgetActualItem {
   category_name: string
   category_group_name: string
   assigned: number
+  /** Money moved into the envelope — a transfer from savings, a deposit filed
+   *  to it. It raises the plan (backend `domain/plan.py` `plan_effect`). */
+  moved_in: number
+  /** `assigned + moved_in` floored at zero: what `variance` is measured
+   *  against. Served — never add the two here. */
+  plan: number
+  /** Net of refunds; negative only when refunds beat the spending. */
   spent: number
   /** Against the plan floored at zero — backend `domain/plan.py`. */
   variance: number
@@ -1025,6 +1032,9 @@ export interface BudgetActualItem {
 export interface BudgetActualReport {
   categories: BudgetActualItem[]
   total_assigned: number
+  total_moved_in: number
+  /** The rows' plans summed: `total_plan - total_spent === total_variance`. */
+  total_plan: number
   total_spent: number
   /** The headline: the rows' floored variances summed (backend
    *  `plan.total_variance`). Never `total_assigned - total_spent`, which
@@ -1038,8 +1048,17 @@ export interface BudgetActualReport {
 export interface PlanRealityCell {
   month: string
   assigned: number
+  moved_in: number
+  /** `assigned + moved_in`, floored at zero — backend `plan_outcome`. */
+  plan: number
   spent: number
   variance: number
+  /** The verdict: past the plan by at least $1 and 1% of it. Tint by this,
+   *  never by the variance's sign — a few cents over is on plan. */
+  over: boolean
+  /** Anything planned or spent: the cells the matrix fills. Served, as the
+   *  count `months_active` reads it. */
+  active: boolean
 }
 
 export interface PlanRealityCategory {
@@ -1050,15 +1069,23 @@ export interface PlanRealityCategory {
   months_over: number
   months_active: number
   total_assigned: number
+  total_moved_in: number
   total_spent: number
   avg_overspend: number
+  /** Backend `domain/plan.py` `is_chronic`; the Guide reads the same flag. */
   chronic: boolean
+  /** Tagged Long-term expense, which is never chronic. */
+  sinking_fund: boolean
 }
 
 export interface PlanRealityReport {
   months: string[]
+  /** The month still being written when the window reaches it, else null —
+   *  served, as Anomalies' `partial_month` is. Its column says "so far". */
+  running_month: string | null
   categories: PlanRealityCategory[]
   total_assigned: number
+  total_moved_in: number
   total_spent: number
   chronic_count: number
 }
@@ -1066,6 +1093,11 @@ export interface PlanRealityReport {
 export interface VariancePoint {
   month: string
   budget_assigned: number
+  moved_in: number
+  /** The month's category plans summed, each floored at zero:
+   *  `planned - actual_spent === monthly_variance`. */
+  planned: number
+  /** Net of refunds. */
   actual_spent: number
   monthly_variance: number
   cumulative_variance: number
@@ -1339,6 +1371,11 @@ export interface CategoryHistoryReport {
     month: string
     assigned: number
     activity: number
+    /** Spent as every plan report counts it — net of refunds, and not the
+     *  money moved in, which `activity` nets away (backend
+     *  `services/plan_ledger.py`). */
+    spent: number
+    moved_in: number
     /** Null for an income category: "Income categories do not hold money", so
      *  their available is a lifetime carryover the budget page never draws.
      *  Their monthly activity is meaningful and is still served. Null too for
@@ -1346,6 +1383,10 @@ export interface CategoryHistoryReport {
      *  `CategoryHistoryMonth.available`. */
     available: number | null
   }[]
+  /** `spent` averaged over the window's complete months — served, so the
+   *  running month's month-to-date figure never pulls it down. */
+  average_spent: number
+  months_averaged: number
 }
 export interface PayeeSpending {
   payee_id: string
@@ -1605,19 +1646,30 @@ export interface AnomalyItem {
   month: string
   actual: number
   baseline_mean: number
+  /** The baseline's mean one σ either way, floored at zero: "usually $a–$b". */
+  usual_low: number
+  usual_high: number
   z_score: number
   direction: 'high' | 'low'
   /** True when `month` is the month still in progress, so `actual` is a
-   *  month-to-date figure — backend `services/report_stats.anomaly_rows`,
+   *  month-to-date figure — backend `services/report_stats.anomaly_scan`,
    *  which also says why those rows are always `direction: 'high'`. Never
    *  recompute it here from `month` and the clock: which month the report
    *  calls "in progress" is the server's, and it is what scored the row. */
   partial_month: boolean
-  history: number[]
+  /** Twelve calendar months ending with `month`; null before the category's
+   *  first spending in the window — absent, not zero. */
+  history: (number | null)[]
 }
 
 export interface AnomalyReport {
   anomalies: AnomalyItem[]
+  /** Categories with spending in the window, sinking funds aside. */
+  categories_seen: number
+  /** Of those, how many had six earlier months to be scored against. */
+  categories_tested: number
+  /** Long-term expense categories, which are never tested. */
+  sinking_funds_skipped: number
 }
 
 export interface PaydayEffectDay {

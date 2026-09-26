@@ -86,6 +86,7 @@ from igab.dependencies import (
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
 from igab.domain.dates import report_months
 from igab.domain.money_moves import REPORT_FAMILY_CLASSES, ReportFamily
+from igab.domain.plan import CHRONIC_MONTHS
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
@@ -93,6 +94,7 @@ from igab.services.budget_service import BudgetService
 from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.essentials import essentials_summary
 from igab.services.liability_service import LiabilityService
+from igab.services.plan_ledger import spent_series
 from igab.services.report_basics import (
     cost_of_living,
     discretionary,
@@ -134,9 +136,10 @@ MAX_REPORT_MONTHS = 600
 ReportMonths = Annotated[int, Query(ge=1, le=MAX_REPORT_MONTHS)]
 
 #: plan-vs-reality reads "chronic" as over-plan in 3+ of the window's last 6
-#: months, so a window shorter than 3 has nothing to say. That floor is the
+#: months (`domain.plan.CHRONIC_MONTHS`), so a window shorter than 3 has
+#: nothing to say. That floor is the
 #: report's own rule and stays; only its old 24-month ceiling is gone.
-PlanRealityMonths = Annotated[int, Query(ge=3, le=MAX_REPORT_MONTHS)]
+PlanRealityMonths = Annotated[int, Query(ge=CHRONIC_MONTHS, le=MAX_REPORT_MONTHS)]
 
 
 #: Bounds for every report parameter that is not a month window.
@@ -419,6 +422,8 @@ async def budget_actual_report(
     return BudgetActualResponse(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
+        total_moved_in=data["total_moved_in"],
+        total_plan=data["total_plan"],
         total_spent=data["total_spent"],
         total_variance=data["total_variance"],
         filter_unavailable=scope.filter_unavailable,
@@ -436,8 +441,10 @@ async def plan_vs_reality_report(
     data = await report_svc.plan_vs_reality(budget_id, months, today)
     return PlanRealityResponse(
         months=data["months"],
+        running_month=data["running_month"],
         categories=[PlanRealityCategory.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
+        total_moved_in=data["total_moved_in"],
         total_spent=data["total_spent"],
         chronic_count=data["chronic_count"],
     )
@@ -614,12 +621,14 @@ async def category_history_report(
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
     today: ReaderToday,
     category_id: uuid.UUID = Query(...),
     months: ReportMonths = 12,
 ) -> CategoryHistoryReportResponse:
     """One category month by month, from the same BudgetService the budget
-    page reads — this endpoint orchestrates, it computes nothing."""
+    page reads, and its Spent from the plan ledger every plan report reads —
+    this endpoint orchestrates, it computes nothing."""
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -637,19 +646,32 @@ async def category_history_report(
     series = (await budget_service.envelope_series(budget_id, [category_id], month_list))[
         category_id
     ]
+    spent = await spent_series(report_svc.session, budget_id, category_id, month_list, today)
     out = [
         CategoryHistoryMonth(
             month=month,
             assigned=assigned,
             activity=activity,
+            spent=spent_in_month,
+            moved_in=moved_in,
             available=None if series.in_system_group else available,
         )
-        for month, assigned, activity, available in zip(
-            month_list, series.assigned, series.activity, series.available, strict=True
+        for month, assigned, activity, available, spent_in_month, moved_in in zip(
+            month_list,
+            series.assigned,
+            series.activity,
+            series.available,
+            spent.spent,
+            spent.moved_in,
+            strict=True,
         )
     ]
     return CategoryHistoryReportResponse(
-        category_id=category_id, category_name=category.name, months=out
+        category_id=category_id,
+        category_name=category.name,
+        months=out,
+        average_spent=spent.average_spent,
+        months_averaged=spent.months_averaged,
     )
 
 
@@ -887,7 +909,10 @@ async def anomalies_report(
     """Anomaly detection — category-months with spending outside baseline z-score."""
     data = await report_svc.anomalies_report(budget_id, months, threshold, today)
     return AnomalyReportResponse(
-        anomalies=[AnomalyItem.model_validate(a) for a in data["anomalies"]]
+        anomalies=[AnomalyItem.model_validate(a) for a in data["anomalies"]],
+        categories_seen=data["categories_seen"],
+        categories_tested=data["categories_tested"],
+        sinking_funds_skipped=data["sinking_funds_skipped"],
     )
 
 

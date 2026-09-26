@@ -539,7 +539,7 @@ class TestThePlanReportsLeaveAFiledOpeningOut:
         an "Old Overdraft" envelope, assigning 1,200 to it. The envelope's
         Activity carries the row, as it carries any row filed there. The plan
         reports ask what was SPENT, and an opening is not spending, so they
-        read 0 — the gap is the opening, and nothing else. `planned_spend_filter`
+        read 0 — the gap is the opening, and nothing else. `PLANNED_SPEND_TAG_KEYS`
         says why that is bounded; this fails if the gap ever widens.
         """
         services = make_services(db_session)

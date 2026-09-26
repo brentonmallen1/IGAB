@@ -19,9 +19,9 @@ export const TIMELINE_LIMITS = [25, 50, 100] as const
 
 /** The Anomalies z-score threshold, strictest first. */
 export const SENSITIVITY_OPTIONS = [
-  { value: 3.0, label: 'Strict', description: 'z ≥ 3' },
-  { value: 2.5, label: 'Normal', description: 'z ≥ 2.5' },
-  { value: 2.0, label: 'Sensitive', description: 'z ≥ 2' },
+  { value: 3.0, label: 'Strict', description: '3σ or more from usual' },
+  { value: 2.5, label: 'Normal', description: '2.5σ or more from usual' },
+  { value: 2.0, label: 'Sensitive', description: '2σ or more from usual' },
 ] as const
 
 /** How many payees the server ranks for Payee Analysis and Pareto. One number

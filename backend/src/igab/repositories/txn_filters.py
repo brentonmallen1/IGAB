@@ -51,6 +51,7 @@ from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES, STARTING_BALANCE_
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
     IS_SINKING_FUND,
+    PLANNED_ENVELOPE,
     SPENDABLE,
     tagged_category_ids,
 )
@@ -413,7 +414,7 @@ def account_scope(q: Select, account_ids: Sequence[uuid.UUID] | None) -> tuple[S
     not. **None means no selection; an empty list means one was made and
     matched nothing** — `in_([])` renders false, so it returns no rows rather
     than falling through to every on-budget account (the distinction
-    `report_service.scoped` keeps for categories).
+    `report_scope.scoped` keeps for categories).
 
     The flag rides along because the class widening turns on the same fact
     (`counted_classes(scoped_accounts=...)`). This block was written out at
@@ -959,53 +960,46 @@ SPENDING_ROW = and_(
     not_(row_category(IN_SYSTEM_GROUP)),
 )
 
-#: `SPENDING_ROW`'s outflows alone — gross, a refund never lowering it. Read
-#: by the plan family (`PLANNED_SPEND_ROW`), Volatility and Anomalies, and by
-#: nothing that calls its figure "spending": those reports compare against a
-#: plan or a baseline, and whether a refund belongs in their "spent" is their
-#: own open decision, not this one. Named so the gap is a stated divergence
-#: rather than a second spelling: over one window it exceeds the net figure
-#: by exactly the spending-class inflows (pinned by
-#: `test_one_spending_definition.py::TestTheGrossCutIsTheOutflowsAlone`).
-SPENDING_OUTFLOW = and_(SPENDING_ROW, Transaction.amount < 0)
 
-
-#: A row that spends planned money: the SHAPE half of what plan-vs-actual
-#: reports may count as "spent" against what `BUDGETED_ENVELOPE` counts as
-#: "assigned". **No report reads this directly** — they read
-#: `domain.activity_class.planned_spend_filter()`, which is this plus the
-#: class policy (the spending classes, or a savings-tagged envelope). The two
-#: halves travel as one predicate because spelling the class half at the call
-#: site is what let the three readers disagree.
+#: A row a plan report reads: the SHAPE half of what the plan-vs-actual family
+#: counts against what `BUDGETED_ENVELOPE` counts as "assigned". **No report
+#: reads this directly** — they read `domain.activity_class.PLAN_LEDGER`, which
+#: selects the class beside it, and `domain.plan.plan_effect`, which says what
+#: each row does to the plan: spent, moved in, or nothing. Shape and policy
+#: travel together because spelling either half at a call site is what let the
+#: readers disagree.
 #:
-#: This predicate existed twice — byte-identical, in `cumulative_variance` and
-#: `budget_vs_actual` — and both copies were missing the same three terms, so
-#: each subtracted a bigger spending universe from a smaller planning one:
+#: Either sign. It was `SPENDING_ROW` narrowed (`amount < 0`), so it saw only
+#: money leaving an envelope, and everything filed INTO one vanished: a refund
+#: never reduced "spent", and a transfer from savings into a Medical envelope
+#: that paid a 2,000 bill read as a 2,000 overrun on a plan the household had
+#: funded — the budget page, which nets the envelope's activity, showed the
+#: same envelope on plan. Half of a Cumulative Variance line was that.
+#:
+#: The terms each earned their place when this existed twice, byte-identical,
+#: in `cumulative_variance` and `budget_vs_actual`:
 #:
 #: - `ON_BUDGET_ACCOUNT`: categorized rows on tracking accounts counted as
 #:   spent; nothing is ever assigned against a tracking account.
-#: - The system-group rule (`SPENDING_ROW`'s): rows filed into system-group
-#:   categories counted as spent while `BUDGETED_ENVELOPE` excludes them from
-#:   assigned. Deleted categories stay IN, exactly as `SPENT_ENVELOPE`
-#:   documents — the money moved, and deleting the envelope afterwards does
-#:   not unspend it.
-#: - The activity-class filter, which cannot live in this module at all — it
-#:   reads `ACTIVITY_CLASS`, which is built from these constants. Without it,
-#:   a categorized brokerage transfer (SAVINGS) or a mortgage principal
-#:   payment (DEBT_PRINCIPAL) counted as spending with no matching
-#:   assignment, and cumulative variance compounded the gap every month. It
-#:   lives one import up, in `planned_spend_filter`, together with the joins
-#:   note: a query with the class filter and no joins is a cartesian product.
+#: - `PLANNED_ENVELOPE`: rows filed into system-group categories counted as
+#:   spent while `BUDGETED_ENVELOPE` excludes them from assigned, and a card's
+#:   envelope, which plans paydown and never spending. Deleted categories stay
+#:   IN, exactly as `SPENT_ENVELOPE` documents — the money moved, and deleting
+#:   the envelope afterwards does not unspend it.
+#: - The activity class, which cannot live in this module at all — it reads
+#:   `ACTIVITY_CLASS`, which is built from these constants.
 #:
-#: So it is `SPENDING_OUTFLOW` narrowed to what a plan can be held to: on-budget,
-#: and filed somewhere (the foreign key is `ON DELETE SET NULL`, so a
-#: category id names a Category row, deleted or not).
-#:
-#: One divergence is deliberate and stays: the outflow cut means a refund
-#: posted to a spending category never reduces "spent". Pinned by test rather
-#: than silently changed — flipping it would move every historical variance
-#: figure.
-PLANNED_SPEND_ROW = and_(SPENDING_OUTFLOW, ON_BUDGET_ACCOUNT, Transaction.category_id.isnot(None))
+#: Filed somewhere: the foreign key is `ON DELETE SET NULL`, so a category id
+#: names a Category row, deleted or not.
+PLAN_LEDGER_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    LEAF,
+    CASH_FLOW_ROW,
+    ON_BUDGET_ACCOUNT,
+    Transaction.category_id.isnot(None),
+    row_category(PLANNED_ENVELOPE),
+)
 
 
 # ─── Free-text search ────────────────────────────────────────────────────────

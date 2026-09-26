@@ -1118,6 +1118,8 @@ describe('VarianceReport cards', () => {
           {
             month: '2026-08-01',
             budget_assigned: 3000,
+            moved_in: 0,
+            planned: 3000,
             actual_spent: 2900,
             monthly_variance: 100,
             cumulative_variance: 100,
@@ -1125,16 +1127,19 @@ describe('VarianceReport cards', () => {
           {
             month: '2026-09-01',
             budget_assigned: 3000,
+            moved_in: 200,
+            planned: 3200,
             actual_spent: 1200,
-            monthly_variance: 1800,
-            cumulative_variance: 1900,
+            monthly_variance: 2000,
+            cumulative_variance: 2100,
           },
         ],
       },
     })
     renderReport(<VarianceReport budgetId="b1" />)
     expect(card('Spent this month so far').value).toBe('$1,200.00')
-    expect(card('Assigned this month so far').value).toBe('$3,000.00')
+    // The plan, money moved in included — not the raw assignment.
+    expect(card('Planned this month so far').value).toBe('$3,200.00')
     expect(screen.queryByText(/Last Month/)).toBeNull()
   })
 })
@@ -1257,6 +1262,8 @@ describe('AnomaliesReport list', () => {
             month: '2026-06-01',
             actual: '300',
             baseline_mean: '100',
+            usual_low: '80',
+            usual_high: '120',
             z_score: 10,
             direction: 'high',
             partial_month: false,
@@ -1288,6 +1295,8 @@ describe('AnomaliesReport list', () => {
               month: '2026-09-01',
               actual: '300',
               baseline_mean: '100',
+              usual_low: '80',
+              usual_high: '120',
               z_score: 10,
               direction: 'high',
               partial_month: true,
@@ -1312,7 +1321,7 @@ describe('AnomaliesReport list', () => {
 
   it('says a month still in progress is not finished, and a complete one is', () => {
     // The month in progress is scored against the complete months and only
-    // ever flagged HIGH (backend report_stats.anomaly_rows). Its figure is
+    // ever flagged HIGH (backend report_stats.anomaly_scan). Its figure is
     // month-to-date, so the heading has to say so — unlabelled, a 1,200
     // grocery month reads as a closed month's total.
     const row = {
@@ -1321,6 +1330,8 @@ describe('AnomaliesReport list', () => {
       group_name: 'Everyday',
       actual: '1200',
       baseline_mean: '400',
+      usual_low: '380',
+      usual_high: '420',
       z_score: 40,
       direction: 'high',
       history: ['400', '400', '1200'],
@@ -1430,42 +1441,102 @@ describe('ParetoReport insight', () => {
 describe('PlanVsRealityReport matrix', () => {
   const planData = {
     months: ['2026-06-01', '2026-07-01', '2026-08-01'],
+    running_month: '2026-08-01',
     categories: [
       {
         category_id: 'c1',
         category_name: 'Dining',
         category_group_name: 'Everyday',
         monthly: [
-          { month: '2026-06-01', assigned: 100, spent: 140, variance: -40 },
-          { month: '2026-07-01', assigned: 100, spent: 90, variance: 10 },
-          { month: '2026-08-01', assigned: 0, spent: 0, variance: 0 },
+          {
+            month: '2026-06-01',
+            assigned: 100,
+            moved_in: 0,
+            plan: 100,
+            spent: 140,
+            variance: -40,
+            over: true,
+            active: true,
+          },
+          {
+            month: '2026-07-01',
+            assigned: 100,
+            moved_in: 0,
+            plan: 100,
+            spent: 90,
+            variance: 10,
+            over: false,
+            active: true,
+          },
+          {
+            month: '2026-08-01',
+            assigned: 0,
+            moved_in: 0,
+            plan: 0,
+            spent: 0,
+            variance: 0,
+            over: false,
+            active: false,
+          },
         ],
         months_over: 1,
         months_active: 2,
         total_assigned: '200',
+        total_moved_in: '0',
         total_spent: '230',
         avg_overspend: 40.0,
         chronic: true,
+        sinking_fund: false,
       },
       {
         category_id: 'c2',
         category_name: 'Rent',
         category_group_name: 'Home',
         monthly: [
-          { month: '2026-06-01', assigned: 900, spent: 900, variance: 0 },
-          { month: '2026-07-01', assigned: 900, spent: 900, variance: 0 },
-          { month: '2026-08-01', assigned: 900, spent: 900, variance: 0 },
+          {
+            month: '2026-06-01',
+            assigned: 900,
+            moved_in: 0,
+            plan: 900,
+            spent: 900,
+            variance: 0,
+            over: false,
+            active: true,
+          },
+          {
+            month: '2026-07-01',
+            assigned: 900,
+            moved_in: 0,
+            plan: 900,
+            spent: 900.27,
+            variance: -0.27,
+            over: false,
+            active: true,
+          },
+          {
+            month: '2026-08-01',
+            assigned: 900,
+            moved_in: 0,
+            plan: 900,
+            spent: 900,
+            variance: 0,
+            over: false,
+            active: true,
+          },
         ],
         months_over: 0,
         months_active: 3,
         total_assigned: '2700',
-        total_spent: '2700',
+        total_moved_in: '0',
+        total_spent: '2700.27',
         avg_overspend: '0',
         chronic: false,
+        sinking_fund: false,
       },
     ],
     total_assigned: '2900',
-    total_spent: '2930',
+    total_moved_in: '0',
+    total_spent: '2930.27',
     chronic_count: 1,
   }
 
@@ -1473,12 +1544,52 @@ describe('PlanVsRealityReport matrix', () => {
     setQuery({ data: planData })
     renderReport(<PlanVsRealityReport budgetId="b1" />)
 
-    expect(screen.getByText('Dining')).toBeInTheDocument()
-    expect(screen.getByText('Chronic')).toBeInTheDocument()
+    expect(screen.getAllByText('Dining').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Chronic').length).toBeGreaterThan(0)
     expect(screen.getByText('−40')).toBeInTheDocument() // overspent cell
     expect(screen.getByText('+10')).toBeInTheDocument() // underspent cell
     expect(screen.getByText('1/2')).toBeInTheDocument() // months over / active
-    expect(screen.getAllByText(/\$2,900\.00/).length).toBeGreaterThan(0)
+  })
+
+  it('leads with chronic, last complete month and the worst category', () => {
+    // Three totals cards (assigned, spent, a count) said nothing about which
+    // envelope was the problem or how last month went.
+    setQuery({ data: planData })
+    renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+    expect(card('Chronic').value).toBe('1')
+    // July: August is the running month, and Dining was on plan in July.
+    expect(card('Over last month').value).toBe('0')
+    expect(card('Worst').value).toBe('Dining')
+  })
+
+  it('marks the running month "so far"', () => {
+    setQuery({ data: planData })
+    const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+    const headers = [...container.querySelectorAll('th.plan-reality__month-header')]
+    expect(headers.map((h) => h.textContent?.includes('so far'))).toEqual([false, false, true])
+  })
+
+  it('draws a few cents over as on plan: no "−0", no tint', () => {
+    setQuery({ data: planData })
+    const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+    expect(screen.queryByText('−0')).toBeNull()
+    expect(container.querySelectorAll('td.plan-reality__cell--over')).toHaveLength(1)
+  })
+
+  it('opens scrolled to the newest month', () => {
+    // On a phone only two or three months fit, and it opened on last year.
+    const widths = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(1200)
+    try {
+      setQuery({ data: planData })
+      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+      const scroller = container.querySelector('.plan-reality__scroll') as HTMLElement
+      expect(scroller.scrollLeft).toBe(1200)
+    } finally {
+      widths.mockRestore()
+    }
   })
 
   describe('in privacy mode', () => {
@@ -1517,7 +1628,7 @@ describe('PlanVsRealityReport matrix', () => {
     renderReport(<PlanVsRealityReport budgetId="b1" />)
 
     fireEvent.click(screen.getByLabelText('Chronic only'))
-    expect(screen.getByText('Dining')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Dining/ })).toBeInTheDocument()
     expect(screen.queryByText('Rent')).not.toBeInTheDocument()
   })
 })
@@ -1557,6 +1668,8 @@ describe('BudgetActualReport values', () => {
             category_name: 'Groceries',
             category_group_name: 'Everyday',
             assigned: 500,
+            moved_in: 0,
+            plan: 500,
             spent: 450,
             variance: 50,
             variance_pct: 10,
@@ -1564,6 +1677,8 @@ describe('BudgetActualReport values', () => {
           },
         ],
         total_assigned: '500',
+        total_moved_in: '0',
+        total_plan: '500',
         total_spent: '450',
         total_variance: 50,
       },
@@ -1573,6 +1688,39 @@ describe('BudgetActualReport values', () => {
     expect(screen.getByText('Groceries')).toBeInTheDocument()
     expect(screen.getAllByText(/\$500\.00/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\$450\.00/).length).toBeGreaterThan(0)
+  })
+
+  it('plans against money moved in, not the assignment alone', () => {
+    // 2,000 moved in from savings paid a 2,000 bill. Against the raw
+    // assignment it drew a zero bar beside a 2,000 one and a red overrun.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Medical',
+            category_group_name: 'Health',
+            assigned: 0,
+            moved_in: 2000,
+            plan: 2000,
+            spent: 2000,
+            variance: 0,
+            variance_pct: 0,
+            overspent: false,
+          },
+        ],
+        total_assigned: 0,
+        total_moved_in: 2000,
+        total_plan: 2000,
+        total_spent: 2000,
+        total_variance: 0,
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+
+    expect(card('Planned').value).toBe('$2,000.00')
+    expect(screen.getByText('$2,000.00 ($2,000.00 moved in)')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Planned' })).toBeInTheDocument()
   })
 
   it('reads overspent from the server, so a drained envelope is not an overrun', () => {
@@ -2658,5 +2806,96 @@ describe('Largest transactions', () => {
     expect(screen.getByRole('button', { name: 'Money out' })).toHaveClass('report-btn--active')
     // A formatted date, not the ISO string.
     expect(screen.queryByText('2026-09-03')).toBeNull()
+  })
+})
+
+describe('AnomaliesReport reading', () => {
+  const row = {
+    group_name: 'Everyday',
+    actual: 300,
+    baseline_mean: 100,
+    usual_low: 80,
+    usual_high: 120,
+    z_score: 10,
+    direction: 'high',
+    partial_month: false,
+    history: [null, null, 100, 0, 120, 300],
+  }
+
+  it('lists the newest month first and says what "usual" was', () => {
+    setQuery({
+      data: {
+        anomalies: [
+          { ...row, category_id: 'c1', category_name: 'Gifts', month: '2026-05-01', z_score: 9 },
+          { ...row, category_id: 'c2', category_name: 'Dining', month: '2026-08-01', z_score: 3 },
+        ],
+        categories_seen: 2,
+        categories_tested: 2,
+        sinking_funds_skipped: 0,
+      },
+    })
+    renderReport(<AnomaliesReport budgetId="b1" />)
+
+    const labels = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(labels[0]).toMatch(/August/)
+    expect(labels[1]).toMatch(/May/)
+    expect(screen.getAllByText('$80.00–$120.00')).toHaveLength(2)
+    expect(screen.getAllByText('usually')).toHaveLength(2)
+  })
+
+  it('says how many categories an empty report tested', () => {
+    setQuery({
+      data: {
+        anomalies: [],
+        categories_seen: 22,
+        categories_tested: 14,
+        sinking_funds_skipped: 1,
+      },
+    })
+    renderReport(<AnomaliesReport budgetId="b1" />)
+
+    expect(
+      screen.getByText(/14 of 22 categories had six earlier months to test against\./)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/1 sinking fund is not tested/)).toBeInTheDocument()
+  })
+})
+
+describe('VolatilityReport table', () => {
+  const stats = (id: string, name: string, mean: number, sd: number) => ({
+    category_id: id,
+    category_name: name,
+    category_group_name: 'Everyday',
+    mean,
+    std_dev: sd,
+    min_val: 0,
+    max_val: mean * 2,
+    p25: 0,
+    p75: mean,
+    months_included: 6,
+  })
+
+  it('ranks by swing, names its columns, and states its window', () => {
+    // Largest average first put the steady mortgage on top, under columns
+    // headed "%" and "Extra".
+    setQuery({
+      data: {
+        categories: [
+          stats('m', 'Mortgage', 1500, 15),
+          stats('g', 'Gifts', 100, 120),
+          stats('f', 'Fuel', 200, 60),
+        ],
+        amortized: false,
+        window_start: '2025-09-01',
+        window_end: '2026-08-31',
+      },
+    })
+    const { container } = renderReport(<VolatilityReport budgetId="b1" />)
+
+    const names = [...container.querySelectorAll('.ddt__name')].map((n) => n.textContent)
+    expect(names).toEqual(['Gifts', 'Fuel', 'Mortgage'])
+    expect(screen.getByRole('columnheader', { name: 'Swing' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'σ' })).toBeInTheDocument()
+    expect(screen.getByText(/Complete months, September 2025 – August 2026/)).toBeInTheDocument()
   })
 })

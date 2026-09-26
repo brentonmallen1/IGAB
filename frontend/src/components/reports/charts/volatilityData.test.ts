@@ -3,6 +3,8 @@ import {
   buildVolatilityChartRows,
   coefficientOfVariation,
   filterVolatile,
+  rankByVariability,
+  VOLATILITY_MIN_MEAN,
   volatilityExport,
 } from './volatilityData'
 
@@ -80,5 +82,32 @@ describe('volatilityExport', () => {
       max: '150',
       months: 6,
     })
+  })
+})
+
+describe('rankByVariability', () => {
+  it('puts the category that swings most first, not the biggest', () => {
+    // Largest average first opened on the mortgage — the steadiest thing in
+    // the budget — and the category that actually jumped around sat far down.
+    const ranked = rankByVariability([
+      cat({ category_id: 'mortgage', mean: '1500', std_dev: '15' }),
+      cat({ category_id: 'gifts', mean: '100', std_dev: '120' }),
+      cat({ category_id: 'fuel', mean: '200', std_dev: '60' }),
+    ])
+    expect(ranked.map((c) => c.category_id)).toEqual(['gifts', 'fuel', 'mortgage'])
+  })
+
+  it('ranks small averages after, however wild their swing', () => {
+    const ranked = rankByVariability([
+      cat({ category_id: 'coffee', mean: '8', std_dev: '20' }),
+      cat({ category_id: 'fuel', mean: '200', std_dev: '60' }),
+    ])
+    expect(ranked.map((c) => c.category_id)).toEqual(['fuel', 'coffee'])
+    expect(VOLATILITY_MIN_MEAN).toBe(25)
+  })
+
+  it('still drops categories with under two months of charges', () => {
+    const ranked = rankByVariability([cat({ months_included: 1 })])
+    expect(ranked).toEqual([])
   })
 })

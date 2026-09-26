@@ -1,15 +1,21 @@
-"""Anomaly detection: leave-one-out z-scores over category-month spending.
+"""Anomaly detection: z-scores over category-month spending.
 
-Pins the detection contract:
-- z = (actual − mean(others)) / std(others), others = all other months for
-  that category (population std). Needs ≥ 6 category-months of history.
-- Guard rails pin intentional silences: std < 5 (flat baselines never flag,
+Pins the detection contract (`report_stats.anomaly_scan`):
+- z = (actual − mean(earlier)) / σ(earlier), where earlier is the category's
+  complete months BEFORE the one scored and σ the sample deviation (n − 1),
+  the σ Volatility reports. A month needs 6 earlier months behind it.
+- A quiet month is a zero, from the category's first spending in the window.
+  (Months without rows used to be absent from the baseline instead.)
+- Guard rails pin intentional silences: σ < 5 (flat baselines never flag,
   even for huge spikes) and |actual − mean| < 25 (small-dollar wobble).
-- System category groups are invisible to the detector.
-- Baselines are made of COMPLETE months only; the month in progress is scored
-  against them but flags only HIGH (`report_stats.anomaly_rows`).
-- Known limitation, documented: months with zero spending produce no row,
-  so they are absent from the baseline rather than counted as 0.
+- Spent is the plan ledger's: net of refunds, system groups invisible.
+- Sinking funds are not tested, and the response says how many categories
+  were.
+- The month in progress is scored but flags only HIGH.
+
+Every baseline below has mean and sample σ round enough to check on paper:
+deviations of ±30, ±10, 0, 0 around the mean square-sum to 2,000, which over
+five is a σ of exactly 20.
 """
 
 from datetime import date
@@ -63,7 +69,7 @@ def newest_scorable() -> date:
     """The newest COMPLETE month: the last one scored in either direction.
 
     The month in progress is scored too, but only a HIGH verdict on it
-    survives — `report_stats.anomaly_rows` says why. A test that wants a LOW
+    survives — `report_stats.anomaly_scan` says why. A test that wants a LOW
     flag, or a baseline month, puts it here.
     """
     return months_ago(1)
@@ -85,13 +91,13 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
     budget, checking, group = await _setup(db_session)
     groceries = await create_category(db_session, budget, group, "Groceries")
 
-    # Baseline alternates 80/120 (mean 100, population std 20)
+    # Baseline 70/130/90/110/100/100: mean 100, sample σ 20
     await _spend_series(
         db_session,
         budget,
         checking,
         groceries,
-        {6: "80.00", 5: "120.00", 4: "80.00", 3: "120.00", 2: "80.00", 1: "120.00"},
+        {6: "70.00", 5: "130.00", 4: "90.00", 3: "110.00", 2: "100.00", 1: "100.00"},
     )
     # Spike month is built from split children + noise that must not count
     parent = await create_transaction(
@@ -133,7 +139,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
         budget,
         checking,
         sys_cat,
-        {6: "80.00", 5: "120.00", 4: "80.00", 3: "120.00", 2: "80.00", 1: "120.00", 0: "300.00"},
+        {6: "70.00", 5: "130.00", 4: "90.00", 3: "110.00", 2: "100.00", 1: "100.00", 0: "300.00"},
     )
 
     data = await ReportService(db_session).anomalies_report(budget.id, months=12)
@@ -147,29 +153,33 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
     assert a["z_score"] == pytest.approx(10.0)  # (300 - 100) / 20
     assert a["direction"] == "high"
     assert a["partial_month"] is False
-    expected_history = [Decimal("0.00")] * 5 + [
-        Decimal("80.00"),
-        Decimal("120.00"),
-        Decimal("80.00"),
-        Decimal("120.00"),
-        Decimal("80.00"),
-        Decimal("120.00"),
+    assert (a["usual_low"], a["usual_high"]) == (Decimal("80.00"), Decimal("120.00"))
+    # Twelve calendar months ending with the spike; the five before the
+    # category's first spending are absent, not zero.
+    expected_history = [None] * 5 + [
+        Decimal("70.00"),
+        Decimal("130.00"),
+        Decimal("90.00"),
+        Decimal("110.00"),
+        Decimal("100.00"),
+        Decimal("100.00"),
         Decimal("300.00"),
     ]
     assert a["history"] == expected_history
+    assert (data["categories_seen"], data["categories_tested"]) == (1, 1)
 
 
 async def test_threshold_parameter_bounds_detection(db_session):
     budget, checking, group = await _setup(db_session)
     dining = await create_category(db_session, budget, group, "Dining")
 
-    # Baseline mean 120, std 20; 170 gives z = 2.5
+    # Baseline mean 120, sample σ 20; 170 gives z = 2.5
     await _spend_series(
         db_session,
         budget,
         checking,
         dining,
-        {6: "100.00", 5: "140.00", 4: "100.00", 3: "140.00", 2: "100.00", 1: "140.00", 0: "170.00"},
+        {6: "90.00", 5: "150.00", 4: "110.00", 3: "130.00", 2: "120.00", 1: "120.00", 0: "170.00"},
     )
 
     reports = ReportService(db_session)
@@ -193,7 +203,7 @@ async def test_guard_rails_silence_flat_and_small_dollar_baselines(db_session):
         flat,
         {6: "100.00", 5: "100.00", 4: "100.00", 3: "100.00", 2: "100.00", 1: "100.00", 0: "300.00"},
     )
-    # Small wobble: z = 2.0 but |actual - mean| = 20 < 25 stays silent
+    # Small wobble: |actual - mean| = 20 < 25 stays silent
     wobble = await create_category(db_session, budget, group, "Wobble")
     await _spend_series(
         db_session,
@@ -216,7 +226,7 @@ async def test_low_side_anomaly_flags_with_direction_low(db_session):
         budget,
         checking,
         fuel,
-        {6: "180.00", 5: "220.00", 4: "180.00", 3: "220.00", 2: "180.00", 1: "220.00", 0: "40.00"},
+        {6: "170.00", 5: "230.00", 4: "190.00", 3: "210.00", 2: "200.00", 1: "200.00", 0: "40.00"},
     )
 
     data = await ReportService(db_session).anomalies_report(budget.id, months=12)
@@ -225,6 +235,7 @@ async def test_low_side_anomaly_flags_with_direction_low(db_session):
     a = data["anomalies"][0]
     assert a["direction"] == "low"
     assert a["z_score"] == pytest.approx(-8.0)  # (40 - 200) / 20
+    assert (a["usual_low"], a["usual_high"]) == (Decimal("180.00"), Decimal("220.00"))
 
 
 async def test_fewer_than_six_category_months_never_flags(db_session):
@@ -300,3 +311,104 @@ async def test_a_spike_in_the_month_in_progress_flags_and_says_it_is_partial(db_
     assert a["baseline_mean"] == Decimal("400.00")
     assert a["direction"] == "high"
     assert a["partial_month"] is True
+
+
+async def test_a_quiet_month_is_a_zero(db_session):
+    """300, nothing, 200, 100, 150, 150 and then 750. The quiet month has no
+    row; counted as a zero the baseline is mean 150, σ 100, and the spike is
+    6 σ. Skipped, the baseline was five busy months at a mean of 180."""
+    budget, checking, group = await _setup(db_session)
+    gifts = await create_category(db_session, budget, group, "Gifts")
+    await _spend_series(
+        db_session,
+        budget,
+        checking,
+        gifts,
+        {6: "300.00", 4: "200.00", 3: "100.00", 2: "150.00", 1: "150.00", 0: "750.00"},
+    )
+
+    data = await ReportService(db_session).anomalies_report(budget.id, months=12)
+
+    (a,) = data["anomalies"]
+    assert a["baseline_mean"] == Decimal("150.00")
+    assert a["z_score"] == pytest.approx(6.0)
+    assert a["history"][-7:] == [
+        Decimal("300.00"),
+        Decimal("0.00"),
+        Decimal("200.00"),
+        Decimal("100.00"),
+        Decimal("150.00"),
+        Decimal("150.00"),
+        Decimal("750.00"),
+    ]
+
+
+async def test_a_refund_nets_the_month(db_session):
+    """Spent is net, as every plan report counts it. A 700 purchase returned
+    for 490 the same month is 210 of spending — inside the baseline's range,
+    not the 3.5x spike the gross outflow read as."""
+    budget, checking, group = await _setup(db_session)
+    home = await create_category(db_session, budget, group, "Home")
+    await _spend_series(
+        db_session,
+        budget,
+        checking,
+        home,
+        {6: "170.00", 5: "230.00", 4: "190.00", 3: "210.00", 2: "200.00", 1: "200.00", 0: "700.00"},
+    )
+    await create_transaction(
+        db_session, budget, checking, "490.00", newest_scorable(), category=home
+    )
+
+    data = await ReportService(db_session).anomalies_report(budget.id, months=12)
+
+    assert data["anomalies"] == []
+
+
+async def test_a_sinking_fund_is_not_tested(db_session):
+    """Months of nothing and then the premium it saved for is the plan
+    working. Flagged, the most disciplined envelope read as the least."""
+    from igab.repositories.tag_repo import TagRepository, seed_system_tags
+
+    budget, checking, group = await _setup(db_session)
+    premium = await create_category(db_session, budget, group, "Car Insurance")
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    fund = await tags.get_system_tag(budget.id, "long_term_expense")
+    await tags.set_category_tags(premium.id, [fund.id])
+    await _spend_series(
+        db_session,
+        budget,
+        checking,
+        premium,
+        {6: "70.00", 5: "130.00", 4: "90.00", 3: "110.00", 2: "100.00", 1: "100.00", 0: "900.00"},
+    )
+
+    data = await ReportService(db_session).anomalies_report(budget.id, months=12)
+
+    assert data["anomalies"] == []
+    assert data["sinking_funds_skipped"] == 1
+    assert (data["categories_seen"], data["categories_tested"]) == (0, 0)
+
+
+async def test_it_says_how_many_categories_it_could_test(db_session):
+    """An empty report owes its reader "N of M categories tested": a young
+    category with three months cannot be scored, which is not the same as
+    being normal."""
+    budget, checking, group = await _setup(db_session)
+    steady = await create_category(db_session, budget, group, "Groceries")
+    young = await create_category(db_session, budget, group, "Pet")
+    await _spend_series(
+        db_session,
+        budget,
+        checking,
+        steady,
+        {6: "400.00", 5: "400.00", 4: "400.00", 3: "400.00", 2: "400.00", 1: "400.00", 0: "400.00"},
+    )
+    await _spend_series(db_session, budget, checking, young, {2: "50.00", 1: "50.00", 0: "50.00"})
+
+    data = await ReportService(db_session).anomalies_report(budget.id, months=12)
+
+    assert data["anomalies"] == []
+    assert (data["categories_seen"], data["categories_tested"]) == (2, 1)
+    assert data["sinking_funds_skipped"] == 0
