@@ -25,6 +25,17 @@ export interface ReportCatalogEntry {
   leavesOut: string
 }
 
+/**
+ * What no report counts as money in or out, whatever its own row says —
+ * stated once, above the table, rather than in every row's Leaves out. Two
+ * rules in `domain/activity_class.py`: a starting balance, or an unfiled row
+ * from before an account's budget start date, is where that account's
+ * counting begins (rules 1 and 4); and money arriving on a card with no
+ * category pays the card down (rule 10).
+ */
+export const NEVER_COUNTED =
+  'No report counts a starting balance, or anything uncategorized from before an account’s budget start date, as income or spending — that is where the account’s counting begins. Money arriving on a credit card with no category is never income: it pays the card down.'
+
 /** A report drawn inside another report's tab, with its own scope. */
 export type ReportSectionId = 'payday-effect'
 
@@ -120,7 +131,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'on-budget',
     summary: 'Income per payee, month by month.',
     counts: 'Rows read as income, including negative income such as a clawed-back paycheck.',
-    leavesOut: 'Refunds, transfers, investment growth and money drawn from tracked accounts.',
+    leavesOut:
+      'Refunds, transfers, uncategorized credits on a card, investment growth and money drawn from tracked accounts.',
   },
   wishlist: {
     scope: 'wishlist',
