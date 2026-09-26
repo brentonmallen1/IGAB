@@ -278,8 +278,8 @@ class TestCategoryHistory:
         assert r.status_code == 404
 
 
-class TestEssentialsRunway:
-    async def test_runway_is_the_fund_over_a_lean_month(self, db_session, api_client):
+class TestEssentialsFundRunway:
+    async def test_the_fund_lasts_its_total_over_a_lean_month(self, db_session, api_client):
         budget, checking, group, groceries, _ = await _setup(db_session, api_client)
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
@@ -303,15 +303,17 @@ class TestEssentialsRunway:
         assert [c["name"] for c in body["emergency_fund"]["categories"]] == ["Emergency Fund"]
         assert body["emergency_fund"]["set_up"] is True
         assert Decimal(str(body["emergency_fund"]["total"])) == Decimal("500.00")
-        assert Decimal(str(body["runway_months"])) == (Decimal("500") / headline).quantize(
-            Decimal("0.1")
-        )
+        fund_runway = body["fund_runway"]
+        assert (fund_runway["spending"], fund_runway["money"]) == ("essentials", "fund")
+        assert Decimal(str(fund_runway["months"])) == Decimal("5.0")  # 500 / 100
+        assert Decimal(str(fund_runway["card_debt"])) == Decimal("0.00")
 
     async def test_no_fund_means_no_runway_not_zero(self, db_session, api_client):
         budget, *_ = await _setup(db_session, api_client)
         r = await api_client.get(f"/api/v1/{budget.id}/reports/essentials")
         body = r.json()
-        assert body["runway_months"] is None
+        assert body["fund_runway"]["months"] is None
+        assert body["fund_runway"]["money_total"] is None
         assert body["emergency_fund"] == {
             "set_up": False,
             "total": None,
@@ -319,7 +321,6 @@ class TestEssentialsRunway:
             "accounts": [],
             "external": {"declared": False, "amount": None, "as_of": None, "note": None},
         }
-        assert body["runway_months"] is None
 
 
 async def test_cost_of_living_rolls_the_wide_tier_up_by_group(db_session, api_client):

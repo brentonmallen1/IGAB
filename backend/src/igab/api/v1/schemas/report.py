@@ -7,6 +7,7 @@ from pydantic import ConfigDict, Field
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.domain.enums import TargetStatus
+from igab.domain.runway import MoneyBasis, SpendingBasis
 
 # ─── Existing ─────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,47 @@ class EmergencyFundOut(ApiModel):
     external: FundExternalOut
 
 
+class RunwayFigureOut(ApiModel):
+    """How long the money lasts if income stopped, at one choice — the one
+    runway rule (`domain.runway`). Every surface that quotes a runway serves
+    this whole shape, so each can say what it read: which spending, which
+    money, and what the cards owed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    spending: SpendingBasis
+    money: MoneyBasis
+    #: What a month costs on `spending` — the three complete months the
+    #: Essentials headline averages. None when nothing is tagged into the tier.
+    monthly_spending: Decimal | None
+    #: The money counted, on-budget card debt already subtracted. None when it
+    #: would count an emergency fund nobody has chosen.
+    money_total: Decimal | None
+    #: What was subtracted for the cards (owed, positive).
+    card_debt: Decimal
+    #: To one decimal. None when there is no pace to run out at; 0 when the
+    #: money is already gone.
+    months: Decimal | None
+    #: The reader's today plus `months`.
+    runs_out_on: date | None
+
+
+class OverviewRunway(RunwayFigureOut):
+    """The Overview's runway: Essentials against the cash and the emergency
+    fund, falling back to all spending when nothing is tagged Essential and to
+    the cash alone when no fund is chosen (`domain.runway.default_basis`)."""
+
+    #: Whether an emergency fund with a figure is chosen — False is why the
+    #: money fell back to the cash.
+    fund_chosen: bool
+    #: Whether anything is tagged Essential — False is why the spending fell
+    #: back to all of it.
+    essentials_known: bool
+    #: The complete months `monthly_spending` averages.
+    window_start: date | None
+    window_end: date | None
+
+
 class MeansMonth(ApiModel):
     """One complete month of the Overview's Means trend
     (`report_basics.means_months`)."""
@@ -166,9 +208,9 @@ class DashboardMetrics(ApiModel):
     #: None when no income was recorded in the window — the Savings Rate tab's
     #: convention, and a gap rather than a floor on the chart.
     savings_rate: float | None
-    #: `burn_rate.days_until_zero`: 0 when cash is already at or below zero,
-    #: None only when nothing is burning.
-    days_until_zero: float | None
+    #: How long the money lasts if income stopped — the Runway card
+    #: (`services.runway`). Required: the card has no other source.
+    runway: OverviewRunway
     #: The `*_this_month` figures cover the requested window, whatever its
     #: length; `expenses_prev_month` covers the equal-length window before it.
     income_this_month: Decimal
@@ -636,10 +678,11 @@ class EssentialsReportResponse(ApiModel):
     roadmap_range: tuple[int, int]
     #: The emergency fund and what it counted, read whatever the Guide tracks.
     emergency_fund: EmergencyFundOut
-    #: How many lean months `emergency_fund.total` covers
-    #: (`total / essentials.monthly`). None when nothing was chosen, or nothing
+    #: How long the fund lasts on Essentials, what the cards owe taken out —
+    #: the runway rule at (Essentials, the fund), and the Emergency Fund
+    #: report's "Covered". `months` is None when no fund was chosen or nothing
     #: is tagged Essential yet.
-    runway_months: Decimal | None = None
+    fund_runway: RunwayFigureOut
     #: Tagged Essential and still not counted, by class — see
     #: `CostOfLivingResponse.class_excluded`.
     class_excluded: list[SpendingClassExcluded] = []
@@ -1181,7 +1224,6 @@ class CashProjectionPoint(ApiModel):
     p50: Decimal
     p75: Decimal
     p90: Decimal
-    deterministic: Decimal  # projection with only scheduled/subscription events
 
 
 class CashProjectionEvent(ApiModel):
@@ -1189,6 +1231,33 @@ class CashProjectionEvent(ApiModel):
     payee: str
     amount: Decimal
     source: str  # 'scheduled' or 'subscription'
+
+
+class RunwayLinePoint(ApiModel):
+    date: date
+    balance: Decimal
+
+
+class StoppedIncomeOption(RunwayFigureOut):
+    """One choice on the Cash Projection's "If income stopped" line."""
+
+    #: The straight burn-down (`domain.runway.burn_down`): today's money, then
+    #: zero on `runs_out_on` or the balance at the horizon, whichever is first.
+    #: One point when the money is already gone; none when it is unknown.
+    line: list[RunwayLinePoint]
+
+
+class IfIncomeStopped(ApiModel):
+    #: Every spending basis × every money the page offers, in picker order.
+    options: list[StoppedIncomeOption]
+    #: The Overview's choice, which the pickers open on.
+    default_spending: SpendingBasis
+    default_money: MoneyBasis
+    fund_chosen: bool
+    essentials_known: bool
+    #: The complete months every `monthly_spending` averages.
+    window_start: date | None
+    window_end: date | None
 
 
 class CashProjectionResponse(ApiModel):
@@ -1201,6 +1270,8 @@ class CashProjectionResponse(ApiModel):
     #: being under $0 by then. Never later than `goes_negative_date`; the UI
     #: warns softly on this one alone (`domain.cash_projection`).
     p10_negative_date: date | None
+    #: The runway at every choice, drawn beside the bands.
+    if_income_stopped: IfIncomeStopped
 
 
 class ReportRangeResponse(ApiModel):
@@ -1539,8 +1610,12 @@ class EmergencyCoverageResponse(ApiModel):
     tagged: bool
     #: The emergency fund and what it counted — the Essentials report's own.
     fund: EmergencyFundOut
-    #: The Essentials report's own runway, quoted rather than recomputed.
-    coverage_months: Decimal | None
+    #: "Covered": the Essentials report's own `fund_runway`, quoted rather
+    #: than recomputed — the fund, what the cards owe taken out, over
+    #: Essentials. The series below is the fund alone over Essentials, so the
+    #: newest point and this differ by today's card debt (and what the fund
+    #: did since that month ended).
+    covered: RunwayFigureOut
     #: The Essentials report's own figures, quoted; the targets read `.monthly`.
     essentials: EssentialsFigures
     #: How many Essential categories are also Long-term expense. None means

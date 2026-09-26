@@ -679,6 +679,11 @@ async def cash_projection(ctx: ToolContext, args: dict) -> dict:
     about 1 path in 10 is below zero — the report's softer warning, so the
     assistant can say "unlikely, but possible" where the chart does.
 
+    `if_income_stopped` is the other half of "will I run out": the runway rule
+    (`domain.runway`) at every spending × money choice the page offers, so "how
+    long could we last without a paycheck" is answered by the same figure the
+    Overview's Runway card shows — never by a division the model does itself.
+
     From the user's today, like the chart they see. Events carry `payee`;
     this read `payee_name`, which no event has, so every upcoming bill was
     named null.
@@ -690,12 +695,30 @@ async def cash_projection(ctx: ToolContext, args: dict) -> dict:
     report = await ctx.reports.cash_projection(ctx.budget_id, horizon, today=ctx.today)
     goes_negative = report["goes_negative_date"]
     p10_negative = report["p10_negative_date"]
+    stopped = report["if_income_stopped"]
     return summarize_if_large(
         {
             "horizon_days": horizon,
             "start_balance": money(report["start_balance"]),
             "goes_negative_date": _iso(goes_negative) if goes_negative else None,
             "p10_negative_date": _iso(p10_negative) if p10_negative else None,
+            # The runway, at every choice the page offers: how long the money
+            # lasts if income stopped, card debt already taken out.
+            "if_income_stopped": [
+                {
+                    "spending": option["spending"],
+                    "money": option["money"],
+                    "monthly_spending": money(option["monthly_spending"]),
+                    "money_after_card_debt": money(option["money_total"]),
+                    "months": money(option["months"]),
+                    "runs_out_on": _iso(option["runs_out_on"]) if option["runs_out_on"] else None,
+                }
+                for option in stopped["options"]
+            ],
+            "if_income_stopped_default": {
+                "spending": stopped["default_spending"],
+                "money": stopped["default_money"],
+            },
             "upcoming": [
                 {
                     "date": _iso(event["date"]),

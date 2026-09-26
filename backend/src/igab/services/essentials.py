@@ -11,16 +11,17 @@ three, so no surface can quote a figure measured another way.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.domain.activity_class import basis_is_chosen
+from igab.domain.activity_class import NecessityTier, basis_is_chosen
 from igab.domain.dates import complete_month_window, history_index, month_starts
 from igab.domain.money import quantize_cents
+from igab.domain.runway import MoneyBasis, SpendingBasis, figure
 from igab.domain.spending import UNCATEGORIZED
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
@@ -34,6 +35,7 @@ from igab.services.emergency_fund import emergency_fund
 from igab.services.report_basics import class_excluded_note, history_window
 from igab.services.report_day import reader_today
 from igab.services.report_settings import spread_sinking_funds
+from igab.services.runway_holdings import holdings
 
 
 @dataclass(frozen=True)
@@ -82,17 +84,50 @@ async def essential_months(
     *,
     points: int = 1,
     bound: Sequence[uuid.UUID] | None = None,
+    tier: NecessityTier = NecessityTier.ESSENTIAL,
 ) -> EssentialMonths:
     """The last `points` complete months before the reader's `today`, with
     their lead-in, as `essentials_at` reads them.
 
     `bound` is the categories the household pointed the Guide's signal at; the
-    reports pass none and read the tags.
+    reports pass none and read the tags. `tier` is which necessity tier's rows
+    are read: the lean one unless the runway asks for Cost of living.
     """
+
+    async def rows(repo: TransactionRepository, start: date, end: date) -> tuple[list, str]:
+        return await repo.essential_spend_by_category_month(budget_id, start, end, bound, tier=tier)
+
+    return await _months(session, budget_id, today, points, rows)
+
+
+async def spending_months(
+    session: AsyncSession, budget_id: uuid.UUID, today: date
+) -> EssentialMonths:
+    """ALL spending (`TransactionRepository.spending_by_month`) read exactly
+    as the Essentials headline reads its tier — the same complete months, the
+    same history cut, the same spread setting — so the runway's three bases
+    differ in which rows they count and in nothing else. Basis "all": every
+    category, which for spending is the answer, not a fallback."""
+
+    async def rows(repo: TransactionRepository, start: date, end: date) -> tuple[list, str]:
+        return await repo.spending_by_month(budget_id, start, end), "all"
+
+    return await _months(session, budget_id, today, 1, rows)
+
+
+async def _months(
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    today: date,
+    points: int,
+    read: Callable[[TransactionRepository, date, date], Awaitable[tuple[list, str]]],
+) -> EssentialMonths:
+    """The window, the history cut and the spread setting, composed once for
+    every monthly figure `essentials_at` reads; `read` supplies the rows."""
     start, end = complete_month_window(today, points + LEAD_IN_MONTHS)
     months = month_starts(start, end)
     repo = TransactionRepository(session)
-    rows, basis = await repo.essential_spend_by_category_month(budget_id, start, end, bound)
+    rows, basis = await read(repo, start, end)
     series = monthly_series(rows, months)
     return EssentialMonths(
         months=months,
@@ -147,11 +182,11 @@ async def essentials_headline(
     implies, the emergency fund and how many lean months it covers.
 
     Shared by the Essentials report and Emergency Coverage, which quotes this
-    runway rather than recomputing it — one figure, so the two reports cannot
-    disagree about coverage. `today` is the reader's, as the Overview card's is.
-    `series` is the months the headline was read from, `points` of them
-    answerable, so the Emergency Fund chart draws its points from the same read
-    and its newest point IS the headline.
+    `fund_runway` rather than recomputing it — one figure, so the two reports
+    cannot disagree about coverage. `today` is the reader's, as the Overview
+    card's is. `series` is the months the headline was read from, `points` of
+    them answerable, so the Emergency Fund chart draws its points from the same
+    read and its newest point's essentials IS the headline.
     """
     months, tagged = await reported_months(session, budget_id, today, points=points)
     essentials = months.latest
@@ -175,10 +210,16 @@ async def essentials_headline(
         ],
         "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
         "emergency_fund": fund,
-        "runway_months": (
-            (fund.total / headline).quantize(Decimal("0.1"))
-            if fund.total is not None and headline > 0
-            else None
+        #: How long the fund lasts on Essentials alone, what the cards owe
+        #: taken out — the runway rule (`domain.runway`) at (Essentials, the
+        #: fund), and the Emergency Fund report's "Covered". It divided the
+        #: fund by Essentials and left the cards out without a word.
+        "fund_runway": figure(
+            SpendingBasis.ESSENTIALS,
+            MoneyBasis.FUND,
+            headline if tagged else None,
+            await holdings(session, budget_id, today, fund),
+            today,
         ),
     }
 

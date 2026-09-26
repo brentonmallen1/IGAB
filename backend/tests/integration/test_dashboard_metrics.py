@@ -208,52 +208,6 @@ class TestFiguresPreservedFromTheOldSuite:
 
         assert [c["name"] for c in card["top_categories"]] == ["Rent", "Groceries", "Fun"]
 
-    async def test_days_until_zero_uses_the_burn_rate(self, db_session):
-        user = await create_user(db_session)
-        budget = await create_budget(db_session, user)
-        checking = await create_account(db_session, budget, "Checking", on_budget=True)
-        group = await create_category_group(db_session, budget, "Everyday")
-        cat = await create_category(db_session, budget, group, "Groceries")
-        await create_transaction(db_session, budget, checking, "3000.00", TODAY - timedelta(days=5))
-        # Yesterday: the newest day the burn reads (`burn_as_of`).
-        await create_transaction(
-            db_session, budget, checking, "-300.00", TODAY - timedelta(days=1), category=cat
-        )
-        await db_session.flush()
-
-        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
-
-        assert card["days_until_zero"] == pytest.approx(float(card["net_worth"]) / (300 / 30))
-
-    async def test_days_until_zero_is_none_without_burn(self, db_session):
-        user = await create_user(db_session)
-        budget = await create_budget(db_session, user)
-        checking = await create_account(db_session, budget, "Checking", on_budget=True)
-        await create_transaction(db_session, budget, checking, "3000.00", TODAY)
-        await db_session.flush()
-
-        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
-
-        assert card["days_until_zero"] is None
-
-    async def test_days_until_zero_is_zero_when_cash_is_already_gone(self, db_session):
-        """It served None here, and the card hid — the moment its answer was
-        most urgent."""
-        user = await create_user(db_session)
-        budget = await create_budget(db_session, user)
-        checking = await create_account(db_session, budget, "Checking", on_budget=True)
-        group = await create_category_group(db_session, budget, "Everyday")
-        cat = await create_category(db_session, budget, group, "Groceries")
-        await create_transaction(db_session, budget, checking, "100.00", TODAY - timedelta(days=5))
-        await create_transaction(
-            db_session, budget, checking, "-300.00", TODAY - timedelta(days=1), category=cat
-        )
-        await db_session.flush()
-
-        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
-
-        assert card["days_until_zero"] == 0.0
-
     async def test_a_row_dated_today_is_not_yet_burned(self, db_session):
         """Today is rarely all posted, so the burn ends yesterday: a charge
         dated today moves the card tomorrow, not while the day is half-read."""

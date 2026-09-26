@@ -85,7 +85,7 @@ def burn_as_of(today: date) -> date:
     """The day the newest burn ends: yesterday, the last day a bank feed has
     finished posting. Ending on today counted a day that is nearly always
     empty, so a steady household's 30-day burn read about a thirtieth low
-    each morning and its runway a day long."""
+    each morning."""
     return today - timedelta(days=1)
 
 
@@ -109,29 +109,6 @@ class Burn:
     recent: Decimal
     #: Over the sixty days before them, per thirty days.
     prior: Decimal
-
-    @property
-    def per_day(self) -> Decimal:
-        """The recent burn spread over its days — what a runway divides by."""
-        return self.recent / RECENT_DAYS
-
-
-def days_until_zero(cash_on_hand: Decimal, daily_burn: Decimal) -> float | None:
-    """How many days `cash_on_hand` lasts at `daily_burn`: the Overview's
-    runway card.
-
-    - Nothing is burning (a burn of zero, or refunds outweighing spending):
-      None. There is no pace to run out at, and no number of days is true.
-    - Cash already at or below zero while money is going out: 0. The card
-      used to answer None here too, and hid itself — so it disappeared at
-      exactly the moment its answer was the most urgent one it could give.
-    - Otherwise cash ÷ daily burn.
-    """
-    if daily_burn <= 0:
-        return None
-    if cash_on_hand <= 0:
-        return 0.0
-    return float(cash_on_hand / daily_burn)
 
 
 def burn(days: Iterable[DayClassTotal], as_of: date) -> Burn:

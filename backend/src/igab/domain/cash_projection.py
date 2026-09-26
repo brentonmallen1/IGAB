@@ -40,7 +40,13 @@ exactly as many runs as every other.
 path used to add a sampled day on top of it, so the median began below the
 "Current Balance" printed beside it. Draws begin at day 1. A fixed event
 booked on today — a schedule due or overdue and not yet entered — still lands
-on day 0, as it does on the "Scheduled only" line.
+on day 0, on every path.
+
+**No "Scheduled only" line.** The fixed events alone were served and drawn as
+a dashed line: income from schedules, no everyday spending — a path no
+household lives on, answering no question anyone asked. What the chart draws
+beside the bands now is "If income stopped" (`domain.runway.burn_down`), the
+other half of "how long does my money last".
 
 **The warning says how likely.** `goes_negative_date` is the first day the
 median is below zero, `p10_negative_date` the first day the low band is. With
@@ -181,8 +187,7 @@ class BlockSampler:
 
 
 class BandPoint(NamedTuple):
-    """One projected day: the bands across the simulated paths, and the path
-    with the fixed events alone."""
+    """One projected day: the bands across the simulated paths."""
 
     day: date
     p10: Decimal
@@ -190,7 +195,6 @@ class BandPoint(NamedTuple):
     p50: Decimal
     p75: Decimal
     p90: Decimal
-    deterministic: Decimal
 
 
 @dataclass(frozen=True)
@@ -218,17 +222,16 @@ def project(
 
     `history` is `zero_filled` over `window`, and holds only the flows the
     fixed layer does not re-apply — the caller's partition. `fixed` is the
-    fixed events' net per day. Every path, and the deterministic line, starts
-    from `start_balance` plus whatever is fixed on today; sampled flows begin
-    on day 1. `seed` defaults to today's ordinal: reproducible within a day.
+    fixed events' net per day. Every path starts from `start_balance` plus
+    whatever is fixed on today; sampled flows begin on day 1. `seed` defaults
+    to today's ordinal: reproducible within a day.
     """
     days = [today + timedelta(days=k) for k in range(horizon_days + 1)]
     fixed_by_day = [fixed.get(d, ZERO) for d in days]
-    deterministic = list(accumulate(fixed_by_day, initial=start_balance))[1:]
 
     if window is None or not history:
-        # Nothing to replay: every path is the deterministic one.
-        columns = [[balance] for balance in deterministic]
+        # Nothing to replay: every path is the fixed events alone.
+        columns = [[balance] for balance in accumulate(fixed_by_day, initial=start_balance)][1:]
     else:
         if len(history) != window.days:
             raise ValueError("history must hold one flow per day of its window")
@@ -236,7 +239,7 @@ def project(
         rng = random.Random(today.toordinal() if seed is None else seed)
         columns = [[] for _ in days]
         for _ in range(paths):
-            balance = deterministic[0]
+            balance = start_balance + fixed_by_day[0]
             columns[0].append(balance)
             drawn = sampler.indices(days[1], horizon_days, rng) if horizon_days else []
             for k, i in enumerate(drawn, start=1):
@@ -244,10 +247,11 @@ def project(
                 columns[k].append(balance)
 
     points: list[BandPoint] = []
-    for day, column, det in zip(days, columns, deterministic, strict=True):
+    for day, column in zip(days, columns, strict=True):
         column.sort()
-        bands = [quantize_cents(column[int(len(column) * q)]) for _, q in BANDS]
-        points.append(BandPoint(day, *bands, deterministic=quantize_cents(det)))
+        points.append(
+            BandPoint(day, *(quantize_cents(column[int(len(column) * q)]) for _, q in BANDS))
+        )
 
     return Projection(
         points=points,

@@ -1,6 +1,6 @@
 """Cash projection: fan chart over on-budget cash.
 
-The simulation is seeded from today's ordinal, so results are deterministic
+The simulation is seeded from today's ordinal, so results are reproducible
 within a day. Two engineered scenarios make every band collapse onto a known
 path (no history -> all sampled flows are 0; uniform history -> every sample
 is identical), which lets exact balances be asserted. Random-history tests
@@ -75,22 +75,36 @@ def _assert_bands_collapsed(points):
 
 
 def _charged_dates(points) -> list[date]:
-    """Days the deterministic path moves: the fixed events' dates, read off
-    the path rather than recomputed with the stepping under test."""
-    return [
-        p["date"]
-        for i, p in enumerate(points)
-        if i > 0 and p["deterministic"] != points[i - 1]["deterministic"]
-    ]
-
-
-def _assert_sampled_flow_per_day(points, per_day: Decimal):
-    """Every path carries exactly `per_day` of sampled flow on top of the fixed
-    events — what uniform history leaves in the bootstrap. Day 0 draws
-    nothing: the start balance already holds today's rows."""
+    """Days the path moves when nothing is left to sample: the fixed events'
+    dates, read off the collapsed bands rather than recomputed with the
+    stepping under test."""
     _assert_bands_collapsed(points)
+    return [p["date"] for i, p in enumerate(points) if i > 0 and p["p50"] != points[i - 1]["p50"]]
+
+
+def _monthly(first: date, horizon: int, amount: str) -> dict[date, Decimal]:
+    """A monthly bill's charges inside the horizon, stepped by calendar month
+    from `first` — the fixed events a test states by hand."""
+    end = TODAY + timedelta(days=horizon)
+    charges = [add_months(first, k) for k in range(3)]
+    return {day: Decimal(amount) for day in charges if day <= end}
+
+
+def _assert_path(data, per_day: Decimal, fixed: dict[date, Decimal] | None = None):
+    """Every band on one path: the start balance, the fixed events the test
+    states by hand, and exactly `per_day` of sampled flow a day from day 1 —
+    what a uniform residual history leaves. Day 0 draws nothing: the start
+    balance already holds today's rows.
+
+    The oracle used to be the served "Scheduled only" path (the fixed events
+    alone). That line is gone — the chart draws "If income stopped" instead —
+    so each test says what its fixed layer is, which is the stronger claim."""
+    points = data["points"]
+    _assert_bands_collapsed(points)
+    running = data["start_balance"]
     for k, p in enumerate(points):
-        assert p["p50"] - p["deterministic"] == per_day * k
+        running += (fixed or {}).get(p["date"], Decimal("0"))
+        assert p["p50"] == running + per_day * k, p["date"]
 
 
 async def _subscription_category(db_session, budget, name: str):
@@ -103,7 +117,7 @@ async def _subscription_category(db_session, budget, name: str):
     return category
 
 
-async def test_scheduled_transactions_drive_a_deterministic_path(db_session):
+async def test_scheduled_transactions_drive_the_path(db_session):
     budget, checking = await _budget_with_checking(db_session)
     rent_payee = await create_payee(db_session, budget, "Landlord")
     pay_payee = await create_payee(db_session, budget, "Employer")
@@ -132,15 +146,13 @@ async def test_scheduled_transactions_drive_a_deterministic_path(db_session):
     points = data["points"]
     assert len(points) == 31
     assert [p["date"] for p in points] == [TODAY + timedelta(days=k) for k in range(31)]
-    # No sampled history -> every simulated path equals the deterministic one
+    # No sampled history -> every simulated path is the fixed events alone
     _assert_bands_collapsed(points)
-    for p in points:
-        assert p["p50"] == p["deterministic"]
-    assert points[0]["deterministic"] == Decimal("5000.00")
-    assert points[3]["deterministic"] == Decimal("7000.00")  # +2000 paycheck
-    assert points[10]["deterministic"] == Decimal("5800.00")  # -1200 rent
-    assert points[17]["deterministic"] == Decimal("7800.00")  # +2000 paycheck
-    assert points[30]["deterministic"] == Decimal("7800.00")
+    assert points[0]["p50"] == Decimal("5000.00")
+    assert points[3]["p50"] == Decimal("7000.00")  # +2000 paycheck
+    assert points[10]["p50"] == Decimal("5800.00")  # -1200 rent
+    assert points[17]["p50"] == Decimal("7800.00")  # +2000 paycheck
+    assert points[30]["p50"] == Decimal("7800.00")
     assert data["goes_negative_date"] is None
 
     assert [(e["date"], e["amount"], e["source"]) for e in data["events"]] == [
@@ -205,7 +217,7 @@ async def test_off_budget_pending_and_deleted_contribute_nothing(db_session):
     assert data["start_balance"] == Decimal("5000.00")
     _assert_bands_collapsed(data["points"])
     for p in data["points"]:
-        assert p["p50"] == p["deterministic"] == Decimal("5000.00")
+        assert p["p50"] == Decimal("5000.00")
     assert data["events"] == []
 
 
@@ -233,7 +245,7 @@ async def test_a_closed_account_keeps_its_balance_but_generates_no_flows(db_sess
     assert data["start_balance"] == Decimal("5744.00")  # 5000 + 777 − 33
     _assert_bands_collapsed(data["points"])
     for p in data["points"]:
-        assert p["p50"] == p["deterministic"] == Decimal("5744.00")
+        assert p["p50"] == Decimal("5744.00")
     assert data["events"] == []
 
 
@@ -300,7 +312,7 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
     ]
     start = data["start_balance"]
     assert start == Decimal("4968.02")  # 5000 - two posted charges
-    assert data["points"][horizon]["deterministic"] == start - Decimal("31.98")
+    assert data["points"][horizon]["p50"] == start - Decimal("31.98")
 
 
 async def test_scheduled_end_date_and_event_cap_respected(db_session):
@@ -374,7 +386,7 @@ async def test_cards_contribute_neither_balance_nor_history_nor_schedules(db_ses
     assert result["start_balance"] == Decimal("5000.00")
     assert result["events"] == []
     _assert_bands_collapsed(result["points"])
-    assert result["points"][-1]["deterministic"] == Decimal("5000.00")
+    assert result["points"][-1]["p50"] == Decimal("5000.00")
 
 
 async def test_a_twice_monthly_schedule_projects_every_occurrence(db_session):
@@ -420,7 +432,7 @@ async def test_a_twice_monthly_schedule_projects_every_occurrence(db_session):
     paydays = [first, first.replace(day=15), second, second.replace(day=15), third]
     assert _charged_dates(data["points"]) == paydays
     start = data["start_balance"]
-    assert data["points"][horizon]["deterministic"] == start + Decimal("1900.00") * 5
+    assert data["points"][horizon]["p50"] == start + Decimal("1900.00") * 5
 
 
 async def test_a_month_end_schedule_keeps_its_day(db_session):
@@ -428,7 +440,7 @@ async def test_a_month_end_schedule_keeps_its_day(db_session):
     dated the 31st read 28 Feb and then stayed on the 28th forever.
     `domain.schedule.next_occurrence` re-anchors to `start_date.day`.
 
-    The charge dates are read back off the deterministic path and compared with
+    The charge dates are read back off the path and compared with
     a hand-written list. Walking the domain function to build the expectation
     would make this a tautology — the stepping is the thing under test.
     """
@@ -535,12 +547,10 @@ async def test_an_overdue_occurrence_lands_on_the_projected_path(db_session):
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
-    start = data["start_balance"]
 
     # Booked on today, so the events list and the path agree.
     assert [e["date"] for e in data["events"]] == [TODAY]
-    assert data["points"][0]["deterministic"] == start - Decimal("250.00")
-    assert data["points"][30]["deterministic"] == start - Decimal("250.00")
+    _assert_path(data, Decimal("0"), {TODAY: Decimal("-250.00")})
 
 
 async def test_a_long_cancelled_subscription_is_not_projected_forever(db_session):
@@ -567,11 +577,11 @@ async def test_a_long_cancelled_subscription_is_not_projected_forever(db_session
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=90, today=TODAY)
     assert [e for e in data["events"] if e["source"] == "subscription"] == []
-    assert data["points"][90]["deterministic"] == data["start_balance"]
+    _assert_path(data, Decimal("0"))
 
 
 async def test_a_subscription_with_a_schedule_is_charged_once(db_session):
-    """Both deterministic arms projected the same payee: the schedule arm from
+    """Both fixed arms projected the same payee: the schedule arm from
     the schedule, the subscription arm from the payee's own charge history. A
     subscription the user had also entered as a scheduled transaction was
     therefore charged to the projection twice.
@@ -605,21 +615,20 @@ async def test_a_subscription_with_a_schedule_is_charged_once(db_session):
 
     sources = [e["source"] for e in data["events"]]
     assert sources == ["scheduled"], f"the subscription arm booked it too: {sources}"
-    start = data["start_balance"]
     # One charge in the window, not two.
-    assert data["points"][30]["deterministic"] == start - Decimal("20.00")
+    _assert_path(data, Decimal("0"), {TODAY + timedelta(days=6): Decimal("-20.00")})
 
 
 async def test_a_scheduled_bill_is_not_also_sampled_from_history(db_session):
     """The two layers have to partition the register. The sampled history had
-    no exclusion for the rows the deterministic layer re-applies, so every
+    no exclusion for the rows the fixed layer re-applies, so every
     scheduled bill landed in a simulated path twice — once sampled out of its
     own history, once added from `det_by_date` — biasing p50 and
     `goes_negative_date` by the whole recurring load.
 
     Here the ONLY history is the bill itself, so before the fix the sampled
     flow was a non-zero constant and the bands could not collapse onto the
-    deterministic path. After it, the residual history is empty and they do.
+    fixed path. After it, the residual history is empty and they do.
     """
     budget, checking = await _budget_with_checking(db_session)
     payee = await create_payee(db_session, budget, "Harborstone Rent")
@@ -647,10 +656,8 @@ async def test_a_scheduled_bill_is_not_also_sampled_from_history(db_session):
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
 
-    # No residual variation left, so every band sits on the deterministic path.
-    _assert_bands_collapsed(data["points"])
-    for p in data["points"]:
-        assert p["p50"] == p["deterministic"]
+    # No residual variation left, so every band sits on the fixed path.
+    _assert_path(data, Decimal("0"), _monthly(add_months(TODAY, 1), 60, "-1800.00"))
 
 
 async def test_rows_with_no_payee_stay_in_the_sampled_history(db_session):
@@ -685,7 +692,7 @@ async def test_rows_with_no_payee_stay_in_the_sampled_history(db_session):
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
-    _assert_sampled_flow_per_day(data["points"], Decimal("-10"))
+    _assert_path(data, Decimal("-10"), {TODAY + timedelta(days=5): Decimal("-1.00")})
 
 
 async def test_a_split_bill_leaves_the_history_with_its_schedule(db_session):
@@ -709,7 +716,7 @@ async def test_a_split_bill_leaves_the_history_with_its_schedule(db_session):
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
-    _assert_sampled_flow_per_day(data["points"], Decimal("0"))
+    _assert_path(data, Decimal("0"), _monthly(add_months(TODAY, 1), 60, "-1800.00"))
 
 
 async def test_rows_a_schedule_created_leave_the_history_by_its_id(db_session):
@@ -730,7 +737,7 @@ async def test_rows_a_schedule_created_leave_the_history_by_its_id(db_session):
     await db_session.flush()
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
-    _assert_sampled_flow_per_day(data["points"], Decimal("0"))
+    _assert_path(data, Decimal("0"), _monthly(add_months(TODAY, 1), 60, "-1800.00"))
 
 
 async def test_a_subscription_payees_other_spending_stays_sampled(db_session):
@@ -773,7 +780,8 @@ async def test_a_subscription_payees_other_spending_stays_sampled(db_session):
     assert [e["source"] for e in data["events"]] == ["subscription"]
     # The membership charges are the fixed layer's; the shopping is all that
     # is left to sample, at exactly -10 a day.
-    _assert_sampled_flow_per_day(data["points"], Decimal("-10"))
+    renewal = data["events"][0]["date"]
+    _assert_path(data, Decimal("-10"), {renewal: Decimal("-15.00")})
 
 
 async def test_a_schedule_made_in_the_editor_is_charged_once(db_session):
@@ -809,7 +817,7 @@ async def test_a_schedule_made_in_the_editor_is_charged_once(db_session):
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
     assert [e["source"] for e in data["events"]] == ["scheduled"]
-    assert data["points"][30]["deterministic"] == data["start_balance"] - Decimal("20.00")
+    _assert_path(data, Decimal("0"), {TODAY + timedelta(days=6): Decimal("-20.00")})
 
 
 async def test_an_editor_schedules_bill_leaves_the_history(db_session):
@@ -835,7 +843,7 @@ async def test_an_editor_schedules_bill_leaves_the_history(db_session):
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
-    _assert_sampled_flow_per_day(data["points"], Decimal("0"))
+    _assert_path(data, Decimal("0"), _monthly(add_months(TODAY, 1), 60, "-1800.00"))
 
 
 async def test_a_refund_into_a_scheduled_bills_envelope_stays_sampled(db_session):
@@ -857,7 +865,7 @@ async def test_a_refund_into_a_scheduled_bills_envelope_stays_sampled(db_session
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60, today=TODAY)
-    _assert_sampled_flow_per_day(data["points"], Decimal("50"))
+    _assert_path(data, Decimal("50"), _monthly(add_months(TODAY, 1), 60, "-1800.00"))
 
 
 async def test_a_stale_reminder_schedule_books_one_overdue_occurrence(db_session):
@@ -882,12 +890,13 @@ async def test_a_stale_reminder_schedule_books_one_overdue_occurrence(db_session
 
     assert [e["date"] for e in data["events"]] == [TODAY, TODAY + timedelta(days=4)]
     start = data["start_balance"]
-    assert data["points"][0]["deterministic"] == start - Decimal("100.00")
-    assert data["points"][5]["deterministic"] == start - Decimal("200.00")
-    # Every band starts where the "Scheduled only" line does: the overdue
-    # charge is on day 0 for all of them, and nothing sampled is.
-    _assert_bands_collapsed(data["points"][:1])
+    # The overdue charge is on day 0 for every band, and nothing sampled is.
     assert data["points"][0]["p50"] == start - Decimal("100.00")
+    _assert_path(
+        data,
+        Decimal("0"),
+        {TODAY: Decimal("-100.00"), TODAY + timedelta(days=4): Decimal("-100.00")},
+    )
 
 
 # ─── The sampled history: every day, from the first row, no openings ────────
@@ -974,7 +983,7 @@ async def test_a_young_budget_is_not_padded_with_months_before_its_first_row(db_
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30, today=TODAY)
 
-    _assert_sampled_flow_per_day(data["points"], Decimal("-10"))
+    _assert_path(data, Decimal("-10"))
 
 
 async def test_a_rare_large_bill_warns_on_p10_before_the_median(db_session):
@@ -1023,8 +1032,8 @@ async def test_the_readers_today_starts_the_path(db_session):
     # 500 - 21 rows through today; the reader's balance holds tomorrow's too.
     assert server["start_balance"] == Decimal("290.00")
     assert reader["start_balance"] == Decimal("280.00")
-    _assert_sampled_flow_per_day(server["points"], Decimal("-10"))
-    _assert_sampled_flow_per_day(reader["points"], Decimal("-10"))
+    _assert_path(server, Decimal("-10"))
+    _assert_path(reader, Decimal("-10"))
 
 
 async def test_the_endpoint_takes_the_readers_today(db_session, api_client):

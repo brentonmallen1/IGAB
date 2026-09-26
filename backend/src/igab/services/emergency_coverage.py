@@ -11,8 +11,10 @@ by the month's own essentials. A quiet December over a fund that has not moved
 would otherwise show coverage jumping and then falling back, which is a story
 about December, not about the fund. It is the Guide's own figure, read from
 the same rows as the headline (`essentials_headline`'s `series`), so the
-newest point IS the headline: the headline used to be a rolling ninety days
-beside a chart of complete-month averages, and the two disagreed on purpose.
+newest point's essentials IS the headline's: the headline used to be a rolling
+ninety days beside a chart of complete-month averages, and the two disagreed
+on purpose. The headline's MONEY is not the chart's — "Covered" takes out
+what the cards owe today; see `covered` below.
 
 **Sinking-fund bills are spread** when the budget's setting is on, exactly as
 the headline spreads them: the rest of a month's essentials takes the
@@ -147,9 +149,21 @@ class EmergencyCoverageService:
             "months": months,
             "tagged": summary["tagged"],
             "fund": fund,
-            # The Essentials report's own runway, quoted rather than recomputed:
-            # one figure, so the two reports cannot disagree about coverage.
-            "coverage_months": summary["runway_months"],
+            # The Essentials report's own `fund_runway`, quoted rather than
+            # recomputed: one figure, so the two reports cannot disagree about
+            # coverage.
+            #
+            # **The headline takes out what the cards owe; the chart does
+            # not.** "Covered" is the runway rule at (Essentials, the fund),
+            # and that rule always subtracts on-budget card debt — it is paid
+            # from the same money. The series stays the fund ÷ Essentials per
+            # month, as it always was: it answers "is the fund growing against
+            # a moving target", and a month-end card balance beside it would
+            # make a card paid off on the 1st read as the fund jumping. The
+            # gap between the newest point and the headline is today's card
+            # debt ÷ Essentials, plus what the fund did since the month ended —
+            # pinned in test_emergency_coverage.py, and said on the page.
+            "covered": summary["fund_runway"],
             "essentials": summary["essentials"],
             "long_term_essentials": summary["long_term_essentials"],
             "target_low": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_LOW),
