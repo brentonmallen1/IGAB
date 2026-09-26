@@ -76,8 +76,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
             less refunds — whatever range you pick, which moves only the chart.{' '}
             <strong>Monthly</strong> is Annual ÷ 12. Two kinds of service are projected instead,
             from their latest charge: one first charged within the year (latest charge × the charges
-            a year its cadence makes), and one whose price changed (the year&apos;s charges at the
-            new price).
+            a year its cadence makes — a single charge has no cadence yet, so it counts once), and
+            one whose new price has been charged twice (the year&apos;s charges at the new price).
           </p>
           <p>
             A service with no charge for one and a half cycles — two weeks late on a monthly bill,
@@ -272,7 +272,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
                     {open &&
                       sub.services.map((v) => {
                         const drill = serviceDrill(sub, v, data)
-                        const note = basisNote(v.basis)
+                        const note = basisNote(v)
                         return (
                           <tr
                             key={v.payee_id ?? '__none__'}

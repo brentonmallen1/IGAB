@@ -65,8 +65,8 @@ describe('cadenceLabel', () => {
     [{ cadence: 'monthly', interval_days: 31, cadence_assumed: false }, 'monthly'],
     [{ cadence: 'yearly', interval_days: 365, cadence_assumed: false }, 'yearly'],
     [{ cadence: 'days', interval_days: 91, cadence_assumed: false }, 'every 91 days'],
-    // One charge: the server assumed monthly, and the page must not claim it saw it.
-    [{ cadence: 'monthly', interval_days: 30, cadence_assumed: true }, 'monthly?'],
+    // One charge: the page must not claim a cadence it never saw.
+    [{ cadence: 'monthly', interval_days: 30, cadence_assumed: true }, 'unknown'],
   ] as const)('%o reads %s', (s, label) => {
     expect(cadenceLabel(s)).toBe(label)
   })
@@ -74,10 +74,16 @@ describe('cadenceLabel', () => {
 
 describe('basisNote', () => {
   it('marks projected and stopped services, and nothing else', () => {
-    expect(basisNote('new')).toBe('new · projected')
-    expect(basisNote('price_change')).toBe('new price · projected')
-    expect(basisNote('stopped')).toBe('stopped')
-    expect(basisNote('observed')).toBeNull()
+    const note = (
+      basis: 'observed' | 'new' | 'price_change' | 'stopped',
+      cadence_assumed = false
+    ) => basisNote({ basis, cadence_assumed })
+    expect(note('new')).toBe('new · projected')
+    // One charge is counted once, not projected — the note must not say it was.
+    expect(note('new', true)).toBe('new · 1 charge')
+    expect(note('price_change')).toBe('new price · projected')
+    expect(note('stopped')).toBe('stopped')
+    expect(note('observed')).toBeNull()
   })
 })
 

@@ -10,6 +10,9 @@
   font: inherit;
   color: var(--text-primary);
   cursor: pointer;
+  /* The table scrolls sideways on a phone; the name should not wrap to a
+     word per line to avoid it. */
+  white-space: nowrap;
 }
 
 /* The group a category lives in, as an aside: two categories can share a
@@ -23,6 +26,7 @@
    it. The indent is on the first cell so the money columns stay aligned. */
 .subs-report__service td:first-child {
   padding-left: calc(var(--spacing-lg) + var(--spacing-xs));
+  white-space: nowrap;
 }
 
 .subs-report__service td {

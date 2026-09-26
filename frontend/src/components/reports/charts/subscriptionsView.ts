@@ -13,22 +13,25 @@ import type {
 import type { DrillDownContext } from '../../../stores/reportStore'
 import type { TrendRow } from './spendingTrends'
 
-/** "monthly", "yearly", "every 91 days" — and "monthly?" when one charge was
- *  all there was to go on and the server assumed it. */
+/** "monthly", "yearly", "every 91 days" — and "unknown" when one charge is
+ *  all there is to go on. */
 export function cadenceLabel(
   s: Pick<SubscriptionService, 'cadence' | 'interval_days' | 'cadence_assumed'>
 ): string {
-  if (s.cadence_assumed) return 'monthly?'
+  if (s.cadence_assumed) return 'unknown'
   if (s.cadence === 'monthly') return 'monthly'
   if (s.cadence === 'yearly') return 'yearly'
   return `every ${s.interval_days} days`
 }
 
-/** The note beside a service whose Annual is not simply its year's charges. */
-export function basisNote(basis: SubscriptionService['basis']): string | null {
-  switch (basis) {
+/** The note beside a service whose Annual is not simply its year's charges.
+ *  A new service with one charge counts it once (no cadence to project). */
+export function basisNote(
+  s: Pick<SubscriptionService, 'basis' | 'cadence_assumed'>
+): string | null {
+  switch (s.basis) {
     case 'new':
-      return 'new · projected'
+      return s.cadence_assumed ? 'new · 1 charge' : 'new · projected'
     case 'price_change':
       return 'new price · projected'
     case 'stopped':

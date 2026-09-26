@@ -741,7 +741,8 @@ class SubscriptionService(ApiModel):
     #: "monthly" and "yearly" are calendar cadences (`schedule.cadence_of`);
     #: "days" is every `interval_days`.
     cadence: Literal["monthly", "yearly", "days"]
-    #: One charge says nothing about cadence, so monthly was assumed.
+    #: One charge says nothing about cadence: "monthly" is assumed for the
+    #: stopped rule, and a "new" service counts its charge once.
     cadence_assumed: bool
     latest_charge: Decimal  # the most recent charge, positive
     first_charge_date: date
@@ -778,7 +779,8 @@ class SubscriptionsSummary(ApiModel):
     tagged_categories: int
     #: Services first charged in the month still running.
     new_this_month: int
-    #: Services whose Annual is projected (basis "new" or "price_change").
+    #: Services whose Annual is projected: a price change, or a new service
+    #: with a cadence to project (one charge counts once, and is not).
     projected_services: int
     stopped_services: int
 

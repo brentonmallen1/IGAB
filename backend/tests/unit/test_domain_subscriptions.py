@@ -104,11 +104,22 @@ class TestPriceChange:
         assert c.annual == D("216.00")
         assert c.monthly == D("18.00")
 
-    def test_a_new_price_first_charged_this_month_counts(self):
-        rows = monthly("15.00", date(2025, 3, 5), 18) + [(date(2026, 9, 5), D("-18.00"))]
+    def test_a_new_price_charged_again_this_month_counts(self):
+        rows = monthly("15.00", date(2025, 3, 5), 17) + monthly("18.00", date(2026, 8, 5), 2)
         c = cost(rows)
         assert c.basis is Basis.PRICE_CHANGE
         assert c.annual == D("216.00")
+
+    def test_one_different_charge_is_not_yet_a_price(self):
+        """An add-on billed beside the plan looked exactly like a new price:
+        five $12 charges in the year and one $5 read as a $5 service, a year
+        of $30 where the year had charged $65."""
+        rows = [(add_months(date(2025, 2, 7), 2 * i), D("-12.00")) for i in range(9)]
+        rows.append((date(2026, 8, 24), D("-5.00")))
+        c = cost(rows)
+        assert c.basis is Basis.OBSERVED
+        assert c.charges_in_year == 6
+        assert c.annual == D("65.00")
 
     def test_a_price_change_is_still_net_of_refunds(self):
         rows = (
@@ -129,16 +140,20 @@ class TestNew:
     def test_a_service_younger_than_the_year_is_projected_from_its_cadence(self):
         c = cost(monthly("10.00", date(2026, 6, 12), 4))  # Jun – Sep 2026
         assert c.basis is Basis.NEW
+        assert c.is_projected
         assert c.cadence is Cadence.MONTHLY
         assert c.annual == D("120.00")
         assert c.monthly == D("10.00")
 
-    def test_one_charge_assumes_monthly_and_says_so(self):
-        c = cost([(date(2026, 9, 2), D("-9.00"))])
+    def test_one_charge_counts_once(self):
+        """One charge has no cadence to observe. Read as monthly, a single
+        $40 charge was $480 a year — most of the headline it sat in."""
+        c = cost([(date(2026, 9, 2), D("-40.00"))])
         assert c.basis is Basis.NEW
         assert c.cadence_assumed
         assert c.new_this_month
-        assert c.annual == D("108.00")
+        assert c.annual == D("40.00")
+        assert not c.is_projected
 
     def test_two_charges_on_one_day_still_assume(self):
         c = cost([(date(2026, 9, 2), D("-9.00")), (date(2026, 9, 2), D("-9.00"))])

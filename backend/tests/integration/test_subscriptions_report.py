@@ -261,9 +261,10 @@ async def test_new_this_month_counts_services_first_charged_this_month(db_sessio
     services = {s["payee_name"]: s for s in data["subscriptions"][0]["services"]}
     assert services["Pixelworks"]["basis"] == "new"
     assert services["Pixelworks"]["cadence_assumed"]
-    # One charge: monthly assumed, so twelve a year — and it says so.
-    assert services["Pixelworks"]["annual"] == D("108.00")
+    # One charge: no cadence to project, so it counts once — and says so.
+    assert services["Pixelworks"]["annual"] == D("9.00")
     assert data["summary"]["new_this_month"] == 1
+    assert data["summary"]["projected_services"] == 0
     # The running month is not a chart column.
     assert THIS_MONTH not in data["months"]
 

@@ -42,7 +42,7 @@ from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
 from igab.domain.money_moves import flows
 from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
-from igab.domain.subscriptions import PROJECTED, Basis, service_cost
+from igab.domain.subscriptions import Basis, service_cost
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
@@ -611,7 +611,7 @@ async def subscriptions_report(
             if cost.basis is Basis.STOPPED and cost.last_charge_date < min(start_date, year_start):
                 continue
             new_this_month += cost.new_this_month
-            projected += cost.basis in PROJECTED
+            projected += cost.is_projected
             stopped += cost.basis is Basis.STOPPED
             shown_rows.extend(payee_rows)
             services.append(

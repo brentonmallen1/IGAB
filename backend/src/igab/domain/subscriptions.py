@@ -14,10 +14,15 @@ The rule (decided 2026-09-25):
   bill — and Annual swung threefold as the range picker moved.
 - **Only a service younger than that year is extrapolated**: its latest
   charge times the cycles a year its observed cadence makes. A year of
-  history is the bill; less than a year is a guess, and says so.
-- **A price change projects from the latest charge.** A year of $15 charges
-  and then $18 is an $18 service; blending the two understated it until a
-  year had passed at the new price.
+  history is the bill; less than a year is a guess, and says so. A single
+  charge has no cadence to observe, so it counts once, as charged: read as
+  monthly, one $40 charge became $480 of a $520 headline.
+- **A price change projects from the latest charge** once the new price has
+  been charged twice. A year of $15 charges and then two of $18 is an $18
+  service; blending them understated it until a year had passed at the new
+  price. One different charge is not yet a price: it was an add-on billed
+  beside the plan as often as a new one, and projecting it for a year read a
+  $12 service as $5.
 - **A service with no charge for 1.5 cycles is stopped** (`has_stopped`): it is
   still listed, and it counts in nothing.
 """
@@ -46,16 +51,19 @@ class Basis(StrEnum):
 
     #: The charges of the last 12 complete months, net of refunds.
     OBSERVED = "observed"
-    #: First charged inside that year: latest charge × cycles a year.
+    #: First charged inside that year: latest charge × cycles a year — or,
+    #: with one charge and so no cadence, that charge once.
     NEW = "new"
-    #: Its price changed inside the year: every charge in the year at the
-    #: latest price, net of refunds.
+    #: Its price changed inside the year and the new price has been charged
+    #: twice: every charge in the year at the latest price, net of refunds.
     PRICE_CHANGE = "price_change"
     #: No charge for 1.5 cycles. Annual is zero.
     STOPPED = "stopped"
 
 
-#: Bases whose Annual is a projection rather than a sum of charges.
+#: Bases whose Annual can be a projection rather than a sum of charges —
+#: always for a price change; for a new service only once it has a cadence
+#: (`is_projected`).
 PROJECTED = frozenset({Basis.NEW, Basis.PRICE_CHANGE})
 
 
@@ -82,23 +90,35 @@ class ServiceCost:
     #: First charged in the month still running.
     new_this_month: bool
 
+    @property
+    def is_projected(self) -> bool:
+        """Whether Annual is a projection. A new service with one charge is
+        not: it counts that charge once."""
+        return self.basis in PROJECTED and not (self.basis is Basis.NEW and self.cadence_assumed)
+
+
+#: How many charges at a new price make it the price.
+NEW_PRICE_CHARGES = 2
+
 
 def _price_change(amounts: Sequence[Decimal]) -> bool:
     """Whether a run of charges, oldest first, is one price and then another:
-    X … X Y … Y with X ≠ Y.
+    X … X Y … Y with X ≠ Y and at least `NEW_PRICE_CHARGES` Ys.
 
     That shape and no other. A payee billing several different plans, or a
     usage-priced bill that varies every month, is not a price change — reading
     its latest charge as the price would project one month's bill for a year.
     """
-    if len(amounts) < 2:
-        return False
-    latest = amounts[-1]
+    latest = amounts[-1] if amounts else None
     i = len(amounts)
     while i > 0 and amounts[i - 1] == latest:
         i -= 1
     before = amounts[:i]
-    return bool(before) and all(a == before[0] for a in before)
+    return (
+        len(amounts) - i >= NEW_PRICE_CHARGES
+        and bool(before)
+        and all(a == before[0] for a in before)
+    )
 
 
 def service_cost(
@@ -133,7 +153,10 @@ def service_cost(
         basis, annual = Basis.STOPPED, Decimal(0)
     elif first >= year_start:
         basis = Basis.NEW
-        annual = latest * cycles_per_year(interval) - refunded
+        if last <= first:  # no cadence observed: what it charged, once
+            annual = sum((cost for _, cost in charges), Decimal(0)) - refunded
+        else:
+            annual = latest * cycles_per_year(interval) - refunded
     elif _price_change(recent):
         basis = Basis.PRICE_CHANGE
         annual = latest * len(in_year) - refunded
