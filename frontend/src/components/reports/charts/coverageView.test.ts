@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   carriedFlatFrom,
   coverageTrend,
+  coverageTrendPhrase,
   monthsCovered,
   monthsTick,
   monthsToTarget,
@@ -173,5 +174,21 @@ describe('monthsCovered', () => {
 
   it('ticks the axis with a bare count', () => {
     expect(monthsTick(3)).toBe('3')
+  })
+})
+
+describe('coverageTrendPhrase', () => {
+  const trend = (delta: number, months: number) => ({ from: 0, to: delta, delta, months })
+
+  it('says a year as a year', () => {
+    // It read "+0.3 months over 12 months": a change of months beside a span
+    // of months.
+    expect(coverageTrendPhrase(trend(0.3, 12))).toBe('up 0.3 months in a year')
+  })
+
+  it('says the direction in words, and the span otherwise in months', () => {
+    expect(coverageTrendPhrase(trend(-1.2, 6))).toBe('down 1.2 months in 6 months')
+    expect(coverageTrendPhrase(trend(1, 2))).toBe('up 1 month in 2 months')
+    expect(coverageTrendPhrase(trend(0, 12))).toBe('unchanged in a year')
   })
 })

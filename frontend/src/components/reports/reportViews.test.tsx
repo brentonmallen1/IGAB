@@ -1088,6 +1088,7 @@ describe('VarianceReport cards', () => {
         points: [
           {
             month: '2026-08-01',
+            partial_month: false,
             budget_assigned: 3000,
             actual_spent: 2900,
             monthly_variance: 100,
@@ -1095,10 +1096,11 @@ describe('VarianceReport cards', () => {
           },
           {
             month: '2026-09-01',
+            partial_month: true,
             budget_assigned: 3000,
             actual_spent: 1200,
             monthly_variance: 1800,
-            cumulative_variance: 1900,
+            cumulative_variance: null,
           },
         ],
       },
@@ -1107,6 +1109,12 @@ describe('VarianceReport cards', () => {
     expect(card('Spent this month so far').value).toBe('$1,200.00')
     expect(card('Assigned this month so far').value).toBe('$3,000.00')
     expect(screen.queryByText(/Last Month/)).toBeNull()
+    // The drift is the complete months': the running month's +1,800 of
+    // plan-not-yet-spent is not in it (D5).
+    expect(card('Cumulative Variance')).toEqual({
+      value: '$100.00',
+      sub: 'Under budget through Aug 26',
+    })
   })
 })
 
@@ -1117,6 +1125,7 @@ describe('IncomeExpenseReport drill', () => {
         months: [
           {
             month: '2026-08-01',
+            partial_month: false,
             income: 6000,
             expenses: 1530,
             savings: 0,
@@ -1127,10 +1136,10 @@ describe('IncomeExpenseReport drill', () => {
       },
     })
     renderReport(<IncomeExpenseReport budgetId="b1" />)
-    fireEvent.click(screen.getByText('2026-08'))
+    fireEvent.click(screen.getByText('Aug 26'))
     const drill = useReportStore.getState().drillDown
     expect(drill).toMatchObject({
-      label: 'Expenses · 2026-08',
+      label: 'Expenses · Aug 26',
       scope: 'leaf',
       activityClasses: ['spending'],
       startDate: '2026-08-01',
@@ -1737,6 +1746,7 @@ describe('CostOfLivingReport tiers', () => {
     avg_monthly_cost_of_living: 900,
     avg_monthly_essentials: 700,
     avg_monthly_income: 1200,
+    avg_monthly_discretionary: 180,
     basis: 'tag' as const,
     tagged: true,
     class_excluded: [],
@@ -1754,8 +1764,13 @@ describe('CostOfLivingReport tiers', () => {
       value: '$900.00',
       sub: 'per month, over 2 complete months',
     })
-    expect(card('Essentials')).toEqual({ value: '$700.00', sub: 'could not be cut' })
-    expect(card('Non-essential').value).toBe('$200.00')
+    // Its window is this report's, not the Essentials headline's three
+    // months, so the card says which.
+    expect(card('Essentials')).toEqual({
+      value: '$700.00',
+      sub: 'could not be cut · per month, over 2 complete months',
+    })
+    expect(card('Committed, not essential').value).toBe('$200.00')
     expect(card('Take-home')).toEqual({
       value: '$1,200.00',
       sub: 'per month, over 2 complete months',
@@ -1776,8 +1791,29 @@ describe('CostOfLivingReport tiers', () => {
     renderReport(<CostOfLivingReport budgetId="b1" />)
 
     // 200 of 900. And the card must not tell anyone to cancel anything.
-    expect(card('Non-essential').sub).toBe('22% of the above')
+    expect(card('Committed, not essential').sub).toBe('22% of cost of living')
     expect(screen.queryByText(/could cut/i)).toBeNull()
+  })
+
+  it('lays take-home out whole under the verdict', () => {
+    // 900 committed + 180 discretionary of 1,200: 120 left over.
+    setQuery({ data: tiered })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(
+      screen.getByText(
+        'Of $1,200.00 take-home a month: $900.00 committed (75%) · $180.00 discretionary (15%) · $120.00 left over (10%)'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('shows one card when everything committed is essential', () => {
+    setQuery({ data: { ...tiered, avg_monthly_essentials: 900 } })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(card('Cost of living').sub).toBe(
+      'per month, over 2 complete months · all of it Essential'
+    )
+    expect(screen.queryByText('Committed, not essential')).toBeNull()
+    expect(screen.queryByText('Essentials')).toBeNull()
   })
 
   it('reads the standing off the wide ratio', () => {
@@ -1996,6 +2032,7 @@ describe('drill tables read spending as a positive figure', () => {
         months: [
           {
             month: '2026-08-01',
+            partial_month: false,
             income: 2000,
             expenses: 300,
             savings: 0,
@@ -2006,7 +2043,7 @@ describe('drill tables read spending as a positive figure', () => {
       },
     })
     renderReport(<IncomeExpenseReport budgetId="b1" />)
-    noMinus('2026-08', '$300.00')
+    noMinus('Aug 26', '$300.00')
   })
 
   it('Pareto', () => {
@@ -2178,13 +2215,14 @@ describe('EssentialsReport table footer', () => {
 })
 
 describe('EssentialsReport headline', () => {
-  const report = (essentials: object) => ({
+  const report = (essentials: object, over: object = {}) => ({
     tagged: true,
     months: 12,
     window_start: '2025-09-01',
     window_end: '2026-08-31',
     months_averaged: 12,
-    essentials,
+    essentials: { window_start: '2026-06-01', window_end: '2026-08-31', ...essentials },
+    long_term_essentials: 1,
     monthly_total_average: 2000,
     categories: [],
     monthly_series: [],
@@ -2199,6 +2237,7 @@ describe('EssentialsReport headline', () => {
     },
     runway_months: null,
     class_excluded: [],
+    ...over,
   })
 
   it('headlines the figure the setting picks and names the other', () => {
@@ -2206,19 +2245,81 @@ describe('EssentialsReport headline', () => {
       data: report({ as_paid: 2800, spread: 2200, spread_on: false, monthly: 2800 }),
     })
     renderReport(<EssentialsReport budgetId="b1" />)
+    // The months it averages, then the other figure on a line of its own.
     expect(card('Essentials / month')).toEqual({
       value: '$2,800.00',
-      sub: '$2,800.00/mo as paid · $2,200.00/mo spread',
+      sub: 'Jun 26 – Aug 26 average$2,800.00/mo as paid · $2,200.00/mo spread',
     })
     expect(
       screen.getByRole('checkbox', { name: 'Spread yearly bills over 12 months' })
     ).toBeInTheDocument()
   })
 
-  it('keeps its plain sub-line when the two agree', () => {
+  it('keeps its window as the sub-line when the two agree', () => {
+    // It read "90-day average": the window is three complete months (D6),
+    // and the card names them.
     setQuery({ data: report({ as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 }) })
     renderReport(<EssentialsReport budgetId="b1" />)
-    expect(card('Essentials / month')).toEqual({ value: '$2,000.00', sub: '90-day average' })
+    expect(card('Essentials / month')).toEqual({
+      value: '$2,000.00',
+      sub: 'Jun 26 – Aug 26 average',
+    })
+  })
+
+  it('says there is nothing to spread instead of offering the switch', () => {
+    setQuery({
+      data: report(
+        { as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 },
+        { long_term_essentials: 0 }
+      ),
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.getByText(/No Essential category is also a Long-term expense/)).toBeTruthy()
+  })
+
+  it('collapses the reserve sizes into one line of targets', () => {
+    // Four cards of headline × N crowded out the three figures that are not
+    // arithmetic on it.
+    setQuery({
+      data: report(
+        { as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 },
+        {
+          reserve: [
+            { months: 1, amount: 2000 },
+            { months: 3, amount: 6000 },
+            { months: 6, amount: 12000 },
+            { months: 12, amount: 24000 },
+          ],
+        }
+      ),
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(screen.queryByText('3-month reserve')).toBeNull()
+    expect(document.querySelector('.essentials-report__targets')?.textContent).toBe(
+      'Targets1 month $2,000.00 · 3 months $6,000.00 · 6 months $12,000.00 · 12 months $24,000.00 — the roadmap suggests 3–6'
+    )
+  })
+
+  it('says how far the worst month ran over the headline', () => {
+    // It read "Sep 2025 — ×6 reserve: $X": a reserve nobody sizes from one
+    // bad month.
+    setQuery({
+      data: report(
+        { as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 },
+        {
+          monthly_series: [
+            { month: '2026-07-01', total: 2500, sinking_total: 0 },
+            { month: '2026-08-01', total: 1900, sinking_total: 0 },
+          ],
+        }
+      ),
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(card('Worst month')).toEqual({
+      value: '$2,500.00',
+      sub: 'Jul 26 · 25% over the headline',
+    })
   })
 })
 
@@ -2243,7 +2344,15 @@ describe('EmergencyCoverageReport', () => {
       external: { declared: false, amount: null, as_of: null, note: null },
     },
     coverage_months: 4,
-    essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
+    essentials: {
+      as_paid: 1000,
+      spread: 1000,
+      spread_on: true,
+      monthly: 1000,
+      window_start: '2026-06-01',
+      window_end: '2026-08-31',
+    },
+    long_term_essentials: 1,
     target_low: 3000,
     target_high: 6000,
     target_range: [3, 6],
@@ -2264,8 +2373,11 @@ describe('EmergencyCoverageReport', () => {
       },
     })
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
-    expect(screen.getByText(/carried flat from August 2026/)).toBeInTheDocument()
-    expect(screen.queryByText(/September 2026/)).toBeNull()
+    expect(screen.getByText(/carried flat from Aug 26/)).toBeInTheDocument()
+    expect(screen.queryByText(/Sep 26/)).toBeNull()
+    // Both charts say they end at the last complete month.
+    expect(screen.getByText('Months covered, through Aug 26')).toBeInTheDocument()
+    expect(screen.getByText('Fund against a moving target, through Aug 26')).toBeInTheDocument()
   })
 
   it('states the span of a trend with a gap inside it', () => {
@@ -2281,21 +2393,28 @@ describe('EmergencyCoverageReport', () => {
       },
     })
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
-    expect(screen.getByText('+2 months over 4 months')).toBeInTheDocument()
+    expect(screen.getByText('up 2 months in 4 months')).toBeInTheDocument()
   })
 
   it('reads the spread figure and names the as-paid one beside it', () => {
     setQuery({
       data: {
         ...base,
-        essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+        essentials: {
+          as_paid: 2800,
+          spread: 2200,
+          spread_on: true,
+          monthly: 2200,
+          window_start: '2026-06-01',
+          window_end: '2026-08-31',
+        },
         series: [pt('2026-08-01', 4)],
       },
     })
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
     expect(
       screen.getByText(
-        /\$2,200\.00\/month over the Guide’s 90-day window, with yearly bills spread/
+        /\$2,200\.00\/month, the average of Jun 26 – Aug 26, with yearly bills spread/
       )
     ).toHaveTextContent('($2,200.00/mo spread · $2,800.00/mo as paid)')
     expect(

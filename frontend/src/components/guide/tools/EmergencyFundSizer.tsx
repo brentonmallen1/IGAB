@@ -78,7 +78,9 @@ export function EmergencyFundSizer() {
         </label>
       </div>
 
-      <SpreadSinkingFundsToggle budgetId={budgetId} />
+      {/* The sizer's figure can come from categories bound in the Guide,
+          not the tags, so the Long-term count is not known here. */}
+      <SpreadSinkingFundsToggle budgetId={budgetId} longTermEssentials={null} />
 
       {data && (
         <div className="tool__results">

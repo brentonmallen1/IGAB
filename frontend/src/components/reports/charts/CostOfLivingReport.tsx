@@ -16,7 +16,14 @@ import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { necessityReading, necessityShare, nonEssentialSpend } from './necessityView'
+import {
+  necessityReading,
+  necessityShare,
+  nonEssentialSpend,
+  takeHomeLine,
+  takeHomeSplit,
+  tiersAreEqual,
+} from './necessityView'
 import { averagedOver } from './averagedOver'
 
 interface Props {
@@ -28,8 +35,8 @@ interface Props {
  *
  * The table and chart roll up the WIDE tier: categories tagged Essential or
  * Cost of living, plus debt payments by class. The Essentials card is the
- * lean tier inside it, and Non-essential is the gap — what a lean month could
- * shed. Which rows each tier holds is the server's rule
+ * lean tier inside it, and "Committed, not essential" is the gap — what a lean
+ * month could shed. Which rows each tier holds is the server's rule
  * (`domain.activity_class.tier_scope`); this page only lays the figures out,
  * in the groups a budget already has, which are the shape a household
  * thinks in.
@@ -67,6 +74,13 @@ export function CostOfLivingReport({ budgetId }: Props) {
   // difference between a figure a reader can check and one that just looks
   // low at the start of a month.
   const perMonth = averagedOver('per month', data.months_averaged)
+  // Everything committed is Essential: one card says it, not three.
+  const oneTier = tiersAreEqual(data.avg_monthly_cost_of_living, data.avg_monthly_essentials)
+  const split = takeHomeSplit(
+    data.avg_monthly_income,
+    data.avg_monthly_cost_of_living,
+    data.avg_monthly_discretionary
+  )
 
   const report = data
 
@@ -122,8 +136,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
           <p>
             Everything that leaves your account whether or not you feel like it, grouped the way
             your budget already is. Two tiers sit inside it: <strong>Essentials</strong> are the
-            things you could not cut, and <strong>Non-essential</strong> is the rest — committed,
-            but sheddable in a genuine emergency.
+            things you could not cut, and <strong>Committed, not essential</strong> is the rest —
+            committed, but sheddable in a genuine emergency. When the two are the same figure, one
+            card says so.
           </p>
           <p>
             Tag a category <strong>Essential</strong> or <strong>Cost of living</strong> from its
@@ -133,8 +148,10 @@ export function CostOfLivingReport({ budgetId }: Props) {
           <p>
             <strong>Required</strong> is the share of take-home already spoken for. Both figures
             cover the same window, which is what makes the difference between them a real number.
-            Each group&apos;s share is of the cost-of-living total, not of income, so the shares add
-            to 100%.
+            The line under the verdict lays take-home out whole: cost of living, discretionary
+            spending (the Discretionary report&apos;s figure) and what was left over. Each
+            group&apos;s share is of the cost-of-living total, not of income, so the shares add to
+            100%.
           </p>
           <ReportScopeNote report="cost-of-living" />
         </ReportInfoButton>
@@ -182,33 +199,39 @@ export function CostOfLivingReport({ budgetId }: Props) {
             <MetricCard
               label="Cost of living"
               value={formatMoney(data.avg_monthly_cost_of_living)}
-              sub={perMonth}
+              sub={oneTier ? `${perMonth} · all of it Essential` : perMonth}
             />
             {/* Null until something is tagged Essential: all spending is not
-                what a household could not cut, so the figure is unknown. */}
-            <MetricCard
-              label="Essentials"
-              value={formatMoneyOrDash(data.avg_monthly_essentials)}
-              sub={
-                data.avg_monthly_essentials === null
-                  ? 'nothing tagged Essential'
-                  : 'could not be cut'
-              }
-            />
+                what a household could not cut, so the figure is unknown. Its
+                window is this report's, not the Essentials headline's three
+                months, so the card says which. */}
+            {!oneTier && (
+              <MetricCard
+                label="Essentials"
+                value={formatMoneyOrDash(data.avg_monthly_essentials)}
+                sub={
+                  data.avg_monthly_essentials === null
+                    ? 'nothing tagged Essential'
+                    : `could not be cut · ${perMonth}`
+                }
+              />
+            )}
             {/* Named for what it IS, not for what to do about it. "Could cut"
                 beside a household's car payment reads as advice to sell the
                 car; this is an inventory, and the note below says so. */}
-            <MetricCard
-              label="Non-essential"
-              value={formatMoneyOrDash(nonEssential)}
-              sub={
-                nonEssential === null
-                  ? 'needs Essentials tagged'
-                  : sheddable === null
-                    ? 'nothing committed yet'
-                    : `${Math.round(sheddable)}% of the above`
-              }
-            />
+            {!oneTier && (
+              <MetricCard
+                label="Committed, not essential"
+                value={formatMoneyOrDash(nonEssential)}
+                sub={
+                  nonEssential === null
+                    ? 'needs Essentials tagged'
+                    : sheddable === null
+                      ? 'nothing committed yet'
+                      : `${Math.round(sheddable)}% of cost of living`
+                }
+              />
+            )}
             <MetricCard
               label="Take-home"
               value={formatMoney(data.avg_monthly_income)}
@@ -224,6 +247,13 @@ export function CostOfLivingReport({ budgetId }: Props) {
           </MetricRow>
 
           <p className={`reports-note necessity-standing--${reading.standing}`}>{reading.note}</p>
+          {/* Take-home laid out whole, untinted: the standing above carries
+              the tone, this is the arithmetic behind it. */}
+          {split && (
+            <p className="reports-note">
+              {takeHomeLine(data.avg_monthly_income, split, formatMoney)}
+            </p>
+          )}
 
           <div className="report-chart" style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
