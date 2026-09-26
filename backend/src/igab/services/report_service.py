@@ -2131,7 +2131,9 @@ class ReportService:
         sub_q = (
             join_split_parent(
                 select(
-                    Transaction.payee_id,
+                    # By payee of record, as the Subscriptions report groups:
+                    # a split charge's legs carry the service on the parent.
+                    PAYEE_OF_RECORD.label("payee_id"),
                     Payee.name.label("payee_name"),
                     func.max(Transaction.date).label("last_date"),
                     func.min(Transaction.date).label("first_date"),
@@ -2139,7 +2141,7 @@ class ReportService:
                     func.avg(Transaction.amount).label("avg_amount"),
                 )
             )
-            .join(Payee, Payee.id == Transaction.payee_id)
+            .join(Payee, Payee.id == PAYEE_OF_RECORD)
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Transaction.budget_id == budget_id,
@@ -2153,7 +2155,7 @@ class ReportService:
                 CASH_ACCOUNT,
                 none_of(*live_schedules),
             )
-            .group_by(Transaction.payee_id, Payee.name)
+            .group_by(PAYEE_OF_RECORD, Payee.name)
         )
         sub_rows = (await self.session.execute(sub_q)).all()
 

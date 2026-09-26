@@ -291,6 +291,13 @@ class CategoryPayee(ApiModel):
     total: Decimal
 
 
+class SankeyPayee(CategoryPayee):
+    #: The payee of record the band stands for, so its drill opens by id.
+    #: None for "Other payees" and for rows with no payee, which open nothing.
+    #: Required: a path that forgot it would leave the page matching names.
+    payee_id: uuid.UUID | None
+
+
 class CashFlowResponse(ApiModel):
     """`domain.cash_flow`: sources → the hub ("__budget__") → groups →
     categories, with the two sides balanced by a Left over or Shortfall node."""
@@ -321,7 +328,7 @@ class CashFlowResponse(ApiModel):
     net: Decimal | None
     #: Per category node: its payees netted, those that net to an outflow, the
     #: largest ten and "Other payees".
-    category_payees: dict[str, list[CategoryPayee]]
+    category_payees: dict[str, list[SankeyPayee]]
     group_categories: dict[str, list[CategoryPayee]]
     #: Per category node whose payees are wider than it (a refund from a payee
     #: with no charge in the window): what came back, and what to call it.

@@ -211,16 +211,25 @@ class TestPayees:
             [pay("1000"), row("-100", payee="MegaMart"), row("30", payee="Corner Store")]
         )
         node = "c_grp-Everyday_cat-Groceries"
-        assert d["category_payees"][node] == [{"name": "MegaMart", "total": D("100")}]
+        assert d["category_payees"][node] == [
+            {"name": "MegaMart", "total": D("100"), "payee_id": "id-MegaMart"}
+        ]
         # The drawn payees are 100 against a 70 category: 30 came back.
         assert d["category_returns"][node] == {"name": "Refunds", "total": D("30")}
+
+    def test_a_payee_less_band_carries_no_id(self):
+        """Its drill opened a payee NAMED "Unknown" when one existed."""
+        d = spent_mode([pay("1000"), row("-40", payee=None)])
+        (band,) = d["category_payees"]["c_grp-Everyday_cat-Groceries"]
+        assert (band["name"], band["payee_id"]) == ("Unknown", None)
 
     def test_the_rest_of_the_payees_are_one_line(self):
         rows = [row(f"-{10 + i}", payee=f"Shop {i}") for i in range(PAYEES_SHOWN + 2)]
         d = spent_mode([pay("1000"), *rows])
         listed = d["category_payees"]["c_grp-Everyday_cat-Groceries"]
         assert len(listed) == PAYEES_SHOWN + 1
-        assert listed[-1] == {"name": "Other payees", "total": D("21")}  # 10 + 11
+        # 10 + 11, and no payee of its own to open.
+        assert listed[-1] == {"name": "Other payees", "total": D("21"), "payee_id": None}
         assert sum(p["total"] for p in listed) == sum(D(f"{10 + i}") for i in range(12))
         assert "c_grp-Everyday_cat-Groceries" not in d["category_returns"]
 

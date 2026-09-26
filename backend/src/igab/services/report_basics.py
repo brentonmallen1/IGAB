@@ -57,8 +57,10 @@ from igab.repositories.txn_filters import (
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
+    PAYEE_OF_RECORD,
     POSTED,
     category_tagged,
+    join_split_parent,
 )
 from igab.services.report_day import reader_today
 from igab.services.savings_held import held_by_envelope
@@ -209,14 +211,19 @@ async def income_by_source(
     start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
+    # By payee of record: these are leaf rows, and a split paycheck's legs
+    # carry no payee of their own, so the raw column filed the pay under
+    # "No payee" beside the same employer's unsplit deposits.
     q = (
-        select(
-            Transaction.payee_id,
-            Payee.name.label("payee_name"),
-            Transaction.date,
-            Transaction.amount,
+        join_split_parent(
+            select(
+                PAYEE_OF_RECORD.label("payee_id"),
+                Payee.name.label("payee_name"),
+                Transaction.date,
+                Transaction.amount,
+            )
         )
-        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .outerjoin(Payee, Payee.id == PAYEE_OF_RECORD)
         .where(
             Transaction.budget_id == budget_id,
             Transaction.date >= start_date,
@@ -325,20 +332,23 @@ async def savings_contributors(
     )
     wanted = [ActivityClass.INCOME.value, *(c.value for c in _CONTRIBUTOR_CLASSES)]
     q = (
-        select(
-            Transaction.amount,
-            ACTIVITY_CLASS.label("cls"),
-            ACTIVITY_REASON.label("reason"),
-            TRACKED_TRANSFER.label("tracked_transfer"),
-            TRACKED_COUNTERPART_ACCOUNT.id.label("account_id"),
-            TRACKED_COUNTERPART_ACCOUNT.name.label("account_name"),
-            Transaction.category_id,
-            Category.name.label("category_name"),
-            Transaction.payee_id,
-            Payee.name.label("payee_name"),
+        join_split_parent(
+            select(
+                Transaction.amount,
+                ACTIVITY_CLASS.label("cls"),
+                ACTIVITY_REASON.label("reason"),
+                TRACKED_TRANSFER.label("tracked_transfer"),
+                TRACKED_COUNTERPART_ACCOUNT.id.label("account_id"),
+                TRACKED_COUNTERPART_ACCOUNT.name.label("account_name"),
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                # By payee of record, as Income by Source groups it.
+                PAYEE_OF_RECORD.label("payee_id"),
+                Payee.name.label("payee_name"),
+            )
         )
         .outerjoin(Category, Category.id == Transaction.category_id)
-        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .outerjoin(Payee, Payee.id == PAYEE_OF_RECORD)
         .where(
             Transaction.budget_id == budget_id,
             CLASS_TOTAL_ROW,
@@ -593,20 +603,24 @@ async def subscriptions_report(
 
     # Every signed row, not only outflows: refunds net (the reports around
     # this one report net, and a refunded charge was never a cost). No lower
-    # date bound — see the docstring.
+    # date bound — see the docstring. A service is its payee of record: a
+    # charge split across two envelopes carries the service on the parent
+    # only, and the raw column filed both legs under "No payee".
     q = (
-        select(
-            Transaction.category_id,
-            Category.name.label("category_name"),
-            CategoryGroup.name.label("group_name"),
-            Transaction.payee_id,
-            Payee.name.label("payee_name"),
-            Transaction.date,
-            Transaction.amount,
+        join_split_parent(
+            select(
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+                PAYEE_OF_RECORD.label("payee_id"),
+                Payee.name.label("payee_name"),
+                Transaction.date,
+                Transaction.amount,
+            )
         )
         .join(Category, Category.id == Transaction.category_id)
         .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
-        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .outerjoin(Payee, Payee.id == PAYEE_OF_RECORD)
         .where(
             Transaction.budget_id == budget_id,
             category_tagged("subscription"),

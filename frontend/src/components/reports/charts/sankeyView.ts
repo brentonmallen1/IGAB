@@ -161,7 +161,7 @@ export function buildSankeyView(
       links.push({ source: nodes.length - 1, target: c, value: back.total })
     }
     ;(data.category_payees[category.id] ?? []).forEach((payee, i) => {
-      nodes.push({ id: `payee_${i}`, name: payee.name, type: 'payee' })
+      nodes.push({ id: `payee_${i}`, name: payee.name, type: 'payee', entity_id: payee.payee_id })
       links.push({ source: c, target: nodes.length - 1, value: payee.total })
     })
   } else if (group) {
@@ -288,6 +288,34 @@ export function sankeyExportRows(data: CashFlowReport): Record<string, unknown>[
  * Both directions: the node is net of refunds, so the list that explains it
  * holds the refunds too. An outflow-only drill totalled more than the node.
  */
+/**
+ * What a payee band under a category opens: that payee's rows in that
+ * category, both directions and the classes the category counted — the band
+ * is the payee's net inside the category. By the served payee id; null for
+ * "Other payees" and payee-less rows, which have no list to open.
+ *
+ * It matched the band's name against every payee: two payees sharing a name
+ * opened the first one's rows, and a payee named "Unknown" answered for the
+ * payee-less band. The category is `categoryTarget`'s, so a band under the
+ * Uncategorized bucket opens by "no category" rather than every category.
+ */
+export function payeeNodeDrill(
+  node: Pick<SankeyViewNode, 'name' | 'entity_id'>,
+  category: Pick<SankeyViewNode, 'entity_id' | 'activity_classes'>,
+  window: { startDate: string; endDate: string }
+): DrillDownContext | null {
+  if (!node.entity_id) return null
+  return {
+    kind: 'payee',
+    label: node.name,
+    scope: 'leaf',
+    payeeIds: [node.entity_id],
+    ...categoryTarget([category.entity_id ?? null]),
+    activityClasses: category.activity_classes ?? undefined,
+    ...window,
+  }
+}
+
 export function categoryNodeDrill(
   node: Pick<SankeyViewNode, 'name' | 'entity_id' | 'activity_classes'>,
   window: { startDate: string; endDate: string }

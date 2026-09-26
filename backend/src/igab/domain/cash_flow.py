@@ -151,6 +151,7 @@ def _draw_right(
     d: _Diagram,
     lines: dict[tuple[str, str], _Line],
     payee_names: dict[str, str],
+    payee_ids: dict[str, str | None],
     group_names: dict[str, str],
     inflow_label: Callable[[str, set[str]], str],
 ) -> tuple[Decimal, dict[str, Decimal], dict, dict, dict]:
@@ -195,9 +196,15 @@ def _draw_right(
             # that difference is served beside them so the level balances.
             bought = {p: -v for p, v in line.payees.items() if v < 0}
             top, rest = _ranked(bought, PAYEES_SHOWN)
-            listed = [{"name": payee_names[p], "total": v} for p, v in top]
+            # The payee's id rides along so its drill opens by id: the page
+            # matched the name against every payee, so two payees sharing a
+            # name opened the first one's rows, and a payee named "Unknown"
+            # answered for every payee-less row.
+            listed = [
+                {"name": payee_names[p], "total": v, "payee_id": payee_ids.get(p)} for p, v in top
+            ]
             if rest > 0:
-                listed.append({"name": "Other payees", "total": rest})
+                listed.append({"name": "Other payees", "total": rest, "payee_id": None})
             category_payees[node] = listed
             returned = sum(bought.values(), Decimal(0)) + line.net
             if returned > 0:
@@ -248,6 +255,9 @@ class _Tally:
 
     income: dict[str, Decimal] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
+    #: The payee (of record) each payee key stands for; None for a key made
+    #: from a name because the rows had no payee.
+    payee_ids: dict[str, str | None] = field(default_factory=dict)
     lines: dict[tuple[str, str], _Line] = field(default_factory=dict)
     group_names: dict[str, str] = field(default_factory=dict)
 
@@ -262,6 +272,7 @@ class _Tally:
             key = f"inc_{r.payee_id or pname}"
             self.income[key] = self.income.get(key, Decimal(0)) + r.amount
             self.names[key] = pname
+            self.payee_ids[key] = r.payee_id
             return
         pname = r.payee_name or "Unknown"
         self._book(self.line(*_slot(r)), r.payee_id or f"__payee_{pname}__", pname, r)
@@ -271,6 +282,7 @@ class _Tally:
         line.classes.add(r.activity_class)
         line.payees[pkey] = line.payees.get(pkey, Decimal(0)) + r.amount
         self.names[pkey] = pname
+        self.payee_ids[pkey] = r.payee_id
 
     def reverse_negative_income(self) -> None:
         """A source that nets to an outflow is money that left: on the right."""
@@ -312,7 +324,7 @@ def spent_diagram(rows: Sequence[FlowRow], spending_classes: Collection[str]) ->
         return INFLOW_LABELS[kind]
 
     drawn, inflows, category_payees, group_categories, returns = _draw_right(
-        d, tally.lines, tally.names, tally.group_names, inflow_label
+        d, tally.lines, tally.names, tally.payee_ids, tally.group_names, inflow_label
     )
     for label, value in sorted(inflows.items(), key=lambda kv: -kv[1]):
         d.link(d.node(f"drawn_{kind_of[label]}", label, "inflow"), HUB, value)
@@ -383,7 +395,7 @@ def budgeted_diagram(rows: Sequence[AssignedRow], total_income: Decimal) -> dict
         line.net -= r.assigned  # an assignment is money out of the hub
 
     drawn, inflows, _payees, group_categories, _returns = _draw_right(
-        d, lines, {}, group_names, lambda _g, _c: REPLANNED
+        d, lines, {}, {}, group_names, lambda _g, _c: REPLANNED
     )
     replanned = inflows.get(REPLANNED, Decimal(0))
     if replanned > 0:

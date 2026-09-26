@@ -2,7 +2,6 @@ import { useState, useMemo, useRef } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { incomeDrill, useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
-import { usePayees } from '../../../api/payees'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -17,6 +16,7 @@ import type { CashFlowReport, CategoryPayee } from '../../../types'
 import {
   buildSankeyView,
   categoryNodeDrill,
+  payeeNodeDrill,
   deltaColor,
   extractPrevTotals,
   formatDelta,
@@ -272,7 +272,6 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     acctIds,
     { enabled: compare }
   )
-  const { data: allPayees } = usePayees(budgetId)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -353,21 +352,8 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         setDrillDown(categoryNodeDrill(nodeData, window))
       }
     } else if (nodeData.type === 'payee') {
-      // Level-3 payee nodes carry names only — resolve back to an id. The
-      // payee's band is its net inside this category, so the list is too:
-      // both directions, this category's rows, the classes it counted.
-      const payeeId = (allPayees ?? []).find((p) => p.name === nodeData.name)?.id
-      if (payeeId) {
-        setDrillDown({
-          kind: 'payee',
-          label: nodeData.name,
-          scope: 'leaf',
-          payeeIds: [payeeId],
-          categoryIds: category?.entity_id ? [category.entity_id] : undefined,
-          activityClasses: category?.activity_classes ?? undefined,
-          ...window,
-        })
-      }
+      const drill = category ? payeeNodeDrill(nodeData, category, window) : null
+      if (drill) setDrillDown(drill)
     }
   }
 

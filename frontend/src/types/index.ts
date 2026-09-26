@@ -984,6 +984,12 @@ export interface CategoryPayee {
   total: number
 }
 
+/** A payee band under a Sankey category: its payee of record's id, or null
+ *  for "Other payees" and payee-less rows (backend `SankeyPayee`). */
+export interface SankeyPayee extends CategoryPayee {
+  payee_id: string | null
+}
+
 /** Sources → the hub (`__budget__`) → groups → categories, both sides of
  *  the hub balanced by a Left over or Shortfall node. Spent mode is net: a
  *  refund comes off its category, a withdrawal off what was saved. Backend
@@ -1007,7 +1013,7 @@ export interface CashFlowReport {
   /** Spent mode: money in less money out — Income vs Expenses' `net` for the
    *  same window. null in budgeted mode, which has no such figure. */
   net: number | string | null
-  category_payees: Record<string, CategoryPayee[]>
+  category_payees: Record<string, SankeyPayee[]>
   group_categories: Record<string, CategoryPayee[]>
   /** Per category node whose drawn payees are wider than it: what came back
    *  (a refund from a payee with no charge in the window), drawn as a source
