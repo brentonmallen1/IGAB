@@ -220,7 +220,10 @@ async def test_no_tagged_categories_is_empty(db_session):
             "total": Decimal("0"),
             "envelopes_total": Decimal("0"),
             "accounts_total": Decimal("0"),
-            "monthly_totals": [Decimal("0")] * 3,
+            # Nothing to set aside is no line, not a line at zero.
+            "monthly_totals": [None] * 3,
+            "monthly_entered": [Decimal("0")] * 3,
+            "monthly_entries": [[], [], []],
             "envelopes": [],
             "accounts": [],
         },

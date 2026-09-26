@@ -1039,8 +1039,15 @@ class SavingsSavedOut(ApiModel):
     total: Decimal
     envelopes_total: Decimal
     accounts_total: Decimal
-    #: Saved at each month's end, aligned with `months`.
-    monthly_totals: list[Decimal]
+    #: Set aside at each month's end, aligned with `months`. None where
+    #: nothing in the section has a figure yet — before a savings account's
+    #: first row, say — which the chart leaves blank rather than drawing $0.
+    monthly_totals: list[Decimal | None]
+    #: What arrived in each month by a savings account being linked (its
+    #: opening rows, `domain.tracking_start`), aligned with `months` — a step
+    #: up nobody saved, marked as Net Worth marks it.
+    monthly_entered: list[Decimal]
+    monthly_entries: list[list[TrackingEntry]]
     envelopes: list[SavingsEnvelopeOut]
     accounts: list[SavingsAccountOut]
 

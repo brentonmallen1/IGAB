@@ -23,6 +23,7 @@ from sqlalchemy import select
 
 from igab.db.models import Account, BudgetMove, CategoryTarget, Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.txn_filters import SAVINGS_ACCOUNT
 from igab.services.savings_report import savings_report
@@ -34,6 +35,7 @@ from .factories import (
     create_budget_assignment,
     create_category,
     create_category_group,
+    create_payee,
     create_transaction,
     create_transfer,
     create_user,
@@ -112,6 +114,60 @@ async def test_saved_counts_envelope_and_off_budget_account_without_double_count
         D("500"),
     )
     assert saved["monthly_totals"] == [D("0"), D("500"), D("500")]
+
+
+async def test_set_aside_is_blank_before_its_account_exists_and_its_linking_is_marked(
+    db_session,
+):
+    """Cascade Point HYSA is linked in February with a 1,000 Starting
+    Balance and earns 20 in March; nothing else is set aside. January drew
+    $0 and February a 1,000 climb nobody saved: now January is blank and
+    February names the account that arrived."""
+    w = await _world(db_session)
+    hysa = await _hysa(db_session, w)
+    opening = await create_payee(db_session, w["budget"], STARTING_BALANCE_PAYEE)
+    await create_transaction(
+        db_session, w["budget"], hysa, "1000", date(2026, 2, 10), payee=opening
+    )
+    await create_transaction(db_session, w["budget"], hysa, "20", date(2026, 3, 2))
+
+    saved = (await _report(db_session, w))["saved"]
+
+    assert saved["monthly_totals"] == [None, D("1000"), D("1020")]
+    assert saved["monthly_entered"] == [D("0"), D("1000"), D("0")]
+    assert [(e["name"], e["amount"]) for e in saved["monthly_entries"][1]] == [
+        ("Cascade Point HYSA", D("1000"))
+    ]
+
+
+async def test_an_envelope_with_a_figure_keeps_the_line_drawn(db_session):
+    """Blank only when nothing has a figure: an envelope holding 0 in
+    January is a real zero, and the account's arrival is still marked."""
+    w = await _world(db_session)
+    kept = await _envelope(db_session, w, "General Savings", "savings", mode="kept_here")
+    await create_budget_assignment(db_session, w["budget"], kept, JAN, "0")
+    hysa = await _hysa(db_session, w)
+    opening = await create_payee(db_session, w["budget"], STARTING_BALANCE_PAYEE)
+    await create_transaction(
+        db_session, w["budget"], hysa, "1000", date(2026, 2, 10), payee=opening
+    )
+
+    saved = (await _report(db_session, w))["saved"]
+
+    assert saved["monthly_totals"] == [D("0"), D("1000"), D("1000")]
+    assert saved["monthly_entered"] == [D("0"), D("1000"), D("0")]
+
+
+async def test_a_savings_account_opened_by_a_deposit_is_not_an_arrival(db_session):
+    """Only an opening row arrives: a first deposit someone made is saving."""
+    w = await _world(db_session)
+    hysa = await _hysa(db_session, w)
+    await create_transfer(db_session, w["budget"], w["checking"], hysa, "300", date(2026, 2, 5))
+
+    saved = (await _report(db_session, w))["saved"]
+
+    assert saved["monthly_totals"] == [None, D("300"), D("300")]
+    assert saved["monthly_entered"] == [D("0"), D("0"), D("0")]
 
 
 async def test_an_on_budget_savings_account_is_never_added(db_session):
