@@ -42,6 +42,7 @@ from igab.domain.activity_class import (
     LegFacts,
     class_magnitude,
 )
+from igab.domain.plan import plan_effect
 from igab.domain.savings import SAVINGS_RATE_NUMERATORS, SavingsFigure, savings_rates
 from igab.domain.transfers import leg_may_carry_category
 
@@ -359,14 +360,16 @@ def counts_as_planned_spend_by_tag(leg: Leg, cls: ActivityClass) -> bool:
     category's outflow, in either mode, which Budget vs Actual holds against
     the plan.
 
-    Stated as the policy's exception only: an on-budget categorized outflow
-    (`PLANNED_SPEND_ROW`'s shape) from a savings category.
+    Stated as the policy's exception only — an on-budget categorized row
+    (`PLAN_LEDGER_ROW`'s shape) whose class is not spending and which
+    `plan.plan_effect` still counts as spent — and asked of `plan_effect`
+    itself, so this cannot come to disagree with the reports it explains.
     """
     return (
         leg.shape.on_budget
-        and leg.amount < 0
-        and leg.category in SAVINGS_KINDS
         and cls not in SPENDING_CLASSES
+        and plan_effect(leg.amount, cls.value, savings_envelope=leg.category in SAVINGS_KINDS).spent
+        != 0
     )
 
 

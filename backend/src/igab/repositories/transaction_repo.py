@@ -229,7 +229,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         # `is not None`, not truthiness: None means no category scope was asked
         # for, an empty list means one was and nothing matched. Conflating them
         # hands back the whole window for a scope that should return nothing —
-        # the same distinction `report_service.scoped` states for the reports,
+        # the same distinction `report_scope.scoped` states for the reports,
         # and the drill-down panel reads this listing.
         if category_ids is not None:
             # `in_category_scope`: these are parent rows, and a split parent

@@ -46,7 +46,6 @@ from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.domain.tag_implication import COST_OF_LIVING_KEY, ESSENTIAL_KEY, keys_counting_as
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
-    IS_SAVINGS_CATEGORY,
     SAVINGS_CATEGORY_KEYS,
     SAVINGS_KEY,
     SAVINGS_SENT_OUT,
@@ -59,7 +58,6 @@ from igab.repositories.txn_filters import (
     COUNTERPART_OFF_BUDGET,
     LEAF,
     NOT_DELETED,
-    PLANNED_SPEND_ROW,
     POSTED,
     STARTING_BALANCE_ROW,
     TRANSFER_LEG,
@@ -937,55 +935,37 @@ def counted_class_filter(
 
 
 #: The system tags whose categories' outflows plan reports count as spent even
-#: though their class is not spending — `planned_spend_filter`'s exception,
+#: though their class is not spending — `domain.plan.plan_effect`'s exception,
 #: stated as data so the Guide's explorer can say so without a second list.
-#: Every savings category, in either mode: see `planned_spend_filter`.
+#: Every savings category, in either mode.
+#:
+#: **Why a savings category is the exception.** Whatever its mode, money
+#: leaving a Savings (or Emergency fund) envelope is money the household
+#: planned to leave, and it can class as something other than spending:
+#: SAVINGS by rule 2 when the envelope counts its savings as they are sent
+#: out, and SAVINGS by rule 4 when a kept-here envelope moves its balance to a
+#: tracked savings account. Counting the envelope's assignments but not that
+#: outflow is a phantom underspend: a Vacation Savings envelope assigned 195 a
+#: month and drained by a 390 flight read +390 against its plan forever, the
+#: gap #182 closed for `long_term_expense`. So against the plan it is spent,
+#: in either mode. "Did this leave the budget as saving?" is a different
+#: question, still answered by the class alone: the savings rate, the spending
+#: rollups and the necessity tiers read their own row sets and do not move
+#: (pinned by `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
+#:
+#: An untagged envelope stays out: its transfer to a brokerage is saving the
+#: plan never meant as spending (`TestThePlannedSpendUniverse`).
+#: `long_term_expense` needs no arm — its payout classes SPENDING since #182 —
+#: and `debt_principal` is money no plan report has ever counted as spent.
+#:
+#: Nor is a Starting Balance someone filed to an envelope, although the
+#: envelope's Activity carries it as it carries any row filed there: it
+#: classes OPENING_BALANCE, which moves neither side of a plan. So a plan
+#: report and the budget page part by exactly those openings — bounded to
+#: ones a person filed by hand, since IGAB's own writers and a YNAB import
+#: never file an opening to an ordinary envelope, and pinned by
+#: `test_opening_balance_class.py::TestThePlanReportsLeaveAFiledOpeningOut`.
 PLANNED_SPEND_TAG_KEYS: tuple[str, ...] = SAVINGS_CATEGORY_KEYS
-
-
-def planned_spend_filter() -> ColumnElement[bool]:
-    """What the plan-vs-actual family may count as "spent", whole.
-
-    `txn_filters.PLANNED_SPEND_ROW` is the row shape; this is the class
-    policy that has to travel with it. They are returned as one predicate
-    because the three readers — `budget_vs_actual`, `cumulative_variance`
-    and `plan_vs_reality` — must ask one question, and every time either
-    half was spelled at the call site the reports drifted apart: the last
-    time, a savings-tagged envelope read its full spend on one report and
-    zero on the other two.
-
-    The caller must still apply `apply_class_joins` — see
-    `counted_class_filter` for why the joins cannot be folded in here.
-
-    **A savings category is the deliberate exception to `counted_classes`.**
-    Whatever its mode, money leaving a Savings (or Emergency fund) envelope
-    is money the household planned to leave, and it can class as something
-    other than spending: SAVINGS by rule 2 when the envelope counts its
-    savings as they are sent out, and SAVINGS by rule 4 when a kept-here
-    envelope moves its balance to a tracked savings account. Counting the
-    envelope's assignments but not that outflow is a phantom underspend: a
-    Vacation Savings envelope assigned 195 a month and drained by a 390 flight
-    read +390 against its plan forever, the gap #182 closed for
-    `long_term_expense`. So against the plan it is spent, in either mode.
-    "Did this leave the budget as saving?" is a different question, still
-    answered by the class alone: the savings rate, the spending rollups and
-    the necessity tiers read their own row sets and do not move (pinned by
-    `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
-
-    An untagged envelope stays out: its transfer to a brokerage is saving the
-    plan never meant as spending (`TestThePlannedSpendUniverse`).
-    `long_term_expense` needs no arm — its payout classes SPENDING since #182 —
-    and `debt_principal` is money no plan report has ever counted as spent.
-
-    Nor is a Starting Balance someone filed to an envelope, although the
-    envelope's Activity carries it as it carries any row filed there: it
-    classes OPENING_BALANCE, which no report counts as spending. So a plan
-    report and the budget page part by exactly those openings — bounded to
-    ones a person filed by hand, since IGAB's own writers and a YNAB import
-    never file an opening to an ordinary envelope, and pinned by
-    `test_opening_balance_class.py::TestThePlanReportsLeaveAFiledOpeningOut`.
-    """
-    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), row_category(IS_SAVINGS_CATEGORY)))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────
@@ -1133,9 +1113,8 @@ def tier_scope(tier: NecessityTier):
 #: so it is discretionary until someone files it.
 #:
 #: Here rather than in `txn_filters`, where the row shapes live, because it
-#: reads ACTIVITY_CLASS, which is built from that module's constants — the
-#: reason `planned_spend_filter` lives here too. The row shape it starts from
-#: is `txn_filters.CLASS_TOTAL_ROW`, by name.
+#: reads ACTIVITY_CLASS, which is built from that module's constants. The row
+#: shape it starts from is `txn_filters.CLASS_TOTAL_ROW`, by name.
 DISCRETIONARY_ROW = and_(
     CLASS_TOTAL_ROW,
     ACTIVITY_CLASS == ActivityClass.SPENDING.value,

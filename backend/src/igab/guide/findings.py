@@ -25,6 +25,7 @@ from typing import Any, Literal
 from igab.domain.credit import UTILIZATION_HIGH, UTILIZATION_VERY_HIGH
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
+from igab.domain.plan import CHRONIC_MONTHS, CHRONIC_WINDOW
 from igab.guide.concepts import (
     CONCEPTS_BY_KEY,
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
@@ -497,7 +498,12 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
             value=Decimal(inputs.chronic_count),
             target=Decimal("0"),
             unit="count",
-            detail="Over budget in three of the last six months counts as chronic.",
+            # The rule is `domain.plan`'s, and so are its numbers.
+            detail=(
+                f"Over plan in {CHRONIC_MONTHS} of the last {CHRONIC_WINDOW} months counts as "
+                "chronic — by at least $1 and 1% of the plan. A sinking fund paying its "
+                "bill never does."
+            ),
             finding_kinds=["chronic_overspend"],
             report="plan-reality",
             names=list(inputs.chronic_names),

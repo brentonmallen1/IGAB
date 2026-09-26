@@ -146,12 +146,17 @@ class TestTheDeliberateDivergence:
         from igab.repositories.category_filters import (
             BUDGETED_ENVELOPE,
             IN_SYSTEM_GROUP,
+            LINKED_TO_CARD,
             LIVE_CATEGORY,
+            PLANNED_ENVELOPE,
             SPENT_ENVELOPE,
         )
 
         assert str(SPENT_ENVELOPE) == str(not_(IN_SYSTEM_GROUP))
-        assert str(BUDGETED_ENVELOPE) == str(and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP)))
+        # The plan family's two sides still differ by liveness alone; both
+        # leave a card's envelope out, which the spending rollups keep.
+        assert str(PLANNED_ENVELOPE) == str(and_(SPENT_ENVELOPE, not_(LINKED_TO_CARD)))
+        assert str(BUDGETED_ENVELOPE) == str(and_(LIVE_CATEGORY, PLANNED_ENVELOPE))
 
     async def test_spending_left_behind_by_a_deleted_category_still_counts(self, db_session):
         """The money moved. Deleting the envelope afterwards does not unspend
@@ -236,7 +241,7 @@ class TestArchivedEnvelopes:
 
 
 class TestThePlannedSpendUniverse:
-    """`PLANNED_SPEND_ROW` + the activity-class filter: what plan-vs-actual
+    """`PLAN_LEDGER_ROW` + `plan.plan_effect`: what plan-vs-actual
     may call "spent". Before the extraction, `cumulative_variance` and
     `budget_vs_actual` carried byte-identical inline copies missing the same
     three terms — no class filter, no `ON_BUDGET_ACCOUNT`, no envelope rule —
@@ -347,11 +352,12 @@ class TestThePlannedSpendUniverse:
         assert bva["total_spent"] == D("0")
         assert pvr["total_spent"] == D("0")
 
-    async def test_a_refund_does_not_reduce_spent(self, db_session):
-        """The deliberate divergence, pinned: `amount < 0` in
-        `PLANNED_SPEND_ROW` means a refund posted to a spending category
-        never reduces "spent". Flipping it would move every historical
-        variance figure — change it at the definition or not at all."""
+    async def test_a_refund_reduces_spent(self, db_session):
+        """Once a pinned divergence: `amount < 0` in the row shape meant a
+        refund never reduced "spent", so a returned purchase read as the whole
+        purchase — on the three reports that hold spending to a plan, while
+        the budget page, Category History, Burn and Discretionary netted it.
+        Changed at the definition (`plan.plan_effect`), for all three at once."""
         services, budget, checking, group, cat = await _world(db_session)
         await create_transaction(db_session, budget, checking, "-100.00", TODAY, category=cat)
         await create_transaction(db_session, budget, checking, "30.00", TODAY, category=cat)
@@ -361,9 +367,9 @@ class TestThePlannedSpendUniverse:
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
         pvr = await reports.plan_vs_reality(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("100.00")
-        assert bva["total_spent"] == D("100.00")
-        assert pvr["total_spent"] == D("100.00")
+        assert variance[-1]["actual_spent"] == D("70.00")
+        assert bva["total_spent"] == D("70.00")
+        assert pvr["total_spent"] == D("70.00")
 
     async def test_every_report_spends_the_same_universe(self, db_session):
         """The consolidation itself: over a register that trips every
@@ -388,9 +394,10 @@ class TestThePlannedSpendUniverse:
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
         pvr = await reports.plan_vs_reality(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("100.00")
-        assert bva["total_spent"] == D("100.00")
-        assert pvr["total_spent"] == D("100.00")
+        # The 100 spent less the 30 refunded; nothing else counts.
+        assert variance[-1]["actual_spent"] == D("70.00")
+        assert bva["total_spent"] == D("70.00")
+        assert pvr["total_spent"] == D("70.00")
 
 
 async def _tagged_envelope(db_session, key: str, name: str):
@@ -465,7 +472,7 @@ class TestASavingsTaggedEnvelope:
     variance of +390 that never closed, permanently under-spent. That is the
     phantom underspend #182 removed for `long_term_expense` only.
 
-    `planned_spend_filter` is where the exception is stated: the household
+    `plan.plan_effect` is where the exception is stated: the household
     PLANNED that money to leave, so against the plan it is spent. The class
     itself does NOT move, and the rest of this class is the bound on the
     change — the savings rate still calls the 390 saving and the spending
