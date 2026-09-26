@@ -30,6 +30,7 @@ from typing import Any
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from igab.db.models import (
     Account,
@@ -204,7 +205,10 @@ def _relations(f: TransactionFilters, scope: str) -> list:
     # a truthiness test turned that into "every payee".
     if f.payee_ids is not None:
         where.append(PAYEE_OF_RECORD.in_(f.payee_ids))
-    if f.account_ids:
+    # `is not None`, as for payees: the assistant's tools pass [] for an
+    # account name that resolved to nothing, and a truthiness test read that
+    # as "every account" and answered with the whole budget.
+    if f.account_ids is not None:
         where.append(Transaction.account_id.in_(f.account_ids))
     if f.is_transfer is not None:
         where.append(
@@ -312,6 +316,12 @@ class Dimension:
     description: str = ""
 
 
+#: The payee a grouped row is filed under (`PAYEE_OF_RECORD`). Its own alias:
+#: `search` joins `Payee` on the row's own payee, as the listing does, and one
+#: join serving both would change what a search matches under a payee rollup.
+PAYEE_OF_ROW = aliased(Payee, name="payee_of_record")
+
+
 #: Every legal `group_by`. A model picks a KEY here; the expression is one
 #: this module wrote. Nothing from the caller reaches the statement as SQL.
 GROUPABLE: dict[str, Dimension] = {
@@ -333,9 +343,14 @@ GROUPABLE: dict[str, Dimension] = {
         needs=("category", "category_group"),
         description="The group an envelope sits in.",
     ),
+    # The payee of record, as the payee filter and the Pareto and Payee
+    # Analysis bars read it. The rollup is leaf-scoped and a split's legs
+    # usually carry no payee — the parent names the shop — so grouping by the
+    # raw column filed every split purchase under "(no payee)", beside the
+    # same shop's unsplit rows.
     "payee": Dimension(
-        func.coalesce(Payee.name, "(no payee)"),
-        needs=("payee",),
+        func.coalesce(PAYEE_OF_ROW.name, "(no payee)"),
+        needs=("payee_of_record",),
         description="Who was paid.",
     ),
     "account": Dimension(
@@ -365,6 +380,8 @@ MAX_GROUPS = 200
 
 
 def _apply_dimension_joins(q: Select, needs: tuple[str, ...]) -> Select:
+    if "payee_of_record" in needs:
+        q = q.outerjoin(PAYEE_OF_ROW, PAYEE_OF_RECORD == PAYEE_OF_ROW.id)
     if "category" in needs:
         q = q.outerjoin(Category, Transaction.category_id == Category.id)
     if "category_group" in needs:
@@ -420,9 +437,9 @@ async def grouped_totals(
     q: Select = select(label, value, func.count().label("rows")).select_from(Transaction)
     if parts.class_joins:
         q = apply_class_joins(q)
-    if parts.split_parent_join:
-        q = join_split_parent(q)
     needs = dimension.needs
+    if parts.split_parent_join or "payee_of_record" in needs:
+        q = join_split_parent(q)
     if parts.payee_join and "payee" not in needs:
         needs = needs + ("payee",)
     q = _apply_dimension_joins(q, needs)
