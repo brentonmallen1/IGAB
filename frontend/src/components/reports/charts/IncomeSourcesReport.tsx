@@ -174,46 +174,50 @@ export function IncomeSourcesReport({ budgetId }: Props) {
             active={highlight}
             onHover={setHighlight}
           />
-          <table className="report-table">
-            <caption className="sr-only">Income by payee and month</caption>
-            <thead>
-              <tr>
-                <th scope="col" style={{ textAlign: 'left' }}>
-                  Source
-                </th>
-                {data.months.map((m) => (
-                  <th key={m} scope="col" style={{ textAlign: 'right' }}>
-                    {formatMonthShort(m)}
+          {/* A column a month: wider than a phone, and than a desktop card at
+              24 months, so it scrolls in its own box instead of the page. */}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="report-table">
+              <caption className="sr-only">Income by payee and month</caption>
+              <thead>
+                <tr>
+                  <th scope="col" style={{ textAlign: 'left' }}>
+                    Source
                   </th>
+                  {data.months.map((m) => (
+                    <th key={m} scope="col" style={{ textAlign: 'right' }}>
+                      {formatMonthShort(m)}
+                    </th>
+                  ))}
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sources.map((s) => (
+                  <tr key={s.payee_id ?? '__none__'}>
+                    <td>{s.payee_name}</td>
+                    {s.monthly.map((v, i) => (
+                      <td key={i} style={{ textAlign: 'right' }}>
+                        {v ? formatMoney(v) : '—'}
+                      </td>
+                    ))}
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(s.total)}</td>
+                  </tr>
                 ))}
-                <th scope="col" style={{ textAlign: 'right' }}>
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.sources.map((s) => (
-                <tr key={s.payee_id ?? '__none__'}>
-                  <td>{s.payee_name}</td>
-                  {s.monthly.map((v, i) => (
-                    <td key={i} style={{ textAlign: 'right' }}>
-                      {v ? formatMoney(v) : '—'}
+                <tr>
+                  <td style={{ fontWeight: 600 }}>All</td>
+                  {data.monthly_totals.map((v, i) => (
+                    <td key={i} style={{ textAlign: 'right', fontWeight: 600 }}>
+                      {formatMoney(v)}
                     </td>
                   ))}
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(s.total)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(data.total)}</td>
                 </tr>
-              ))}
-              <tr>
-                <td style={{ fontWeight: 600 }}>All</td>
-                {data.monthly_totals.map((v, i) => (
-                  <td key={i} style={{ textAlign: 'right', fontWeight: 600 }}>
-                    {formatMoney(v)}
-                  </td>
-                ))}
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(data.total)}</td>
-              </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

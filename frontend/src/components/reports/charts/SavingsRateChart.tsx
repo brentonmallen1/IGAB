@@ -260,7 +260,10 @@ export function SavingsRateReport({ budgetId }: Props) {
                 margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis dataKey="date" hide />
+                {/* A band scale, as the bar panel's is: a line chart's default
+                    point scale runs edge to edge, so its points sat off the
+                    bars they describe. */}
+                <XAxis dataKey="date" hide scale="band" />
                 <YAxis
                   tickFormatter={(v) => `${v}%`}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
