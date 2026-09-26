@@ -1876,6 +1876,8 @@ describe('DiscretionaryReport', () => {
     avg_monthly: 362.5,
     monthly_totals: [300, 425],
     spending_total: 2900,
+    // Cost of living over the same two months, 3,000 of it in all.
+    cost_of_living_total: 3000,
     groups: [
       {
         group_id: 'g-everyday',
@@ -1911,8 +1913,21 @@ describe('DiscretionaryReport', () => {
       sub: 'per month, over 2 complete months',
     })
     expect(card('Window total').value).toBe('$725.00')
-    // 725 of 2,900, composed on the page from two served figures.
-    expect(card('Share of spending')).toEqual({ value: '25%', sub: 'of $2,900.00 spent' })
+    // 725 of 2,900, composed on the page from two served figures — and said
+    // per month beside a per-month headline: it read "of $2,900.00 spent",
+    // the window's total.
+    expect(card('Share of spending')).toEqual({ value: '25%', sub: 'of $1,450.00/mo spent' })
+  })
+
+  it('says how the tiers and spending fit, per month', () => {
+    // 1,500 + 362.50 = 1,862.50: 1,450 spent and 412.50 of debt payments.
+    setQuery({ data: report })
+    renderReport(<DiscretionaryReport budgetId="b1" />)
+    expect(
+      screen.getByText(
+        'Cost of living $1,500.00 + Discretionary $362.50 = $1,450.00 spent + $412.50 debt payments, a month'
+      )
+    ).toBeInTheDocument()
   })
 
   it('lists each category under its group, and unfiled spending on its own line', () => {
