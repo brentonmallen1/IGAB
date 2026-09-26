@@ -23,6 +23,11 @@ import { GuideTabLink } from '../../guide/GuideTabLink'
 import './SavingsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
+import { SET_ASIDE } from '../../../utils/savingsModes'
+import { arrivalMarks } from '../../../utils/trackingStart'
+import { arrivalLines } from './arrivalLines'
+import { TrackingStartNote } from './TrackingStartNote'
+import { setAsideStartNote } from './savingsView'
 
 interface Props {
   budgetId: string
@@ -35,21 +40,41 @@ export function SavingsReport({ budgetId }: Props) {
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  // One served series: Saved at each month's end. The envelopes count at
+  // One served series: Set aside at each month's end. The envelopes count at
   // their floored Available there, which is the server's rule, so the chart
   // draws the total rather than stacking rows that would not add up to it.
+  // Null before anything has a figure: blank, not $0.
   const chartData = useMemo(
     () =>
       (data?.months ?? []).map((m, i) => ({
         month: formatMonthShort(m),
-        Saved: data?.saved.monthly_totals[i] ?? 0,
+        [SET_ASIDE]: data?.saved.monthly_totals[i] ?? null,
       })),
     [data, formatMonthShort]
+  )
+  const marks = useMemo(
+    () =>
+      arrivalMarks(
+        (data?.months ?? []).map((m, i) => ({
+          date: m,
+          entries: data?.saved.monthly_entries[i] ?? [],
+        })),
+        formatMoney
+      ),
+    [data, formatMoney]
   )
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
+  const startNote = data
+    ? setAsideStartNote(
+        data.months,
+        data.saved.monthly_totals,
+        data.saved.monthly_entries,
+        formatMonthShort
+      )
+    : null
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   return (
@@ -59,15 +84,20 @@ export function SavingsReport({ budgetId }: Props) {
         <ReportInfoButton title="Savings">
           <p>The report has three parts, each with its own total. They are never added together.</p>
           <p>
-            <strong>Saved</strong> is Savings and Emergency fund envelopes that count{' '}
+            <strong>{SET_ASIDE}</strong> is Savings and Emergency fund envelopes that count{' '}
             <strong>while it’s in the budget</strong>, plus off-budget accounts marked{' '}
-            <strong>Counts as savings</strong>. Moving money from such an envelope to such an
-            account leaves Saved unchanged.
+            <strong>Counts as savings</strong> — a balance, what is set aside now. Moving money from
+            such an envelope to such an account leaves it unchanged. (Savings Rate&apos;s{' '}
+            <em>Saved</em> is different: what moved into savings in a month.)
           </p>
           <p>
             <strong>On the way to savings</strong> is what Savings envelopes that count{' '}
             <strong>when it leaves the budget</strong> still hold. That money counts as saved when
-            it leaves the budget, so it is shown here and not added to Saved.
+            it leaves the budget, so it is shown here and not added to {SET_ASIDE}.
+          </p>
+          <p>
+            The chart is blank before anything here has a figure, and a numbered line marks a month
+            a savings account was linked with the balance it already had — a step up nobody saved.
           </p>
           <p>
             <strong>Sinking funds</strong> are envelopes tagged <strong>Long-term expense</strong>:
@@ -104,13 +134,13 @@ export function SavingsReport({ budgetId }: Props) {
               data
                 ? [
                     ...data.saved.envelopes.map((e) => ({
-                      section: 'Saved',
+                      section: SET_ASIDE,
                       name: e.category_name,
                       group: e.group_name,
                       balance: e.current_balance,
                     })),
                     ...data.saved.accounts.map((a) => ({
-                      section: 'Saved',
+                      section: SET_ASIDE,
                       name: a.name,
                       group: '',
                       balance: a.current_balance,
@@ -138,11 +168,11 @@ export function SavingsReport({ budgetId }: Props) {
       {data && (
         <div ref={captureRef} className="report-capture">
           <MetricRow>
-            <MetricCard label="Saved" value={formatMoney(data.saved.total)} />
+            <MetricCard label={SET_ASIDE} value={formatMoney(data.saved.total)} />
             <MetricCard
               label="On the way to savings"
               value={formatMoney(data.on_the_way.total)}
-              sub="not in Saved"
+              sub={`not in ${SET_ASIDE}`}
             />
             <MetricCard
               label="Sinking funds"
@@ -183,9 +213,10 @@ export function SavingsReport({ budgetId }: Props) {
                       />
                     )}
                   />
+                  {arrivalLines(marks, (i) => chartData[i].month)}
                   <Area
-                    type="monotone"
-                    dataKey="Saved"
+                    type="linear"
+                    dataKey={SET_ASIDE}
                     fill={chartColor(0)}
                     stroke={chartColor(0)}
                     fillOpacity={0.4}
@@ -194,6 +225,16 @@ export function SavingsReport({ budgetId }: Props) {
               </ResponsiveContainer>
             </div>
           )}
+          {startNote && (
+            <p className="reports-note" role="note">
+              {startNote}
+            </p>
+          )}
+          <TrackingStartNote
+            marks={marks}
+            formatMoney={formatMoney}
+            formatMonthShort={formatMonthShort}
+          />
 
           {data.unrecovered.length > 0 && (
             <p className="reports-note" role="note">

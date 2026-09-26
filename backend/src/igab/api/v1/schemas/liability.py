@@ -194,6 +194,12 @@ class LiabilityOut(ApiModel):
     # the entered minimum wouldn't have amortized the original loan at all.
     implied_term_months: int | None
     implied_never_pays_off: bool | None
+    #: The payment the original principal, rate and term imply, and whether
+    #: the entered payment contradicts it or the implied term
+    #: (`amortization.terms_check`) — the Liabilities report's "terms
+    #: disagree" reads the same check.
+    level_payment: Decimal | None
+    terms_disagree: bool
     promo_end_date: datetime.date | None
     promo_deferred_interest: bool
     term_months: int | None
@@ -231,6 +237,13 @@ class LiabilityOut(ApiModel):
     live_payoff_date: datetime.date | None
     live_never_pays_off: bool
     has_live_projection: bool
+    #: The one payoff a page states when it states one
+    #: (`amortization.payoff_verdict`): at the pace actually paid when there
+    #: is one, else at the minimum. Three client components each re-decided
+    #: this from `has_live_projection`.
+    payoff_basis: Literal["observed", "minimum"] | None
+    payoff_date: datetime.date | None
+    payoff_never: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -291,6 +304,9 @@ class AmortizationResponse(ApiModel):
     baseline_schedule: list[AmortizationMonthOut]
     baseline_payoff_date: datetime.date | None
     baseline_never_pays_off: bool
+    #: Interest until the minimum retires the debt — None when it never does
+    #: (`AmortizationResult.interest_to_payoff`); it was the schedule's
+    #: running total, which understates an unbounded bill.
     baseline_total_interest: Decimal | None
     extra_payment: Decimal | None = None
     #: One-off amount applied straight to the balance today — the classic
@@ -300,6 +316,11 @@ class AmortizationResponse(ApiModel):
     extra_payoff_date: datetime.date | None = None
     extra_never_pays_off: bool = False
     extra_total_interest: Decimal | None = None
+    #: What the what-if buys against the minimum (`amortization.paydown_gain`).
+    #: None is "no finite comparison": against a minimum that never pays off
+    #: there is no month to beat and no bill to subtract from.
+    months_sooner: int | None = None
+    interest_saved: Decimal | None = None
     live_payoff_date: datetime.date | None = None
     live_never_pays_off: bool = False
     live_typical_payment: Decimal | None = None

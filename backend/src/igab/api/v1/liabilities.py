@@ -46,9 +46,18 @@ from igab.domain.payment_due import validate_payment_due
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
-from igab.services.amortization import AmortizationResult, amortization_schedule
+from igab.services.amortization import (
+    AmortizationResult,
+    amortization_schedule,
+    paydown_gain,
+    payoff_verdict,
+)
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
-from igab.services.liability_service import LIABILITY_CLASSIFICATION, LiabilityService
+from igab.services.liability_service import (
+    LIABILITY_CLASSIFICATION,
+    LiabilityService,
+    liability_terms_check,
+)
 from igab.utils.clock import recorded_on, today_utc
 
 router = APIRouter(route_class=CommitRoute)
@@ -166,27 +175,12 @@ async def _liability_out(
     status_ = await liability_service.get_status(liability)
     linked_category = await category_repo.get_by_linked_liability(liability.id)
 
-    # The term the contract implies, replayed from origination. If the
-    # minimum payment can't amortize the ORIGINAL principal, the entered
-    # payment is almost certainly escrow-inclusive vs P&I (or vice versa) —
+    # The term the contract implies, replayed from origination, and the
+    # payment its term implies. If either contradicts the entered payment,
+    # it is almost certainly escrow-inclusive vs P&I (or vice versa) —
     # surfaced so the UI can say so instead of a bare "won't pay off".
-    implied_term_months: int | None = None
-    implied_never_pays_off: bool | None = None
-    if (
-        liability.origination_date is not None
-        and liability.original_principal is not None
-        and liability.interest_rate is not None
-        and liability.minimum_payment is not None
-    ):
-        implied = amortization_schedule(
-            liability.original_principal,
-            liability.interest_rate,
-            liability.minimum_payment,
-            liability.origination_date,
-        )
-        implied_never_pays_off = implied.never_pays_off
-        if not implied.never_pays_off:
-            implied_term_months = len(implied.schedule)
+    terms = liability_terms_check(liability)
+    verdict = payoff_verdict(status_.live, status_.baseline)
 
     # Stored components are already validated (the write path refuses a bad
     # list), so a bad one here is corruption, not input — read as "none on
@@ -241,8 +235,10 @@ async def _liability_out(
         estimated_interest_this_month=status_.estimated_interest_this_month,
         balance_with_estimate=status_.balance_with_estimate,
         uncounted_deposits=status_.uncounted_deposits,
-        implied_term_months=implied_term_months,
-        implied_never_pays_off=implied_never_pays_off,
+        implied_term_months=terms.implied_term_months,
+        implied_never_pays_off=terms.implied_never_pays_off,
+        level_payment=terms.level_payment,
+        terms_disagree=terms.disagree,
         promo_end_date=liability.promo_end_date,
         promo_deferred_interest=liability.promo_deferred_interest,
         term_months=liability.term_months,
@@ -269,6 +265,9 @@ async def _liability_out(
         live_payoff_date=status_.live.payoff_date if status_.live else None,
         live_never_pays_off=status_.live.never_pays_off if status_.live else False,
         has_live_projection=status_.live is not None,
+        payoff_basis=verdict.basis,
+        payoff_date=verdict.payoff_date,
+        payoff_never=verdict.never_pays_off,
         created_at=liability.created_at,
         updated_at=liability.updated_at,
     )
@@ -682,6 +681,8 @@ async def get_amortization(
             status_.current_balance - curtailment, rate, minimum + extra_payment, today_utc()
         )
 
+    gain = paydown_gain(baseline, extra_sched) if baseline and extra_sched else None
+
     history: list[BalancePointOut] = []
     if from_ == "origination":
         for point_date, balance in await liability_service.get_balance_history(liability):
@@ -703,7 +704,7 @@ async def get_amortization(
         ],
         baseline_payoff_date=baseline.payoff_date if baseline else None,
         baseline_never_pays_off=baseline.never_pays_off if baseline else False,
-        baseline_total_interest=baseline.total_interest if baseline else None,
+        baseline_total_interest=baseline.interest_to_payoff if baseline else None,
         extra_payment=extra_payment if extra_payment > 0 else None,
         curtailment=curtailment if curtailment > 0 else None,
         extra_schedule=(
@@ -723,7 +724,9 @@ async def get_amortization(
         ),
         extra_payoff_date=extra_sched.payoff_date if extra_sched else None,
         extra_never_pays_off=extra_sched.never_pays_off if extra_sched else False,
-        extra_total_interest=extra_sched.total_interest if extra_sched else None,
+        extra_total_interest=extra_sched.interest_to_payoff if extra_sched else None,
+        months_sooner=gain.months_sooner if gain else None,
+        interest_saved=gain.interest_saved if gain else None,
         live_payoff_date=status_.live.payoff_date if status_.live else None,
         live_never_pays_off=status_.live.never_pays_off if status_.live else False,
         live_typical_payment=status_.live.typical_payment if status_.live else None,

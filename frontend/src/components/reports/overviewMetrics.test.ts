@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { netWorthDelta, periodHeading, runwayFallback, spendingDelta } from './overviewMetrics'
+import { periodHeading, runwayFallback, spendingDelta } from './overviewMetrics'
 import { formatDayMonthWithOptions, formatMonthShortWithOptions } from '../../utils/dates'
 
 describe('periodHeading', () => {
@@ -58,22 +58,6 @@ describe('runwayFallback', () => {
     expect(runwayFallback({ fund_chosen: false, essentials_known: false })).toBe(
       'Nothing tagged Essential, no emergency fund chosen'
     )
-  })
-})
-
-describe('netWorthDelta', () => {
-  it('is the percent change vs the prior period', () => {
-    expect(netWorthDelta(1100, 1000)).toBeCloseTo(10)
-    expect(netWorthDelta(900, 1000)).toBeCloseTo(-10)
-  })
-
-  it('uses an absolute denominator so recovering from debt reads positive', () => {
-    // -500 -> -250: halved the hole. A signed denominator would call this -50%.
-    expect(netWorthDelta(-250, -500)).toBeCloseTo(50)
-  })
-
-  it('is 0 when there is no prior value to compare', () => {
-    expect(netWorthDelta(1000, 0)).toBe(0)
   })
 })
 

@@ -1,0 +1,53 @@
+.tracking-start-note {
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.tracking-start-note__title {
+  margin: 0 0 var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tracking-start-note__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.tracking-start-note__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+}
+
+/* The same numeral the chart's marker line carries, so the two read as a
+   pair. Outlined in the muted text colour: a key, not a state. */
+.tracking-start-note__badge {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+  font-size: var(--font-size-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.tracking-start-note__month {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tracking-start-note__names {
+  color: var(--text-muted);
+}

@@ -4,6 +4,7 @@ import { useLiabilities } from '../../api/liabilities'
 import { useAssets } from '../../api/assets'
 import { useFormatters } from '../../hooks/useFormatters'
 import { today } from '../../utils/dates'
+import { formatRate } from '../../utils/rate'
 import { describeDueRule, dueSoonNotice, nextDueDate } from '../../utils/paymentDue'
 import { useUIStore } from '../../stores/uiStore'
 import './LiabilityTermsHeader.css'
@@ -42,12 +43,10 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   if (!liability) return null
 
   const termsSet = liability.terms_complete
-  const payoff = liability.has_live_projection
-    ? liability.live_payoff_date
-    : liability.baseline_payoff_date
-  const neverPays = liability.has_live_projection
-    ? liability.live_never_pays_off
-    : liability.baseline_never_pays_off
+  // The server's one verdict (`amortization.payoff_verdict`): the pace when
+  // there is one, else the minimum.
+  const payoff = liability.payoff_date
+  const neverPays = liability.payoff_never
 
   const minimumRule = describeMinimumRule(liability, formatMoney)
   const securedAsset = assets.find((a) => a.id === liability.linked_asset_id) ?? null
@@ -69,7 +68,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
       <div className="liability-terms__items">
         <div className="liability-terms__item">
           <span className="liability-terms__value">
-            {liability.interest_rate === null ? NOT_SET : `${liability.interest_rate}%`}
+            {liability.interest_rate === null ? NOT_SET : formatRate(liability.interest_rate)}
           </span>
           <span className="liability-terms__label">APR</span>
         </div>

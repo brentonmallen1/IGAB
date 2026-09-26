@@ -58,13 +58,14 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'all-accounts',
     summary: 'Assets minus liabilities, month by month.',
     counts: 'Every account balance plus manually tracked assets and debts.',
-    leavesOut: 'Nothing is filtered — a transfer between your own accounts never changes it.',
+    leavesOut:
+      'Nothing is filtered — a transfer between your own accounts never changes it. Its headline change leaves out accounts being linked and values first entered.',
   },
   'account-composition': {
     scope: 'all-accounts',
     summary: 'How your balances split across account types over time.',
     counts:
-      'Every account balance by type, assets above zero and debts below, netting to net worth.',
+      'Every account balance by type, plus stated values and debts tracked by hand, assets above zero and debts below — the bands sum to net worth.',
     leavesOut: 'Nothing is filtered — the Net line matches the Net Worth report.',
   },
   liabilities: {
@@ -75,9 +76,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   savings: {
     scope: 'savings',
-    summary: 'What you have saved, what is on the way to savings, and your sinking funds.',
+    summary: 'What you have set aside, what is on the way to savings, and your sinking funds.',
     counts:
-      'Saved: Savings and Emergency fund envelopes that count while money is in the budget, plus off-budget savings accounts; on the way: Savings envelopes that count when money leaves the budget; sinking funds: Long-term expense envelopes with their targets.',
+      'Set aside: Savings and Emergency fund envelopes that count while money is in the budget, plus off-budget savings accounts; on the way: Savings envelopes that count when money leaves the budget; sinking funds: Long-term expense envelopes with their targets.',
     leavesOut:
       'On-budget accounts, and untagged envelopes — the three parts are never added together.',
   },

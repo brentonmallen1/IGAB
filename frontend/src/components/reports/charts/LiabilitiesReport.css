@@ -61,6 +61,17 @@
   color: var(--text-muted);
 }
 
+/* Why a cell has no figure: read as a note, not as a value. */
+.liabilities-report__why {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.liabilities-report__name + .liabilities-report__type + .liabilities-report__warning {
+  display: flex;
+  margin-top: 2px;
+}
+
 .liabilities-report__warning {
   display: inline-flex;
   align-items: center;

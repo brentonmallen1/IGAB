@@ -2,14 +2,6 @@
  * OverviewReport so the delta/rate math is unit-testable. */
 import type { OverviewRunway } from '../../types'
 
-/** Percent change vs the prior period, guarded for prev = 0 and using an
- * absolute denominator so a negative prior net worth doesn't flip the sign
- * of an improvement. */
-export function netWorthDelta(current: number, prev: number): number {
-  if (prev === 0) return 0
-  return ((current - prev) / Math.abs(prev)) * 100
-}
-
 /** Percent change in spending vs the prior period; null when there was no
  * prior spending to compare against — not 0, which would read "unchanged".
  *

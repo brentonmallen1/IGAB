@@ -20,9 +20,10 @@ import { rateFormula } from './savingsRateBreakdown'
 import { savingsRateLabel } from '../../utils/flowLabels'
 import { pct, ratePercent } from './charts/savingsRateView'
 import { burnPriorLine } from './charts/burnRateView'
-import { netWorthDelta, periodHeading, runwayFallback, spendingDelta } from './overviewMetrics'
+import { periodHeading, runwayFallback, spendingDelta } from './overviewMetrics'
 import { runwayBasis, runwayStatement } from '../../utils/runway'
 import { categoryKey } from './drillScope'
+import { likeForLikeLine } from '../../utils/trackingStart'
 import { today } from '../../utils/dates'
 import { monthRange } from '../../utils/reportMonths'
 import './OverviewReport.css'
@@ -48,7 +49,17 @@ export function OverviewReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return <div className="reports-empty">No data available.</div>
 
-  const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
+  // Like-for-like, as the Net Worth report's headline: less what began being
+  // counted since the day before the range. A percentage of net worth read
+  // "+225.5%" for a range in which accounts were linked and a house first
+  // valued — and a percentage of a negative or near-zero net worth says
+  // nothing at all — so the card states dollars.
+  const netWorthChange = likeForLikeLine(
+    data.net_worth_change,
+    data.net_worth_entered,
+    data.net_worth - data.net_worth_prev,
+    formatMoney
+  )
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
   const runway = runwayStatement(data.runway, formatDate)
   const runwayNote = runwayFallback(data.runway)
@@ -78,8 +89,10 @@ export function OverviewReport({ budgetId }: Props) {
               <strong>Top Spending</strong>. A range that runs to today is marked <em>so far</em>:
               its pay and bills are still arriving. <strong>Now</strong> does not move with the
               range: <strong>Ready to Assign</strong> is the month open on the Budget page,{' '}
-              <strong>Net Worth</strong> is today’s (its change is against the day before the
-              range), <strong>Burn Rate</strong> ends yesterday, <strong>Runway</strong> is today’s,
+              <strong>Net Worth</strong> is today’s, and its change is against the day before the
+              range, like-for-like: an account linked with its balance, or a value first entered, in
+              between is named beside it rather than counted as growth. <strong>Burn Rate</strong>{' '}
+              ends yesterday, <strong>Runway</strong> is today’s,
               <strong> Essentials</strong> is the last three complete months, and{' '}
               <strong>Means trend</strong> the last 12 complete months.
             </p>
@@ -224,10 +237,15 @@ export function OverviewReport({ budgetId }: Props) {
             <MetricCard
               label="Net Worth"
               value={formatMoney(data.net_worth)}
-              delta={
-                data.net_worth_prev !== 0
-                  ? { value: netWorthDeltaPct, label: 'vs prior period', good: 'up' }
-                  : undefined
+              sub={
+                netWorthChange && (
+                  <>
+                    {netWorthChange.value} like-for-like since the range began
+                    {data.net_worth_entered !== 0 && (
+                      <span className="overview-report__sub-line">{netWorthChange.sub}</span>
+                    )}
+                  </>
+                )
               }
             />
             <MetricCard

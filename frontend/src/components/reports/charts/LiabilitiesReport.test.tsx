@@ -20,6 +20,7 @@ vi.mock('../../../api/reports', async (importOriginal) => {
       isError: false,
       refetch: () => {},
     }),
+    useReportRange: () => ({ data: undefined }),
   }
 })
 vi.mock('../../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
@@ -42,12 +43,17 @@ function data(overrides: Partial<LiabilitiesReportData>): LiabilitiesReportData 
         baseline_never_pays_off: false,
         never_pays_off: false,
         payoff_basis: null,
+        payoff_date: null,
         terms_complete: false,
+        pace_missing: 'no_terms',
+        terms_disagree: false,
       },
     ],
     total_balance: 1200,
     total_interest_remaining: 0,
     liabilities_missing_terms: 1,
+    missing_terms_balance: 1200,
+    carrying_balance_count: 1,
     liabilities_never_paying_off: 0,
     balance_over_time: [],
     closed_with_balance_count: 0,
@@ -127,7 +133,10 @@ function debt(overrides: Partial<Item>): Item {
     baseline_never_pays_off: true,
     never_pays_off: true,
     payoff_basis: 'minimum',
+    payoff_date: null,
     terms_complete: true,
+    pace_missing: 'too_little_history',
+    terms_disagree: false,
     ...overrides,
   }
 }
@@ -146,7 +155,7 @@ describe('LiabilitiesReport, a debt that never pays off', () => {
     })
     renderIt()
     const cells = [...row('Sapphire Visa').querySelectorAll('td')].map((td) => td.textContent)
-    // Contractual, and Interest left.
+    // At minimum, and Interest left.
     expect(cells[3]).toBe('Never at this payment')
     expect(cells[5]).toBe('Never at this payment')
     expect(cells[5]).not.toMatch(/\$0\.00/)
@@ -165,11 +174,14 @@ describe('LiabilitiesReport, a debt that never pays off', () => {
     ).toBeInTheDocument()
   })
 
-  it('without payment history, names the minimum rather than a pace it does not have', () => {
+  it('without payment history, the pace column says why rather than repeating the minimum', () => {
     report.current = data({ items: [debt({})], liabilities_never_paying_off: 1 })
     renderIt()
-    expect(row('Sapphire Visa').textContent).toContain("Won't pay off at the minimum payment")
-    expect(row('Sapphire Visa').textContent).not.toContain('current pace')
+    const cells = [...row('Sapphire Visa').querySelectorAll('td')].map((td) => td.textContent)
+    expect(cells[3]).toBe('Never at this payment')
+    // "At your pace": there is none, and it says why instead of "—".
+    expect(cells[4]).toBe('Too little history')
+    expect(row('Sapphire Visa').textContent).not.toContain('your pace')
   })
 
   it('with a pace that falls short, says current pace — and the minimum’s interest', () => {
@@ -186,7 +198,51 @@ describe('LiabilitiesReport, a debt that never pays off', () => {
     })
     renderIt()
     const text = row('Sapphire Visa').textContent
-    expect(text).toContain("Won't pay off at current pace")
+    expect(text).toContain("Won't pay off at your pace")
     expect(text).not.toContain('Never at this payment')
+  })
+})
+
+describe('LiabilitiesReport, the columns say what they mean', () => {
+  it('heads them "At minimum" and "At your pace" and defines both under the table', () => {
+    report.current = data({})
+    renderIt()
+    expect(screen.getByRole('columnheader', { name: /At minimum/ })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /At your pace/ })).toBeInTheDocument()
+    expect(screen.queryByText(/Contractual|Live payoff/)).not.toBeInTheDocument()
+    expect(screen.getByText(/paying only the minimum payment/)).toBeInTheDocument()
+  })
+
+  it('a row with no terms says so in each empty cell, and the caveat is in dollars', () => {
+    report.current = data({})
+    renderIt()
+    const cells = [...row('Jane Doe Personal Loan').querySelectorAll('td')].map(
+      (td) => td.textContent
+    )
+    expect(cells.slice(2)).toEqual(['Not set', 'No terms', 'No terms', 'No terms'])
+    expect(
+      screen.getByText('At minimum payments · excludes $1,200.00 without terms')
+    ).toBeInTheDocument()
+  })
+
+  it('flags a loan whose terms disagree', () => {
+    report.current = data({ items: [debt({ terms_disagree: true })] })
+    renderIt()
+    expect(row('Sapphire Visa').textContent).toContain(
+      'Terms disagree: the payment may include escrow'
+    )
+  })
+
+  it('prints one rate format', () => {
+    report.current = data({ items: [debt({ interest_rate: 6.5 })] })
+    renderIt()
+    expect(row('Sapphire Visa').textContent).toContain('6.5%')
+  })
+
+  it('counts the rows carrying a balance, and no card is accented', () => {
+    report.current = data({ carrying_balance_count: 1 })
+    const { container } = renderIt()
+    expect(screen.getByText('Carrying a balance')).toBeInTheDocument()
+    expect(container.querySelector('.metric-card--accent')).toBeNull()
   })
 })

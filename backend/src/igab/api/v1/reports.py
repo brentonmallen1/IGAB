@@ -336,11 +336,15 @@ async def net_worth_report(
     today: ReaderToday,
     months: ReportMonths = 12,
 ) -> NetWorthResponse:
-    data = await report_svc.net_worth_history(budget_id, months, today)
-    return NetWorthResponse(
-        points=[NetWorthPoint.model_validate(p) for p in data],
-        unmanaged_liability_total=data[-1]["unmanaged_liability_total"] if data else Decimal("0"),
-        asset_value_total=data[-1]["asset_value_total"] if data else Decimal("0"),
+    data = await report_svc.net_worth(budget_id, months, today)
+    points = data["points"]
+    return NetWorthResponse.model_validate(
+        {
+            **data,
+            "points": [NetWorthPoint.model_validate(p) for p in points],
+            "unmanaged_liability_total": points[-1]["unmanaged_liability_total"],
+            "asset_value_total": points[-1]["asset_value_total"],
+        }
     )
 
 
@@ -354,7 +358,8 @@ async def account_composition_report(
 ) -> AccountCompositionResponse:
     data = await report_svc.account_composition(budget_id, months, today)
     return AccountCompositionResponse(
-        points=[AccountCompositionPoint.model_validate(p) for p in data]
+        points=[AccountCompositionPoint.model_validate(p) for p in data["points"]],
+        series=data["series"],
     )
 
 
@@ -821,16 +826,19 @@ async def liabilities_report(
     today: ReaderToday,
     liability_type: str | None = Query(default=None),
     mode: str | None = Query(default=None),
+    months: ReportMonths = 12,
 ) -> LiabilitiesReportResponse:
     """Consolidated liability rollup — per-liability deep-dives live on /liabilities/:id."""
     data = await liability_svc.liabilities_report(
-        budget_id, liability_type=liability_type, mode=mode, as_of=today
+        budget_id, liability_type=liability_type, mode=mode, as_of=today, months=months
     )
     return LiabilitiesReportResponse(
         items=[LiabilitiesReportItem.model_validate(i) for i in data["items"]],
         total_balance=data["total_balance"],
         total_interest_remaining=data["total_interest_remaining"],
         liabilities_missing_terms=data["liabilities_missing_terms"],
+        missing_terms_balance=data["missing_terms_balance"],
+        carrying_balance_count=data["carrying_balance_count"],
         liabilities_never_paying_off=data["liabilities_never_paying_off"],
         balance_over_time=[
             LiabilitiesBalancePoint.model_validate(p) for p in data["balance_over_time"]

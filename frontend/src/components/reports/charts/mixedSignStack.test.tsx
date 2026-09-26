@@ -103,10 +103,15 @@ const CASES: [string, ComponentType<{ budgetId: string }>, unknown][] = [
         {
           date: '2026-08-31',
           balances: { checking: 3000, credit_card: -1200 },
+          stated_assets: 0,
+          manual_debts: 0,
           net_worth: 1800,
           asset_value_total: 0,
+          entered: 0,
+          entries: [],
         },
       ],
+      series: ['checking', 'credit_card'],
     },
   ],
   [

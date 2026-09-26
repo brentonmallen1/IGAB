@@ -25,12 +25,26 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import {
+  AT_MINIMUM,
+  AT_MINIMUM_MEANS,
+  AT_YOUR_PACE,
+  AT_YOUR_PACE_MEANS,
   NEVER_AT_THIS_PAYMENT,
+  PACE_MISSING,
+  TERMS_DISAGREE,
+  carryingSub,
   closedDebtNote,
+  drawnLiabilities,
   interestRemainingSub,
-  neverPaysOffWarning,
+  paceCell,
   totalLiabilitiesSub,
 } from './liabilitiesView'
+import { ReportRangeSelect } from './rangeSelect'
+import { useReportMonths } from '../../../stores/reportStore'
+import { formatRate } from '../../../utils/rate'
+import { arrivalMarks } from '../../../utils/trackingStart'
+import { arrivalLines } from './arrivalLines'
+import { TrackingStartNote } from './TrackingStartNote'
 import './LiabilitiesReport.css'
 
 interface Props {
@@ -49,14 +63,16 @@ export function LiabilitiesReport({ budgetId }: Props) {
   const [sortDesc, setSortDesc] = useState(true)
   const [logScale, setLogScale] = useState(false)
   const captureRef = useRef<HTMLDivElement>(null)
+  const months = useReportMonths()
 
   const { data, isLoading, isError, error, refetch } = useLiabilitiesReport(
     budgetId,
     typeFilter ?? undefined,
-    modeFilter ?? undefined
+    modeFilter ?? undefined,
+    months
   )
   // Unfiltered call drives the filter pills so options don't vanish
-  const { data: allData } = useLiabilitiesReport(budgetId)
+  const { data: allData } = useLiabilitiesReport(budgetId, undefined, undefined, months)
   // Labels come from the registry, so a custom liability type reads as itself
   const { data: accountTypes } = useAccountTypes(budgetId)
 
@@ -96,13 +112,19 @@ export function LiabilitiesReport({ budgetId }: Props) {
   const presentTypes = [...new Set((allData?.items ?? []).map((i) => i.liability_type))]
   const closedCount = data?.closed_with_balance_count ?? 0
   const closedOwed = formatMoney(data?.closed_with_balance_total ?? 0)
-  const chartPoints = (data?.balance_over_time ?? []).map((p) => {
-    const point: Record<string, number | string> = { date: formatMonthShort(p.date) }
-    for (const item of data?.items ?? []) {
-      point[item.name] = Number(p.per_liability[item.liability_id] ?? 0)
+  const series = data?.balance_over_time ?? []
+  // A debt absent from a month (before its first point) is null there — a
+  // gap, where it read 0 and its arrival drew as a cliff. One zero across the
+  // whole window is not drawn at all.
+  const drawn = drawnLiabilities(data?.items ?? [], series)
+  const chartPoints = series.map((p) => {
+    const point: Record<string, number | string | null> = { date: formatMonthShort(p.date) }
+    for (const item of drawn) {
+      point[item.name] = p.per_liability[item.liability_id] ?? null
     }
     return point
   })
+  const marks = arrivalMarks(series, formatMoney)
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDesc((d) => !d)
@@ -137,6 +159,21 @@ export function LiabilitiesReport({ budgetId }: Props) {
             <strong>how's all my debt doing</strong> in one place.
           </p>
           <p>
+            <strong>{AT_MINIMUM}</strong>: {AT_MINIMUM_MEANS}. <strong>{AT_YOUR_PACE}</strong>:{' '}
+            {AT_YOUR_PACE_MEANS}. Where a cell has no date it says why — no APR and minimum on file,
+            payments that arrive as plain deposits rather than transfers, or fewer than two months
+            with a payment. <strong>Interest left</strong> is at the minimum.
+          </p>
+          <p>
+            <em>{TERMS_DISAGREE}</em> marks a loan whose payment does not match what its own
+            principal, rate and term imply — usually taxes and insurance folded into it, which makes
+            every projection run faster than the loan does.
+          </p>
+          <p>
+            The chart follows the report range. A debt appears the month its balance was first
+            known, and a numbered line marks that month — a debt added, not borrowed then.
+          </p>
+          <p>
             Click a row for the full deep-dive: amortization schedule, paydown chart, payoff pill,
             and what-if extra payments.
           </p>
@@ -164,6 +201,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
               {m === 'managed' ? 'From accounts' : 'Manual'}
             </button>
           ))}
+          <ReportRangeSelect />
           <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="liabilities"
@@ -174,8 +212,8 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 mode: i.mode,
                 balance: i.current_balance,
                 interest_rate: i.interest_rate === null ? '' : i.interest_rate,
-                baseline_payoff: i.baseline_payoff_date ?? '',
-                live_payoff: i.live_payoff_date ?? '',
+                at_minimum: i.baseline_payoff_date ?? '',
+                at_your_pace: i.live_payoff_date ?? '',
                 interest_remaining:
                   i.total_interest_remaining === null ? '' : i.total_interest_remaining,
               }))
@@ -202,7 +240,6 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 label="Total Liabilities"
                 value={formatMoney(data!.total_balance)}
                 sub={totalLiabilitiesSub(closedCount)}
-                accent
               />
               {/* Rows without terms, or that the minimum never pays off,
                   contribute no interest, so say the total is partial rather
@@ -212,18 +249,23 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 value={formatMoney(data!.total_interest_remaining)}
                 sub={interestRemainingSub(
                   data!.liabilities_missing_terms,
+                  formatMoney(data!.missing_terms_balance),
                   data!.liabilities_never_paying_off
                 )}
               />
-              <MetricCard label="Liabilities" value={String(data!.items.length)} />
+              <MetricCard
+                label="Liabilities"
+                value={String(data!.items.length)}
+                sub={carryingSub(data!.carrying_balance_count, data!.items.length)}
+              />
             </MetricRow>
             {closedCount > 0 && (
               <p className="report-note">{closedDebtNote(closedCount, closedOwed, false)}</p>
             )}
 
-            {chartPoints.length > 1 && (
+            {chartPoints.length > 1 && drawn.length > 0 && (
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartPoints} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <AreaChart data={chartPoints} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis
                     dataKey="date"
@@ -242,10 +284,11 @@ export function LiabilitiesReport({ budgetId }: Props) {
                     isAnimationActive={false}
                   />
                   <Legend />
-                  {data!.items.map((item, idx) => (
+                  {arrivalLines(marks, (i) => String(chartPoints[i].date))}
+                  {drawn.map((item, idx) => (
                     <Area
                       key={item.liability_id}
-                      type="monotone"
+                      type="linear"
                       dataKey={item.name}
                       // Stacked areas lie on a log axis — log mode overlays
                       // each liability as its own line instead
@@ -259,6 +302,11 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 </AreaChart>
               </ResponsiveContainer>
             )}
+            <TrackingStartNote
+              marks={marks}
+              formatMoney={formatMoney}
+              formatMonthShort={formatMonthShort}
+            />
 
             <div className="liabilities-report__table-wrap">
               <table className="liabilities-report__table">
@@ -272,11 +320,23 @@ export function LiabilitiesReport({ budgetId }: Props) {
                     <th scope="col" className="num sortable" {...sortableProps('rate')}>
                       Rate{sortKey === 'rate' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
-                    <th scope="col" className="sortable" {...sortableProps('baseline')}>
-                      Contractual{sortKey === 'baseline' ? (sortDesc ? ' ↓' : ' ↑') : ''}
+                    <th
+                      scope="col"
+                      className="sortable"
+                      title={AT_MINIMUM_MEANS}
+                      {...sortableProps('baseline')}
+                    >
+                      {AT_MINIMUM}
+                      {sortKey === 'baseline' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
-                    <th scope="col" className="sortable" {...sortableProps('live')}>
-                      Live payoff{sortKey === 'live' ? (sortDesc ? ' ↓' : ' ↑') : ''}
+                    <th
+                      scope="col"
+                      className="sortable"
+                      title={AT_YOUR_PACE_MEANS}
+                      {...sortableProps('live')}
+                    >
+                      {AT_YOUR_PACE}
+                      {sortKey === 'live' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
                     <th scope="col" className="num sortable" {...sortableProps('interest')}>
                       Interest left{sortKey === 'interest' ? (sortDesc ? ' ↓' : ' ↑') : ''}
@@ -284,55 +344,89 @@ export function LiabilitiesReport({ budgetId }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
-                    <tr
-                      key={item.liability_id}
-                      tabIndex={0}
-                      onClick={() => navigate(`/liabilities/${item.liability_id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') navigate(`/liabilities/${item.liability_id}`)
-                      }}
-                      title="Open liability details"
-                    >
-                      <td>
-                        <span className="liabilities-report__name">{item.name}</span>
-                        <span className="liabilities-report__type">
-                          {liabilityTypeLabel(item.liability_type, accountTypes)} ·{' '}
-                          {item.mode === 'managed' ? 'from account' : 'manual'}
-                        </span>
-                      </td>
-                      <td className="num">{formatMoney(item.current_balance)}</td>
-                      <td className="num">
-                        {item.interest_rate === null ? '—' : `${item.interest_rate}%`}
-                      </td>
-                      <td>
-                        {item.baseline_never_pays_off
-                          ? NEVER_AT_THIS_PAYMENT
-                          : item.baseline_payoff_date
-                            ? formatMonth(item.baseline_payoff_date)
-                            : '—'}
-                      </td>
-                      <td>
-                        {item.never_pays_off ? (
-                          <span className="liabilities-report__warning">
-                            <AlertTriangle size={12} /> {neverPaysOffWarning(item.payoff_basis)}
+                  {items.map((item) => {
+                    const pace = paceCell(item, formatMonth)
+                    return (
+                      <tr
+                        key={item.liability_id}
+                        tabIndex={0}
+                        onClick={() => navigate(`/liabilities/${item.liability_id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') navigate(`/liabilities/${item.liability_id}`)
+                        }}
+                        title="Open liability details"
+                      >
+                        <td>
+                          <span className="liabilities-report__name">{item.name}</span>
+                          <span className="liabilities-report__type">
+                            {liabilityTypeLabel(item.liability_type, accountTypes)} ·{' '}
+                            {item.mode === 'managed' ? 'from account' : 'manual'}
                           </span>
-                        ) : item.live_payoff_date ? (
-                          formatMonth(item.live_payoff_date)
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="num">
-                        {item.baseline_never_pays_off
-                          ? NEVER_AT_THIS_PAYMENT
-                          : formatMoneyOrDash(item.total_interest_remaining)}
-                      </td>
-                    </tr>
-                  ))}
+                          {item.terms_disagree && (
+                            <span className="liabilities-report__warning">
+                              <AlertTriangle size={12} aria-hidden /> {TERMS_DISAGREE}
+                            </span>
+                          )}
+                        </td>
+                        <td className="num">{formatMoney(item.current_balance)}</td>
+                        <td className="num">
+                          {item.interest_rate === null ? (
+                            <span className="liabilities-report__why">Not set</span>
+                          ) : (
+                            formatRate(item.interest_rate)
+                          )}
+                        </td>
+                        <td>
+                          {item.baseline_never_pays_off ? (
+                            NEVER_AT_THIS_PAYMENT
+                          ) : item.baseline_payoff_date ? (
+                            formatMonth(item.baseline_payoff_date)
+                          ) : (
+                            <span
+                              className="liabilities-report__why"
+                              title={PACE_MISSING.no_terms.why}
+                            >
+                              {PACE_MISSING.no_terms.label}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {pace.warning ? (
+                            <span className="liabilities-report__warning">
+                              <AlertTriangle size={12} aria-hidden /> {pace.text}
+                            </span>
+                          ) : pace.why ? (
+                            <span className="liabilities-report__why" title={pace.why}>
+                              {pace.text}
+                            </span>
+                          ) : (
+                            pace.text
+                          )}
+                        </td>
+                        <td className="num">
+                          {item.baseline_never_pays_off ? (
+                            NEVER_AT_THIS_PAYMENT
+                          ) : item.total_interest_remaining === null ? (
+                            <span
+                              className="liabilities-report__why"
+                              title={PACE_MISSING.no_terms.why}
+                            >
+                              {PACE_MISSING.no_terms.label}
+                            </span>
+                          ) : (
+                            formatMoneyOrDash(item.total_interest_remaining)
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
+            <p className="report-note">
+              <strong>{AT_MINIMUM}</strong>: {AT_MINIMUM_MEANS}. <strong>{AT_YOUR_PACE}</strong>:{' '}
+              {AT_YOUR_PACE_MEANS}.
+            </p>
           </>
         )}
       </div>

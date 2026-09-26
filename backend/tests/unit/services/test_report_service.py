@@ -1141,57 +1141,5 @@ class TestLargeTransactions:
         assert result == []
 
 
-# ─── account_composition ──────────────────────────────────────────────────────
-
-
-class TestAccountComposition:
-    async def test_groups_by_account_type(self):
-        # account_composition delegates to net_worth_history and reshapes
-        history = [
-            {
-                "date": JAN,
-                "total_assets": D("10000"),
-                "total_liabilities": D("2000"),
-                "net_worth": D("8000"),
-                "asset_value_total": D("0"),
-                "accounts": [
-                    {
-                        "account_type": "checking",
-                        "balance": D("6000"),
-                        "account_id": str(ACCT_1),
-                        "account_name": "Bank",
-                    },
-                    {
-                        "account_type": "savings",
-                        "balance": D("4000"),
-                        "account_id": str(ACCT_2),
-                        "account_name": "Savings",
-                    },
-                    {
-                        "account_type": "credit_card",
-                        "balance": D("-2000"),
-                        "account_id": str(uuid.uuid4()),
-                        "account_name": "Visa",
-                    },
-                    # Custom types must appear as their own series
-                    {
-                        "account_type": "pension",
-                        "balance": D("9000"),
-                        "account_id": str(uuid.uuid4()),
-                        "account_name": "Work Pension",
-                    },
-                ],
-            }
-        ]
-        svc = ReportService(AsyncMock())
-        svc.net_worth_history = AsyncMock(return_value=history)
-
-        result = await svc.account_composition(BUDGET, months=1)
-        assert len(result) == 1
-        balances = result[0]["balances"]
-        assert balances["checking"] == D("6000")
-        assert balances["savings"] == D("4000")
-        assert balances["credit_card"] == D("-2000")
-        assert balances["pension"] == D("9000")
-        # Absent types stay absent — the series set is exactly what exists
-        assert "loan" not in balances
+# account_composition reads the account registry and live accounts itself;
+# it is tested against a database in tests/integration/test_tracking_start.py.

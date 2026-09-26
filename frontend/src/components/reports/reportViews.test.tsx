@@ -415,6 +415,8 @@ describe('OverviewReport metric cards', () => {
       data: {
         net_worth: '1100',
         net_worth_prev: '1000',
+        net_worth_entered: 0,
+        net_worth_change: 100,
         burn_rate_30: 900,
         burn_rate_prior_60: 600,
         savings_rate: 0.25,
@@ -447,15 +449,14 @@ describe('OverviewReport metric cards', () => {
     ).toBeInTheDocument()
 
     expect(screen.getByText('$1,100.00')).toBeInTheDocument()
-    expect(screen.getByText(/\+10\.0%/)).toBeInTheDocument() // net worth delta
+    // Net worth's change in dollars, like-for-like — never a percentage, which
+    // read "+225.5%" for a range in which accounts were linked.
+    expect(screen.getByText(/\+\$100\.00 like-for-like since the range began/)).toBeInTheDocument()
     expect(screen.getByText(/\+20\.0%/)).toBeInTheDocument() // spending delta
     // Spending up is bad news and net worth up good, whatever the sign says:
     // "Spent +21%" was drawn green.
     expect(screen.getByText(/\+20\.0%/).closest('.metric-card__delta')).toHaveClass(
       'metric-card__delta--bad'
-    )
-    expect(screen.getByText(/\+10\.0%/).closest('.metric-card__delta')).toHaveClass(
-      'metric-card__delta--good'
     )
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
     // How long the money lasts if income stopped, and what it read.
@@ -3054,7 +3055,17 @@ describe('info panels say what the chart draws', () => {
     // It said "The stacked area shows…" over areas drawn on top of each other,
     // "plus any manually tracked debts" of debts it subtracts, and never
     // mentioned the stated asset values it adds.
-    setQuery({ data: { points: [] } })
+    setQuery({
+      data: {
+        points: [],
+        change: 0,
+        like_for_like_change: null,
+        entered_total: 0,
+        stated_values: [],
+        stale_balances: [],
+        stale_after_days: 60,
+      },
+    })
     renderReport(<NetWorthReport budgetId="b1" />)
     openInfo('Net Worth Over Time')
     expect(screen.getByText(/not stacked/)).toBeInTheDocument()
@@ -3138,10 +3149,13 @@ describe('AccountCompositionReport info panel', () => {
   it('explains the Net line without a note about its own earlier wording', () => {
     // The panel ended '(An unmanaged debt REDUCES net worth; this said "plus".)'
     // — a changelog entry shown to a reader who never saw the old copy.
-    setQuery({ data: { points: [] } })
+    setQuery({ data: { points: [], series: [] } })
     renderReport(<AccountCompositionReport budgetId="b1" />)
     fireEvent.click(screen.getByRole('button', { name: 'About the Account Composition report' }))
-    expect(screen.getByText(/less any unmanaged debts/)).toBeInTheDocument()
+    // The stack now holds stated values and hand-tracked debts as bands of
+    // their own, so the Net line is the stack's sum — no "less" or "plus".
+    expect(screen.getByText(/sum of every band/)).toBeInTheDocument()
+    expect(screen.getAllByText(/debts tracked by hand/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/this said/)).toBeNull()
   })
 })
@@ -3497,5 +3511,76 @@ describe('VolatilityReport table', () => {
     expect(screen.getByRole('columnheader', { name: 'Swing' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'σ' })).toBeInTheDocument()
     expect(screen.getByText(/Complete months, September 2025 – August 2026/)).toBeInTheDocument()
+  })
+})
+
+/**
+ * Net Worth: the headline is like-for-like, and what began being counted is
+ * named — the audit's year read +$620k on the chart and was slightly down.
+ */
+describe('NetWorthReport, where counting began', () => {
+  const point = (date: string, net: number, entries: unknown[] = []) => ({
+    date,
+    total_assets: Math.max(net, 0),
+    total_liabilities: 0,
+    net_worth: net,
+    unmanaged_liability_total: 0,
+    asset_value_total: 0,
+    accounts: [],
+    entered: (entries as { amount: number }[]).reduce((sum, e) => sum + e.amount, 0),
+    entries,
+  })
+  const house = {
+    kind: 'stated_asset',
+    id: 'h',
+    name: 'Maple St House',
+    day: '2026-08-03',
+    amount: 300000,
+  }
+  const report = {
+    points: [
+      point('2026-07-01', 18600),
+      point('2026-08-01', 318900, [house]),
+      point('2026-09-01', 319000),
+    ],
+    change: 300400,
+    like_for_like_change: 400,
+    entered_total: 300000,
+    stated_values: [
+      {
+        kind: 'stated_asset',
+        id: 'h',
+        name: 'Maple St House',
+        value: 300000,
+        as_of: '2026-08-03',
+      },
+    ],
+    stale_balances: [
+      { kind: 'account', id: 'a', name: 'Harborstone Checking', last_changed: '2026-07-10' },
+    ],
+    stale_after_days: 60,
+    unmanaged_liability_total: 0,
+    asset_value_total: 300000,
+  }
+
+  it('leads with the like-for-like change and says what it leaves out', () => {
+    setQuery({ data: report })
+    renderReport(<NetWorthReport budgetId="b1" />)
+    expect(card('Change, like-for-like')).toEqual({
+      value: '+$400.00',
+      sub: '+$300,400.00 on the chart · +$300,000.00 of it from tracking starting',
+    })
+  })
+
+  it('keys each arrival, dates the stated value and flags the flat line', () => {
+    setQuery({ data: report })
+    renderReport(<NetWorthReport budgetId="b1" />)
+    expect(screen.getByRole('region', { name: 'When counting began' })).toHaveTextContent(
+      '1 value first stated: +$300,000.00'
+    )
+    expect(screen.getByText(/Maple St House as of/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Unchanged for 60\+ days.*Harborstone Checking \(last moved/)
+    ).toBeInTheDocument()
   })
 })

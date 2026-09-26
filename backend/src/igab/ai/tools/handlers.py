@@ -581,9 +581,12 @@ async def get_debt_status(ctx: ToolContext, args: dict) -> dict:
             "type": item["liability_type"],
             "balance": money(item["current_balance"]),
             "interest_rate": float(item["interest_rate"]) if item["interest_rate"] else None,
-            "payoff_date": (
-                item["live_payoff_date"].isoformat() if item["live_payoff_date"] else None
-            ),
+            # The report's one verdict: at the pace paid when there is one,
+            # else at the minimum. This read the pace's date alone, so a debt
+            # with a month of history had no payoff date here while the
+            # report beside it gave the minimum's.
+            "payoff_date": item["payoff_date"].isoformat() if item["payoff_date"] else None,
+            "payoff_basis": item["payoff_basis"],
             "interest_remaining": (
                 money(item["total_interest_remaining"])
                 if item["total_interest_remaining"] is not None
@@ -615,21 +618,36 @@ def _iso(value: Any) -> Any:
 
 
 async def get_net_worth(ctx: ToolContext, args: dict) -> dict:
-    """Assets minus debts, at each of the last months' ends."""
+    """Assets minus debts, at each of the last months' ends, and the change
+    over them like-for-like (`ReportService.net_worth`).
+
+    The change is the one to answer "is it going up" with: the drawn one
+    counts accounts being linked and values first entered as growth. A month
+    where that happened carries `started_tracking`, so the model can say why
+    a line jumped. This read `assets` and `liabilities` keys no point has,
+    and answered $0 for both.
+    """
     months = _months(args, 12)
-    history = await ctx.reports.net_worth_history(ctx.budget_id, months, ctx.today)
+    report = await ctx.reports.net_worth(ctx.budget_id, months, ctx.today)
     points = [
         {
             "month": _iso(point["date"]),
-            "assets": money(point.get("assets", 0)),
-            "liabilities": money(point.get("liabilities", 0)),
-            "net_worth": money(point.get("net_worth", 0)),
+            "assets": money(point["total_assets"]),
+            "liabilities": money(point["total_liabilities"]),
+            "net_worth": money(point["net_worth"]),
+            **({"started_tracking": money(point["entered"])} if point["entered"] else {}),
         }
-        for point in history
+        for point in report["points"]
     ]
+    change = report["like_for_like_change"]
     return summarize_if_large(
-        {"months": points, "latest": points[-1] if points else None},
-        keep=("latest",),
+        {
+            "months": points,
+            "latest": points[-1] if points else None,
+            "change_like_for_like": money(change) if change is not None else None,
+            "change_as_drawn": money(report["change"]),
+        },
+        keep=("latest", "change_like_for_like"),
         max_chars=ctx.result_max_chars,
     )
 

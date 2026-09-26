@@ -28,6 +28,8 @@ function response(over: Partial<AmortizationResponse> = {}): AmortizationRespons
     extra_payoff_date: null,
     extra_never_pays_off: false,
     extra_total_interest: null,
+    months_sooner: null,
+    interest_saved: null,
     live_payoff_date: '2044-01-01',
     live_never_pays_off: false,
     live_typical_payment: 2000,

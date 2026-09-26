@@ -1,3 +1,5 @@
+import type { LiabilitiesReportItem } from '../../../types'
+
 /**
  * What the Liabilities report says about debt left on closed accounts.
  *
@@ -45,11 +47,16 @@ export function totalLiabilitiesSub(closedCount: number): string {
 export const NEVER_AT_THIS_PAYMENT = 'Never at this payment'
 
 /** The Interest Remaining card's sub-label. The total is at minimum payments,
- *  and it names every row it leaves out: for want of terms, and because the
- *  minimum never pays that debt off, so there is no interest bill to add. */
-export function interestRemainingSub(missingTerms: number, neverPaying: number): string {
+ *  and it names every row it leaves out: what the rows without terms owe —
+ *  in dollars, since "excludes 2" said nothing about how much — and the debts
+ *  the minimum never pays off, which have no interest bill to add. */
+export function interestRemainingSub(
+  missingTerms: number,
+  missingTermsOwed: string,
+  neverPaying: number
+): string {
   const parts = ['At minimum payments']
-  if (missingTerms > 0) parts.push(`excludes ${missingTerms} without terms`)
+  if (missingTerms > 0) parts.push(`excludes ${missingTermsOwed} without terms`)
   if (neverPaying === 1) parts.push('excludes 1 debt that never pays off at its payment')
   else if (neverPaying > 1) {
     parts.push(`excludes ${neverPaying} debts that never pay off at their payments`)
@@ -57,12 +64,68 @@ export function interestRemainingSub(missingTerms: number, neverPaying: number):
   return parts.join(' · ')
 }
 
-/** The payoff warning, naming the payment it was measured at (`payoff_basis`).
- *  "At current pace" is true only with a pace — two months of payments.
- *  Without one the verdict is the minimum payment's, and it said "current
- *  pace" anyway. */
-export function neverPaysOffWarning(basis: 'observed' | 'minimum' | null): string {
-  return basis === 'observed'
-    ? "Won't pay off at current pace"
-    : "Won't pay off at the minimum payment"
+/** The count card's sub-label: how many of the rows owe anything today. */
+export function carryingSub(carrying: number, rows: number): string {
+  if (carrying === rows) return carrying === 1 ? 'Carrying a balance' : 'All carrying a balance'
+  return `${carrying} carrying a balance`
+}
+
+/** What the two payoff columns mean, said once: the column headers' titles,
+ *  the note under the table and the ⓘ read these. They were "Contractual"
+ *  and "Live payoff", defined nowhere. */
+export const AT_MINIMUM = 'At minimum'
+export const AT_MINIMUM_MEANS = 'paid off paying only the minimum payment'
+export const AT_YOUR_PACE = 'At your pace'
+export const AT_YOUR_PACE_MEANS =
+  'paid off paying what a typical recent month has been — the median of the last six months’ payments'
+
+type PaceMissing = LiabilitiesReportItem['pace_missing']
+
+/** Why the "At your pace" cell has no date — the cell said "—" for all
+ *  three (`liability_service.pace_missing`). */
+export const PACE_MISSING: Record<NonNullable<PaceMissing>, { label: string; why: string }> = {
+  no_terms: {
+    label: 'No terms',
+    why: 'Add the APR and minimum payment to project a payoff.',
+  },
+  payments_not_linked: {
+    label: 'Payments not linked',
+    why: 'Deposits on this account are not transfers from the paying account, so they are not counted as payments. Record payments as transfers.',
+  },
+  too_little_history: {
+    label: 'Too little history',
+    why: 'A pace needs at least two months with a payment.',
+  },
+}
+
+/** The "At your pace" cell: a date, a warning, or why there is neither. */
+export function paceCell(
+  item: Pick<
+    LiabilitiesReportItem,
+    'payoff_basis' | 'never_pays_off' | 'live_payoff_date' | 'pace_missing'
+  >,
+  formatMonth: (d: string) => string
+): { text: string; warning: boolean; why?: string } {
+  if (item.payoff_basis === 'observed') {
+    if (item.never_pays_off) return { text: "Won't pay off at your pace", warning: true }
+    if (item.live_payoff_date) return { text: formatMonth(item.live_payoff_date), warning: false }
+  }
+  const reason = item.pace_missing ? PACE_MISSING[item.pace_missing] : null
+  return reason
+    ? { text: reason.label, warning: false, why: reason.why }
+    : { text: '—', warning: false }
+}
+
+/** "Terms disagree", beside a row whose entered payment contradicts the
+ *  payment its own principal, rate and term imply (`amortization.terms_check`)
+ *  — the liability page carries the same flag. */
+export const TERMS_DISAGREE = 'Terms disagree: the payment may include escrow'
+
+/** Liabilities worth drawing: any whose balance is not zero somewhere in the
+ *  window. A paid-off debt drew a flat line at zero and took a legend entry. */
+export function drawnLiabilities<T extends { liability_id: string }>(
+  items: T[],
+  points: { per_liability: Record<string, number> }[]
+): T[] {
+  return items.filter((item) => points.some((p) => (p.per_liability[item.liability_id] ?? 0) !== 0))
 }
