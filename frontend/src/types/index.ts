@@ -793,8 +793,11 @@ export interface ReportSettings {
 export interface DashboardMetrics {
   net_worth: number
   net_worth_prev: number
+  /** Net spending over the last 30 days, and over the 60 days before them
+   *  per 30 days — no day in both. Server-computed: `domain/burn_rate.py`;
+   *  the change between them is composed in `charts/burnRateView.ts`. */
   burn_rate_30: number
-  burn_rate_90: number
+  burn_rate_prior_60: number
   /** What a lean month costs, both ways — the figures the roadmap's
    *  emergency-fund target is built from. null until something is tagged
    *  Essential (untagged it would equal burn rate). Server-computed:
@@ -912,10 +915,14 @@ export interface AccountCompositionReport {
   points: AccountCompositionPoint[]
 }
 
+/** One month of the Burn Rate chart: the 30 days ending on its last day
+ *  (today, for this month) and the 60 before them per 30 days — the
+ *  Overview's `burn_rate_30` / `burn_rate_prior_60` on the newest point.
+ *  Server-computed: `domain/burn_rate.py`. */
 export interface BurnRatePoint {
   date: string
   rolling_30: number
-  rolling_90: number
+  prior_60: number
 }
 
 export interface BurnRateReport {

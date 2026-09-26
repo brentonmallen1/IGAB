@@ -32,6 +32,7 @@ import type {
   ReportSettings,
 } from '../types'
 import { ROOT } from './queryKeys'
+import { today } from '../utils/dates'
 
 const STALE = 60_000
 
@@ -110,12 +111,15 @@ export function exportTransactionsPath(
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
+/** The burn windows end "today", and near midnight the server's today is not
+ *  the reader's — so the reports that end there send `client_today`, read when
+ *  the request is made. */
 export function useDashboardMetrics(budgetId: string | null, startDate?: string, endDate?: string) {
   return useQuery({
     queryKey: [ROOT.reports, 'dashboard', budgetId, startDate, endDate],
     queryFn: async () => {
       const { data } = await apiClient.get<DashboardMetrics>(`/${budgetId}/reports/dashboard`, {
-        params: params({ start_date: startDate, end_date: endDate }),
+        params: params({ start_date: startDate, end_date: endDate, client_today: today() }),
       })
       return data
     },
@@ -187,7 +191,7 @@ export function useBurnRateReport(budgetId: string | null, months = 12) {
     queryKey: [ROOT.reports, 'burn-rate', budgetId, months],
     queryFn: async () => {
       const { data } = await apiClient.get<BurnRateReport>(`/${budgetId}/reports/burn-rate`, {
-        params: { months },
+        params: { months, client_today: today() },
       })
       return data
     },

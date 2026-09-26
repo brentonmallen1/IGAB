@@ -134,6 +134,13 @@ MAX_REPORT_MONTHS = 600
 
 ReportMonths = Annotated[int, Query(ge=1, le=MAX_REPORT_MONTHS)]
 
+#: The browser's local date, for a report whose figures end "today" — the
+#: trailing burn windows. A GET has no body to carry `ClientDated`, so it rides
+#: as a query parameter; a caller that omits it gets the server's day. Near
+#: midnight the two disagree, and the reader's clock is the one that decides
+#: which thirty days they are looking at.
+ClientToday = Annotated[date | None, Query()]
+
 #: plan-vs-reality reads "chronic" as over-plan in 3+ of the window's last 6
 #: months, so a window shorter than 3 has nothing to say. That floor is the
 #: report's own rule and stays; only its old 24-month ceiling is gone.
@@ -307,11 +314,12 @@ async def dashboard_metrics(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
     end_date: date | None = None,
+    client_today: ClientToday = None,
 ) -> DashboardMetrics:
-    today = date.today()
+    today = client_today or date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    data = await report_svc.dashboard_metrics(budget_id, start, end)
+    data = await report_svc.dashboard_metrics(budget_id, start, end, today=client_today)
     return DashboardMetrics(
         **{k: v for k, v in data.items() if k not in ("top_categories", "means_months")},
         top_categories=[TopCategory.model_validate(c) for c in data["top_categories"]],
@@ -353,8 +361,9 @@ async def burn_rate_report(
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
+    client_today: ClientToday = None,
 ) -> BurnRateResponse:
-    data = await report_svc.burn_rate(budget_id, months)
+    data = await report_svc.burn_rate(budget_id, months, today=client_today)
     return BurnRateResponse(points=[BurnRatePoint.model_validate(p) for p in data])
 
 

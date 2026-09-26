@@ -285,7 +285,7 @@ class TestTheRegisterIsNotFetchedWhole:
         group = await create_category_group(db_session, budget, "Everyday")
         groceries = await create_category(db_session, budget, group, "Groceries")
         # Two years back: outside the window, its comparison period and the
-        # 90-day burn, on the account and envelope already read. One row is
+        # burn's ninety days, on the account and envelope already read. One row is
         # there from the start — the balance before the first cutoff is one
         # group of the balance sheet, however many rows make it up.
         long_ago = add_months(THIS, -24)

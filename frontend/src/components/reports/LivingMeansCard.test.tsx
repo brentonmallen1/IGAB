@@ -17,7 +17,7 @@ function metrics(overrides: Partial<DashboardMetrics> = {}): DashboardMetrics {
     net_worth: 0,
     net_worth_prev: 0,
     burn_rate_30: 0,
-    burn_rate_90: 0,
+    burn_rate_prior_60: 0,
     essentials: null,
     essentials_tagged: false,
     savings_rate: 0.4,

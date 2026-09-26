@@ -103,6 +103,7 @@ class TestTheCardsAgreeWithTheTabs:
         points = await svc.burn_rate(budget.id, months=1)
 
         assert card["burn_rate_30"] == points[-1]["rolling_30"]
+        assert card["burn_rate_prior_60"] == points[-1]["prior_60"]
 
     async def test_saving_is_not_reported_as_spending(self, db_session):
         """The whole point: $2,000 to a brokerage is not $2,000 spent."""

@@ -138,8 +138,11 @@ class DashboardMetrics(ApiModel):
     # because the next reader will use it.
     net_worth: Decimal
     net_worth_prev: Decimal
+    #: Net spending over the trailing thirty days ending today, and over the
+    #: sixty days before them per thirty days (`domain.burn_rate`). The two
+    #: share no day; the card's percent change is composed on the client.
     burn_rate_30: Decimal
-    burn_rate_90: Decimal
+    burn_rate_prior_60: Decimal
     #: What a lean month costs, both ways — the figures the Guide's
     #: emergency-fund target is built from. None until something is tagged
     #: Essential (untagged, it would equal burn rate).
@@ -224,9 +227,13 @@ class AccountCompositionResponse(ApiModel):
 
 
 class BurnRatePoint(ApiModel):
+    """One month: the trailing thirty days ending on its last day (today, for
+    this month) and the sixty before them per thirty days — the Overview's
+    `burn_rate_30`/`burn_rate_prior_60` on the newest point."""
+
     date: date
     rolling_30: Decimal
-    rolling_90: Decimal
+    prior_60: Decimal
 
 
 class BurnRateResponse(ApiModel):

@@ -197,7 +197,7 @@ class TestReports:
         await db_session.flush()
         result = await handlers.burn_rate(await _ctx(db_session, budget), {"months": 4})
         assert len(result["months"]) == 4
-        assert {"month", "rolling_30", "rolling_90"} <= set(result["months"][0])
+        assert {"month", "rolling_30", "prior_60"} <= set(result["months"][0])
 
     async def test_anomalies_are_the_report_s_own_rule(self, db_session):
         """A quiet budget has none. What matters is that the tool does not

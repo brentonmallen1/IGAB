@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
+from igab.domain.burn_rate import LOOKBACK_DAYS, LOOKBACK_MONTHS
 from igab.domain.dates import trailing_start
 from igab.domain.money import quantize_cents
 
@@ -173,17 +174,22 @@ FULL_EMERGENCY_FUND_MONTHS_HIGH = 6
 STALE_EXTERNAL_MONTHS = 12
 #: How far back "what a lean month costs" looks — the Guide's essentials
 #: signal and the Overview's essentials card share it, so the emergency-fund
-#: target and the card can never quote different months.
-ESSENTIALS_WINDOW_DAYS = 90
+#: target and the card can never quote different months. It is the burn rate's
+#: whole lookback (`domain.burn_rate`: its thirty days and the sixty before),
+#: so the Overview's Essentials and burn cards read one span of days. It was a
+#: second `90` beside the burn's own, and the two windows had already come
+#: apart by a day once (`dates.trailing_start`).
+ESSENTIALS_WINDOW_DAYS = LOOKBACK_DAYS
 #: The essentials window said in months: what its total is divided by, and how
-#: many months a monthly series averages for the same figure.
-TRAILING_MONTHS = 3
+#: many months a monthly series averages for the same figure. Derived with the
+#: days from one month length, so the pair cannot disagree.
+TRAILING_MONTHS = LOOKBACK_MONTHS
 
 
 def essentials_since(today: date) -> date:
     """The first day of the essentials window: `ESSENTIALS_WINDOW_DAYS` days
     ending today, both included. It was `today - 90` in the Guide and the
-    report alike — 91 days beside the Overview's 90-day burn."""
+    report alike — 91 days beside the Overview's 90-day burn window."""
     return trailing_start(today, ESSENTIALS_WINDOW_DAYS)
 
 

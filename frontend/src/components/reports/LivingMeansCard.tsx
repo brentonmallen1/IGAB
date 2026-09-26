@@ -69,6 +69,7 @@ function LivingMeansDialog({
   const { formatMoney } = useFormatters()
   const spending = data.expenses_this_month
   const prior = data.expenses_prev_month
+  const change = spendingDelta(spending, prior)
 
   return (
     <Dialog title={reading.label} onClose={onClose} historyKey="overview-living-means">
@@ -134,10 +135,10 @@ function LivingMeansDialog({
 
       <DetailSection title="Against the prior period">
         <p className="dialog__body">
-          {prior > 0 ? (
+          {change !== null ? (
             <>
               Spending was {formatMoney(spending)} against {formatMoney(prior)} in the period of the
-              same length just before — {formatDelta(spendingDelta(spending, prior))}.
+              same length just before — {formatDelta(change)}.
             </>
           ) : (
             <>No spending in the period of the same length just before, so nothing to compare.</>

@@ -686,14 +686,15 @@ async def cash_projection(ctx: ToolContext, args: dict) -> dict:
 
 
 async def burn_rate(ctx: ToolContext, args: dict) -> dict:
-    """Spending pace: the rolling 30- and 90-day averages, per month."""
+    """Spending pace per month: the trailing 30 days against the 60 before
+    them, per 30 days — as of the user's today, like the chart they see."""
     months = _months(args, 12)
-    rows = await ctx.reports.burn_rate(ctx.budget_id, months)
+    rows = await ctx.reports.burn_rate(ctx.budget_id, months, today=ctx.today)
     points = [
         {
             "month": _iso(row["date"]),
             "rolling_30": money(row["rolling_30"]),
-            "rolling_90": money(row["rolling_90"]),
+            "prior_60": money(row["prior_60"]),
         }
         for row in rows
     ]

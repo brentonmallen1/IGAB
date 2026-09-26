@@ -409,8 +409,8 @@ describe('OverviewReport metric cards', () => {
       data: {
         net_worth: '1100',
         net_worth_prev: '1000',
-        burn_rate_30: '900',
-        burn_rate_90: '850',
+        burn_rate_30: 900,
+        burn_rate_prior_60: 600,
         savings_rate: 0.25,
         days_until_zero: 45.6,
         income_this_month: '4000',
@@ -446,6 +446,39 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
     expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
     expect(screen.getByText('Groceries')).toBeInTheDocument()
+    // The last 30 days against the 60 before them — no day in both.
+    expect(card('30-Day Burn Rate')).toEqual({
+      value: '$900.00',
+      sub: 'Prior 60 days: $600.00/30d · +50%',
+    })
+  })
+
+  it('shows no burn change when the prior 60 days had no spending', () => {
+    // A young budget: everything so far is in the last 30 days. No division by
+    // zero and no percentage — "+∞%" and "0%" would both be false.
+    setQuery({
+      data: {
+        net_worth: 0,
+        burn_rate_30: 450,
+        burn_rate_prior_60: 0,
+        income_this_month: 0,
+        expenses_this_month: 450,
+        expenses_prev_month: 0,
+        outflows_this_month: 450,
+        top_categories: [],
+        means_months: [],
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('30-Day Burn Rate')).toEqual({
+      value: '$450.00',
+      sub: 'Prior 60 days: $0.00/30d',
+    })
+    // The Spent card reads the same "no prior, no percentage" rule.
+    const spent = screen
+      .getByText('Spent This Period', { selector: '.metric-card__label' })
+      .closest('.metric-card')
+    expect(spent?.querySelector('.metric-card__delta')).toBeNull()
   })
 
   it('names the as-paid essentials figure under the spread one', () => {
@@ -453,7 +486,7 @@ describe('OverviewReport metric cards', () => {
       data: {
         net_worth: '0',
         burn_rate_30: '0',
-        burn_rate_90: '0',
+        burn_rate_prior_60: '0',
         income_this_month: '0',
         outflows_this_month: '0',
         top_categories: [],
@@ -475,7 +508,7 @@ describe('OverviewReport metric cards', () => {
       data: {
         net_worth: '0',
         burn_rate_30: '0',
-        burn_rate_90: '0',
+        burn_rate_prior_60: '0',
         income_this_month: '0',
         outflows_this_month: '0',
         top_categories: [],
@@ -511,6 +544,31 @@ const CONTRIBUTORS = {
   income_sources: [{ payee_id: 'p1', payee_name: 'Northwind Payserv', total: 4000, count: 1 }],
 }
 
+describe('BurnRateReport', () => {
+  it('compares the newest 30 days with the prior 60 on its cards', () => {
+    setQuery({
+      data: {
+        points: [
+          { date: '2026-08-01', rolling_30: 600, prior_60: 600 },
+          { date: '2026-09-01', rolling_30: 900, prior_60: 600 },
+        ],
+      },
+    })
+    renderReport(<BurnRateReport budgetId="b1" />)
+    expect(card('Current 30-Day Burn')).toEqual({
+      value: '$900.00',
+      sub: '+50% on the prior 60 days',
+    })
+    expect(card('Prior 60 Days')).toEqual({ value: '$600.00', sub: 'Averaged per 30 days' })
+  })
+
+  it('says there is nothing to compare when the prior 60 days are empty', () => {
+    setQuery({ data: { points: [{ date: '2026-09-01', rolling_30: 450, prior_60: 0 }] } })
+    renderReport(<BurnRateReport budgetId="b1" />)
+    expect(card('Current 30-Day Burn').sub).toBe('No spending in the prior 60 days')
+  })
+})
+
 describe('the savings-rate cards open what contributed', () => {
   beforeEach(async () => {
     // A dialog opened in more than one test leaves a deferred history.back().
@@ -523,7 +581,7 @@ describe('the savings-rate cards open what contributed', () => {
     net_worth: 0,
     net_worth_prev: 0,
     burn_rate_30: 0,
-    burn_rate_90: 0,
+    burn_rate_prior_60: 0,
     essentials_tagged: false,
     savings_rate: 0.25,
     days_until_zero: null,

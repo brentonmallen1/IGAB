@@ -28,8 +28,12 @@ describe('spendingDelta', () => {
     expect(spendingDelta(80, 100)).toBeCloseTo(-20)
   })
 
-  it('is 0 without prior spending', () => {
-    expect(spendingDelta(120, 0)).toBe(0)
+  it('is null, not 0, without prior spending — there is nothing to compare', () => {
+    // 0 would read "unchanged". The Spent card and the means dialog each
+    // guarded this themselves beside a function that said 0; they, and both
+    // burn-rate lines, now read the null.
+    expect(spendingDelta(120, 0)).toBeNull()
+    expect(spendingDelta(120, -30)).toBeNull()
   })
 })
 

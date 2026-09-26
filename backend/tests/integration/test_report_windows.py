@@ -11,7 +11,9 @@ Four defects from one cause — each report spelled its window by hand:
 - Volatility's drill-down computed its own window and drifted from the one the
   statistics read.
 - Essentials used `today - 90` with inclusive bounds — 91 days — beside a
-  90-day burn, so the subset read higher than the whole.
+  90-day burn, so the subset read higher than the whole. The burn now compares
+  its thirty days with the sixty before them, and the essentials window is
+  that whole lookback (`domain.burn_rate`).
 """
 
 from datetime import date, timedelta
@@ -173,11 +175,12 @@ class TestVolatilityServesItsReading:
 
 
 class TestEssentialsIsASubsetOfBurn:
-    async def test_everything_essential_quotes_the_ninety_day_burn(self, db_session):
-        """Tag every spending category Essential and the essentials figure is
-        the burn rate, by definition. It read higher: `today - 90` with
-        inclusive bounds is 91 days, so a charge exactly 90 days back counted
-        toward Essentials and not toward the burn it is a subset of."""
+    async def test_everything_essential_quotes_the_burns_ninety_days(self, db_session):
+        """Tag every spending category Essential and the essentials month is
+        the burn's ninety days averaged — its thirty plus the sixty before —
+        by definition. It once read higher: `today - 90` with inclusive bounds
+        is 91 days, so a charge exactly 90 days back counted toward Essentials
+        and not toward the burn it is a subset of."""
         budget, checking, groceries = await _world(db_session)
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
@@ -201,6 +204,12 @@ class TestEssentialsIsASubsetOfBurn:
         metrics = await reports.dashboard_metrics(budget.id, THIS_MONTH, TODAY)
         guide = await GuideDetection(db_session).essential_expenses(budget.id)
 
-        assert metrics["burn_rate_90"] == D("200.00")
-        assert metrics["essentials"].monthly == metrics["burn_rate_90"]
-        assert guide.value == metrics["burn_rate_90"]
+        # 300 in the last thirty days, 300 in the sixty before (150 per
+        # thirty), and the day-91 charge in neither.
+        assert (metrics["burn_rate_30"], metrics["burn_rate_prior_60"]) == (
+            D("300.00"),
+            D("150.00"),
+        )
+        ninety_days = metrics["burn_rate_30"] + 2 * metrics["burn_rate_prior_60"]
+        assert metrics["essentials"].monthly == D("200.00") == ninety_days / 3
+        assert guide.value == metrics["essentials"].monthly

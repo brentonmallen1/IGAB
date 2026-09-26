@@ -334,8 +334,9 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="burn_rate",
         description=(
-            "How fast money is going out: rolling 30- and 90-day spending "
-            "averages per month. Use this for 'am I spending more than I used to'."
+            "How fast money is going out, per month: net spending over the "
+            "trailing 30 days, and over the 60 days before them per 30 days. "
+            "Use this for 'am I spending more than I used to'."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.burn_rate,
