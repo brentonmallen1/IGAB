@@ -1553,7 +1553,12 @@ export interface CashProjectionReport {
   start_balance: number
   points: CashProjectionPoint[]
   events: CashProjectionEvent[]
+  /** The first day the median path is below zero. */
   goes_negative_date: string | null
+  /** The first day the 1-in-10 low band is below zero — never later than
+   *  `goes_negative_date`. Backend `domain/cash_projection.py`; the softer
+   *  warning reads it (`cashProjectionView.projectionWarning`). */
+  p10_negative_date: string | null
 }
 
 export interface SimilarTransaction {

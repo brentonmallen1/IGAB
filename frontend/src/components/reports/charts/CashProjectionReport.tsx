@@ -19,7 +19,16 @@ import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
-import { TOOLTIP_STYLE } from './chartColors'
+import { ChartTooltip } from './ChartTooltip'
+import {
+  MEDIAN_LABEL,
+  PROJECTION_BANDS,
+  SCHEDULED_LABEL,
+  projectionRows,
+  projectionTooltipEntries,
+  projectionWarning,
+  type ProjectionRow,
+} from './cashProjectionView'
 import { HORIZON_OPTIONS } from './reportControls'
 
 interface Props {
@@ -38,21 +47,11 @@ export function CashProjectionReport({ budgetId }: Props) {
   }
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
-  const points = data?.points ?? []
   const events = data?.events ?? []
   const startBalance = Number(data?.start_balance ?? 0)
-  const goesNegativeDate = data?.goes_negative_date
+  const warning = projectionWarning(data)
 
-  const chartData = points.map((p) => ({
-    date: formatDayMonth(p.date),
-    fullDate: p.date,
-    p10: p.p10,
-    p25: p.p25,
-    p50: p.p50,
-    p75: p.p75,
-    p90: p.p90,
-    deterministic: p.deterministic,
-  }))
+  const chartData = projectionRows(data?.points ?? [], formatDayMonth)
 
   const endPoint = chartData[chartData.length - 1]
   const projectedBalance = endPoint?.p50 ?? startBalance
@@ -65,13 +64,16 @@ export function CashProjectionReport({ budgetId }: Props) {
         <h2 className="report-section__title">Cash Projection</h2>
         <ReportInfoButton title="Cash Projection">
           <p>
-            Projects your <strong>future cash balance</strong> based on scheduled transactions,
-            subscription patterns, and historical spending variability.
+            Where your cash balance lands <strong>if things carry on</strong>: your recent cash in
+            and out — paychecks included — replayed on top of your scheduled transactions and
+            subscriptions.
           </p>
           <p>
-            The <strong>solid line</strong> shows the median projection (P50). The{' '}
-            <strong>shaded bands</strong> show uncertainty — inner band (25-75%) represents the
-            likely range, outer band (10-90%) covers most scenarios.
+            Each simulated path copies stretches of your real history a few weeks at a time, so
+            weekends and paydays keep their places. The <strong>solid line</strong> is the{' '}
+            {MEDIAN_LABEL.toLowerCase()}: half the paths end above it, half below. The darker band
+            holds the <strong>middle half</strong> of the paths (25–75%); the lighter band holds{' '}
+            <strong>8 in 10</strong> (10–90%) — 1 in 10 ends below it, 1 in 10 above.
           </p>
           <p>
             The <strong>dashed line</strong> shows what would happen with only scheduled and
@@ -93,11 +95,13 @@ export function CashProjectionReport({ budgetId }: Props) {
         </div>
       </div>
 
-      {goesNegativeDate && (
-        <div className="projection-warning">
+      {warning && (
+        <div
+          className={`projection-warning${warning.kind === 'possible' ? ' projection-warning--possible' : ''}`}
+        >
           <AlertTriangle size={16} />
           <span>
-            Projection goes negative around <strong>{formatDate(goesNegativeDate)}</strong>
+            {warning.lead} {formatMoney(0)} by <strong>{formatDate(warning.date)}</strong>
           </span>
         </div>
       )}
@@ -107,7 +111,7 @@ export function CashProjectionReport({ budgetId }: Props) {
         <MetricCard
           label={`Projected (${horizon}d)`}
           value={formatMoney(projectedBalance)}
-          sub={`Range: ${formatMoney(rangeP10)} – ${formatMoney(rangeP90)}`}
+          sub={`8 in 10: ${formatMoney(rangeP10)} – ${formatMoney(rangeP90)}`}
         />
       </MetricRow>
 
@@ -127,71 +131,56 @@ export function CashProjectionReport({ budgetId }: Props) {
               tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
               width={moneyAxis.width}
             />
-            {goesNegativeDate && (
-              <ReferenceLine y={0} stroke="var(--color-negative)" strokeWidth={1} />
-            )}
+            {warning && <ReferenceLine y={0} stroke="var(--color-negative)" strokeWidth={1} />}
             <Tooltip
-              formatter={(v: unknown, name: unknown) => {
-                const label =
-                  name === 'p50'
-                    ? 'Median'
-                    : name === 'deterministic'
-                      ? 'Scheduled Only'
-                      : String(name)
-                return [formatMoney(Number(v)), label]
-              }}
-              labelFormatter={(label) => `${label}`}
+              content={({ active, payload, label }) => (
+                <ChartTooltip
+                  active={active}
+                  payload={
+                    payload?.length
+                      ? projectionTooltipEntries(payload[0].payload as ProjectionRow)
+                      : []
+                  }
+                  label={String(label ?? '')}
+                  formatter={formatMoney}
+                />
+              )}
               offset={16}
               isAnimationActive={false}
-              {...TOOLTIP_STYLE}
             />
-            {/* Outer band P10-P90 */}
+            {/* Range areas: each band is its own [low, high], unstacked, so the
+                shading is the band and the axis spans the real values. */}
             <Area
               type="monotone"
-              dataKey="p90"
-              stackId="band-outer"
+              dataKey="outer"
+              name={PROJECTION_BANDS.outer.label}
               stroke="none"
               fill="var(--accent-color)"
-              fillOpacity={0.08}
+              fillOpacity={PROJECTION_BANDS.outer.fillOpacity}
+              isAnimationActive={false}
             />
             <Area
               type="monotone"
-              dataKey="p10"
-              stackId="band-outer"
-              stroke="none"
-              fill="var(--bg-primary)"
-              fillOpacity={1}
-            />
-            {/* Inner band P25-P75 */}
-            <Area
-              type="monotone"
-              dataKey="p75"
-              stackId="band-inner"
+              dataKey="inner"
+              name={PROJECTION_BANDS.inner.label}
               stroke="none"
               fill="var(--accent-color)"
-              fillOpacity={0.15}
+              fillOpacity={PROJECTION_BANDS.inner.fillOpacity}
+              isAnimationActive={false}
             />
-            <Area
-              type="monotone"
-              dataKey="p25"
-              stackId="band-inner"
-              stroke="none"
-              fill="var(--bg-primary)"
-              fillOpacity={1}
-            />
-            {/* Deterministic line */}
             <Line
               type="monotone"
               dataKey="deterministic"
+              name={SCHEDULED_LABEL}
               stroke="var(--text-muted)"
               strokeDasharray="4 4"
               strokeWidth={1.5}
               dot={false}
             />
-            {/* Median line */}
             <Line
               type="monotone"
               dataKey="p50"
+              name={MEDIAN_LABEL}
               stroke="var(--accent-color)"
               strokeWidth={2}
               dot={false}
@@ -202,26 +191,28 @@ export function CashProjectionReport({ budgetId }: Props) {
 
       {chartData.length > 0 && (
         <div className="chart-key">
-          <span className="chart-key__item">
-            <span
-              className="chart-key__swatch"
-              style={{ background: 'var(--accent-color)', opacity: 0.25 }}
-            />
-            Likely range (10–90%)
-          </span>
+          {[PROJECTION_BANDS.inner, PROJECTION_BANDS.outer].map((band) => (
+            <span key={band.label} className="chart-key__item">
+              <span
+                className="chart-key__swatch"
+                style={{ background: 'var(--accent-color)', opacity: band.swatchOpacity }}
+              />
+              {band.label}
+            </span>
+          ))}
           <span className="chart-key__item">
             <span
               className="chart-key__swatch chart-key__swatch--line"
               style={{ background: 'var(--accent-color)' }}
             />
-            Median
+            {MEDIAN_LABEL}
           </span>
           <span className="chart-key__item">
             <span
               className="chart-key__swatch chart-key__swatch--line"
               style={{ background: 'var(--text-muted)' }}
             />
-            Scheduled only
+            {SCHEDULED_LABEL}
           </span>
         </div>
       )}

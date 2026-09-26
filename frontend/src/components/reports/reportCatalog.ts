@@ -144,9 +144,10 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   projection: {
     scope: 'cash-projection',
-    summary: 'A simulated range for your cash balance in the months ahead.',
-    counts: 'Recent net flows, scheduled transactions and subscriptions, on cash accounts.',
-    leavesOut: 'Credit cards and off-budget accounts.',
+    summary: 'Where your cash balance lands if things carry on, as a range of likely paths.',
+    counts:
+      'Your recent cash in and out — paychecks included — replayed a few weeks at a time, plus scheduled transactions and subscriptions, on cash accounts.',
+    leavesOut: 'Credit cards, off-budget accounts, and starting balances.',
   },
   'budget-actual': {
     scope: 'categories',
