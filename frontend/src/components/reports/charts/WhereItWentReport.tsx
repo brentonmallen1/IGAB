@@ -25,6 +25,8 @@ import {
   groupCategoryLines,
   rankedLines,
   rankedTable,
+  runningLabel,
+  shareLabel,
   type RankedLine,
 } from './whereItWent'
 import './WhereItWentReport.css'
@@ -43,10 +45,6 @@ const LINE_HEADINGS: Record<GroupBy, string> = {
   category: 'Category',
   payee: 'Payee',
 }
-
-/** A share as the table states it — whole percent, or a dash where there is
- *  no positive total to be a share of. */
-const pct = (share: number | null) => (share === null ? '—' : `${Math.round(share)}%`)
 
 /**
  * Where the period's spending went, ranked.
@@ -325,8 +323,8 @@ export function WhereItWentReport({ budgetId }: Props) {
                     opens={lineMode === 'group' ? 'group' : 'transactions'}
                     showGroup={showGroupColumn}
                     spent={formatMoney(line.total)}
-                    share={pct(share)}
-                    cumulative={pct(cumulative)}
+                    share={shareLabel(share)}
+                    cumulative={runningLabel(cumulative)}
                     marked={crosses80 && i < lastRow}
                     onOpen={() => openLine(line)}
                   />
@@ -338,7 +336,7 @@ export function WhereItWentReport({ budgetId }: Props) {
                   {showGroupColumn && <td className="wiw__group" />}
                   <td className="wiw__num tabular">{formatMoney(footer.shown)}</td>
                   <td className="wiw__num tabular">
-                    {footer.share === null ? '' : pct(footer.share)}
+                    {footer.share === null ? '' : shareLabel(footer.share)}
                   </td>
                   <td />
                 </tr>

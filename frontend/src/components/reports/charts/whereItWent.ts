@@ -236,6 +236,38 @@ export function concentrationSentence(
   return `${to80} of ${universeCount} ${noun} ${verb} 80% of ${of}`
 }
 
+/** A percentage cut to tenths toward zero. The epsilon keeps a figure that is
+ *  exactly on a tenth — 0.57 × 100 is 56.99999… — on it. */
+function tenths(pct: number): string {
+  const nudged = pct + (pct >= 0 ? 1e-7 : -1e-7)
+  return `${(Math.trunc(nudged * 10) / 10).toFixed(1)}%`
+}
+
+/**
+ * The Share and Running share columns, printed by one rule: tenths, cut
+ * rather than rounded.
+ *
+ * Cut, because the running share is the column the 80% mark reads, and a row
+ * rounded up to it contradicts the mark: 79.96% printed "80.0%" on the row
+ * above the line that says 80% is reached, and 99.96% printed "100.0%" with
+ * lines still to come. The same rule on both columns, because the first row's
+ * share IS its running share: rounding one and cutting the other printed
+ * "24%" beside "23%" on the same row.
+ *
+ * A positive share too small to reach a tenth reads "<0.1%" — a run of "0.0%"
+ * reads as lines that spent nothing — and there is a dash where there is no
+ * positive total to be a share of.
+ */
+export function shareLabel(share: number | null): string {
+  if (share === null) return '—'
+  if (share > 0 && share < 0.1) return '<0.1%'
+  return tenths(share)
+}
+
+export function runningLabel(share: number | null): string {
+  return share === null ? '—' : tenths(share)
+}
+
 /** The table's rows for export, as they read on screen. */
 export function exportRows(table: RankedTable) {
   return table.rows.map(({ line, share, cumulative }) => ({

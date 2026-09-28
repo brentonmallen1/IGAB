@@ -419,9 +419,9 @@ describe('Where it went', () => {
   it('ranks the lines with their share and running share', () => {
     setQuery({ data })
     renderReport(<WhereItWentReport budgetId="b1" />)
-    expect(cellsOf('Rent')).toEqual(['Rent', 'Home', '$500.00', '50%', '50%'])
-    expect(cellsOf('Groceries')).toEqual(['Groceries', 'Everyday', '$300.00', '30%', '80%'])
-    expect(cellsOf('Fun')).toEqual(['Fun', 'Everyday', '$50.00', '5%', '100%'])
+    expect(cellsOf('Rent')).toEqual(['Rent', 'Home', '$500.00', '50.0%', '50.0%'])
+    expect(cellsOf('Groceries')).toEqual(['Groceries', 'Everyday', '$300.00', '30.0%', '80.0%'])
+    expect(cellsOf('Fun')).toEqual(['Fun', 'Everyday', '$50.00', '5.0%', '100.0%'])
     expect(card('Spent').value).toBe('$1,000.00')
   })
 
@@ -460,7 +460,7 @@ describe('Where it went', () => {
       (b) => b.textContent
     )
     expect(names.at(-1)).toBe('Returns')
-    expect(cellsOf('Returns')).toEqual(['Returns', 'Shopping', '-$100.00', '-11%', '100%'])
+    expect(cellsOf('Returns')).toEqual(['Returns', 'Shopping', '-$100.00', '-11.1%', '100.0%'])
   })
 
   it('says there is no share to state when refunds beat spending', () => {
@@ -483,17 +483,17 @@ describe('Where it went', () => {
     useReportStore.getState().setFilters({ groupBy: 'group' })
     setQuery({ data })
     renderReport(<WhereItWentReport budgetId="b1" />)
-    expect(cellsOf('Everyday')).toEqual(['Everyday', '$500.00', '50%', '100%'])
+    expect(cellsOf('Everyday')).toEqual(['Everyday', '$500.00', '50.0%', '100.0%'])
     fireEvent.click(screen.getByRole('button', { name: "Open Everyday's categories" }))
     // The opened group's categories, as shares of the group — what is on
     // screen, as the Breakdown stated it.
-    expect(cellsOf('Groceries')).toEqual(['Groceries', '$300.00', '60%', '60%'])
+    expect(cellsOf('Groceries')).toEqual(['Groceries', '$300.00', '60.0%', '60.0%'])
     expect(card('Everyday').value).toBe('$500.00')
     expect(
       screen.getByText('2 of 3 categories make 80% of the spending in Everyday.')
     ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'All groups' }))
-    expect(cellsOf('Home')).toEqual(['Home', '$500.00', '50%', '50%'])
+    expect(cellsOf('Home')).toEqual(['Home', '$500.00', '50.0%', '50.0%'])
   })
 
   it("lists an opened group's transactions — the rows its line added up", () => {

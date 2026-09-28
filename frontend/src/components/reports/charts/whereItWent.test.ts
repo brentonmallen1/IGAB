@@ -7,6 +7,8 @@ import {
   indexTo80,
   rankedLines,
   rankedTable,
+  runningLabel,
+  shareLabel,
   type RankedLines,
 } from './whereItWent'
 import pareto from '../../../../../shared/pareto_cases.json'
@@ -287,6 +289,45 @@ describe('concentrationSentence', () => {
     ]) {
       expect(concentrationSentence(n, of, 'category')).not.toMatch(/concentrat|spread|consider/)
     }
+  })
+})
+
+describe('shareLabel and runningLabel', () => {
+  it('print tenths, cut rather than rounded', () => {
+    expect(shareLabel(29.66)).toBe('29.6%')
+    expect(runningLabel(29.66)).toBe('29.6%')
+  })
+
+  it('print a row above the 80% mark below 80, and 100 only once every line is in', () => {
+    // Rounded, 79.96% read "80.0%" above the line that says 80% is reached.
+    expect(runningLabel(79.96)).toBe('79.9%')
+    expect(runningLabel(80)).toBe('80.0%')
+    expect(runningLabel(99.96)).toBe('99.9%')
+    expect(runningLabel(100)).toBe('100.0%')
+  })
+
+  it("print the first row's share and running share alike", () => {
+    // Rounding one and cutting the other read "24%" beside "23%".
+    expect(shareLabel(23.69)).toBe(runningLabel(23.69))
+  })
+
+  it('keep a figure floating point lands a hair under', () => {
+    expect(0.57 * 100).toBeLessThan(57)
+    expect(runningLabel(0.57 * 100)).toBe('57.0%')
+  })
+
+  it('say "<0.1%" for a line too small to print, not "0.0%"', () => {
+    expect(shareLabel(0.04)).toBe('<0.1%')
+    expect(shareLabel(0)).toBe('0.0%')
+  })
+
+  it('sign a line that took back more than it spent, cut toward zero', () => {
+    expect(shareLabel(-11.11)).toBe('-11.1%')
+  })
+
+  it('dash a missing share', () => {
+    expect(shareLabel(null)).toBe('—')
+    expect(runningLabel(null)).toBe('—')
   })
 })
 

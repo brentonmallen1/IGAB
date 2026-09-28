@@ -119,9 +119,16 @@
     display: none;
   }
 
-  .wiw__table th,
-  .wiw__table td {
+  .report-table.wiw__table th,
+  .report-table.wiw__table td,
+  .report-table.wiw__table tfoot td {
     padding-left: var(--spacing-xs);
     padding-right: var(--spacing-xs);
+  }
+
+  /* "Running share" on one line was the widest thing in the table and pushed
+     its own column out of the card; the figures under it stay on one line. */
+  .wiw__table th {
+    white-space: normal;
   }
 }
