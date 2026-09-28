@@ -86,7 +86,10 @@ export function PayoffPill({ liability }: Props) {
     )
   }
 
-  const liveNever = liability.has_live_projection && liability.live_never_pays_off
+  // The server's one verdict (`amortization.payoff_verdict`) decides which
+  // payment leads; the baseline's date is read only as the secondary line.
+  const observed = liability.payoff_basis === 'observed'
+  const liveNever = observed && liability.payoff_never
   const baselineNever = liability.baseline_never_pays_off
   const interestNow = formatMoney(Number(liability.monthly_interest_now))
   // The computed figure, not the stored one — for a percentage rule they are
@@ -123,7 +126,7 @@ export function PayoffPill({ liability }: Props) {
     )
   }
 
-  if (baselineNever && !liability.has_live_projection) {
+  if (!observed && liability.payoff_never) {
     return (
       <div className="payoff-pill payoff-pill--warning">
         <AlertTriangle size={18} />
@@ -139,15 +142,15 @@ export function PayoffPill({ liability }: Props) {
     )
   }
 
-  if (liability.has_live_projection && liability.live_payoff_date) {
+  if (observed && liability.payoff_date) {
     const differs =
       liability.baseline_payoff_date !== null &&
-      liability.baseline_payoff_date.slice(0, 7) !== liability.live_payoff_date.slice(0, 7)
+      liability.baseline_payoff_date.slice(0, 7) !== liability.payoff_date.slice(0, 7)
     return (
       <div className="payoff-pill">
         <div>
           <div className="payoff-pill__main">
-            Paid off around <strong>{formatMonth(liability.live_payoff_date)}</strong>
+            Paid off around <strong>{formatMonth(liability.payoff_date)}</strong>
           </div>
           <div className="payoff-pill__sub">
             {liability.typical_recent_payment !== null
@@ -169,9 +172,9 @@ export function PayoffPill({ liability }: Props) {
     <div className="payoff-pill">
       <div>
         <div className="payoff-pill__main">
-          {liability.baseline_payoff_date ? (
+          {liability.payoff_date ? (
             <>
-              Paid off by <strong>{formatMonth(liability.baseline_payoff_date)}</strong>
+              Paid off by <strong>{formatMonth(liability.payoff_date)}</strong>
             </>
           ) : (
             'Payoff date unknown'

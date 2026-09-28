@@ -38,7 +38,7 @@ export const CATCH_OUTS: CatchOut[] = [
     id: 'uncategorized-inflow',
     title: 'Money arriving with no category is income',
     detail:
-      'A refund or a reimbursement left uncategorized raises income and Ready to Assign. File it to the category it paid back and it nets against that spending instead.',
+      'A refund or a reimbursement left uncategorized in a cash account raises income and Ready to Assign. File it to the category it paid back and it nets against that spending instead. On a credit card it is never income: it pays the card down.',
     tryIt: preset('transaction', 'checking', 'checking', { direction: 'in' }),
   },
   {

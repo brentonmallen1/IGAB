@@ -8,7 +8,7 @@
  * "Harborstone Uti…" on the other. Two features use the rule, so it lives in
  * utils/.
  *
- * The threshold is genuinely per-caller: a Pareto bar label has less room than
+ * The threshold is genuinely per-caller: a bar-axis label has less room than
  * a Sankey node. So `max` stays a parameter and the RULE lives here — that is
  * the difference between a deliberate variation and eight copies.
  */

@@ -3,7 +3,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -18,20 +17,21 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { chartColor } from './chartColors'
-import { monthWiderByLabel, rollupTrends } from './spendingTrends'
+import { ChartLegend } from './ChartLegend'
+import { MIXED_SIGN_STACK } from './mixedSignStack'
+import { OTHER_KEY, rollupTrends, stackTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
+import { reportMonthLabel } from '../../../utils/reportMonths'
+import { averagedOver } from './averagedOver'
 
 interface Props {
   budgetId: string
 }
-
-const MAX_SERIES = 10
 
 /**
  * Spending over time for a chosen set of categories — the basic report that
@@ -40,13 +40,16 @@ const MAX_SERIES = 10
  * follows a tag follows it here too.
  */
 export function SpendingTrendsReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(340)
   const { filters } = useReportStore()
   const groupBy = resolveGroupBy('spending-trends', filters.groupBy)
   const [includeSavings, setIncludeSavings] = useState(false)
   const [chart, setChart] = useState<'stacked' | 'lines'>('stacked')
+  // Which series the legend is pointing at. The palette repeats past its
+  // eighth slot, so this is what tells two same-coloured series apart.
+  const [highlight, setHighlight] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const reportScope = useReportScope()
@@ -60,27 +63,30 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   )
 
   const rolled = useMemo(() => (data ? rollupTrends(data, groupBy) : []), [data, groupBy])
-  const shown = rolled.slice(0, MAX_SERIES)
-  // Month label → the month's total across EVERY series. Only the ten
-  // largest series are stacked, so the tooltip's own sum is a subtotal.
-  const widerFor = useMemo(
-    () => (data ? monthWiderByLabel(data, formatMonth) : () => undefined),
-    [data, formatMonth]
+  // One label for every month on the page: "Sep 26", and "Sep 26 so far" for
+  // the running month, which the server names.
+  const runningMonth = data?.running_month ?? null
+  const monthLabel = useMemo(
+    () => (m: string) => reportMonthLabel(m, m === runningMonth, formatMonthShort),
+    [runningMonth, formatMonthShort]
   )
-  const chartData = useMemo(() => {
-    if (!data) return []
-    return data.months.map((m, i) => {
-      const row: Record<string, string | number> = { month: formatMonth(m) }
-      for (const s of shown) row[s.name] = s.monthly[i] ?? 0
-      return row
-    })
-  }, [data, shown, formatMonth])
+  // Bars stack every named series plus Other, so each is its month's total.
+  // Lines draw the named series alone: they are not a stack, and an Other
+  // line would be a series nobody asked to follow.
+  const stacked = useMemo(
+    () => (data ? stackTrends(data, rolled, monthLabel) : { rows: [], series: [] }),
+    [data, rolled, monthLabel]
+  )
+  const series =
+    chart === 'stacked' ? stacked.series : stacked.series.filter((s) => s.key !== OTHER_KEY)
 
   if (isLoading) return <div className="report-loading">Loading...</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const avg = data.months.length ? data.total / data.months.length : 0
+  // The average is served over the months the range holds whole and that are
+  // over: a range through today drew the running month and divided by it.
+  const lastMonth = data.months[data.months.length - 1]
   const last = data.monthly_totals[data.monthly_totals.length - 1] ?? 0
 
   return (
@@ -97,7 +103,12 @@ export function SpendingTrendsReport({ budgetId }: Props) {
             Savings and debt payments are left out unless you include them; a note says how much
             that was, so a car payment that is missing is never mistaken for lost data.
           </p>
+          <p>
+            The average counts complete months only; a month still running is shown as &ldquo;so
+            far&rdquo; and left out of it.
+          </p>
           <ReportScopeNote report="spending-trends" />
+          <SpendingClassNote />
         </ReportInfoButton>
         <div className="flex-row">
           <button
@@ -146,14 +157,26 @@ export function SpendingTrendsReport({ budgetId }: Props) {
         <div ref={captureRef} className="report-capture">
           <MetricRow>
             <MetricCard label="Total" value={formatMoney(data.total)} />
-            <MetricCard label="Average / month" value={formatMoney(avg)} />
-            <MetricCard label="Latest month" value={formatMoney(last)} />
+            <MetricCard
+              label="Average / month"
+              value={formatMoneyOrDash(data.avg_monthly)}
+              sub={
+                data.months_averaged > 0
+                  ? averagedOver('per month', data.months_averaged)
+                  : 'no complete month in this range'
+              }
+            />
+            {lastMonth && <MetricCard label={monthLabel(lastMonth)} value={formatMoney(last)} />}
           </MetricRow>
 
           <div className="report-chart" style={{ height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
               {chart === 'stacked' ? (
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart
+                  data={stacked.rows}
+                  {...MIXED_SIGN_STACK}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <YAxis
@@ -174,18 +197,24 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                         }))}
                         label={String(label ?? '')}
                         showTotal
-                        wider={widerFor(String(label ?? ''))}
                         formatter={formatMoney}
                       />
                     )}
                   />
-                  <Legend />
-                  {shown.map((s, idx) => (
-                    <Bar key={s.key} dataKey={s.name} stackId="stack" fill={chartColor(idx)} />
+                  {series.map((s) => (
+                    <Bar
+                      key={s.key}
+                      dataKey={s.key}
+                      name={s.name}
+                      stackId="stack"
+                      fill={s.color}
+                      fillOpacity={highlight && highlight !== s.key ? 0.25 : 1}
+                      isAnimationActive={false}
+                    />
                   ))}
                 </BarChart>
               ) : (
-                <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <LineChart data={stacked.rows} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <YAxis
@@ -209,21 +238,36 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                       />
                     )}
                   />
-                  <Legend />
-                  {shown.map((s, idx) => (
+                  {series.map((s) => (
                     <Line
                       key={s.key}
                       type="monotone"
-                      dataKey={s.name}
-                      stroke={chartColor(idx)}
+                      dataKey={s.key}
+                      name={s.name}
+                      stroke={s.color}
+                      strokeOpacity={highlight && highlight !== s.key ? 0.2 : 1}
                       dot={false}
                       strokeWidth={2}
+                      isAnimationActive={false}
                     />
                   ))}
                 </LineChart>
               )}
             </ResponsiveContainer>
           </div>
+
+          {/* In stack order, not recharts' own legend: past eight series the
+              palette repeats, and this list is what says which is which. */}
+          <ChartLegend
+            series={series.map((s) => ({
+              id: s.key,
+              name: s.name,
+              color: s.color,
+              value: formatMoney(s.total),
+            }))}
+            active={highlight}
+            onHover={setHighlight}
+          />
 
           <table className="report-table">
             <caption className="sr-only">Spending by month</caption>
@@ -234,7 +278,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                 </th>
                 {data.months.map((m) => (
                   <th key={m} scope="col" style={{ textAlign: 'right' }}>
-                    {formatMonth(m)}
+                    {monthLabel(m)}
                   </th>
                 ))}
                 <th scope="col" style={{ textAlign: 'right' }}>

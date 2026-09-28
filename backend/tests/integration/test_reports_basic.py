@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.domain.dates import add_months
+from igab.domain.dates import add_months, month_end
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_basics import income_by_source, spending_trends
 from igab.services.report_service import ReportService
@@ -71,6 +71,39 @@ class TestSpendingTrends:
         # Largest first, so the chart's top series is the one that matters.
         assert body["series"][0]["name"] == "Groceries"
         assert body["series"][0]["group_name"] == "Everyday"
+
+    async def test_the_average_divides_by_complete_months_only(self, db_session, api_client):
+        """D5: the range runs through today, so it draws the running month —
+        named, and never averaged. The average divided the window's 290 by
+        both months drawn (145) while this month was still being spent."""
+        budget, *_ = await _setup(db_session, api_client)
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-trends",
+            params={"start_date": LAST.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        body = r.json()
+        assert body["running_month"] == THIS.isoformat()
+        assert body["months_averaged"] == 1
+        assert Decimal(str(body["avg_monthly"])) == Decimal("100.00")
+
+    async def test_a_range_inside_the_running_month_has_no_average(self, db_session, api_client):
+        budget, *_ = await _setup(db_session, api_client)
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-trends",
+            params={"start_date": THIS.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        body = r.json()
+        assert (body["months_averaged"], body["avg_monthly"]) == (0, None)
+
+    async def test_a_past_range_has_no_running_month(self, db_session, api_client):
+        budget, *_ = await _setup(db_session, api_client)
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-trends",
+            params={"start_date": LAST.isoformat(), "end_date": month_end(LAST).isoformat()},
+        )
+        body = r.json()
+        assert body["running_month"] is None
+        assert body["months_averaged"] == 1
 
     async def test_a_saved_filter_scopes_it_and_a_tag_joins_the_scope(self, db_session, api_client):
         budget, _, _, groceries, fun = await _setup(db_session, api_client)
@@ -227,7 +260,10 @@ class TestCategoryHistory:
             f"/api/v1/{budget.id}/reports/category-history",
             params={"category_id": str(groceries.id), "months": 1},
         )
-        assert Decimal(str(r.json()["months"][0]["available"])) == Decimal("50.00")
+        # One complete month and the running one: this month's is the last row.
+        months = r.json()["months"]
+        assert [m["partial_month"] for m in months] == [False, True]
+        assert Decimal(str(months[-1]["available"])) == Decimal("50.00")
 
     async def test_another_budgets_category_is_not_found(self, db_session, api_client):
         budget, *_ = await _setup(db_session, api_client)
@@ -242,8 +278,8 @@ class TestCategoryHistory:
         assert r.status_code == 404
 
 
-class TestEssentialsRunway:
-    async def test_runway_is_the_fund_over_a_lean_month(self, db_session, api_client):
+class TestEssentialsFundRunway:
+    async def test_the_fund_lasts_its_total_over_a_lean_month(self, db_session, api_client):
         budget, checking, group, groceries, _ = await _setup(db_session, api_client)
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
@@ -260,21 +296,24 @@ class TestEssentialsRunway:
         r = await api_client.get(f"/api/v1/{budget.id}/reports/essentials")
         assert r.status_code == 200, r.text
         body = r.json()
-        # 250 of essential spend in the last 90 days ÷ 3 = 83.33 a month.
+        # The last three complete months, and the history holds one: last
+        # month's 100 of essentials. This month's 150 is still running.
         headline = Decimal(str(body["essentials"]["monthly"]))
-        assert headline == Decimal("83.33")
+        assert headline == Decimal("100.00")
         assert [c["name"] for c in body["emergency_fund"]["categories"]] == ["Emergency Fund"]
         assert body["emergency_fund"]["set_up"] is True
         assert Decimal(str(body["emergency_fund"]["total"])) == Decimal("500.00")
-        assert Decimal(str(body["runway_months"])) == (Decimal("500") / headline).quantize(
-            Decimal("0.1")
-        )
+        fund_runway = body["fund_runway"]
+        assert (fund_runway["spending"], fund_runway["money"]) == ("essentials", "fund")
+        assert Decimal(str(fund_runway["months"])) == Decimal("5.0")  # 500 / 100
+        assert Decimal(str(fund_runway["card_debt"])) == Decimal("0.00")
 
     async def test_no_fund_means_no_runway_not_zero(self, db_session, api_client):
         budget, *_ = await _setup(db_session, api_client)
         r = await api_client.get(f"/api/v1/{budget.id}/reports/essentials")
         body = r.json()
-        assert body["runway_months"] is None
+        assert body["fund_runway"]["months"] is None
+        assert body["fund_runway"]["money_total"] is None
         assert body["emergency_fund"] == {
             "set_up": False,
             "total": None,
@@ -282,7 +321,6 @@ class TestEssentialsRunway:
             "accounts": [],
             "external": {"declared": False, "amount": None, "as_of": None, "note": None},
         }
-        assert body["runway_months"] is None
 
 
 async def test_cost_of_living_rolls_the_wide_tier_up_by_group(db_session, api_client):
@@ -428,12 +466,13 @@ class TestTheClassRuleIsOneRule:
         trends = (await spending_trends(svc, budget.id, *window, **scope))["total"]
         days = await svc.day_patterns(budget.id, *window, **scope)
         by_day = sum((d["total"] for d in days["days"]), Decimal("0"))
-        _p, by_payee, _n, _to80 = await svc.payee_analysis(budget.id, *window, **scope)
+        by_payee = (await svc.payee_analysis(budget.id, *window, **scope))["total"]
 
-        assert breakdown == grouped == trends == Decimal("180.00")
-        # The one deliberate gap (stated at `SPENDING_ROW`): the day and payee
-        # views count uncategorized spending the category rollups cannot place.
-        assert by_day == by_payee == breakdown + Decimal("15.00")
+        # 180 of fees and 15 uncategorized. The category rollups used to stop
+        # at 180 — they inner-joined Category, so uncategorized spending had
+        # nowhere to go — while the day and payee views said 195. It is its
+        # own Uncategorized line now, on all five.
+        assert breakdown == grouped == trends == by_day == by_payee == Decimal("195.00")
 
 
 async def _sankey_seen(svc, budget_id, window, mode, **scope) -> Decimal:
@@ -452,7 +491,7 @@ _SCOPED_READERS = {
     "large_transactions": lambda svc, b, w, **s: _count(svc.large_transactions(b, *w, **s)),
     "cash_flow_sankey_spent": lambda svc, b, w, **s: _sankey_seen(svc, b, w, "spent", **s),
     "cash_flow_sankey_budgeted": lambda svc, b, w, **s: _sankey_seen(svc, b, w, "budgeted", **s),
-    "payee_analysis": lambda svc, b, w, **s: _nth(svc.payee_analysis(b, *w, **s), 1),
+    "payee_analysis": lambda svc, b, w, **s: _key(svc.payee_analysis(b, *w, **s), "total"),
 }
 
 
@@ -514,8 +553,8 @@ class TestAnEmptyScopeReturnsNothingNotEverything:
         svc = ReportService(db_session)
         window = (add_months(THIS, -1), TODAY)
 
-        _p, unscoped, _n, _to80 = await svc.payee_analysis(budget.id, *window)
-        _p, empty, _n, _to80 = await svc.payee_analysis(budget.id, *window, payee_ids=[])
+        unscoped = (await svc.payee_analysis(budget.id, *window))["total"]
+        empty = (await svc.payee_analysis(budget.id, *window, payee_ids=[]))["total"]
 
         assert unscoped == Decimal("60.00")
         assert empty == Decimal("0")

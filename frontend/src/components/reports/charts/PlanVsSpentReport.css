@@ -1,0 +1,242 @@
+/* The one-line answer above the totals: "N chronic · N over in Aug · most
+   over: X". */
+.plan-spent__headline {
+  margin: 0 0 var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.plan-spent__headline strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text in --color-negative, which contrast.test.ts holds to AA on every
+   surface; --chart-negative is a fill colour and is not. */
+.plan-spent__headline--warn strong {
+  color: var(--color-negative);
+}
+
+.plan-spent__scroll {
+  overflow-x: auto;
+}
+
+.plan-spent__table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: var(--font-size-sm);
+}
+
+/* The category column stays put while the months scroll under it: on a phone
+   only two or three months fit, and a column of bare figures with no name
+   beside them is unreadable. It paints the section's own surface so the
+   months slide under it rather than showing through. */
+.plan-spent__cat-header,
+.plan-spent__cat-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+}
+
+.plan-spent__cat-header {
+  text-align: left;
+  padding: 6px var(--spacing-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  min-width: 160px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.plan-spent__month-header {
+  vertical-align: bottom;
+  padding: 6px 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  text-align: center;
+  white-space: nowrap;
+  min-width: 60px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Explains an over-plan row with no Chronic flag; not a warning. */
+.plan-spent__badge--quiet {
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.plan-spent__num-header {
+  vertical-align: bottom;
+  padding: 6px var(--spacing-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* A row's header cell: the category's name, not a heading's weight. */
+.plan-spent__cat-cell {
+  padding: 4px var(--spacing-sm);
+  white-space: nowrap;
+  max-width: 220px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.plan-spent__cat-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  max-width: 170px;
+}
+
+.plan-spent__cat-btn:hover .plan-spent__cat-name {
+  color: var(--color-accent);
+}
+
+.plan-spent__cat-name {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-spent__cat-group {
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-spent__badge {
+  display: inline-block;
+  margin-left: var(--spacing-xs);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chart-negative) 12%, transparent);
+  color: var(--chart-negative);
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.plan-spent__cell {
+  padding: 4px 6px;
+  text-align: right;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--bg-primary);
+}
+
+.plan-spent__cell--under {
+  color: var(--text-muted);
+}
+
+.plan-spent__cell--over {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.plan-spent__cell--clickable {
+  cursor: pointer;
+}
+
+.plan-spent__cell--clickable:hover {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.plan-spent__num {
+  padding: 4px var(--spacing-sm);
+  text-align: right;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Where the months stop and the totals begin. */
+.plan-spent__col--first-total {
+  border-left: 1px solid var(--edge-strong);
+}
+
+.plan-spent__total {
+  font-weight: 600;
+}
+
+/* The month in progress: month-to-date cells, counted in no verdict. Italic
+   rather than faded, so its figures keep their contrast in every theme. */
+.plan-spent__month-header--running,
+.plan-spent__cell--running {
+  font-style: italic;
+}
+
+/* The totals row: each month across every category. */
+.plan-spent__totals-row > * {
+  border-top: 1px solid var(--edge-strong);
+}
+
+.plan-spent__foot-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.plan-spent__month-total--over {
+  color: var(--color-negative);
+  font-weight: 600;
+}
+
+.plan-spent__month-total--under,
+.plan-spent__month-total--on,
+.plan-spent__month-total--running {
+  color: var(--text-secondary);
+}
+
+.plan-spent__running-row .plan-spent__foot-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* A phone fits the name column, two or three months and the Over and Total
+   columns; Planned and Spent live in the Total cell's title and its drill
+   there. The name column gives up width first, and its long names ellipsize
+   rather than push the months off. */
+@media (max-width: 768px) {
+  .plan-spent__col--wide {
+    display: none;
+  }
+
+  .plan-spent__cat-header {
+    min-width: 112px;
+  }
+
+  .plan-spent__cat-cell {
+    max-width: 128px;
+    overflow: hidden;
+  }
+
+  .plan-spent__cat-btn {
+    max-width: 112px;
+  }
+
+  /* Under the name, not beside it: beside it the badge ran out of the sticky
+     column and over the months scrolling beneath. */
+  .plan-spent__cat-cell .plan-spent__badge {
+    display: block;
+    width: max-content;
+    margin: 2px 0 0;
+  }
+}

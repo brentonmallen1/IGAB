@@ -46,24 +46,24 @@ from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.domain.tag_implication import COST_OF_LIVING_KEY, ESSENTIAL_KEY, keys_counting_as
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
-    IS_SAVINGS_CATEGORY,
     SAVINGS_CATEGORY_KEYS,
     SAVINGS_KEY,
     SAVINGS_SENT_OUT,
     SAVINGS_SENT_OUT_MODE,
 )
 from igab.repositories.txn_filters import (
+    AFTER_BUDGET_START,
     CASH_FLOW_ROW,
     CLASS_TOTAL_ROW,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
     LEAF,
     NOT_DELETED,
-    PLANNED_SPEND_ROW,
     POSTED,
     STARTING_BALANCE_ROW,
     TRANSFER_LEG,
     category_tagged,
+    dated_from_budget_start,
     row_category,
 )
 
@@ -77,6 +77,8 @@ class ActivityClass(StrEnum):
     DEBT_PRINCIPAL = "debt_principal"
     #: Money moved between two accounts we track. Neutral: never income or
     #: expense. Named rather than filtered out, so the partition stays total.
+    #: Also the card's side of a payment whose checking side was never linked
+    #: (rule 10): the same money, one leg short.
     TRANSFER_INTERNAL = "transfer_internal"
     #: Growth (or loss) inside a tracked asset — dividends, market movement,
     #: employer contributions. Emphatically NOT saving: counting market growth
@@ -87,11 +89,13 @@ class ActivityClass(StrEnum):
     DEBT_INTEREST = "debt_interest"
     #: An account's starting balance: a row under the Starting Balance payee
     #: (`txn_filters.STARTING_BALANCE_ROW`), which the first sync, a YNAB
-    #: import and the sample budget all write. Never income and never
-    #: spending — it is where counting begins, not money that moved — so no
-    #: report family counts it. The budget's own arithmetic never reads a
-    #: class: Ready to Assign, envelopes and card set-asides see the row
-    #: exactly as they always did.
+    #: import and the sample budget all write — and the unfiled history from
+    #: before an account's `budget_start_date`, the rest of the position it
+    #: arrived with (rule 4). Never income and never spending — it is where
+    #: counting begins, not money the budget moved — so no report family
+    #: counts it. The budget's own arithmetic never reads a class: Ready to
+    #: Assign, envelopes and card set-asides see the rows exactly as they
+    #: always did.
     OPENING_BALANCE = "opening_balance"
 
 
@@ -101,11 +105,13 @@ class ActivityReason(StrEnum):
     STARTING_BALANCE = "starting_balance"
     TAGGED_SAVINGS = "tagged_savings"
     TAGGED_DEBT = "tagged_debt"
+    BEFORE_BUDGET_START = "before_budget_start"
     TRANSFER_TO_TRACKED_ASSET = "transfer_to_tracked_asset"
     TRANSFER_TO_TRACKED_DEBT = "transfer_to_tracked_debt"
     INTERNAL_TRANSFER = "internal_transfer"
     TRACKED_ASSET_ACTIVITY = "tracked_asset_activity"
     TRACKED_DEBT_ACTIVITY = "tracked_debt_activity"
+    UNFILED_CARD_CREDIT = "unfiled_card_credit"
     UNCATEGORIZED_INFLOW = "uncategorized_inflow"
     DEFAULT_SPENDING = "default_spending"
 
@@ -119,6 +125,11 @@ REASON_TEXT: dict[ActivityReason, str] = {
     ),
     ActivityReason.TAGGED_SAVINGS: "its category counts money as saved when it leaves the budget",
     ActivityReason.TAGGED_DEBT: "its category is tagged as debt principal",
+    ActivityReason.BEFORE_BUDGET_START: (
+        "it is from before its account's budget start date and has no category — part of the "
+        "balance the account arrived with, not money this budget moved; give it a category to "
+        "count it"
+    ),
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: (
         "it moves money to a tracked account you marked as savings, so it builds savings "
         "rather than spending it"
@@ -133,6 +144,11 @@ REASON_TEXT: dict[ActivityReason, str] = {
     ActivityReason.TRACKED_DEBT_ACTIVITY: (
         "it happened inside a tracked debt — interest or fees, not money you budgeted"
     ),
+    ActivityReason.UNFILED_CARD_CREDIT: (
+        "it is money arriving on a credit card with no category, which lowers what you owe "
+        "rather than earning anything — most likely a payment not linked to its checking side, "
+        "or a refund not yet filed"
+    ),
     ActivityReason.UNCATEGORIZED_INFLOW: "it is money arriving with no category, ready to assign",
     ActivityReason.DEFAULT_SPENDING: "it is ordinary spending from a budget account",
 }
@@ -146,11 +162,13 @@ REASON_LABEL: dict[ActivityReason, str] = {
     ActivityReason.STARTING_BALANCE: "starting balance",
     ActivityReason.TAGGED_SAVINGS: "left the budget from a Savings category",
     ActivityReason.TAGGED_DEBT: "category tagged Debt principal",
+    ActivityReason.BEFORE_BUDGET_START: "from before the account's budget start",
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: "transfer to a tracked account",
     ActivityReason.TRANSFER_TO_TRACKED_DEBT: "payment to a tracked debt",
     ActivityReason.INTERNAL_TRANSFER: "move between your own accounts",
     ActivityReason.TRACKED_ASSET_ACTIVITY: "activity inside a tracked account",
     ActivityReason.TRACKED_DEBT_ACTIVITY: "activity inside a tracked debt",
+    ActivityReason.UNFILED_CARD_CREDIT: "card credit not linked or filed",
     ActivityReason.UNCATEGORIZED_INFLOW: "income",
     ActivityReason.DEFAULT_SPENDING: "spending",
 }
@@ -201,7 +219,7 @@ _counterpart_is_liability = (
 
 #: Whether the counterpart account counts as savings. Coalesced to true for the
 #: same three-valued reason as `_counterpart_is_liability`: an unresolvable
-#: counterpart must not flip rule 6's carve-out (below) on by reading UNKNOWN.
+#: counterpart must not flip rule 7's carve-out (below) on by reading UNKNOWN.
 _counterpart_counts_as_savings = func.coalesce(
     _account_field(COUNTERPART_ACCOUNT_ID, Account.counts_as_savings), True
 )
@@ -297,6 +315,11 @@ class _Inputs:
     #: `transfer_leg`, where the oracle asks `STARTING_BALANCE_ROW`'s EXISTS —
     #: the harness holds the two readings to each other.
     starting_balance: Any
+    #: The row is dated before its own account's `budget_start_date`. An input
+    #: for the same reason: the joined rules read the account row they already
+    #: join, where the oracle asks `txn_filters.AFTER_BUDGET_START`'s EXISTS.
+    #: Both read the one comparison, `txn_filters.dated_from_budget_start`.
+    before_budget_start: Any
     # The row's own facts. The shipped and oracle rules both read them straight
     # off `transactions`, so both instances pass the same expressions; they are
     # inputs rather than inline so `literal_inputs` can ask the rules about a
@@ -314,7 +337,9 @@ Rule = tuple[ColumnElement[bool], ActivityClass, ActivityReason]
 def _rules(c: _Inputs) -> list[Rule]:
     """(condition, class, reason) in priority order. A starting balance comes
     first, because it says no money moved at all; then tags, so a user's
-    explicit statement about money that did move beats an inferred one."""
+    explicit statement about money that did move beats an inferred one; then
+    the rest of an account's opening position, ahead of every inference about
+    where money went."""
     return [
         # Rule 1, ahead of the tags: a starting balance is not an inference
         # about what money did but the statement that none moved — the row is
@@ -325,8 +350,8 @@ def _rules(c: _Inputs) -> list[Rule]:
         # payment.
         #
         # Ahead of the tracked-account rules too, which is where it earns its
-        # keep off budget: rule 8 called a tracked loan's whole opening
-        # principal "interest & fees", and rule 7 called a brokerage's opening
+        # keep off budget: rule 9 called a tracked loan's whole opening
+        # principal "interest & fees", and rule 8 called a brokerage's opening
         # value investment growth.
         #
         # Never a transfer leg. A starting balance someone later linked to the
@@ -359,7 +384,7 @@ def _rules(c: _Inputs) -> list[Rule]:
         #
         # Nothing is lost by dropping it. A transfer from the envelope to a
         # tracked asset account marked `counts_as_savings` still classes SAVINGS
-        # by rule 4 below, which asks where the money went rather than what the
+        # by rule 5 below, which asks where the money went rather than what the
         # category is called.
         # The Savings report is unaffected: it reads the tag and the
         # assignment rows, never the class.
@@ -373,9 +398,51 @@ def _rules(c: _Inputs) -> list[Rule]:
         # OUT — the default for the Savings tag, so no existing figure moved.
         # A kept-here category's balance is its savings: its outflows fall
         # through to the rules below, so a car repair paid from it is spending
-        # and a move to a tracked savings account is SAVINGS by rule 4.
+        # and a move to a tracked savings account is SAVINGS by rule 5.
         (c.savings_sent_out, ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
         (c.tagged_debt, ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
+        # Rule 4: a row from before its account joined the budget that nobody
+        # filed. It is the rest of the position the account arrived with —
+        # what rule 1 says in one row, spread over the history the bank handed
+        # over — so no report counts it. A card linked with three months of
+        # history counted every swipe in them as spending while the checking
+        # side's payments, filed to the bills they paid, counted the same
+        # money again; and the card's side of each payment, a credit with no
+        # category, read as income, the card's own name among the top income
+        # sources.
+        #
+        # Uncategorized only, and that is the whole escape hatch. The sync
+        # leaves these rows unfiled on purpose and `NEEDS_CATEGORY` stops
+        # asking about them (`txn_filters.AFTER_BUDGET_START`, the same
+        # comparison), so a row someone filed by hand is one they chose to
+        # count: it falls through to the rules below and counts as its
+        # category says.
+        #
+        # On-budget accounts only, like `NEEDS_CATEGORY`. A tracked account's
+        # rows are never filed, so "nobody filed it" says nothing there, and
+        # rules 8 and 9 already keep them out of income and spending.
+        #
+        # Ahead of the transfer rules, and deliberately not guarded against a
+        # transfer leg the way rule 1 is. Rule 1 names one row, and an opening
+        # someone linked IS the move that funded it; this rule names an
+        # account's past, and a leg's date puts it there however it is linked.
+        # Behind them, an unfiled move to a brokerage made before the start
+        # date would still count as savings, and a car sold before it as
+        # income (rule 7's carve-out). The partner leg keeps its own reading,
+        # by its own account's date.
+        #
+        # After rule 1, which names the opening row itself and so keeps the
+        # more specific reason for it. After the tags, which it can never
+        # meet: they read a category, and this reads a row with none.
+        (
+            and_(
+                c.own_on_budget == True,  # noqa: E712
+                c.before_budget_start,
+                ~c.categorized,
+            ),
+            ActivityClass.OPENING_BALANCE,
+            ActivityReason.BEFORE_BUDGET_START,
+        ),
         # Where the money went decides the class, not whether the user bothered to
         # categorize it. An uncategorized transfer to a brokerage is still saving:
         # it leaves the budget and stays in net worth. Requiring a category here
@@ -387,7 +454,7 @@ def _rules(c: _Inputs) -> list[Rule]:
         # moves money into a tracked asset too, and calling that saving said a
         # household that bought a $9,000 car saved $9,000 that month — and
         # selling it later un-saved it. A non-savings asset is treated like an
-        # outside payee on the budget side: see rule 6's carve-out.
+        # outside payee on the budget side: see rule 7's carve-out.
         (
             and_(
                 c.transfer_leg,
@@ -411,9 +478,10 @@ def _rules(c: _Inputs) -> list[Rule]:
         #
         # The carve-out: the ON-budget leg of a transfer with a tracked asset
         # that does not count as savings is not neutral. Money arriving from a
-        # car sale is income ready to assign (rule 9); money leaving to buy one
+        # car sale is income ready to assign (rule 11) — unless it lands on a
+        # card, which is never paid income (rule 10); money leaving to buy one
         # is spending (the default). The off-budget leg of the same transfer
-        # still lands here — dropping it to rule 7 would call the sale an
+        # still lands here — dropping it to rule 8 would call the sale an
         # investment loss inside the vehicle account.
         (
             and_(
@@ -439,6 +507,42 @@ def _rules(c: _Inputs) -> list[Rule]:
             ActivityClass.DEBT_INTEREST,
             ActivityReason.TRACKED_DEBT_ACTIVITY,
         ),
+        # Rule 10: money arriving on a card with no category is never income.
+        # A card is paid down, not paid: such a row is the card's side of a
+        # payment whose checking side was never linked, or a refund nobody has
+        # filed yet. Rule 11 read it by its sign alone, so an unlinked $500
+        # payment was $500 of income — money the household already had,
+        # arriving a second time — and the card's own name rose into Income
+        # by Source.
+        #
+        # TRANSFER_INTERNAL, because that is the class the same payment takes
+        # once it is linked (rule 7): money moving between two of the
+        # household's own accounts, which no report counts. The budget reads it
+        # the same way — an unfiled card credit lowers what the card owes and
+        # reaches no envelope (`txn_filters.UNCLAIMED_CARD_ROW`). Not
+        # DEBT_PRINCIPAL: that is money leaving the budget for a tracked debt,
+        # which the savings rate and Cost of living count, and the card's
+        # purchases are already counted as spending — counting what paid them
+        # off as well counts them twice. Not negative SPENDING either: a refund
+        # nets against the category it is filed to, and until it is filed
+        # there is no category to net it against.
+        #
+        # On-budget liabilities, as `txn_filters.CARD_ACCOUNT` means a card: a
+        # line of credit behaves the same. Unguarded against a transfer leg,
+        # because the only one that can arrive here is rule 7's carve-out — a
+        # car sold straight onto the card — and that money reaches no envelope
+        # either. A credit someone filed keeps its filing: a rewards credit
+        # filed to Ready to Assign is income because they said so (rule 11).
+        (
+            and_(
+                c.own_on_budget == True,  # noqa: E712
+                c.own_is_liability,
+                c.amount_positive,
+                ~c.categorized,
+            ),
+            ActivityClass.TRANSFER_INTERNAL,
+            ActivityReason.UNFILED_CARD_CREDIT,
+        ),
         # An inflow category is income whichever way the money moved: a reversed or
         # clawed-back paycheck is negative income, not spending. Sign still decides
         # for UNcategorized rows, where it is the only signal available.
@@ -460,6 +564,10 @@ _SUBQUERY_INPUTS = _Inputs(
     counterpart_counts_as_savings=_counterpart_counts_as_savings,
     transfer_leg=TRANSFER_LEG,
     starting_balance=STARTING_BALANCE_ROW,
+    # NOT EXISTS is exactly "dated before": the row's own account always
+    # resolves (`account_id` is NOT NULL behind an FK), so the EXISTS fails
+    # only on the date.
+    before_budget_start=not_(AFTER_BUDGET_START),
     **_ROW_FACTS,
 )
 
@@ -507,6 +615,9 @@ _JOINED_INPUTS = _Inputs(
     # joins NULL and must read "not a starting balance", never UNKNOWN: the
     # EXISTS in `STARTING_BALANCE_ROW` is two-valued, and so is this.
     starting_balance=_transfer_payee.name.is_not_distinct_from(STARTING_BALANCE_PAYEE),
+    # The own account is already joined for `own_on_budget`; its start date is
+    # read through the one comparison `AFTER_BUDGET_START` uses.
+    before_budget_start=not_(dated_from_budget_start(_own_acct.budget_start_date)),
     **_ROW_FACTS,
 )
 
@@ -601,6 +712,8 @@ class LegFacts:
     #: `transfer_leg`: a linked opening is a real shape, and the rules say
     #: the transfer wins.
     starting_balance: bool
+    #: The row predates its own account's `budget_start_date`.
+    before_budget_start: bool
     #: The counterpart is resolvable and off budget. False for a plain row.
     tracked_counterpart: bool
     #: Coalesced to False (asset) with no counterpart, as both column readers do.
@@ -727,6 +840,24 @@ INCOME_ROW = and_(
     CASH_FLOW_ROW,
     ACTIVITY_CLASS == ActivityClass.INCOME.value,
 )
+
+#: Every row but an account's starting balance, for a report that lists or
+#: draws rows of every class rather than counting a chosen few. Apply
+#: `apply_class_joins` with it.
+#:
+#: A starting balance is where an account's counting begins, not money that
+#: moved. The class-counting reports leave it out by never asking for it; the
+#: three that take every class have to say so. The Cash Flow Sankey drew a
+#: card's opening debt as an "Uncategorized" expense branch, the Event Timeline
+#: made a card's -9,200 opening its "Largest Transaction", and Cash Projection
+#: sampled an account opened inside its history as a deposit of its balance.
+NOT_OPENING_BALANCE = ACTIVITY_CLASS != ActivityClass.OPENING_BALANCE.value
+
+#: Its complement: the rows through which an account arrived in the register —
+#: its Starting Balance, and the unfiled history from before its budget start.
+#: What the balance charts mark as "started tracking" (`domain.tracking_start`)
+#: and leave out of a like-for-like change. Apply `apply_class_joins` with it.
+OPENING_BALANCE_ROW = ACTIVITY_CLASS == ActivityClass.OPENING_BALANCE.value
 
 
 # ─── The previous implementation, kept as a test oracle ──────────────────────
@@ -925,55 +1056,37 @@ def counted_class_filter(
 
 
 #: The system tags whose categories' outflows plan reports count as spent even
-#: though their class is not spending — `planned_spend_filter`'s exception,
+#: though their class is not spending — `domain.plan.plan_effect`'s exception,
 #: stated as data so the Guide's explorer can say so without a second list.
-#: Every savings category, in either mode: see `planned_spend_filter`.
+#: Every savings category, in either mode.
+#:
+#: **Why a savings category is the exception.** Whatever its mode, money
+#: leaving a Savings (or Emergency fund) envelope is money the household
+#: planned to leave, and it can class as something other than spending:
+#: SAVINGS by rule 2 when the envelope counts its savings as they are sent
+#: out, and SAVINGS by rule 5 when a kept-here envelope moves its balance to a
+#: tracked savings account. Counting the envelope's assignments but not that
+#: outflow is a phantom underspend: a Vacation Savings envelope assigned 195 a
+#: month and drained by a 390 flight read +390 against its plan forever, the
+#: gap #182 closed for `long_term_expense`. So against the plan it is spent,
+#: in either mode. "Did this leave the budget as saving?" is a different
+#: question, still answered by the class alone: the savings rate, the spending
+#: rollups and the necessity tiers read their own row sets and do not move
+#: (pinned by `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
+#:
+#: An untagged envelope stays out: its transfer to a brokerage is saving the
+#: plan never meant as spending (`TestThePlannedSpendUniverse`).
+#: `long_term_expense` needs no arm — its payout classes SPENDING since #182 —
+#: and `debt_principal` is money no plan report has ever counted as spent.
+#:
+#: Nor is a Starting Balance someone filed to an envelope, although the
+#: envelope's Activity carries it as it carries any row filed there: it
+#: classes OPENING_BALANCE, which moves neither side of a plan. So a plan
+#: report and the budget page part by exactly those openings — bounded to
+#: ones a person filed by hand, since IGAB's own writers and a YNAB import
+#: never file an opening to an ordinary envelope, and pinned by
+#: `test_opening_balance_class.py::TestThePlanReportsLeaveAFiledOpeningOut`.
 PLANNED_SPEND_TAG_KEYS: tuple[str, ...] = SAVINGS_CATEGORY_KEYS
-
-
-def planned_spend_filter() -> ColumnElement[bool]:
-    """What the plan-vs-actual family may count as "spent", whole.
-
-    `txn_filters.PLANNED_SPEND_ROW` is the row shape; this is the class
-    policy that has to travel with it. They are returned as one predicate
-    because the three readers — `budget_vs_actual`, `cumulative_variance`
-    and `plan_vs_reality` — must ask one question, and every time either
-    half was spelled at the call site the reports drifted apart: the last
-    time, a savings-tagged envelope read its full spend on one report and
-    zero on the other two.
-
-    The caller must still apply `apply_class_joins` — see
-    `counted_class_filter` for why the joins cannot be folded in here.
-
-    **A savings category is the deliberate exception to `counted_classes`.**
-    Whatever its mode, money leaving a Savings (or Emergency fund) envelope
-    is money the household planned to leave, and it can class as something
-    other than spending: SAVINGS by rule 2 when the envelope counts its
-    savings as they are sent out, and SAVINGS by rule 4 when a kept-here
-    envelope moves its balance to a tracked savings account. Counting the
-    envelope's assignments but not that outflow is a phantom underspend: a
-    Vacation Savings envelope assigned 195 a month and drained by a 390 flight
-    read +390 against its plan forever, the gap #182 closed for
-    `long_term_expense`. So against the plan it is spent, in either mode.
-    "Did this leave the budget as saving?" is a different question, still
-    answered by the class alone: the savings rate, the spending rollups and
-    the necessity tiers read their own row sets and do not move (pinned by
-    `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
-
-    An untagged envelope stays out: its transfer to a brokerage is saving the
-    plan never meant as spending (`TestThePlannedSpendUniverse`).
-    `long_term_expense` needs no arm — its payout classes SPENDING since #182 —
-    and `debt_principal` is money no plan report has ever counted as spent.
-
-    Nor is a Starting Balance someone filed to an envelope, although the
-    envelope's Activity carries it as it carries any row filed there: it
-    classes OPENING_BALANCE, which no report counts as spending. So a plan
-    report and the budget page part by exactly those openings — bounded to
-    ones a person filed by hand, since IGAB's own writers and a YNAB import
-    never file an opening to an ordinary envelope, and pinned by
-    `test_opening_balance_class.py::TestThePlanReportsLeaveAFiledOpeningOut`.
-    """
-    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), row_category(IS_SAVINGS_CATEGORY)))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────
@@ -1112,8 +1225,8 @@ def tier_scope(tier: NecessityTier):
 #: Both start from `CLASS_TOTAL_ROW`, ask one class, and split it on the tag
 #: arm `tier_scope` builds from `TIER_TAG_KEYS` — here negated. So it is never
 #: "spending minus Cost of living": those row sets differ in class (debt
-#: principal) and sign convention (the spending rollups are gross), and the
-#: difference can go negative. Pinned in tests/integration/test_discretionary.py.
+#: principal), and the difference can go negative. Pinned in
+#: tests/integration/test_discretionary.py.
 #:
 #: Net of refunds, like the tiers' tag arms: a refund filed to Dining Out
 #: reduces the figure the way it reduces the envelope's activity. An
@@ -1121,9 +1234,8 @@ def tier_scope(tier: NecessityTier):
 #: so it is discretionary until someone files it.
 #:
 #: Here rather than in `txn_filters`, where the row shapes live, because it
-#: reads ACTIVITY_CLASS, which is built from that module's constants — the
-#: reason `planned_spend_filter` lives here too. The row shape it starts from
-#: is `txn_filters.CLASS_TOTAL_ROW`, by name.
+#: reads ACTIVITY_CLASS, which is built from that module's constants. The row
+#: shape it starts from is `txn_filters.CLASS_TOTAL_ROW`, by name.
 DISCRETIONARY_ROW = and_(
     CLASS_TOTAL_ROW,
     ACTIVITY_CLASS == ActivityClass.SPENDING.value,

@@ -53,7 +53,7 @@ describe('DateRangePicker — All Time', () => {
     mount()
     expect(screen.queryByRole('button', { name: 'All Time' })).toBeNull()
     // The fixed presets are unaffected.
-    expect(screen.getByRole('button', { name: 'This Month' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Last Month' })).toBeInTheDocument()
   })
 
   it('is hidden while the span is still loading', () => {
@@ -94,16 +94,18 @@ describe('DateRangePicker presets ahead of Greenwich', () => {
     return onChange
   }
 
-  it('This Month starts on the local 1st and ends today', () => {
-    expect(clickAt('This Month')).toHaveBeenCalledWith('2026-09-01', '2026-09-01')
+  it('This Month so far starts on the local 1st and ends today', () => {
+    expect(clickAt('This Month so far')).toHaveBeenCalledWith('2026-09-01', '2026-09-01')
   })
 
   it('Last Month is the whole previous local month', () => {
     expect(clickAt('Last Month')).toHaveBeenCalledWith('2026-08-01', '2026-08-31')
   })
 
-  it('Last 3 Months starts two month-starts back and ends today', () => {
-    expect(clickAt('Last 3 Months')).toHaveBeenCalledWith('2026-07-01', '2026-09-01')
+  it('Last 3 Months is the three complete months before this one', () => {
+    // It was the running month and the two before, through today: every
+    // figure over it mixed in a partial month (D5).
+    expect(clickAt('Last 3 Months')).toHaveBeenCalledWith('2026-06-01', '2026-08-31')
   })
 
   it('This Year starts on the local New Year', () => {

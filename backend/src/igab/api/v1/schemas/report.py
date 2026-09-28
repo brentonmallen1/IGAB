@@ -7,12 +7,14 @@ from pydantic import ConfigDict, Field
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.domain.enums import TargetStatus
+from igab.domain.runway import MoneyBasis, SpendingBasis
 
 # ─── Existing ─────────────────────────────────────────────────────────────────
 
 
 class SpendingCategory(ApiModel):
-    id: uuid.UUID
+    #: None on the Uncategorized line (`domain.spending.UNCATEGORIZED`).
+    id: uuid.UUID | None
     name: str
     group_name: str
     total: Decimal
@@ -30,6 +32,11 @@ class SpendingReportResponse(ApiModel):
 
 class IncomeExpenseMonth(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     income: Decimal
     #: Money spent. Saving and debt principal are reported separately — both
     #: leave the budget, but neither is spending.
@@ -47,26 +54,33 @@ class IncomeExpenseMonth(ApiModel):
 
 class IncomeExpenseResponse(ApiModel):
     months: list[IncomeExpenseMonth]
+    #: The classes `expenses` counts, served so the Expenses drill-down lists
+    #: them — the client kept its own copy of this list beside a comment
+    #: asking the next reader to keep the two in step.
+    expense_classes: list[str]
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 
 
 class TopCategory(ApiModel):
-    id: uuid.UUID
+    #: None on the Uncategorized line (`domain.spending.UNCATEGORIZED`).
+    id: uuid.UUID | None
     name: str
     group_name: str
     total: Decimal
 
 
 class EssentialsFigures(ApiModel):
-    """What a lean month costs, both ways (`guide.concepts.EssentialsMonthly`).
+    """What a lean month costs, both ways (`guide.concepts.essentials_at`).
 
-    `as_paid` is the 90-day figure as bills landed; `spread` swaps the
-    sinking-fund (Long-term expense) bills in it for a twelfth of the last
-    365 days' worth. `spread_on` is the budget's setting and `monthly` the one
-    it selects — what every target, runway and reserve reads. Both are always
-    served, so a surface can show the other beside it.
+    `as_paid` is the last three complete months' average as bills landed;
+    `spread` swaps the sinking-fund (Long-term expense) bills in it for a
+    twelfth of the last twelve complete months' worth. `spread_on` is the
+    budget's setting and `monthly` the one it selects — what every target,
+    runway and reserve reads. Both are always served, so a surface can show
+    the other beside it. `window_start`/`window_end` are the complete months
+    averaged, so a card can say which; None before any history.
     """
 
     # Validated from the dataclass itself: `monthly` is its property, and the
@@ -77,6 +91,8 @@ class EssentialsFigures(ApiModel):
     spread: Decimal
     spread_on: bool
     monthly: Decimal
+    window_start: date | None
+    window_end: date | None
 
 
 class FundPartOut(ApiModel):
@@ -118,6 +134,47 @@ class EmergencyFundOut(ApiModel):
     external: FundExternalOut
 
 
+class RunwayFigureOut(ApiModel):
+    """How long the money lasts if income stopped, at one choice — the one
+    runway rule (`domain.runway`). Every surface that quotes a runway serves
+    this whole shape, so each can say what it read: which spending, which
+    money, and what the cards owed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    spending: SpendingBasis
+    money: MoneyBasis
+    #: What a month costs on `spending` — the three complete months the
+    #: Essentials headline averages. None when nothing is tagged into the tier.
+    monthly_spending: Decimal | None
+    #: The money counted, on-budget card debt already subtracted. None when it
+    #: would count an emergency fund nobody has chosen.
+    money_total: Decimal | None
+    #: What was subtracted for the cards (owed, positive).
+    card_debt: Decimal
+    #: To one decimal. None when there is no pace to run out at; 0 when the
+    #: money is already gone.
+    months: Decimal | None
+    #: The reader's today plus `months`.
+    runs_out_on: date | None
+
+
+class OverviewRunway(RunwayFigureOut):
+    """The Overview's runway: Essentials against the cash and the emergency
+    fund, falling back to all spending when nothing is tagged Essential and to
+    the cash alone when no fund is chosen (`domain.runway.default_basis`)."""
+
+    #: Whether an emergency fund with a figure is chosen — False is why the
+    #: money fell back to the cash.
+    fund_chosen: bool
+    #: Whether anything is tagged Essential — False is why the spending fell
+    #: back to all of it.
+    essentials_known: bool
+    #: The complete months `monthly_spending` averages.
+    window_start: date | None
+    window_end: date | None
+
+
 class MeansMonth(ApiModel):
     """One complete month of the Overview's Means trend
     (`report_basics.means_months`)."""
@@ -138,6 +195,12 @@ class DashboardMetrics(ApiModel):
     # because the next reader will use it.
     net_worth: Decimal
     net_worth_prev: Decimal
+    #: What began being counted between `net_worth_prev`'s day and today —
+    #: accounts arriving with their opening balances, stated values first
+    #: entered (`domain.tracking_start`) — and the change less it, the
+    #: card's figure. The change as drawn is `net_worth - net_worth_prev`.
+    net_worth_entered: Decimal
+    net_worth_change: Decimal
     #: Net spending over the trailing thirty days ending today, and over the
     #: sixty days before them per thirty days (`domain.burn_rate`). The two
     #: share no day; the card's percent change is composed on the client.
@@ -151,7 +214,9 @@ class DashboardMetrics(ApiModel):
     #: None when no income was recorded in the window — the Savings Rate tab's
     #: convention, and a gap rather than a floor on the chart.
     savings_rate: float | None
-    days_until_zero: float | None
+    #: How long the money lasts if income stopped — the Runway card
+    #: (`services.runway`). Required: the card has no other source.
+    runway: OverviewRunway
     #: The `*_this_month` figures cover the requested window, whatever its
     #: length; `expenses_prev_month` covers the equal-length window before it.
     income_this_month: Decimal
@@ -183,6 +248,21 @@ class AccountSnapshot(ApiModel):
     balance: Decimal
 
 
+class TrackingEntry(ApiModel):
+    """Something that began being counted in a point's stretch
+    (`domain.tracking_start.Entry`): an account arriving with its Starting
+    Balance, its history from before its budget start, or a stated value or
+    manual debt at its first dated point."""
+
+    kind: Literal["account", "pre_start", "stated_asset", "manual_debt"]
+    id: uuid.UUID
+    name: str
+    #: Its first day in the stretch.
+    day: date
+    #: Signed as net worth reads it: a card's opening debt is negative.
+    amount: Decimal
+
+
 class NetWorthPoint(ApiModel):
     date: date
     total_assets: Decimal
@@ -195,12 +275,52 @@ class NetWorthPoint(ApiModel):
     # broken out for the same footnote: in the net line, not in any series.
     asset_value_total: Decimal = Decimal("0")
     accounts: list[AccountSnapshot]
+    #: What entered net worth in the stretch this point closes, and what it
+    #: was — required: the chart marks these months, and a path that forgot
+    #: them would draw an arrival as growth.
+    entered: Decimal
+    entries: list[TrackingEntry]
+
+
+class StatedValueOut(ApiModel):
+    """A figure told rather than added up, with the day it was last true."""
+
+    kind: Literal["stated_asset", "manual_debt"]
+    id: uuid.UUID
+    name: str
+    value: Decimal
+    #: None for a debt typed in with no dated balance.
+    as_of: date | None
+
+
+class StaleBalance(ApiModel):
+    """A figure in today's net worth that has not moved in
+    `tracking_start.STALE_AFTER_DAYS` days."""
+
+    kind: Literal["account", "stated_asset", "manual_debt"]
+    id: uuid.UUID
+    name: str
+    #: None when nothing says when it was last true.
+    last_changed: date | None
 
 
 class NetWorthResponse(ApiModel):
     points: list[NetWorthPoint]
     unmanaged_liability_total: Decimal = Decimal("0")
     asset_value_total: Decimal = Decimal("0")
+    #: Newest point less oldest, as drawn.
+    change: Decimal
+    #: The same, less what began being counted after the oldest point
+    #: (`tracking_start.like_for_like`) — the headline. None with no points.
+    like_for_like_change: Decimal | None
+    #: What began being counted after the oldest point: `change` less
+    #: `like_for_like_change`.
+    entered_total: Decimal
+    stated_values: list[StatedValueOut]
+    stale_balances: list[StaleBalance]
+    #: `tracking_start.STALE_AFTER_DAYS`, served so the page's copy states the
+    #: threshold the list was built with rather than a second copy of it.
+    stale_after_days: int
 
 
 # ─── Account Composition ──────────────────────────────────────────────────────
@@ -208,19 +328,27 @@ class NetWorthResponse(ApiModel):
 
 class AccountCompositionPoint(ApiModel):
     date: date
-    # Balance per account-type key present in the budget (custom types
-    # included) — the type set is per-budget, so it can't be a fixed schema
+    # Balance per account-type key in `series` (custom types included) — the
+    # type set is per-budget, so it can't be a fixed schema
     balances: dict[str, Decimal]
+    #: The bands no account holds, so the stack sums to `net_worth`: stated
+    #: asset values (positive) and debts with no account (negative).
+    stated_assets: Decimal
+    manual_debts: Decimal
     # Required, not optional: the chart draws this as the net trend line, and
     # a path that forgot it would draw a flat zero over real data.
     net_worth: Decimal
-    # The stated-asset share of that net line — the amount by which it floats
-    # above the visible account stack; footnoted when non-zero.
     asset_value_total: Decimal
+    #: As on the Net Worth point: what entered in this point's stretch.
+    entered: Decimal
+    entries: list[TrackingEntry]
 
 
 class AccountCompositionResponse(ApiModel):
     points: list[AccountCompositionPoint]
+    #: Every account type a live account has, registry order — a series'
+    #: colour is its place here, so it holds across ranges.
+    series: list[str]
 
 
 # ─── Burn Rate ────────────────────────────────────────────────────────────────
@@ -246,6 +374,9 @@ class BurnRateResponse(ApiModel):
 class SankeyNode(ApiModel):
     id: str
     name: str
+    #: Left of the hub: "income_payee", "inflow" (refunds, from savings,
+    #: borrowed, re-planned) or "shortfall". The hub is "budget". Right of it:
+    #: "category_group" (and its "category" children) or "left_over".
     type: str
     #: The entity this node stands for, when it stands for one. `id` is a
     #: display key that may compose several ids (a category node is keyed by
@@ -255,7 +386,7 @@ class SankeyNode(ApiModel):
     entity_id: str | None = None
     #: On a spent-mode category node: the activity classes it counted. Its
     #: drill-down lists exactly these, because the three pseudo-nodes
-    #: (Savings, Debt Payments, Uncategorized) share "no category" and differ
+    #: (Savings, Debt payments, Uncategorized) share "no category" and differ
     #: only by class. None on every other node.
     activity_classes: list[str] | None = None
 
@@ -271,12 +402,23 @@ class CategoryPayee(ApiModel):
     total: Decimal
 
 
+class SankeyPayee(CategoryPayee):
+    #: The payee of record the band stands for, so its drill opens by id.
+    #: None for "Other payees" and for rows with no payee, which open nothing.
+    #: Required: a path that forgot it would leave the page matching names.
+    payee_id: uuid.UUID | None
+
+
 class CashFlowResponse(ApiModel):
+    """`domain.cash_flow`: sources → the hub ("__budget__") → groups →
+    categories, with the two sides balanced by a Left over or Shortfall node."""
+
     nodes: list[SankeyNode]
     links: list[SankeyLink]
+    #: INCOME_ROW, net — Income vs Expenses' income.
     total_income: Decimal
-    #: Everything that left the budget. The links off the budget node sum to
-    #: this — flow conservation, whatever the branches are.
+    #: What the right side draws, Left over aside: the links off the hub to
+    #: category groups sum to this.
     total_expense: Decimal
     #: How that outflow splits. Required, and None only in budgeted mode,
     #: which draws from assignments where activity class has no meaning —
@@ -289,80 +431,143 @@ class CashFlowResponse(ApiModel):
     total_spending: Decimal | None
     total_savings: Decimal | None
     total_debt_principal: Decimal | None
-    category_payees: dict[str, list[CategoryPayee]]
+    #: Budgeted mode: assignments net of re-planning. None in spent mode.
+    total_assigned: Decimal | None
+    #: Spent mode: money in less money out — Income vs Expenses' `net` for the
+    #: same window. None in budgeted mode, which has no such figure: income
+    #: less assigned is not the growth of anything.
+    net: Decimal | None
+    #: Per category node: its payees netted, those that net to an outflow, the
+    #: largest ten and "Other payees".
+    category_payees: dict[str, list[SankeyPayee]]
     group_categories: dict[str, list[CategoryPayee]]
+    #: Per category node whose payees are wider than it (a refund from a payee
+    #: with no charge in the window): what came back, and what to call it.
+    #: The payee level draws it as a source so that level balances too.
+    category_returns: dict[str, CategoryPayee]
 
 
-# ─── Budget vs Actual ─────────────────────────────────────────────────────────
+# ─── Plan vs Spent ────────────────────────────────────────────────────────────
+#
+# One report where Budget vs Actual, Cumulative Variance and Plan vs Reality
+# were three (`services.plan_vs_spent`): the matrix is `categories[].monthly`,
+# the Cumulative Variance series is `month_totals`, and each Budget vs Actual
+# row is a category's `total`.
 
 
-class BudgetActualItem(ApiModel):
+class PlanVsSpentCell(ApiModel):
+    month: date
+    assigned: Decimal
+    #: Money moved into the envelope — a transfer from savings, a deposit
+    #: filed to it (`domain.plan.plan_effect`). It raises the plan.
+    moved_in: Decimal
+    #: Money moved out and not spent — a transfer to a brokerage, a principal
+    #: payment from an untagged envelope. It lowers the plan. Non-negative.
+    moved_out: Decimal
+    #: `assigned + moved_in - moved_out` floored at zero
+    #: (`domain.plan.plan_outcome`).
+    plan: Decimal
+    #: Net of refunds. Negative only when refunds beat the spending.
+    spent: Decimal
+    variance: Decimal
+    #: The verdict — past the plan by a dollar and 1% of it. The cell's tint
+    #: reads this, never the variance's sign. Never true in the running month.
+    over: bool
+    #: Anything assigned, moved in, moved out or spent this month
+    #: (`plan_ledger.PlanMonth.quiet`): the cells the matrix fills and
+    #: `months_active` counts. A plan fully moved out is active, and on plan.
+    active: bool
+
+
+class PlanVsSpentTotal(ApiModel):
+    """A category over the complete months — the Total column, which was a
+    Budget vs Actual row: its cells added up (`plan.summed_outcome`), each plan
+    floored for its own month. So `plan` can exceed `assigned + moved_in -
+    moved_out` where a month floored."""
+
+    assigned: Decimal
+    moved_in: Decimal
+    moved_out: Decimal
+    #: What `variance` is measured against. Served so the page never adds the
+    #: moved money itself.
+    plan: Decimal
+    spent: Decimal
+    variance: Decimal
+    #: None where there was no plan to take a share of — "no plan", not 0%.
+    variance_pct: float | None
+    #: The server's verdict; the page's tint and sort read it.
+    over: bool
+
+
+class PlanVsSpentCategory(ApiModel):
     category_id: uuid.UUID
     category_name: str
     category_group_name: str
+    monthly: list[PlanVsSpentCell]
+    months_over: int
+    months_active: int
+    avg_overspend: Decimal
+    #: `domain.plan.is_chronic`. The Guide's checkup reads this flag.
+    chronic: bool
+    #: Tagged Long-term expense, which is never chronic — said, so the page
+    #: can explain an over-plan month that carries no flag.
+    sinking_fund: bool
+    total: PlanVsSpentTotal
+
+
+class PlanVsSpentMonth(ApiModel):
+    """One month over every category — the totals row, which was a Cumulative
+    Variance point: its cells summed, each plan floored for its month."""
+
+    month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     assigned: Decimal
+    moved_in: Decimal
+    moved_out: Decimal
+    #: The month's category plans summed: `plan - spent == variance`.
+    plan: Decimal
     spent: Decimal
-    #: Against the plan floored at zero (`domain.plan`), like Plan vs Reality.
     variance: Decimal
-    variance_pct: float
-    #: The server's verdict; the chart's filter, sort and red bar read it.
-    overspent: bool
+    #: The drift of the complete months through this one. None on the running
+    #: month: its whole assignment lands on the 1st and its spending over
+    #: thirty days, so counting it read "under budget" every month's start.
+    cumulative_variance: Decimal | None
+    #: How many categories went over plan this month; 0 on the running month.
+    categories_over: int
 
 
-class BudgetActualResponse(ApiModel):
-    categories: list[BudgetActualItem]
+class PlanVsSpentResponse(ApiModel):
+    months: list[date]
+    #: The newest of `months`, still running: its cells are month-to-date,
+    #: drawn apart and labelled "so far", and no verdict or total reads it.
+    running_month: date
+    #: The dates the Total column and the window totals cover — the complete
+    #: months — for the drills that open them. None when there are none yet.
+    totals_start: date | None
+    totals_end: date | None
+    categories: list[PlanVsSpentCategory]
+    month_totals: list[PlanVsSpentMonth]
     total_assigned: Decimal
+    total_moved_in: Decimal
+    total_moved_out: Decimal
+    #: The categories' plans summed; `total_plan - total_spent ==
+    #: total_variance`.
+    total_plan: Decimal
     total_spent: Decimal
+    #: The headline: the categories' Totals summed, which is the month totals
+    #: summed and the last complete month's running total. Not
+    #: `total_assigned - total_spent`, which disagrees with the rows wherever an
+    #: envelope was drained.
+    total_variance: Decimal
+    chronic_count: int
     #: A saved filter was named and could not be found (see `CategoryScope`).
     #: REQUIRED, not defaulted: a report that forgets it would report an empty
     #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
-
-
-# ─── Plan vs Reality ──────────────────────────────────────────────────────────
-
-
-class PlanRealityCell(ApiModel):
-    month: date
-    assigned: Decimal
-    spent: Decimal
-    variance: Decimal
-
-
-class PlanRealityCategory(ApiModel):
-    category_id: uuid.UUID
-    category_name: str
-    category_group_name: str
-    monthly: list[PlanRealityCell]
-    months_over: int
-    months_active: int
-    total_assigned: Decimal
-    total_spent: Decimal
-    avg_overspend: Decimal
-    chronic: bool
-
-
-class PlanRealityResponse(ApiModel):
-    months: list[date]
-    categories: list[PlanRealityCategory]
-    total_assigned: Decimal
-    total_spent: Decimal
-    chronic_count: int
-
-
-# ─── Variance ─────────────────────────────────────────────────────────────────
-
-
-class VariancePoint(ApiModel):
-    month: date
-    budget_assigned: Decimal
-    actual_spent: Decimal
-    monthly_variance: Decimal
-    cumulative_variance: Decimal
-
-
-class VarianceResponse(ApiModel):
-    points: list[VariancePoint]
 
 
 # ─── Volatility ───────────────────────────────────────────────────────────────
@@ -396,18 +601,24 @@ class VolatilityResponse(ApiModel):
     window_end: date
 
 
-# ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────────
+# ─── Spending Grouped (Where it went) ─────────────────────────────────────────
 
 
 class SpendingGroupItem(ApiModel):
-    id: uuid.UUID
+    #: None on the Uncategorized line: spending with no category, which a
+    #: drill opens by `no_category` (`domain.spending.UNCATEGORIZED`).
+    id: uuid.UUID | None
     name: str
     #: Opaque rollup key, not a foreign key: a category-group id normally, a
     #: view-group id under a view, and the "__unassigned__" sentinel for
     #: categories a view has not placed. Typing it as a UUID made that last
     #: case a 500 the moment a view left anything unplaced.
     parent_id: str | None
-    parent_name: str | None
+    #: Always named — the Uncategorized line's group is
+    #: `domain.spending.UNCATEGORIZED` — so the page never names a group
+    #: itself. It was optional, and three charts each chose a name for a null
+    #: the server never sent: "Uncategorized", "Other" and "Ungrouped".
+    parent_name: str
     total: Decimal
     count: int
     pct: float
@@ -447,22 +658,42 @@ class SpendingGroupedResponse(ApiModel):
     #: REQUIRED, not defaulted: a report that forgets it would report an empty
     #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────
 
 
 class SeasonalityCell(ApiModel):
-    category_id: uuid.UUID
+    #: None on the Uncategorized row.
+    category_id: uuid.UUID | None
     category_name: str
     month: date
+    #: Net of refunds, so a month that took back more than it spent is negative.
     total: Decimal
+
+
+class SeasonalityCategory(ApiModel):
+    #: None on the Uncategorized row.
+    id: uuid.UUID | None
+    name: str
 
 
 class SeasonalityResponse(ApiModel):
     cells: list[SeasonalityCell]
     months: list[date]
-    categories: list[dict]
+    #: The largest `report_service.SEASONALITY_TOP` by net spending.
+    categories: list[SeasonalityCategory]
+    #: Every category that spent in the window, so the page can say "top 20
+    #: of N" rather than let the cut pass for the whole budget.
+    category_count: int
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Essentials ───────────────────────────────────────────────────────────────
@@ -497,9 +728,9 @@ class ReserveTarget(ApiModel):
 class EssentialsReportResponse(ApiModel):
     """What a lean month costs, from what the household tagged Essential.
 
-    `essentials` is the Guide's figure (rolling 90 days ÷ 3, sinking-fund bills
-    spread when the budget's setting is on) and what the
-    Overview card shows; the per-category table averages over `months`
+    `essentials` is the Guide's figure (the last three complete months,
+    sinking-fund bills spread when the budget's setting is on) and what the
+    Overview card shows; the per-category table averages over `months_averaged`
     complete months instead. `tagged` is False until something carries the
     tag — then every figure is 0 and the UI says where to apply it.
     """
@@ -508,8 +739,15 @@ class EssentialsReportResponse(ApiModel):
     months: int
     window_start: date
     window_end: date
+    #: The complete months the table's averages divide by: `months`, or fewer
+    #: when the budget's history is younger (`history_window`).
+    months_averaged: int
     #: Served whether or not anything is tagged — zeros when nothing is.
     essentials: EssentialsFigures
+    #: How many Essential categories are also Long-term expense. None means
+    #: the spread setting has nothing to spread, so the page hides its toggle
+    #: and says why.
+    long_term_essentials: int
     monthly_total_average: Decimal
     categories: list[EssentialsCategory]
     monthly_series: list[EssentialsMonth]
@@ -519,10 +757,11 @@ class EssentialsReportResponse(ApiModel):
     roadmap_range: tuple[int, int]
     #: The emergency fund and what it counted, read whatever the Guide tracks.
     emergency_fund: EmergencyFundOut
-    #: How many lean months `emergency_fund.total` covers
-    #: (`total / essentials.monthly`). None when nothing was chosen, or nothing
+    #: How long the fund lasts on Essentials, what the cards owe taken out —
+    #: the runway rule at (Essentials, the fund), and the Emergency Fund
+    #: report's "Covered". `months` is None when no fund was chosen or nothing
     #: is tagged Essential yet.
-    runway_months: Decimal | None = None
+    fund_runway: RunwayFigureOut
     #: Tagged Essential and still not counted, by class — see
     #: `CostOfLivingResponse.class_excluded`.
     class_excluded: list[SpendingClassExcluded] = []
@@ -556,7 +795,7 @@ class PayeeAnalysisResponse(ApiModel):
     #: The `limit` largest by spend, never a page of a list.
     payees: list[PayeeSpending]
     #: Over EVERY payee in the window, not over `payees` — which is what
-    #: `pct` is a share of, and what the Pareto card measures against.
+    #: `pct` is a share of, and what Where it went's payee mode measures against.
     total: Decimal
     #: How many payees spent in the window. Required, because a client that
     #: knows only "25 rows" cannot say whether that is all of them, and both
@@ -565,8 +804,16 @@ class PayeeAnalysisResponse(ApiModel):
     payee_count: int
     #: How many of the largest payees make up 80% of `total`, counted over
     #: every payee (`domain.concentration`). None when nothing was spent. The
-    #: Pareto card reads it: the client holds only the top 25.
+    #: 80% line in Where it went reads it: the client holds only the top 25.
     payees_to_80pct: int | None
+    #: How many of the window's months a payee must appear in to be
+    #: `is_recurring` (`domain.spending.recurring_months`). None when the
+    #: window is too short to call anything recurring — the page says so.
+    recurring_min_months: int | None
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Day Patterns ─────────────────────────────────────────────────────────────
@@ -575,9 +822,16 @@ class PayeeAnalysisResponse(ApiModel):
 class DayPatternItem(ApiModel):
     day_of_week: int
     day_name: str
+    #: Net spending on this weekday across the window.
     total: Decimal
+    #: Purchases, not rows: a split's legs are one purchase.
     count: int
-    avg_transaction: Decimal
+    #: How many of this weekday the window holds — the divisor of
+    #: `avg_per_day`, quiet days included.
+    weekdays: int
+    #: `total` / `weekdays`: a typical such day. None when the window holds
+    #: none of this weekday.
+    avg_per_day: Decimal | None
 
 
 class DayPatternsResponse(ApiModel):
@@ -594,6 +848,10 @@ class DayPatternsResponse(ApiModel):
     #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
     #: class filter, and the panel lists more than the bar.
     counted_classes: list[str]
+    #: The days `weekdays` counts: the requested range, from no earlier than
+    #: the budget's first transaction and through no later than today.
+    window_start: date
+    window_end: date
 
 
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────
@@ -648,25 +906,57 @@ class LiabilitiesReportItem(ApiModel):
     interest_rate: Decimal | None
     baseline_payoff_date: date | None
     live_payoff_date: date | None
-    # Null when the terms are unset — no schedule, so no interest to project.
+    #: At the minimum payment. Null when the terms are unset — no schedule, so
+    #: no interest to project — and when the minimum never retires the debt,
+    #: which has no interest bill to quote (`AmortizationResult.interest_to_payoff`).
     total_interest_remaining: Decimal | None
+    #: The minimum-payment schedule never retires the debt: the page says
+    #: "Never at this payment" where the date and the interest would be.
+    baseline_never_pays_off: bool
+    #: The payoff verdict, measured at `payoff_basis`.
     never_pays_off: bool
+    #: "observed" when two months of payments give a pace, "minimum" when only
+    #: the contract speaks, null without terms. The page said "at current pace"
+    #: for both, which a debt with no payment history does not have.
+    payoff_basis: Literal["observed", "minimum"] | None
+    #: The verdict's date (`amortization.payoff_verdict`): None when it never
+    #: pays off at that payment, or without terms.
+    payoff_date: date | None
     terms_complete: bool
+    #: Why there is no payoff at the pace actually paid, when there is none
+    #: (`liability_service.pace_missing`): the cell says it instead of "—".
+    pace_missing: Literal["no_terms", "payments_not_linked", "too_little_history"] | None
+    #: The entered payment contradicts the loan's own terms
+    #: (`amortization.terms_check`) — most often escrow folded into it.
+    terms_disagree: bool
 
 
 class LiabilitiesBalancePoint(ApiModel):
     date: date
-    per_liability: dict[str, Decimal]  # keyed by liability id
+    #: Keyed by liability id. A debt is absent before its first point — not
+    #: zero, which drew its arrival as a cliff up from nothing.
+    per_liability: dict[str, Decimal]
     total: Decimal
+    #: What began being counted this month, as owed (positive) and keyed to
+    #: the liability: the net-worth chart's arrivals for these rows.
+    entered: Decimal
+    entries: list[TrackingEntry]
 
 
 class LiabilitiesReportResponse(ApiModel):
     items: list[LiabilitiesReportItem]
     total_balance: Decimal
-    # Sums only the rows whose terms are known; liabilities_missing_terms says
-    # how many were left out, so a partial total can be labelled as one.
+    # Sums only the rows with a finite interest bill; the two counts below say
+    # how many were left out and why, so a partial total can be labelled as one.
     total_interest_remaining: Decimal
     liabilities_missing_terms: int
+    #: What those rows owe: the caveat is said in dollars.
+    missing_terms_balance: Decimal
+    #: Rows owing anything today.
+    carrying_balance_count: int
+    #: Rows whose minimum payment never retires the debt — excluded from the
+    #: total above rather than added in at $0 or at fifty years' worth.
+    liabilities_never_paying_off: int
     balance_over_time: list[LiabilitiesBalancePoint]
     #: Owed on accounts closed with a balance still on them, excluded from
     #: `total_balance` above. Net worth counts it — it spans every account —
@@ -680,59 +970,79 @@ class LiabilitiesReportResponse(ApiModel):
 # ─── Subscriptions Report ────────────────────────────────────────────────────
 
 
-class RecurringSpend(ApiModel):
-    """The figures a recurring line carries. One shape for a category and for
-    a payee inside it, because the arithmetic is the same — except
-    `avg_monthly`, which a category rolls up from its payees."""
+class SubscriptionService(ApiModel):
+    """One service — a payee inside a Subscription-tagged category — and what
+    it costs a year (`domain.subscriptions.service_cost`)."""
 
-    monthly_amounts: list[Decimal]  # amounts per month in the period
-    #: True monthly burden. Per payee: total / complete months since THAT
-    #: service's first charge, so a quarterly $30 subscription reads $10/mo.
-    #: Per category: the SUM of its payees', so the nested table adds up and a
-    #: service that started after its envelope did is not lost to a shared
-    #: divisor.
-    avg_monthly: Decimal
-    total: Decimal
-    avg_per_charge: Decimal  # typical charge: total / charge count
-    last_charge_date: date | None
-    transaction_count: int
-
-
-class SubscriptionPayee(RecurringSpend):
     #: None for charges filed to a subscription category with no payee.
     payee_id: uuid.UUID | None
     payee_name: str
+    #: How Annual was arrived at: "observed" (the last 12 complete months'
+    #: charges), "new" (younger than that year: latest charge × cycles a
+    #: year), "price_change" (the year's charges at the latest price) or
+    #: "stopped" (no charge for 1.5 cycles; Annual is zero).
+    basis: Literal["observed", "new", "price_change", "stopped"]
+    #: Net of refunds. Zero for a stopped service.
+    annual: Decimal
+    monthly: Decimal  # annual ÷ 12
+    interval_days: int
+    #: "monthly" and "yearly" are calendar cadences (`schedule.cadence_of`);
+    #: "days" is every `interval_days`.
+    cadence: Literal["monthly", "yearly", "days"]
+    #: One charge says nothing about cadence: "monthly" is assumed for the
+    #: stopped rule, and a "new" service counts its charge once.
+    cadence_assumed: bool
+    latest_charge: Decimal  # the most recent charge, positive
+    first_charge_date: date
+    last_charge_date: date
+    charges_in_year: int
+    refunded_in_year: Decimal  # already taken off `annual`
 
 
-class SubscriptionCategory(RecurringSpend):
+class SubscriptionCategory(ApiModel):
     #: Never null: the tag is on categories, so a row without one cannot be
     #: in this report at all.
     category_id: uuid.UUID
     category_name: str
     group_name: str
-    payees: list[SubscriptionPayee]
+    #: The sum of its services' Annual — the table adds up.
+    annual: Decimal
+    monthly: Decimal  # annual ÷ 12
+    #: Net charges per month of `months`, for the chart. The range picker
+    #: moves only these; Annual reads its own year.
+    monthly_amounts: list[Decimal]
+    total: Decimal  # the sum of monthly_amounts
+    last_charge_date: date
+    services: list[SubscriptionService]
 
 
 class SubscriptionsSummary(ApiModel):
-    #: The sum of every category's avg_monthly, which is itself the sum of its
-    #: payees': the page's headline is its rows added up.
-    total_monthly: Decimal
-    total_annual: Decimal  # projected annual cost
-    active_count: int  # number of tagged categories with charges in the period
+    #: The sum of every category's Annual, itself the sum of its services'.
+    total_annual: Decimal
+    total_monthly: Decimal  # total_annual ÷ 12
+    #: Categories with a service still charging, of `tagged_categories`. The
+    #: card read "Active 2" — a count of categories, under a label that read
+    #: as services, and stopped ones counted.
+    charged_categories: int
+    tagged_categories: int
+    #: Services first charged in the month still running.
+    new_this_month: int
+    #: Services whose Annual is projected: a price change, or a new service
+    #: with a cadence to project (one charge counts once, and is not).
+    projected_services: int
+    stopped_services: int
 
 
 class SubscriptionsReportResponse(ApiModel):
     subscriptions: list[SubscriptionCategory]
     summary: SubscriptionsSummary
-    months: list[date]  # month labels for the period
-    #: The complete months the window holds — every month in `months`, on
-    #: every day (`domain.dates.complete_month_window`). It is the MOST an
-    #: effective-monthly figure divides by: each SERVICE divides by the months
-    #: since its own first charge, and the category and summary figures are
-    #: sums of those. 0 when nothing was charged in the window: no figure was
-    #: averaged. Required, not optional — a default would let the page claim a
-    #: divisor nothing served.
-    months_averaged: int
+    months: list[date]  # the chart's complete months
+    #: Every listed category's month, summed — what a stacked chart that
+    #: draws the largest few and an Other band must stand at.
+    monthly_totals: list[Decimal]
+    #: The 12 complete months Annual reads, whatever `months` is.
+    year_start: date
+    year_end: date
 
 
 # ─── Savings Report ──────────────────────────────────────────────────────────
@@ -786,8 +1096,15 @@ class SavingsSavedOut(ApiModel):
     total: Decimal
     envelopes_total: Decimal
     accounts_total: Decimal
-    #: Saved at each month's end, aligned with `months`.
-    monthly_totals: list[Decimal]
+    #: Set aside at each month's end, aligned with `months`. None where
+    #: nothing in the section has a figure yet — before a savings account's
+    #: first row, say — which the chart leaves blank rather than drawing $0.
+    monthly_totals: list[Decimal | None]
+    #: What arrived in each month by a savings account being linked (its
+    #: opening rows, `domain.tracking_start`), aligned with `months` — a step
+    #: up nobody saved, marked as Net Worth marks it.
+    monthly_entered: list[Decimal]
+    monthly_entries: list[list[TrackingEntry]]
     envelopes: list[SavingsEnvelopeOut]
     accounts: list[SavingsAccountOut]
 
@@ -848,6 +1165,11 @@ class SavingsReportResponse(ApiModel):
 
 class SavingsRateMonth(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     income: Decimal
     spending: Decimal
     #: Saved: savings_moved + savings_held (`domain.savings`).
@@ -875,8 +1197,10 @@ class SavingsRateSummary(ApiModel):
 
 class SavingsRateResponse(ApiModel):
     months: list[SavingsRateMonth]
-    #: The dates `summary` covers: the first month's start through today.
-    #: The savings-rate dialog asks /savings-contributors for exactly this.
+    #: The dates `summary` covers: the complete months only, first day of the
+    #: oldest through the last day of last month. Empty (start after end) when
+    #: the history starts this month. The savings-rate dialog asks
+    #: /savings-contributors for exactly this.
     start_date: date
     end_date: date
     summary: SavingsRateSummary
@@ -941,18 +1265,29 @@ class AnomalyItem(ApiModel):
     month: date
     actual: Decimal
     baseline_mean: Decimal
+    #: The baseline's mean one σ either way, floored at zero.
+    usual_low: Decimal
+    usual_high: Decimal
     z_score: float
     direction: str  # 'high' or 'low'
     #: True when `month` is the month still in progress, whose figure is
     #: month-to-date. Required, not optional: a path that forgets it would
     #: present an unfinished month as a closed one. Such rows are always
-    #: `direction == 'high'` — `report_stats.anomaly_rows` says why.
+    #: `direction == 'high'` — `report_stats.anomaly_scan` says why.
     partial_month: bool
-    history: list[Decimal]  # trailing 12 months for sparkline
+    #: Twelve calendar months ending with `month`; None before the category's
+    #: first spending in the window.
+    history: list[Decimal | None]
 
 
 class AnomalyReportResponse(ApiModel):
     anomalies: list[AnomalyItem]
+    #: Categories with spending in the window, sinking funds aside.
+    categories_seen: int
+    #: Of those, how many had enough earlier months to be scored.
+    categories_tested: int
+    #: Long-term expense categories with spending, which are never tested.
+    sinking_funds_skipped: int
 
 
 # ─── Payday Effect Report ────────────────────────────────────────────────────
@@ -960,18 +1295,25 @@ class AnomalyReportResponse(ApiModel):
 
 class PaydayEffectDay(ApiModel):
     offset: int  # 0 = payday, 1 = day after, etc.
-    avg_spend: Decimal
+    #: The median payday's discretionary spending on this day after it.
+    median_spend: Decimal
+    #: Paydays this offset has happened for: the newest may not have reached
+    #: its later days yet.
+    paydays: int
 
 
 class PaydayEffectResponse(ApiModel):
     days: list[PaydayEffectDay]
-    #: Average daily spend on days outside every payday window, counted from
-    #: the first payday in the range. None when the windows cover every one of
-    #: those days — biweekly pay at window=14, whatever its phase. A served
-    #: 0.00 would say "this household spends nothing outside payday", which is
-    #: the opposite of "there is no outside".
+    #: The median day's discretionary spending across the whole window,
+    #: paydays included, over `baseline_days` days. None only when there were
+    #: no paydays, and so nothing to compare it with.
     baseline_daily: Decimal | None
-    event_count: int  # number of income events used
+    baseline_days: int
+    #: Paydays found in the window.
+    event_count: int
+    #: The days read: the last N complete months and the running month so far.
+    window_start: date
+    window_end: date
     #: The smallest inflow counted as a payday (report_service.PAYDAY_FLOOR),
     #: served so the panel states the rule without a second copy of it.
     payday_floor: Decimal
@@ -987,7 +1329,6 @@ class CashProjectionPoint(ApiModel):
     p50: Decimal
     p75: Decimal
     p90: Decimal
-    deterministic: Decimal  # projection with only scheduled/subscription events
 
 
 class CashProjectionEvent(ApiModel):
@@ -997,11 +1338,45 @@ class CashProjectionEvent(ApiModel):
     source: str  # 'scheduled' or 'subscription'
 
 
+class RunwayLinePoint(ApiModel):
+    date: date
+    balance: Decimal
+
+
+class StoppedIncomeOption(RunwayFigureOut):
+    """One choice on the Cash Projection's "If income stopped" line."""
+
+    #: The straight burn-down (`domain.runway.burn_down`): today's money, then
+    #: zero on `runs_out_on` or the balance at the horizon, whichever is first.
+    #: One point when the money is already gone; none when it is unknown.
+    line: list[RunwayLinePoint]
+
+
+class IfIncomeStopped(ApiModel):
+    #: Every spending basis × every money the page offers, in picker order.
+    options: list[StoppedIncomeOption]
+    #: The Overview's choice, which the pickers open on.
+    default_spending: SpendingBasis
+    default_money: MoneyBasis
+    fund_chosen: bool
+    essentials_known: bool
+    #: The complete months every `monthly_spending` averages.
+    window_start: date | None
+    window_end: date | None
+
+
 class CashProjectionResponse(ApiModel):
     start_balance: Decimal
     points: list[CashProjectionPoint]
     events: list[CashProjectionEvent]
-    goes_negative_date: date | None  # first date P50 goes negative, if any
+    #: The first day the median path is below zero, if any.
+    goes_negative_date: date | None
+    #: The first day the p10 band is below zero — about a 1 in 10 chance of
+    #: being under $0 by then. Never later than `goes_negative_date`; the UI
+    #: warns softly on this one alone (`domain.cash_projection`).
+    p10_negative_date: date | None
+    #: The runway at every choice, drawn beside the bands.
+    if_income_stopped: IfIncomeStopped
 
 
 class ReportRangeResponse(ApiModel):
@@ -1020,9 +1395,10 @@ class ReportRangeResponse(ApiModel):
 
 
 class SpendingTrendSeries(ApiModel):
-    """One category's spending per month over the window."""
+    """One category's spending per month over the window, net of refunds."""
 
-    id: uuid.UUID
+    #: None on the Uncategorized series.
+    id: uuid.UUID | None
     name: str
     group_id: uuid.UUID | None
     group_name: str | None
@@ -1040,6 +1416,15 @@ class SpendingTrendsResponse(ApiModel):
     #: Sum over every series per month, so a total line needs no client math.
     monthly_totals: list[Decimal]
     total: Decimal
+    #: `total` over the months the range holds whole and that are over
+    #: (`domain.dates.complete_months_within`) — `months_averaged` of them.
+    #: None when there is none: a range inside the running month has no
+    #: complete month to average.
+    avg_monthly: Decimal | None
+    months_averaged: int
+    #: The running month when the range draws it: month-to-date, labelled
+    #: "so far", never in `avg_monthly`. None when the range ends before it.
+    running_month: date | None
     #: Present only when the user scoped the report (categories, a filter, a
     #: tag): activity in that scope a spending report will not count.
     class_excluded: list[SpendingClassExcluded] = []
@@ -1047,6 +1432,10 @@ class SpendingTrendsResponse(ApiModel):
     #: REQUIRED, not defaulted: a report that forgets it would report an empty
     #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
+    #: The activity classes these figures count, so a drill-down opened from
+    #: them lists exactly those rows. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the chart.
+    counted_classes: list[str]
 
 
 # ─── Income by Source ────────────────────────────────────────────────────────
@@ -1079,8 +1468,20 @@ class IncomeBySourceResponse(ApiModel):
 
 class CategoryHistoryMonth(ApiModel):
     month: date
+    #: True on the running month, whose figures are month-to-date
+    #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
+    #: in an average, a total or a headline. Required, not defaulted — a path
+    #: that forgot it would present an unfinished month as a closed one.
+    partial_month: bool
     assigned: Decimal
     activity: Decimal
+    #: Spent as every plan report counts it (`services/plan_ledger.py`): net
+    #: of refunds, and not the money moved in or out, which `activity` nets
+    #: away.
+    spent: Decimal
+    moved_in: Decimal
+    #: Non-negative: money moved out and not spent (`domain.plan.plan_effect`).
+    moved_out: Decimal
     #: None for an income category: "Income categories do not hold money", so
     #: their `available` is a lifetime carryover the budget page never draws.
     #: Their monthly activity is meaningful and is still served. None too for
@@ -1096,12 +1497,20 @@ class CategoryHistoryReportResponse(ApiModel):
     category_id: uuid.UUID
     category_name: str
     months: list[CategoryHistoryMonth]
+    #: `spent` averaged over the window's COMPLETE months — the running month
+    #: is month-to-date and would pull the average down.
+    average_spent: Decimal
+    months_averaged: int
 
 
 # ─── Cost of Living ──────────────────────────────────────────────────────────
 
 
 class CostOfLivingGroup(ApiModel):
+    #: None for the Uncategorized bucket, which the page drills by "no
+    #: category". Required: the page used to find the bucket by comparing the
+    #: name to "Uncategorized", so a real group of that name opened wrong.
+    group_id: uuid.UUID | None
     group_name: str
     monthly_amounts: list[Decimal]
     total: Decimal
@@ -1133,6 +1542,11 @@ class CostOfLivingResponse(ApiModel):
     #: is not what a household could not cut, so the figure is unknown.
     avg_monthly_essentials: Decimal | None
     avg_monthly_income: Decimal
+    #: Spending outside both tiers over the same window — the Discretionary
+    #: report's own rows — so the verdict can lay take-home out whole:
+    #: committed + discretionary + left over. None when nothing is tagged, as
+    #: that report serves it. The left-over is composed in `necessityView.ts`.
+    avg_monthly_discretionary: Decimal | None
     #: The gap between the tiers (cost of living less essentials) and the two
     #: ratios against take-home are NOT served. They are arithmetic on the
     #: three averages above, which the client already has and no backend path
@@ -1213,6 +1627,11 @@ class DiscretionaryResponse(ApiModel):
     #: construction. The share between them is composed on the client
     #: (`discretionaryView.ts`) — two served figures, no missing input.
     spending_total: Decimal | None
+    #: The Cost of living tier over the same window, positive — the other half
+    #: of spending. Cost of living + this report's `total` is `spending_total`
+    #: plus the debt payments the tier counts by class; the page says so in
+    #: one line (`discretionaryView.tierSumLine`). None when `tagged` is False.
+    cost_of_living_total: Decimal | None
     #: Biggest first, the Uncategorized line among them by size.
     groups: list[DiscretionaryGroup]
 
@@ -1229,15 +1648,32 @@ class WishlistDisciplineResponse(ApiModel):
     #: three of thirty under "waited, then decided against".
     dropped_early: int
     still_open: int
+    #: Open wishes past their cooling-off (or with none): waiting on a
+    #: decision, not on the calendar. `still_cooling` is the rest of
+    #: `still_open`.
+    ready_to_decide: int
+    still_cooling: int
+    #: Decided wishes placeable against their cooling-off period, how many of
+    #: them ended after it, and that share (None with none decided). The
+    #: report's headline: what the wait did, which Resisted alone cannot say.
+    decided_count: int
+    waited_out_count: int
+    waited_out_share: float | None
     #: Wanted and not spent — every dropped wish, whether the wait ran its
-    #: course or not. The figure the report is for.
+    #: course or not.
     resisted_total: Decimal
     #: How many wishes `resisted_total` sums; the card's count reads this.
     resisted_count: int
     bought_total: Decimal
+    #: How many wishes `bought_total` sums.
+    bought_count: int
     open_total: Decimal
-    #: None with nothing bought: an average of no days is not zero days.
+    #: Mean days from adding a wish to buying it. None with nothing bought:
+    #: an average of no days is not zero days.
     avg_days_to_buy: int | None
+    #: The person's own waiting period for new wishes, in days — what the
+    #: average wait is read against.
+    cooling_days: int
     avg_wish_cost: Decimal | None
     #: Endings we cannot place against a cooling-off period — wishes that
     #: predate the drop date, or never had one. Shown, not folded in.
@@ -1280,9 +1716,8 @@ class CoveragePoint(ApiModel):
     month: date
     #: What the fund held at the end of this month.
     fund_balance: Decimal
-    #: The trailing three-month average of essential spending — the Guide's
-    #: 90-day window said in months, so this line and the roadmap's target
-    #: cannot tell different stories about the same household.
+    #: The essentials figure as of this month (`guide.concepts.essentials_at`),
+    #: the one the headline is — the newest point IS the headline.
     essentials: Decimal
     #: None, never zero, for a month with no essential spending to divide by.
     coverage_months: Decimal | None
@@ -1304,10 +1739,18 @@ class EmergencyCoverageResponse(ApiModel):
     tagged: bool
     #: The emergency fund and what it counted — the Essentials report's own.
     fund: EmergencyFundOut
-    #: The Essentials report's own runway, quoted rather than recomputed.
-    coverage_months: Decimal | None
+    #: "Covered": the Essentials report's own `fund_runway`, quoted rather
+    #: than recomputed — the fund, what the cards owe taken out, over
+    #: Essentials. The series below is the fund alone over Essentials, so the
+    #: newest point and this differ by today's card debt (and what the fund
+    #: did since that month ended).
+    covered: RunwayFigureOut
     #: The Essentials report's own figures, quoted; the targets read `.monthly`.
     essentials: EssentialsFigures
+    #: How many Essential categories are also Long-term expense. None means
+    #: the spread setting has nothing to spread, so the page hides its toggle
+    #: and says why.
+    long_term_essentials: int
     target_low: Decimal
     target_high: Decimal
     target_range: tuple[int, int]

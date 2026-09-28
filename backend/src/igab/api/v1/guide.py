@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from igab.api.route import CommitRoute
+from igab.api.v1.params import ReaderToday
 from igab.api.v1.schemas.guide import (
     BindingUpdate,
     CandidatesResponse,
@@ -109,8 +110,9 @@ async def guide_signals(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     service: GuideServiceDep,
+    today: ReaderToday,
 ) -> SignalsResponse:
-    return SignalsResponse(**await service.signals(budget_id))
+    return SignalsResponse(**await service.signals(budget_id, today))
 
 
 @router.get("/{budget_id}/guide/candidates/{concept_key}", response_model=CandidatesResponse)
@@ -208,8 +210,9 @@ async def guide_checkup(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     service: GuideServiceDep,
+    today: ReaderToday,
 ) -> CheckupResponse:
-    return CheckupResponse(**await service.checkup(budget_id))
+    return CheckupResponse(**await service.checkup(budget_id, today=today))
 
 
 @router.post("/{budget_id}/guide/checkup/run", response_model=CheckupResponse)
@@ -217,6 +220,7 @@ async def run_health_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     service: GuideServiceDep,
+    today: ReaderToday,
 ) -> CheckupResponse:
     """The health report, run because the user pressed the button.
 
@@ -224,7 +228,7 @@ async def run_health_report(
     rather than quietly empty when reviews are off — a run that does nothing
     must not report success.
     """
-    result = await service.checkup(budget_id, stamp=True)
+    result = await service.checkup(budget_id, stamp=True, today=today)
     if not result["enabled"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -288,9 +292,10 @@ async def scenario_emergency_fund(
     current_user: CurrentUser,
     service: GuideServiceDep,
     payload: EmergencyFundRequest,
+    today: ReaderToday,
 ) -> EmergencyFundResponse:
     plan = await service.emergency_fund_plan(
-        budget_id, payload.months, payload.monthly_contribution
+        budget_id, payload.months, payload.monthly_contribution, today
     )
     # The figures object itself, not `asdict`'s copy: `monthly` is a property.
     return EmergencyFundResponse.model_validate({**asdict(plan), "essentials": plan.essentials})

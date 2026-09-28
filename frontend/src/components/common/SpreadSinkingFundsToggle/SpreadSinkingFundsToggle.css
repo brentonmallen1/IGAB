@@ -30,3 +30,8 @@
   color: var(--text-muted);
   max-width: 64ch;
 }
+
+/* Said in place of the switch when there is nothing to spread. */
+.spread-toggle--none {
+  margin: var(--spacing-sm) 0;
+}

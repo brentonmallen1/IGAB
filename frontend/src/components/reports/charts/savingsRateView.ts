@@ -1,7 +1,8 @@
 /** The Savings Rate chart's formatters, pure so they are testable: the chart
  * renders at zero size under jsdom, so its tooltip never reaches the DOM. */
 
-/** The rate line's series name, used as both the dataKey and the tooltip key. */
+/** The rate line's dataKey. What the legend and tooltip call it is
+ *  `savingsRateLabel`. */
 export const RATE_SERIES = 'Savings Rate'
 
 /** A served rate — a fraction, 0.185 — as a percentage number, 18.5. The
@@ -23,13 +24,27 @@ export function pct(v: number | null): string {
   return v === null ? '—' : `${ratePercent(v).toFixed(1)}%`
 }
 
-/** The chart's one tooltip: the rate line is a percentage, the three bars
- * beside it are money, so it branches on the series name. The shared default
- * used to render the rate 18.5 as "$18.50", and the first fix wrote the rate
- * with its own `toFixed(1)` beside the card's `pct` — two formatters for one
- * figure. The line plots the rate ×100 for its 0–100 axis, so it is divided
- * back here. */
-export function savingsRateTooltipWith(formatMoney: (n: number) => string) {
-  return (value: number, name: string): string =>
-    name === RATE_SERIES ? pct(value / 100) : formatMoney(value)
+/** The rate panel's tooltip formatter. The line plots the rate ×100 for its
+ * percentage axis, so it is divided back and said by `pct`, as the card says
+ * it. The shared money default used to render the rate 18.5 as "$18.50", and
+ * the first fix wrote the rate with its own `toFixed(1)` beside the card's
+ * `pct` — two formatters for one figure. The rate has its own panel now (the
+ * money bars have theirs), so the tooltip no longer branches on a series
+ * name. */
+export function rateTooltip(value: number): string {
+  return pct(value / 100)
+}
+
+/** What a savings rate divides income into: Saved, and — when the rate
+ *  counts them — debt payments. The Saved card and the stacked bar both read
+ *  this, so the figure the card states is the bar the chart draws.
+ *
+ *  The card said "Saved" and showed Saved alone while the rate beside it
+ *  counted debt payments too, so the card's two figures did not divide into
+ *  the rate it sat next to. */
+export function keptFigure(
+  row: { savings: number; debt_principal: number },
+  withDebt: boolean
+): number {
+  return withDebt ? row.savings + row.debt_principal : row.savings
 }

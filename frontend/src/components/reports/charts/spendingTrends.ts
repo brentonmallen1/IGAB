@@ -4,7 +4,9 @@
  * only — every figure is the server's, summed.
  */
 import type { SpendingTrendsReport } from '../../../types'
-import type { WiderSet } from '../drillDownTotals'
+import { otherBand } from '../drillDownTotals'
+import { categoryKey } from '../drillScope'
+import { chartColor, COLOR_OTHER } from './chartColors'
 
 export interface TrendRow {
   key: string
@@ -20,7 +22,8 @@ export function rollupTrends(
 ): TrendRow[] {
   if (groupBy !== 'group') {
     return data.series.map((s) => ({
-      key: s.id,
+      // The Uncategorized series is served with no id.
+      key: categoryKey(s.id),
       name: s.name,
       group_name: s.group_name,
       monthly: s.monthly,
@@ -46,20 +49,75 @@ export function rollupTrends(
   return [...byGroup.values()].sort((a, b) => b.total - a.total)
 }
 
-/** The whole month behind a stacked tooltip, looked up by the axis label
- * recharts hands the tooltip.
+/** How many series the chart draws on their own before the rest is Other. */
+export const MAX_TREND_SERIES = 10
+
+/** The chart-row key the Other band is stored under. Series are keyed by id,
+ *  never by name, so a category called "Other" is not the band. */
+export const OTHER_KEY = '__other__'
+
+export interface TrendSeries {
+  /** The chart-row key: a category or group id, or `OTHER_KEY`. */
+  key: string
+  name: string
+  color: string
+  /** The series' total over the window, for the legend. */
+  total: number
+}
+
+export interface StackedTrends {
+  /** One row per month: its axis label under `month`, each drawn series'
+   *  figure under its key. */
+  rows: Record<string, string | number>[]
+  /** The drawn series in stack order, bottom first — Other last, and only
+   *  when some month has something outside the named series. */
+  series: TrendSeries[]
+}
+
+/**
+ * The stacked chart's rows and series: the largest `maxSeries` by name, and
+ * one Other band holding the rest, so every bar is the month the axis, the
+ * cards and the table's All row report.
  *
- * Only the largest series are stacked, so the tooltip's own sum is a
- * subtotal; this is what the table's All row draws for that month. A label
- * it does not know gets no wider figure. The lookup's `?? 0` printed
- * "All categories $0.00" on a miss, which is a month of no spending. */
-export function monthWiderByLabel(
+ * The chart stacked only the ten largest series and nothing else, so each
+ * bar stood at 56–84% of its month under an axis that read as totals, and the
+ * tooltip needed a separate "All categories" line to say what the bar left
+ * out. Other is the remainder by `otherBand` — Income by Source's rule — and
+ * can be negative in a month the tail refunded more than it spent.
+ */
+export function stackTrends(
   data: Pick<SpendingTrendsReport, 'months' | 'monthly_totals'>,
-  formatMonth: (month: string) => string
-): (label: string) => WiderSet | undefined {
-  const byLabel = new Map(data.months.map((m, i) => [formatMonth(m), data.monthly_totals[i]]))
-  return (label) => {
-    const total = byLabel.get(label)
-    return total === undefined ? undefined : { total, label: 'categories' }
+  rolled: readonly TrendRow[],
+  formatMonth: (month: string) => string,
+  maxSeries: number = MAX_TREND_SERIES
+): StackedTrends {
+  const shown = rolled.slice(0, maxSeries)
+  const rest = data.months.map((_, i) =>
+    otherBand(
+      data.monthly_totals[i] ?? 0,
+      shown.map((s) => s.monthly[i] ?? 0)
+    )
+  )
+  const rows = data.months.map((m, i) => {
+    const row: Record<string, string | number> = { month: formatMonth(m) }
+    for (const s of shown) row[s.key] = s.monthly[i] ?? 0
+    const other = rest[i]
+    if (other !== null) row[OTHER_KEY] = other
+    return row
+  })
+  const series: TrendSeries[] = shown.map((s, i) => ({
+    key: s.key,
+    name: s.name,
+    color: chartColor(i),
+    total: s.total,
+  }))
+  if (rest.some((r) => r !== null)) {
+    series.push({
+      key: OTHER_KEY,
+      name: 'Other',
+      color: COLOR_OTHER,
+      total: rest.reduce<number>((sum, r) => sum + (r ?? 0), 0),
+    })
   }
+  return { rows, series }
 }

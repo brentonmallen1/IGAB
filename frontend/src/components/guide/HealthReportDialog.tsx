@@ -101,11 +101,11 @@ export function HealthReportDialog({
                       )}
                       {f.kind === 'chronic_overspend' && (
                         <Link
-                          to="/reports?tab=plan-reality"
+                          to="/reports?tab=plan-vs-spent"
                           className="guide-link-button"
                           onClick={onClose}
                         >
-                          Plan vs Reality
+                          Plan vs Spent
                         </Link>
                       )}
                       {(f.kind === 'unknown_rates' ||

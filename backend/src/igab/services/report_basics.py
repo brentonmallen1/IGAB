@@ -17,7 +17,6 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, TypedDict
 
-import polars as pl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,19 +38,31 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     class_magnitude,
 )
-from igab.domain.dates import complete_month_window, month_starts
+from igab.domain.dates import (
+    ReportWindow,
+    complete_month_window,
+    complete_months_within,
+    month_start,
+    month_starts,
+    report_window,
+)
 from igab.domain.money import quantize_cents
 from igab.domain.money_moves import flows
 from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
+from igab.domain.spending import UNCATEGORIZED, spent
+from igab.domain.subscriptions import Basis, service_cost
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
+    PAYEE_OF_RECORD,
     POSTED,
     category_tagged,
+    join_split_parent,
 )
+from igab.services.report_day import reader_today
 from igab.services.savings_held import held_by_envelope
 
 if TYPE_CHECKING:
@@ -69,6 +80,40 @@ def _payee_key(payee_id: uuid.UUID | None) -> str:
     return str(payee_id) if payee_id else _NO_PAYEE_KEY
 
 
+async def budget_window(
+    session: AsyncSession, budget_id: uuid.UUID, months: int, today: date
+) -> ReportWindow:
+    """What "the last `months` months" means for this budget on the reader's
+    `today`: that many complete months, never reaching before the budget's
+    first transaction, and the running month beside them (`ReportWindow`).
+
+    `domain.dates.report_window` is the arithmetic and says why the running
+    month is never one of the N; this supplies where the history starts,
+    which only the database knows. Every report with a month window reads it
+    — the averaging ones through `history_window`, the series ones directly.
+    """
+    earliest = await TransactionRepository(session).earliest_date(budget_id)
+    return report_window(today, months, earliest)
+
+
+async def history_window(
+    session: AsyncSession, budget_id: uuid.UUID, months: int, today: date
+) -> tuple[date, date]:
+    """The complete months of `budget_window` as (first day, last day): the
+    window of every report that averages per month. Empty (start after end)
+    when the history starts this month.
+
+    Income by Source, Cost of Living, Discretionary, Subscriptions and the
+    Essentials table called the arithmetic without the history, so "All
+    time" — which counts the running month the window leaves out — asked for
+    one month before the first transaction, and every average divided by a
+    month nobody recorded: three complete months of history, averaged over
+    four, read a quarter low.
+    """
+    window = await budget_window(session, budget_id, months, today)
+    return window.start, window.complete_end
+
+
 async def spending_trends(
     svc: ReportService,
     budget_id: uuid.UUID,
@@ -77,61 +122,75 @@ async def spending_trends(
     category_ids: list[uuid.UUID] | None = None,
     account_ids: list[uuid.UUID] | None = None,
     include_classes: Sequence[ActivityClass] | None = None,
+    today: date | None = None,
 ) -> dict:
-    """Spending per category per month over the window.
+    """Spending per category per month over the window: `_spending_rows`, so
+    net of refunds with an Uncategorized series (id None), the same spending
+    the Breakdown and Income vs Expenses report.
 
     `category_ids` is the resolved scope — explicit picks, a saved
     filter's effective set, a tag's members — already merged by the
     route. Months with nothing spent are zero, never missing, so every
     series is the same length as `months`.
+
+    **The average divides by complete months only**: `avg_monthly` divides
+    by the months the range holds whole and that are over
+    (`complete_months_within`), `months_averaged` of them; the running month
+    is drawn, named as `running_month` so the page calls it "so far", and
+    never averaged. It divided the window's total by every month drawn, so on
+    the default "this year" range a few days of the new month counted as a
+    month of spending, and on the 3rd of a month the "Average / month" sat a
+    third of a month low.
     """
+    today = reader_today(today)
     months = month_starts(start_date.replace(day=1), end_date)
     index = {m: i for i, m in enumerate(months)}
-    # The class set comes from `_spending_query` too: this was the one of
-    # three spending rollups that never widened for an explicit account
-    # selection, so a tracked account drew nothing here beside a populated
-    # Pareto over the identical selection.
-    q, included = svc._spending_query(
+    found = await svc._spending_rows(
         budget_id, start_date, end_date, category_ids, account_ids, include_classes
     )
-    rows = (await svc.session.execute(q)).all()
-    counted = [r for r in rows if r.cls in included]
-    other_class = [r for r in rows if r.cls not in included]
 
-    series: dict[uuid.UUID, dict] = {}
-    for r in counted:
+    series: dict[uuid.UUID | None, dict] = {}
+    for r in found.counted:
         entry = series.setdefault(
             r.id,
             {
                 "id": r.id,
-                "name": r.name,
+                "name": r.name or UNCATEGORIZED,
                 "group_id": r.group_id,
-                "group_name": r.group_name,
-                "monthly": [Decimal("0")] * len(months),
-                "total": Decimal("0"),
+                "group_name": r.group_name or UNCATEGORIZED,
+                "monthly": [[] for _ in months],
             },
         )
-        magnitude = abs(r.amount)
-        entry["monthly"][index[r.date.replace(day=1)]] += magnitude
-        entry["total"] += magnitude
+        entry["monthly"][index[r.date.replace(day=1)]].append(r.amount)
+    for e in series.values():
+        e["monthly"] = [quantize_cents(spent(amounts)) for amounts in e["monthly"]]
+        e["total"] = sum(e["monthly"], Decimal("0"))
     ordered = sorted(series.values(), key=lambda e: e["total"], reverse=True)
-    for e in ordered:
-        e["monthly"] = [quantize_cents(v) for v in e["monthly"]]
-        e["total"] = quantize_cents(e["total"])
     monthly_totals = [
-        quantize_cents(sum((e["monthly"][i] for e in ordered), Decimal("0")))
-        for i in range(len(months))
+        sum((e["monthly"][i] for e in ordered), Decimal("0")) for i in range(len(months))
     ]
+    averaged = [index[m] for m in complete_months_within(start_date, end_date, today)]
+    running = month_start(today)
     return {
         "months": months,
         "series": ordered,
         "monthly_totals": monthly_totals,
-        "total": quantize_cents(sum(monthly_totals, Decimal("0"))),
-        "class_excluded": class_excluded_note(other_class, scoped=bool(category_ids)) or [],
+        "total": sum(monthly_totals, Decimal("0")),
+        "avg_monthly": (
+            quantize_cents(sum((monthly_totals[i] for i in averaged), Decimal("0")) / len(averaged))
+            if averaged
+            else None
+        ),
+        "months_averaged": len(averaged),
+        "running_month": running if running in index else None,
+        "class_excluded": class_excluded_note(found.excluded, scoped=bool(category_ids)) or [],
+        "counted_classes": found.classes,
     }
 
 
-async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def income_by_source(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """Income per payee per month: what the classifier reads as income.
 
     **The sign does not decide; the class does.** This filtered
@@ -148,18 +207,23 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
     rule is `INCOME_ROW`, which both Sankey modes read too; budgeted mode
     summed positive split parents by sign until it did.
     """
-    # N complete months, like every averaging report (`complete_month_window`).
-    start_date, end_date = complete_month_window(date.today(), months)
+    # N complete months of this budget's history, like every averaging report.
+    start_date, end_date = await history_window(session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
+    # By payee of record: these are leaf rows, and a split paycheck's legs
+    # carry no payee of their own, so the raw column filed the pay under
+    # "No payee" beside the same employer's unsplit deposits.
     q = (
-        select(
-            Transaction.payee_id,
-            Payee.name.label("payee_name"),
-            Transaction.date,
-            Transaction.amount,
+        join_split_parent(
+            select(
+                PAYEE_OF_RECORD.label("payee_id"),
+                Payee.name.label("payee_name"),
+                Transaction.date,
+                Transaction.amount,
+            )
         )
-        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .outerjoin(Payee, Payee.id == PAYEE_OF_RECORD)
         .where(
             Transaction.budget_id == budget_id,
             Transaction.date >= start_date,
@@ -216,7 +280,11 @@ _CONTRIBUTOR_CLASSES = (ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL)
 
 
 async def savings_contributors(
-    session: AsyncSession, budget_id: uuid.UUID, start_date: date, end_date: date
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    today: date | None = None,
 ) -> dict:
     """What a savings rate over a window was made of — the rate cards' dialog.
 
@@ -239,9 +307,10 @@ async def savings_contributors(
     destination were decided by different rules, the first in
     `REASON_PRIORITY`, the classifier's own order.
 
-    **Through today.** The Overview card's frame is read up to today whatever
-    range was picked, and the Savings Rate tab's window ends today, so a
-    future-dated row is in neither and is not in this either.
+    **Through today** — the reader's, as the rate cards read it. The Overview
+    card's frame is read up to today whatever range was picked, and the Savings
+    Rate tab's window ends today, so a future-dated row is in neither and is not
+    in this either.
 
     **Held rows.** Saved is moved plus held (`domain.savings`), so each
     kept-here Savings envelope whose balance changed over the window is a
@@ -252,7 +321,7 @@ async def savings_contributors(
 
     Income is grouped by payee, as Income by Source groups it.
     """
-    end = min(end_date, date.today())
+    end = min(end_date, reader_today(today))
     held = {
         cid: pair
         for cid, pair in (await held_by_envelope(session, budget_id, start_date, end)).items()
@@ -263,20 +332,23 @@ async def savings_contributors(
     )
     wanted = [ActivityClass.INCOME.value, *(c.value for c in _CONTRIBUTOR_CLASSES)]
     q = (
-        select(
-            Transaction.amount,
-            ACTIVITY_CLASS.label("cls"),
-            ACTIVITY_REASON.label("reason"),
-            TRACKED_TRANSFER.label("tracked_transfer"),
-            TRACKED_COUNTERPART_ACCOUNT.id.label("account_id"),
-            TRACKED_COUNTERPART_ACCOUNT.name.label("account_name"),
-            Transaction.category_id,
-            Category.name.label("category_name"),
-            Transaction.payee_id,
-            Payee.name.label("payee_name"),
+        join_split_parent(
+            select(
+                Transaction.amount,
+                ACTIVITY_CLASS.label("cls"),
+                ACTIVITY_REASON.label("reason"),
+                TRACKED_TRANSFER.label("tracked_transfer"),
+                TRACKED_COUNTERPART_ACCOUNT.id.label("account_id"),
+                TRACKED_COUNTERPART_ACCOUNT.name.label("account_name"),
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                # By payee of record, as Income by Source groups it.
+                PAYEE_OF_RECORD.label("payee_id"),
+                Payee.name.label("payee_name"),
+            )
         )
         .outerjoin(Category, Category.id == Transaction.category_id)
-        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .outerjoin(Payee, Payee.id == PAYEE_OF_RECORD)
         .where(
             Transaction.budget_id == budget_id,
             CLASS_TOTAL_ROW,
@@ -409,10 +481,9 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     Independent of the Overview's selected range on purpose: the trend is
     "the last year", and a one-month range would leave it a single bar.
     """
-    earliest = await svc.txns.earliest_date(budget_id)
-    if earliest is None:
+    if await svc.txns.earliest_date(budget_id) is None:
         return []
-    start, end = complete_month_window(today, MEANS_TREND_MONTHS, earliest)
+    start, end = await history_window(svc.session, budget_id, MEANS_TREND_MONTHS, today)
     by_month = await svc._monthly_class_totals(budget_id, start, end)
     rows = []
     for month in month_starts(start, end):
@@ -427,129 +498,97 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     return rows
 
 
-class RecurringSpend(TypedDict):
-    """What a recurring line costs, whoever or whatever it is attached to.
-    One shape for a category and for a payee inside one, so it is written
-    once and applied at both levels.
+class SubscriptionServiceRow(TypedDict):
+    """One service — a payee inside a Subscription-tagged category — and what
+    it costs a year (`domain.subscriptions.service_cost`)."""
 
-    One figure is not a second walk over the category's rows: `avg_monthly`
-    on a category is the SUM of its payees' (see `subscriptions_report`), so
-    the nested table adds up. Everything else here is the same arithmetic at
-    both levels."""
-
-    monthly_amounts: list[Decimal]
-    total: Decimal
-    avg_monthly: Decimal
-    avg_per_charge: Decimal
-    last_charge_date: date | None
-    transaction_count: int
-
-
-class SubscriptionPayeeRow(RecurringSpend):
     payee_id: str | None
     payee_name: str
+    basis: str
+    annual: Decimal
+    monthly: Decimal
+    interval_days: int
+    cadence: str
+    cadence_assumed: bool
+    latest_charge: Decimal
+    first_charge_date: date
+    last_charge_date: date
+    charges_in_year: int
+    refunded_in_year: Decimal
 
 
-class SubscriptionRow(RecurringSpend):
+class SubscriptionRow(TypedDict):
     category_id: str
     category_name: str
     group_name: str
-    #: The services inside the envelope, biggest first. The category is the
-    #: headline because the tag is on categories; the payees are how you find
-    #: which one grew.
-    payees: list[SubscriptionPayeeRow]
+    #: The sum of its services' Annual; Monthly is that ÷ 12.
+    annual: Decimal
+    monthly: Decimal
+    #: Net charges per month of the chosen range, for the chart. The range
+    #: decides only this: Annual reads its own year whatever the picker says.
+    monthly_amounts: list[Decimal]
+    total: Decimal
+    last_charge_date: date
+    #: The services inside the envelope, costliest first. The category is the
+    #: headline because the tag is on categories; the services are how you
+    #: find which one grew — and which one stopped.
+    services: list[SubscriptionServiceRow]
 
 
-def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSpend:
-    """The per-line arithmetic, for a category or one payee inside it.
-
-    avg_monthly is the monthly burden: the total spread over the months
-    since the FIRST charge of THIS frame, not the average charged month — a
-    quarterly $30 subscription costs about $10/mo, not $30/mo. Which is why a
-    category's figure is the sum of its payees' rather than this function's
-    answer for the whole envelope: one divisor per envelope would start every
-    service at the envelope's oldest charge and lose the newest one. See
-    `subscriptions_report`.
-
-    "About", deliberately. The window's end can fall mid-cycle, and then the
-    last charge is counted whole while only part of the period it pays for is
-    in the divisor: the same quarterly $30 reads $10.00, $10.91 or $12.00 by
-    phase. The overstatement is bounded by one cycle's missing months and
-    shrinks as the history grows; a cadence-aware divisor would remove it and
-    has not been chosen. Pinned per phase in test_subscriptions_report.
-
-    `month_list` is complete months only (`complete_month_window`). Counting a
-    running month whole put a subscription's effective cost at its lowest on
-    the 2nd of every month — then `total_annual` multiplied that by twelve.
-    """
-    by_month = frame.group_by("month").agg(pl.col("amount").sum().alias("monthly_total"))
-    monthly_amounts: list[Decimal] = []
-    for m in month_list:
-        row = by_month.filter(pl.col("month") == m)
-        monthly_amounts.append(
-            Decimal(str(round(row["monthly_total"][0], 4))) if len(row) else Decimal("0")
-        )
-
-    total = sum(monthly_amounts, Decimal("0"))
-    txn_count = len(frame)
-    first_charged = next((i for i, a in enumerate(monthly_amounts) if a > 0), None)
-    if first_charged is not None:
-        avg_monthly = sum(monthly_amounts[first_charged:], Decimal("0")) / (
-            len(monthly_amounts) - first_charged
-        )
-    else:
-        avg_monthly = Decimal("0")
-    return {
-        "monthly_amounts": monthly_amounts,
-        "total": total,
-        "avg_monthly": quantize_cents(avg_monthly),
-        "avg_per_charge": quantize_cents(total / txn_count if txn_count else Decimal("0")),
-        "last_charge_date": max(frame["date"].to_list()) if txn_count else None,
-        "transaction_count": txn_count,
-    }
+def _net_by_month(
+    rows: Iterable[tuple[date, Decimal]], month_list: Sequence[date]
+) -> list[Decimal]:
+    """Net cost per month of `month_list`: charges less refunds, positive."""
+    by_month: dict[date, Decimal] = {}
+    for d, amount in rows:
+        key = d.replace(day=1)
+        by_month[key] = by_month.get(key, Decimal(0)) - amount
+    return [by_month.get(m, Decimal(0)) for m in month_list]
 
 
 async def subscriptions_report(
-    session: AsyncSession, budget_id: uuid.UUID, months: int = 12
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
 ) -> dict:
-    """Recurring charges: every posted outflow filed to a category tagged
-    Subscription, grouped BY CATEGORY, with the payees inside each one.
+    """Recurring charges: every posted row filed to a category tagged
+    Subscription, grouped BY CATEGORY, with the services (payees) inside.
 
     The tag is on categories (repositories/tag_repo.py
-    CATEGORY_ONLY_SYSTEM_KEYS). Drawing one line per payee made the tag
-    merely a filter and left the envelope — the thing actually tagged, and
-    the thing a budget is made of — unnamed. The payees are still here,
-    nested, because "which service grew" is the next question after
-    "which envelope grew".
+    CATEGORY_ONLY_SYSTEM_KEYS), so the envelope is the line and the payees are
+    the detail — "which service grew" is the next question after "which
+    envelope grew".
 
-    Note what avg_monthly means at each level: per payee it is a service's
-    cost, spread over the complete months since that service's first charge;
-    per category it is the envelope's recurring burn rate, which is the SUM
-    of the services inside it. The summary's total_monthly is in turn the sum
-    of the categories, so every figure on the page is the payee rows added up
-    and the nested table agrees with its own headline.
+    **What a service costs is `domain.subscriptions.service_cost`**, over the
+    last 12 complete months whatever the range picker says: Annual is what
+    that year charged, net of refunds; only a service younger than the year,
+    or one whose price changed, is projected from its latest charge; one that
+    `has_stopped` is listed and counts in nothing. Every service's whole
+    history is read, because its age and cadence are not properties of any
+    window. The range decides only the chart.
 
-    Dividing at category level instead — the envelope's total over the months
-    since the ENVELOPE's first charge — quietly dropped a service that
-    started later: Streaming charged $15 for three complete months, gaining a
-    $10 service in the last one, read $18.33 beside payee rows of $15.00 and
-    $10.00, and the summary was short by the newcomer. Pinned in
-    test_subscriptions_report.
+    Annual adds up: category = its services, summary = its categories. Each
+    level's Monthly is its own Annual ÷ 12, so a Monthly column may differ
+    from its rows' sum by rounding cents, never more.
     """
     from igab.repositories.tag_repo import TagRepository
+
+    today = reader_today(today)
+    year_start, year_end = complete_month_window(today, 12)
 
     empty = {
         "subscriptions": [],
         "summary": {
             "total_monthly": Decimal("0"),
             "total_annual": Decimal("0"),
-            "active_count": 0,
+            "charged_categories": 0,
+            "tagged_categories": 0,
+            "new_this_month": 0,
+            "projected_services": 0,
+            "stopped_services": 0,
         },
         "months": [],
-        # Nothing is tagged, so no months were measured. Zero rather than the
-        # window length: the field says what the averages divided by, and
-        # there are none.
-        "months_averaged": 0,
+        "monthly_totals": [],
+        "year_start": year_start,
+        "year_end": year_end,
     }
 
     tag_repo = TagRepository(session)
@@ -557,106 +596,138 @@ async def subscriptions_report(
     if not tagged:
         return empty
 
-    # N COMPLETE months — the meaning every averaging report gives `months`
-    # (`complete_month_window`). This took N calendar months through today and
-    # averaged the N−1 complete ones, so Subscriptions and Cost of Living read
-    # one month fewer than Essentials over the same setting.
-    start_date, end_date = complete_month_window(date.today(), months)
+    # The chart's axis: N COMPLETE months, the meaning every month-windowed
+    # report gives `months` (`history_window`).
+    start_date, end_date = await history_window(session, budget_id, months, today)
     month_list = month_starts(start_date, end_date)
 
+    # Every signed row, not only outflows: refunds net (the reports around
+    # this one report net, and a refunded charge was never a cost). No lower
+    # date bound — see the docstring. A service is its payee of record: a
+    # charge split across two envelopes carries the service on the parent
+    # only, and the raw column filed both legs under "No payee".
     q = (
-        select(
-            Transaction.category_id,
-            Category.name.label("category_name"),
-            CategoryGroup.name.label("group_name"),
-            Transaction.payee_id,
-            Payee.name.label("payee_name"),
-            Transaction.date,
-            Transaction.amount,
+        join_split_parent(
+            select(
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+                PAYEE_OF_RECORD.label("payee_id"),
+                Payee.name.label("payee_name"),
+                Transaction.date,
+                Transaction.amount,
+            )
         )
         .join(Category, Category.id == Transaction.category_id)
         .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
-        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .outerjoin(Payee, Payee.id == PAYEE_OF_RECORD)
         .where(
             Transaction.budget_id == budget_id,
             category_tagged("subscription"),
             NOT_DELETED,
             POSTED,
-            Transaction.amount < 0,  # outflows only
-            Transaction.date >= start_date,
-            Transaction.date <= end_date,
+            Transaction.date <= today,
             LEAF,
             ON_BUDGET_ACCOUNT,
         )
     )
     rows = (await session.execute(q)).all()
-    if not rows:
-        return {**empty, "months": month_list}
 
-    # category_tagged guarantees category_id is not null, so there is no
-    # "no category" sentinel to keep here — only payee can be missing.
-    df = pl.DataFrame(
-        {
-            "category_id": [str(r.category_id) for r in rows],
-            "category_name": [r.category_name for r in rows],
-            "group_name": [r.group_name for r in rows],
-            "payee_id": [_payee_key(r.payee_id) for r in rows],
-            "payee_name": [r.payee_name or NO_PAYEE for r in rows],
-            "month": [r.date.replace(day=1) for r in rows],
-            "date": [r.date for r in rows],
-            "amount": [abs(float(r.amount)) for r in rows],
-        }
-    )
+    # category -> payee key -> signed rows; the names ride along.
+    by_category: dict[str, dict[str, list[tuple[date, Decimal]]]] = {}
+    category_names: dict[str, tuple[str, str]] = {}
+    payee_names: dict[str, str] = {}
+    for r in rows:
+        cid = str(r.category_id)
+        key = _payee_key(r.payee_id)
+        by_category.setdefault(cid, {}).setdefault(key, []).append((r.date, Decimal(r.amount)))
+        category_names[cid] = (r.category_name, r.group_name)
+        payee_names[key] = r.payee_name or NO_PAYEE
 
     subscriptions: list[SubscriptionRow] = []
-    for category_id in df["category_id"].unique().to_list():
-        in_category = df.filter(pl.col("category_id") == category_id)
-
-        payees: list[SubscriptionPayeeRow] = []
-        for payee_id in in_category["payee_id"].unique().to_list():
-            for_payee = in_category.filter(pl.col("payee_id") == payee_id)
-            payees.append(
+    new_this_month = projected = stopped = 0
+    for cid, by_payee in by_category.items():
+        services: list[SubscriptionServiceRow] = []
+        shown_rows: list[tuple[date, Decimal]] = []
+        for key, payee_rows in by_payee.items():
+            cost = service_cost(payee_rows, year_start=year_start, year_end=year_end, today=today)
+            if cost is None:
+                continue
+            # A service that stopped before both the chart and the year began
+            # is history, not a subscription: listing every cancelled service
+            # ever would bury the live ones.
+            if cost.basis is Basis.STOPPED and cost.last_charge_date < min(start_date, year_start):
+                continue
+            new_this_month += cost.new_this_month
+            projected += cost.is_projected
+            stopped += cost.basis is Basis.STOPPED
+            shown_rows.extend(payee_rows)
+            services.append(
                 {
-                    "payee_id": None if payee_id == _NO_PAYEE_KEY else payee_id,
-                    "payee_name": for_payee["payee_name"][0],
-                    **_recurring_spend(for_payee, month_list),
+                    "payee_id": None if key == _NO_PAYEE_KEY else key,
+                    "payee_name": payee_names[key],
+                    "basis": cost.basis.value,
+                    "annual": cost.annual,
+                    "monthly": cost.monthly,
+                    "interval_days": cost.interval_days,
+                    "cadence": cost.cadence.value,
+                    "cadence_assumed": cost.cadence_assumed,
+                    "latest_charge": cost.latest_charge,
+                    "first_charge_date": cost.first_charge_date,
+                    "last_charge_date": cost.last_charge_date,
+                    "charges_in_year": cost.charges_in_year,
+                    "refunded_in_year": cost.refunded_in_year,
                 }
             )
-        payees.sort(key=lambda p: p["total"], reverse=True)
-
-        envelope = _recurring_spend(in_category, month_list)
-        # Monthly rolls up from the rows beneath it; see the docstring for the
-        # figure a shared divisor lost. The sum is of the CENT-quantized payee
-        # figures, so the column adds up as drawn rather than to within a cent
-        # of it.
-        envelope["avg_monthly"] = sum((p["avg_monthly"] for p in payees), Decimal("0"))
-
+        if not services:
+            continue
+        # Live first, costliest first; stopped ones sink to the bottom.
+        services.sort(key=lambda s: (s["basis"] == Basis.STOPPED, -s["annual"], s["payee_name"]))
+        in_range = [(d, a) for d, a in shown_rows if start_date <= d <= end_date]
+        monthly_amounts = _net_by_month(in_range, month_list)
+        annual = sum((s["annual"] for s in services), Decimal(0))
+        name, group = category_names[cid]
         subscriptions.append(
             {
-                "category_id": category_id,
-                "category_name": in_category["category_name"][0],
-                "group_name": in_category["group_name"][0],
-                "payees": payees,
-                **envelope,
+                "category_id": cid,
+                "category_name": name,
+                "group_name": group,
+                "annual": annual,
+                "monthly": quantize_cents(annual / 12),
+                "monthly_amounts": monthly_amounts,
+                "total": sum(monthly_amounts, Decimal(0)),
+                "last_charge_date": max(s["last_charge_date"] for s in services),
+                "services": services,
             }
         )
 
-    subscriptions.sort(key=lambda x: x["total"], reverse=True)
-
-    total_monthly = sum((s["avg_monthly"] for s in subscriptions), Decimal("0"))
+    subscriptions.sort(key=lambda s: (-s["annual"], -s["total"], s["category_name"]))
+    total_annual = sum((s["annual"] for s in subscriptions), Decimal(0))
     return {
         "subscriptions": subscriptions,
         "summary": {
-            "total_monthly": quantize_cents(total_monthly),
-            "total_annual": quantize_cents(total_monthly * 12),
-            "active_count": len(subscriptions),
+            "total_annual": total_annual,
+            "total_monthly": quantize_cents(total_annual / 12),
+            # "Active" was a count of categories with any charge in the range,
+            # stopped services and all, under a label that read as services.
+            # Now it says what it counts: N of M tagged categories charged.
+            "charged_categories": sum(
+                1 for s in subscriptions if any(v["basis"] != Basis.STOPPED for v in s["services"])
+            ),
+            "tagged_categories": len(tagged),
+            "new_this_month": new_this_month,
+            "projected_services": projected,
+            "stopped_services": stopped,
         },
         "months": month_list,
-        #: The window's complete months: the most an effective-monthly figure
-        #: divides by, since each SERVICE divides by the months since its own
-        #: first charge and the category and summary figures are sums of
-        #: those. Still a bound, not the divisor of anything on the page.
-        "months_averaged": len(month_list),
+        # Every listed category's month, summed: what a stacked chart that
+        # draws ten categories and an Other band must stand at.
+        "monthly_totals": [
+            sum((s["monthly_amounts"][i] for s in subscriptions), Decimal(0))
+            for i in range(len(month_list))
+        ],
+        "year_start": year_start,
+        "year_end": year_end,
     }
 
 
@@ -701,6 +772,10 @@ def _as_costs(signed: Iterable[tuple[date, Decimal]], month_list: Sequence[date]
 
 
 class CostOfLivingGroup(CostSeries):
+    #: None for the Uncategorized bucket — the flag the page drills it by.
+    #: Keyed by id, not name: two groups sharing a name were one bar, and a
+    #: real group NAMED "Uncategorized" opened as rows with no category.
+    group_id: str | None
     group_name: str
     #: This group's share of the cost-of-living total, 0-100. Not of income —
     #: the shares have to add to 100 or the bar reads as arithmetic nobody
@@ -777,13 +852,15 @@ def class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | No
     )
 
 
-#: What the null-group bucket is called. One spelling: the report labels the
-#: bar with it and the client tests it to decide that a drill-down means "no
-#: category at all" rather than "these ids".
-UNCATEGORIZED_GROUP = "Uncategorized"
+#: What the null-group bucket is called: `domain.spending.UNCATEGORIZED`, the
+#: one spelling every spending report's Uncategorized line uses. A name to
+#: print only: the bucket is told apart by its `group_id` of None.
+UNCATEGORIZED_GROUP = UNCATEGORIZED
 
 
-async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def cost_of_living(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """What it costs to keep the lights on, by category group, in two tiers.
 
     The groups roll up the WIDE tier, `NecessityTier.COST_OF_LIVING`:
@@ -811,7 +888,8 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # N−1 complete ones, which agreed with Essentials only when spending was
     # flat: rent of 3,000 a month plus a 1,200 premium twelve months back read
     # 3,000 here and 3,100 there.
-    start_date, end_date = complete_month_window(date.today(), months)
+    today = reader_today(today)
+    start_date, end_date = await history_window(session, budget_id, months, today)
     month_list = month_starts(start_date, end_date)
 
     repo = TransactionRepository(session)
@@ -846,23 +924,25 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     #: adjustment on an account someone had imported on-budget did exactly
     #: that — and the report had no drill-down at all, so the only honest
     #: reading of an unexplainable block was "this report is broken".
-    by_group: dict[str, list[tuple[date, Decimal]]] = {}
-    ids_by_group: dict[str, set[str]] = {}
+    by_group: dict[uuid.UUID | None, list[tuple[date, Decimal]]] = {}
+    names: dict[uuid.UUID | None, str] = {}
+    ids_by_group: dict[uuid.UUID | None, set[str]] = {}
     for row in rows:
-        name = row.group_name or UNCATEGORIZED_GROUP
-        by_group.setdefault(name, []).append((row.month, row.total))
-        seen = ids_by_group.setdefault(name, set())
+        by_group.setdefault(row.group_id, []).append((row.month, row.total))
+        names[row.group_id] = row.group_name or UNCATEGORIZED_GROUP
+        seen = ids_by_group.setdefault(row.group_id, set())
         if row.category_id is not None:
             seen.add(str(row.category_id))
 
     groups: list[CostOfLivingGroup] = [
         {
             **_as_costs(signed, month_list),
-            "group_name": name,
+            "group_id": str(gid) if gid is not None else None,
+            "group_name": names[gid],
             "share": Decimal("0"),
-            "category_ids": sorted(ids_by_group.get(name, set())),
+            "category_ids": sorted(ids_by_group.get(gid, set())),
         }
-        for name, signed in by_group.items()
+        for gid, signed in by_group.items()
     ]
     cost_of_living_total = sum((g["total"] for g in groups), Decimal("0"))
     for g in groups:
@@ -875,9 +955,21 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
 
     # Take-home is Income by Source's own served average over the same
     # window, not a second division of its monthly totals here.
-    income = await income_by_source(session, budget_id, months)
+    income = await income_by_source(session, budget_id, months, today)
     avg_income = income["avg_monthly"]
     avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
+    # Discretionary over the same window, the Discretionary report's own rows
+    # (`DISCRETIONARY_ROW`), so the verdict can lay take-home out whole:
+    # committed, discretionary, and what was left over. None untagged, as that
+    # report serves it — "outside Cost of living" would be everything.
+    disc_rows, disc_basis = await repo.discretionary_by_category_month(
+        budget_id, start_date, end_date
+    )
+    avg_discretionary: Decimal | None = None
+    if basis_is_chosen(disc_basis):
+        avg_discretionary = _as_costs(((r.month, r.total) for r in disc_rows), month_list)[
+            "avg_monthly"
+        ]
     avg_essentials: Decimal | None = None
     if essentials_known:
         # Outflows are negative in the ledger; a cost reads positive here, the
@@ -906,6 +998,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         "avg_monthly_cost_of_living": avg_cost_of_living,
         "avg_monthly_essentials": avg_essentials,
         "avg_monthly_income": avg_income,
+        "avg_monthly_discretionary": avg_discretionary,
         "basis": basis,
         #: False when nothing is tagged, so the page can say the figure is
         #: every category rather than a chosen few.
@@ -948,7 +1041,9 @@ def _by_total(item: DiscretionaryLine | DiscretionaryGroup) -> Decimal:
     return item["total"]
 
 
-async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 12) -> dict:
+async def discretionary(
+    svc: ReportService, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
     """Spending outside Cost of living, by category within its group.
 
     The rows are `DISCRETIONARY_ROW` — SPENDING-class rows in no category
@@ -967,7 +1062,7 @@ async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 
     construction (see `DISCRETIONARY_ROW`). The share between them is the
     page's arithmetic: two served figures and no missing input.
     """
-    start_date, end_date = complete_month_window(date.today(), months)
+    start_date, end_date = await history_window(svc.session, budget_id, months, reader_today(today))
     month_list = month_starts(start_date, end_date)
     rows, basis = await svc.txns.discretionary_by_category_month(budget_id, start_date, end_date)
     tagged = basis_is_chosen(basis)
@@ -987,6 +1082,7 @@ async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 
             "avg_monthly": None,
             "monthly_totals": [],
             "spending_total": None,
+            "cost_of_living_total": None,
             "groups": [],
         }
 
@@ -1032,26 +1128,39 @@ async def discretionary(svc: ReportService, budget_id: uuid.UUID, months: int = 
     whole = _as_costs(((r.month, r.total) for r in rows), month_list)
     by_month = await svc._monthly_class_totals(budget_id, start_date, end_date)
     spending = sum((flows(by_month.get(m, {})).spending for m in month_list), Decimal("0"))
+    # The wide tier over the same window — Cost of Living's own figure — so
+    # the page can say how the two tiers and spending fit: Cost of living +
+    # Discretionary is all spending plus the debt payments Cost of living
+    # counts by class, which Discretionary (spending only) never can.
+    col_signed, _ = await svc.txns.essential_spend(
+        budget_id, start_date, end_date, tier=NecessityTier.COST_OF_LIVING
+    )
     return {
         **served,
         "total": whole["total"],
         "avg_monthly": whole["avg_monthly"],
         "monthly_totals": [quantize_cents(a) for a in whole["monthly_amounts"]],
         "spending_total": quantize_cents(spending),
+        "cost_of_living_total": quantize_cents(Decimal("0") - col_signed),
         "groups": groups,
     }
 
 
-async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> dict:
+async def wishlist_discipline(
+    session: AsyncSession, budget_id: uuid.UUID, today: date | None = None
+) -> dict:
     """Cooling-off outcomes across the whole wishlist, open and closed.
 
     All time, deliberately: the point is the habit, and a habit measured over
     the last twelve months forgets the wish you talked yourself out of two
     years ago. The arithmetic is guide/wishlist.discipline — pure, and tested
-    a case at a time.
+    a case at a time. `today` is the reader's: it decides which open wishes
+    are past their wait. `cooling_days` is the person's own waiting period,
+    what the average wait is read against.
     """
     from igab.db.models import WishlistItem
     from igab.guide.wishlist import DisciplineInput, added_on, discipline
+    from igab.guide.wishlist_service import wishlist_settings
 
     rows = (
         (
@@ -1066,15 +1175,18 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
         .all()
     )
     stats = discipline(
-        DisciplineInput(
-            status=w.status,
-            cost=Decimal(w.cost or 0),
-            created_at=added_on(w.added_on, w.created_at),
-            cooling_until=w.cooling_until,
-            done_at=w.done_at,
-            dropped_at=w.dropped_at,
-        )
-        for w in rows
+        [
+            DisciplineInput(
+                status=w.status,
+                cost=Decimal(w.cost or 0),
+                created_at=added_on(w.added_on, w.created_at),
+                cooling_until=w.cooling_until,
+                done_at=w.done_at,
+                dropped_at=w.dropped_at,
+            )
+            for w in rows
+        ],
+        reader_today(today),
     )
     return {
         "cooled_then_bought": stats.cooled_then_bought,
@@ -1082,11 +1194,18 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
         "bought_early": stats.bought_early,
         "dropped_early": stats.dropped_early,
         "still_open": stats.still_open,
+        "ready_to_decide": stats.ready_to_decide,
+        "still_cooling": stats.still_cooling,
+        "decided_count": stats.decided_count,
+        "waited_out_count": stats.waited_out_count,
+        "waited_out_share": stats.waited_out_share,
         "resisted_total": stats.resisted_total,
         "resisted_count": stats.resisted_count,
         "bought_total": stats.bought_total,
+        "bought_count": stats.bought_count,
         "open_total": stats.open_total,
         "avg_days_to_buy": stats.avg_days_to_buy,
+        "cooling_days": (await wishlist_settings(session, budget_id))["cooling_days"],
         "avg_wish_cost": stats.avg_wish_cost,
         "unplaced": stats.unplaced,
     }

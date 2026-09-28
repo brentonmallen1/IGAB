@@ -2,7 +2,6 @@ import { useState, useMemo, useRef } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { incomeDrill, useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
-import { usePayees } from '../../../api/payees'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -13,27 +12,39 @@ import { CHART_COLORS, COLOR_NEGATIVE, COLOR_POSITIVE } from './chartColors'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import type { CategoryPayee } from '../../../types'
+import type { CashFlowReport, CategoryPayee } from '../../../types'
 import {
   buildSankeyView,
   categoryNodeDrill,
+  payeeNodeDrill,
   deltaColor,
   extractPrevTotals,
   formatDelta,
+  sankeyExportRows,
+  sankeyGeometry,
+  sankeyHeight,
+  sankeyNodePadding,
   type SankeyViewNode,
 } from './sankeyView'
 import './CashFlowSankey.css'
 import { truncateLabel } from '../../../utils/truncateLabel'
+import { DEBT_PAYMENTS } from '../../../utils/flowLabels'
 
 interface Props {
   budgetId: string
 }
 
+/** Colour by what a node is, not by where it sits: money in, the hub, where
+ *  it went, and the two balancing nodes by their meaning. */
 const NODE_COLORS: Record<string, string> = {
-  income: COLOR_POSITIVE,
+  income_payee: COLOR_POSITIVE,
+  inflow: CHART_COLORS[4],
+  shortfall: COLOR_NEGATIVE,
+  budget: 'var(--text-muted)',
   category_group: CHART_COLORS[1],
   category: CHART_COLORS[3],
-  payee: COLOR_NEGATIVE,
+  payee: CHART_COLORS[2],
+  left_over: COLOR_POSITIVE,
 }
 
 type NodeData = SankeyViewNode
@@ -43,34 +54,52 @@ function SankeyNodeRect(props: {
   y?: number
   width?: number
   height?: number
-  payload?: NodeData & { value?: number }
+  labelChars?: number
+  payload?: NodeData & { value?: number; depth?: number }
 }) {
   const { formatMoney, privacyMode } = useFormatters()
-  const { x = 0, y = 0, width = 0, height = 0, payload } = props
+  const { x = 0, y = 0, width = 0, height = 0, payload, labelChars = 24 } = props
   if (!payload) return null
-  const isLeft = payload.type === 'income'
+  // The first column labels to its left, into the left margin; every other
+  // column to its right — the last into the right margin.
+  const isLeft = (payload.depth ?? 0) === 0
   const color = NODE_COLORS[payload.type] ?? 'var(--text-muted)'
   const value = payload.value ?? 0
   const hasDelta = payload.prev !== undefined
+  const tx = isLeft ? x - 6 : x + width + 6
+  const anchor = isLeft ? 'end' : 'start'
+  const mid = y + height / 2
+  const top = mid - (hasDelta ? 12 : 6)
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={color} />
       <text
-        x={isLeft ? x + width + 6 : x - 6}
-        y={y + height / 2 - (hasDelta ? 6 : 0)}
-        textAnchor={isLeft ? 'start' : 'end'}
+        x={tx}
+        y={top}
+        textAnchor={anchor}
         dominantBaseline="middle"
         fontSize={12}
         fill="var(--text-primary)"
         fontWeight={500}
       >
-        {truncateLabel(payload.name, 24)}
+        {truncateLabel(payload.name, labelChars)}
+      </text>
+      <text
+        x={tx}
+        y={top + 13}
+        textAnchor={anchor}
+        dominantBaseline="middle"
+        fontSize={11}
+        fill="var(--text-secondary)"
+        className="tabular"
+      >
+        {formatMoney(value)}
       </text>
       {hasDelta && (
         <text
-          x={isLeft ? x + width + 6 : x - 6}
-          y={y + height / 2 + 8}
-          textAnchor={isLeft ? 'start' : 'end'}
+          x={tx}
+          y={top + 26}
+          textAnchor={anchor}
           dominantBaseline="middle"
           fontSize={10}
           fill={
@@ -169,12 +198,64 @@ function SankeyTooltip({
   )
 }
 
+/** The class cards: net figures, named by which way they went — a month that
+ *  drew more out of savings than it put in did not "move to savings". */
+function ClassCards({
+  data,
+  prevData,
+  compare,
+}: {
+  data: CashFlowReport
+  prevData: CashFlowReport | undefined
+  compare: boolean
+}) {
+  const { formatMoney, privacyMode } = useFormatters()
+  if (data.total_spending === null) return null
+  const savings = Number(data.total_savings)
+  const debt = Number(data.total_debt_principal)
+  return (
+    <>
+      <MetricCard
+        label="Spent"
+        value={formatMoney(Number(data.total_spending))}
+        sub={
+          compare && prevData && prevData.total_spending !== null
+            ? formatDelta(
+                Number(data.total_spending),
+                Number(prevData.total_spending),
+                formatMoney,
+                privacyMode
+              )
+            : 'net of refunds'
+        }
+      />
+      {/* Money moved — the "To savings accounts" trunk. Not "Saved": that
+          figure (Savings Rate) adds what kept-here envelopes hold, which
+          never left the budget and is not on this diagram. */}
+      {savings !== 0 && (
+        <MetricCard
+          label={savings > 0 ? 'Moved to savings' : 'Drawn from savings'}
+          value={formatMoney(Math.abs(savings))}
+        />
+      )}
+      {debt !== 0 && (
+        <MetricCard
+          label={debt > 0 ? DEBT_PAYMENTS : 'Borrowed'}
+          value={formatMoney(Math.abs(debt))}
+        />
+      )}
+    </>
+  )
+}
+
 export function CashFlowSankeyReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(500)
   const { formatMoney, privacyMode } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
   const [compare, setCompare] = useState(false)
+  // The width the chart is drawn at, for margins in proportion to it.
+  const [chartWidth, setChartWidth] = useState(800)
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, error, refetch } = useCashFlowReport(
     budgetId,
@@ -192,7 +273,6 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     acctIds,
     { enabled: compare }
   )
-  const { data: allPayees } = usePayees(budgetId)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -205,18 +285,18 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     setCompare(false)
   }
 
-  // Previous-window totals keyed by the backend's stable node ids (g_/c_...),
-  // so deltas survive drilling. Payees have no ids at level 3 — match by name.
+  // Previous-window totals keyed by the backend's stable node ids, so deltas
+  // survive drilling. Payees have no ids at level 3 — match by name.
   const prevTotals = useMemo(
     () => (compare && prevData ? extractPrevTotals(prevData) : null),
     [compare, prevData]
   )
 
-  // Build simplified sankey: Income → Groups → Categories → Payees (each level on drill)
   const { sankeyData, groupCategories, categoryPayees } = useMemo(
     () => buildSankeyView(data, selectedGroupId, selectedCategoryId, prevTotals, prevData),
     [data, selectedGroupId, selectedCategoryId, prevTotals, prevData]
   )
+  const geometry = sankeyGeometry(chartWidth)
 
   const selectedGroupName = selectedGroupId
     ? (data?.nodes.find((n) => n.id === selectedGroupId)?.name ?? null)
@@ -231,7 +311,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
   if (!sankeyData.nodes.length) {
     return (
       <div className="report-section surface">
-        <h2 className="report-section__title">Cash Flow</h2>
+        <h2 className="report-section__title">Where the money went</h2>
         <div className="reports-empty">No transaction data for this period.</div>
       </div>
     )
@@ -244,16 +324,16 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     if (!nodeData) return
 
     const window = { startDate: filters.startDate, endDate: filters.endDate }
+    const category = selectedCategoryId
+      ? data?.nodes.find((n) => n.id === selectedCategoryId)
+      : null
 
-    if (nodeData.type === 'income') {
-      if (selectedGroupId || selectedCategoryId) {
-        // Clicking income while drilled resets to all groups
-        setSelectedGroupId(null)
-        setSelectedCategoryId(null)
-      } else if (viewMode === 'spent') {
-        // At the top level it opens the income transactions instead
-        setDrillDown(incomeDrill('Income', window))
-      }
+    if (nodeData.type === 'budget') {
+      // The hub steps back out to every group.
+      setSelectedGroupId(null)
+      setSelectedCategoryId(null)
+    } else if (nodeData.type === 'income_payee' && viewMode === 'spent') {
+      setDrillDown(incomeDrill('Income', window))
     } else if (nodeData.type === 'category_group') {
       if (selectedCategoryId) {
         // Go back to group level
@@ -273,18 +353,8 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         setDrillDown(categoryNodeDrill(nodeData, window))
       }
     } else if (nodeData.type === 'payee') {
-      // Level-3 payee nodes carry names only — resolve back to an id
-      const payeeId = (allPayees ?? []).find((p) => p.name === nodeData.name)?.id
-      if (payeeId) {
-        setDrillDown({
-          kind: 'payee',
-          label: nodeData.name,
-          scope: 'parent',
-          direction: 'outflow',
-          payeeIds: [payeeId],
-          ...window,
-        })
-      }
+      const drill = category ? payeeNodeDrill(nodeData, category, window) : null
+      if (drill) setDrillDown(drill)
     }
   }
 
@@ -297,25 +367,41 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     setSelectedCategoryId(null)
   }
 
+  const net = data?.net === null || data?.net === undefined ? null : Number(data.net)
+  const prevNet =
+    prevData?.net === null || prevData?.net === undefined ? null : Number(prevData.net)
+  const assigned =
+    data?.total_assigned === null || data?.total_assigned === undefined
+      ? null
+      : Number(data.total_assigned)
+
   return (
     <div className="report-section surface">
       <div className="report-section__header">
-        <h2 className="report-section__title">Cash Flow</h2>
-        <ReportInfoButton title="Cash Flow Sankey">
+        <h2 className="report-section__title">Where the money went</h2>
+        <ReportInfoButton title="Cash Flow — where the money went">
           <p>
-            Shows how <strong>income flows into category groups</strong>. Band width = dollar
-            amount.
+            What came in on the left, where it went on the right. Band width is the amount, and
+            every node says it.
           </p>
           <p>
-            <strong>Spent</strong>: actual transactions — drill down to payees.{' '}
-            <strong>Budgeted</strong>: budget assignments — drill down to categories only.
-            Assignments aren't tied to accounts, so in Budgeted mode the account filter applies to
-            the income total only.
+            <strong>Spent</strong> is net, as Income vs Expenses counts it: a refund comes off its
+            category, money drawn back out of savings comes off what was moved there, and new
+            borrowing comes off what was repaid. What nets the other way is drawn on the left —
+            Refunds, From savings, Borrowed. <strong>Left over</strong> is what came in and did not
+            go out; a <strong>Shortfall</strong> is what went out beyond what came in. Either one is
+            the Net card, the same figure Income vs Expenses gives this window.
           </p>
           <p>
-            <strong>Compare</strong> overlays the change versus the preceding period of equal length
-            on every node. In Spent mode, clicking a payee node (or a category node at the payee
-            level) lists the transactions behind it below the chart.
+            <strong>Budgeted</strong> draws the money assigned instead, netted per category: money
+            moved out of one category into another is drawn once, with what the first gave up as a
+            source of its own. Assignments aren&apos;t tied to accounts, so the account filter
+            applies to the income figure only.
+          </p>
+          <p>
+            Click a group to see its categories, and a category (in Spent) to see its payees.{' '}
+            <strong>Compare</strong> shows the change against the preceding period of equal length
+            on every node.
           </p>
           <ReportScopeNote report="cash-flow" />
         </ReportInfoButton>
@@ -343,18 +429,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         </button>
         <ReportExportButton
           reportId="cash-flow"
-          getRows={() => {
-            if (!data) return []
-            const nodeName = new Map(data.nodes.map((n) => [n.id, n.name]))
-            const rows: Record<string, unknown>[] = data.links.map((l) => ({
-              source: nodeName.get(l.source) ?? l.source,
-              target: nodeName.get(l.target) ?? l.target,
-              value: l.value,
-            }))
-            rows.push({ source: 'TOTAL', target: 'income', value: data.total_income })
-            rows.push({ source: 'TOTAL', target: 'expenses', value: data.total_expense })
-            return rows
-          }}
+          getRows={() => (data ? sankeyExportRows(data) : [])}
           captureRef={captureRef}
           window={{ start: filters.startDate, end: filters.endDate }}
         />
@@ -390,7 +465,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         {data && (
           <MetricRow>
             <MetricCard
-              label="Total Income"
+              label="Income"
               value={formatMoney(data.total_income)}
               sub={
                 compare && prevData
@@ -398,61 +473,36 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
                   : undefined
               }
             />
-            {/* total_expense is ALL outflow, including the savings and debt
-              trunks now drawn as their own branches — labelling it "Expenses"
-              put $5,000 above a diagram showing $3,000 into expense groups,
-              and disagreed with Income vs Expenses for the same window. */}
-            {/* null in budgeted mode: no activity class to split by, so the
-              split is not drawn at all. Number(null) is 0, so testing the
-              value rather than the null is how "Spent $0.00" would come
-              back the moment the server stops claiming the figure. */}
-            {data.total_spending !== null && (
+            <ClassCards data={data} prevData={prevData} compare={compare} />
+            {net !== null && (
               <MetricCard
-                label="Spent"
-                value={formatMoney(Number(data.total_spending))}
+                label="Net"
+                value={formatMoney(net)}
                 sub={
-                  compare && prevData && prevData.total_spending !== null
-                    ? formatDelta(
-                        Number(data.total_spending),
-                        Number(prevData.total_spending),
-                        formatMoney,
-                        privacyMode
-                      )
-                    : undefined
+                  compare && prevNet !== null
+                    ? formatDelta(net, prevNet, formatMoney, privacyMode)
+                    : net >= 0
+                      ? 'left over'
+                      : 'shortfall'
                 }
               />
             )}
-            {/* Money moved — the "To savings accounts" trunk. Not "Saved":
-                that figure (Savings Rate) adds what kept-here envelopes hold,
-                which never left the budget and is not on this diagram. */}
-            {data.total_savings !== null && Number(data.total_savings) > 0 && (
-              <MetricCard
-                label="Moved to savings"
-                value={formatMoney(Number(data.total_savings))}
-              />
+            {/* Budgeted mode: what was assigned, and how it stands against
+              income. Not "Net" — income less assigned is not the growth of
+              anything, and the name put it beside spent mode's Net. */}
+            {assigned !== null && (
+              <>
+                <MetricCard
+                  label="Assigned"
+                  value={formatMoney(assigned)}
+                  sub="net of re-planning"
+                />
+                <MetricCard
+                  label="Income less assigned"
+                  value={formatMoney(data.total_income - assigned)}
+                />
+              </>
             )}
-            {data.total_debt_principal !== null && Number(data.total_debt_principal) > 0 && (
-              <MetricCard
-                label="Debt Paid"
-                value={formatMoney(Number(data.total_debt_principal))}
-              />
-            )}
-            {/* Net still uses the whole outflow: everything that left the
-              budget did leave, however it is branched. */}
-            <MetricCard
-              label="Net"
-              value={formatMoney(data.total_income - data.total_expense)}
-              sub={
-                compare && prevData
-                  ? formatDelta(
-                      data.total_income - data.total_expense,
-                      prevData.total_income - prevData.total_expense,
-                      formatMoney,
-                      privacyMode
-                    )
-                  : undefined
-              }
-            />
           </MetricRow>
         )}
 
@@ -463,12 +513,19 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
           </p>
         )}
 
-        <ResponsiveContainer width="100%" height={chartHeight}>
+        <ResponsiveContainer
+          width="100%"
+          height={sankeyHeight(sankeyData, chartHeight, compare)}
+          onResize={(w) => setChartWidth(Math.round(w))}
+        >
           <Sankey
             data={sankeyData}
-            nodePadding={14}
-            margin={{ top: 10, right: 200, bottom: 10, left: 100 }}
-            node={<SankeyNodeRect />}
+            nodePadding={sankeyNodePadding(compare)}
+            // The served order: income, then what came back, then the balancing
+            // node; groups by size, then Left over. Sorting by size mixed them.
+            sort={false}
+            margin={{ top: 12, right: geometry.right, bottom: 12, left: geometry.left }}
+            node={<SankeyNodeRect labelChars={geometry.labelChars} />}
             link={{ stroke: 'var(--border-color)', strokeOpacity: 0.5 }}
             onClick={handleClick}
           >
@@ -489,17 +546,22 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         </ResponsiveContainer>
 
         <div className="sankey-legend">
-          <div className="sankey-legend__item">
-            <span className="sankey-legend__dot" style={{ background: NODE_COLORS.income }} />
-            <span>income</span>
-          </div>
-          <div className="sankey-legend__item">
-            <span
-              className="sankey-legend__dot"
-              style={{ background: NODE_COLORS.category_group }}
-            />
-            <span>category group</span>
-          </div>
+          {(
+            [
+              ['income_payee', 'money in'],
+              ['inflow', 'other money in'],
+              ['category_group', 'where it went'],
+              ['left_over', 'left over'],
+              ['shortfall', 'shortfall'],
+            ] as const
+          )
+            .filter(([type]) => sankeyData.nodes.some((n) => n.type === type))
+            .map(([type, label]) => (
+              <div key={type} className="sankey-legend__item">
+                <span className="sankey-legend__dot" style={{ background: NODE_COLORS[type] }} />
+                <span>{label}</span>
+              </div>
+            ))}
           {selectedGroupId && (
             <div className="sankey-legend__item">
               <span className="sankey-legend__dot" style={{ background: NODE_COLORS.category }} />

@@ -18,13 +18,14 @@ import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
+import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportNotes } from '../ReportNotes'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
 import { PAYDAY_WINDOW_OPTIONS } from './reportControls'
+import { busiestAndQuietest, paydayBars, paydayPeak, shortDay } from './dayPatternsView'
 
 interface Props {
   budgetId: string
@@ -32,7 +33,7 @@ interface Props {
 
 export function DayPatternsReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
-  const { formatMoney, formatMoneyOrDash } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatDate } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const { filters, setDrillDown } = useReportStore()
   const reportScope = useReportScope()
@@ -60,21 +61,21 @@ export function DayPatternsReport({ budgetId }: Props) {
   // The API always returns seven rows, zeroed when nothing matched — so
   // `days.length` never reports emptiness. Filter to a category whose activity
   // is all debt principal and this is the difference between "no spending" and
-  // a flat week captioned "Highest Spending Day — Sunday, $0.00".
-  const hasSpending = days.some((d) => d.total > 0)
-
-  const maxDay = days.reduce((best, d) => (d.total > best.total ? d : best), days[0])
-  const minDay = days.reduce((least, d) => (d.total < least.total ? d : least), days[0])
+  // a flat week captioned "Busiest day — Sunday, $0.00".
+  const extremes = busiestAndQuietest(days)
 
   const chartData = days.map((d) => ({
-    name: d.day_name,
+    name: shortDay(d.day_name),
+    fullName: d.day_name,
     dayOfWeek: d.day_of_week,
-    Amount: d.total,
-    Transactions: d.count,
-    // The served figure. This was re-derived here and again in the
-    // export, so three places computed one number and the server's went
-    // unread.
-    avgPerTxn: d.avg_transaction,
+    // A typical such day, served: the weekday's total over every one of it
+    // in the window. The bars were window totals, so a range holding five
+    // Saturdays and four Sundays drew Saturday a fifth taller for spending
+    // the same.
+    avg: d.avg_per_day ?? 0,
+    total: d.total,
+    weekdays: d.weekdays,
+    purchases: d.count,
   }))
 
   function drillTo(dayOfWeek: number, dayName: string) {
@@ -82,10 +83,9 @@ export function DayPatternsReport({ budgetId }: Props) {
       kind: 'day-of-week',
       label: `${dayName}s`,
       scope: 'leaf',
-      direction: 'outflow',
       dayOfWeek,
-      // The classes the bar counted. Without them the panel filtered to
-      // nothing and totalled more than the bar that opened it.
+      // The classes the bar counted, whichever way each row went: the bar is
+      // net of refunds, and an outflow-only list totalled more than it.
       activityClasses: data?.counted_classes,
       ...drillScope(reportScope),
       startDate: filters.startDate,
@@ -93,26 +93,11 @@ export function DayPatternsReport({ budgetId }: Props) {
     })
   }
 
-  const paydayDays = paydayData?.days ?? []
-  // null means the payday windows cover every day: there is no baseline, and
-  // `?? 0` here invented the $0.00 the server refuses to send — the card read
-  // "Baseline Daily $0.00" and every bar with any spend turned warning.
-  const servedBaseline = paydayData?.baseline_daily
-  const paydayBaseline = servedBaseline == null ? null : Number(servedBaseline)
+  const paydayBaseline = paydayData?.baseline_daily ?? null
   const paydayEventCount = paydayData?.event_count ?? 0
   const paydayFloor = paydayData?.payday_floor
-
-  const paydayChartData = paydayDays.map((d) => ({
-    name: d.offset === 0 ? 'Payday' : `+${d.offset}`,
-    offset: d.offset,
-    spend: d.avg_spend,
-    aboveBaseline: paydayBaseline !== null && d.avg_spend > paydayBaseline,
-  }))
-
-  const paydayPeakDay = paydayDays.reduce(
-    (best, d) => (d.avg_spend > best.avg_spend ? d : best),
-    paydayDays[0]
-  )
+  const paydayChartData = paydayBars(paydayData?.days ?? [], paydayBaseline)
+  const peak = paydayPeak(paydayData?.days ?? [])
 
   return (
     <>
@@ -121,15 +106,15 @@ export function DayPatternsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Day-of-Week Spending Patterns</h2>
           <ReportInfoButton title="Day-of-Week Patterns">
             <p>
-              Total spending aggregated by day of week across all transactions in the selected
-              period. The <strong>peak day is highlighted</strong> in a different color.
+              Each bar is an <strong>average</strong> such day: that weekday&apos;s spending over
+              the period divided by how many of it the period held, the quiet ones included. The
+              busiest is drawn in a second colour. Hover a bar for its total.
             </p>
             <p>
-              High weekday spending often signals structured habits (groceries, work lunches). High
-              weekend spending can indicate impulse or leisure spending. Use this to identify which
-              days need more discipline.
+              Days are the bank&apos;s <strong>posting date</strong>, which can trail the purchase —
+              a Saturday shop may post on Monday — so weekends can read lighter than they were.
             </p>
-            <p>Click a bar to see that weekday's transactions.</p>
+            <p>Click a bar to see that weekday&apos;s transactions.</p>
             <ReportScopeNote report="day-patterns" />
             <SpendingClassNote />
           </ReportInfoButton>
@@ -139,9 +124,10 @@ export function DayPatternsReport({ budgetId }: Props) {
               getRows={() =>
                 days.map((d) => ({
                   day: d.day_name,
+                  avg_per_day: d.avg_per_day,
                   total: d.total,
-                  count: d.count,
-                  avg_transaction: d.avg_transaction,
+                  days_in_range: d.weekdays,
+                  purchases: d.count,
                 }))
               }
               captureRef={captureRef}
@@ -150,21 +136,22 @@ export function DayPatternsReport({ budgetId }: Props) {
           </div>
         </div>
         <p className="report-section__subtitle">
-          When do you spend the most? Reveals impulse vs structured spending habits.
+          An average day of each weekday, by the bank&apos;s posting date.
+          {data && ` ${formatDate(data.window_start)} – ${formatDate(data.window_end)}`}
         </p>
 
         <div ref={captureRef} className="report-capture">
-          {hasSpending && maxDay && minDay && (
+          {extremes && (
             <MetricRow>
               <MetricCard
-                label="Highest Spending Day"
-                value={maxDay.day_name}
-                sub={formatMoney(maxDay.total)}
+                label="Busiest day"
+                value={extremes.busiest.day_name}
+                sub={`${formatMoneyOrDash(extremes.busiest.avg_per_day)} on an average ${extremes.busiest.day_name}`}
               />
               <MetricCard
-                label="Lowest Spending Day"
-                value={minDay.day_name}
-                sub={formatMoney(minDay.total)}
+                label="Quietest day"
+                value={extremes.quietest.day_name}
+                sub={`${formatMoneyOrDash(extremes.quietest.avg_per_day)} on an average ${extremes.quietest.day_name}`}
               />
             </MetricRow>
           )}
@@ -174,52 +161,76 @@ export function DayPatternsReport({ budgetId }: Props) {
             why rather than a footnote under a chart that never drew. */}
           <ReportNotes report={data} toggleAvailable={false} />
 
-          {!hasSpending ? (
+          {!extremes ? (
             <div className="reports-empty">No spending data for this period.</div>
           ) : (
             <ResponsiveContainer width="100%" height={chartHeight}>
               <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
+                <XAxis
+                  dataKey="name"
+                  interval={0}
+                  tick={{ fontSize: 12, fill: 'var(--text-muted)' }}
+                />
                 <YAxis
                   tickFormatter={moneyAxis.tickFormatter}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                   width={moneyAxis.width}
                 />
                 <Tooltip
-                  formatter={(v: unknown, name: unknown) =>
-                    name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
-                  }
+                  content={({ active, payload }) => {
+                    const row = payload?.[0]?.payload as (typeof chartData)[number] | undefined
+                    if (!active || !row) return null
+                    return (
+                      <div className="chart-tooltip">
+                        <div className="chart-tooltip__label">{row.fullName}</div>
+                        <div className="chart-tooltip__row">
+                          <span className="chart-tooltip__name">An average one</span>
+                          <span className="chart-tooltip__value">{formatMoney(row.avg)}</span>
+                        </div>
+                        <div className="chart-tooltip__row">
+                          <span className="chart-tooltip__name">
+                            All {row.weekdays} in the range
+                          </span>
+                          <span className="chart-tooltip__value">{formatMoney(row.total)}</span>
+                        </div>
+                        <div className="chart-tooltip__row">
+                          <span className="chart-tooltip__name">Purchases</span>
+                          <span className="chart-tooltip__value">{row.purchases}</span>
+                        </div>
+                      </div>
+                    )
+                  }}
                   offset={16}
                   isAnimationActive={false}
-                  {...TOOLTIP_STYLE}
                 />
                 <Bar
-                  dataKey="Amount"
+                  dataKey="avg"
                   radius={[3, 3, 0, 0]}
-                  barSize={44}
+                  maxBarSize={44}
                   cursor="pointer"
-                  onClick={(data) => {
-                    const d = data as {
+                  onClick={(bar) => {
+                    const d = bar as {
                       dayOfWeek?: number
-                      name?: string
-                      payload?: { dayOfWeek?: number; name?: string }
+                      fullName?: string
+                      payload?: { dayOfWeek?: number; fullName?: string }
                     }
                     const dow = d.dayOfWeek ?? d.payload?.dayOfWeek
-                    const name = d.name ?? d.payload?.name
+                    const name = d.fullName ?? d.payload?.fullName
                     if (dow != null && name) drillTo(dow, name)
                   }}
                 >
-                  {chartData.map((entry, i) => {
-                    const isMax = maxDay && entry.name === maxDay.day_name
-                    return (
-                      <Cell
-                        key={i}
-                        fill={isMax ? CHART_COLORS[1] : CHART_COLORS[0]}
-                        fillOpacity={0.85}
-                      />
-                    )
-                  })}
+                  {chartData.map((entry) => (
+                    <Cell
+                      key={entry.dayOfWeek}
+                      fill={
+                        entry.dayOfWeek === extremes.busiest.day_of_week
+                          ? CHART_COLORS[1]
+                          : CHART_COLORS[0]
+                      }
+                      fillOpacity={0.85}
+                    />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -232,8 +243,8 @@ export function DayPatternsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Payday Effect</h2>
           <ReportInfoButton title="Payday Effect">
             <p>
-              Compares your <strong>spending in the days after each payday</strong> with your
-              baseline daily spending.
+              Compares your <strong>discretionary spending in the days after each payday</strong>{' '}
+              with a typical day.
             </p>
             <p>
               A <strong>payday</strong> is an income deposit — categorized as income, or not yet
@@ -242,21 +253,18 @@ export function DayPatternsReport({ budgetId }: Props) {
               a credit card, and a refund filed to a spending category are not paydays.
             </p>
             <p>
-              Each bar is the average spent that many days after a payday, across every payday; a
-              payday with nothing spent that day counts as zero. The dashed baseline is your average
-              daily spending on the days, from the first payday on, that fall outside every payday
-              window. When paydays come often enough to cover every day, there is no baseline.
+              Each bar is the <strong>median</strong> payday&apos;s spending that many days after
+              it: half your paydays spent more that day, half less, and a payday with nothing spent
+              counts as zero. One big purchase after one payday does not move it. The dashed line is
+              the median day across the whole period, paydays included.
             </p>
             <p>
-              Bars above the baseline indicate higher-than-normal spending. Many people spend more
-              right after payday — this shows whether that pattern applies to you.
-            </p>
-            <p>
-              <strong>Note:</strong> Subscriptions are excluded — they land on their own schedule,
-              whatever you do after being paid.
+              <strong>Discretionary only.</strong> Spending in categories tagged Essential or Cost
+              of living, and subscriptions, is left out: bills land on their own dates whatever you
+              do after being paid, and counting them would chart your billing calendar. Net of
+              refunds, and spending with no category counts as discretionary until you file it.
             </p>
             <ReportScopeNote report="payday-effect" />
-            <SpendingClassNote />
           </ReportInfoButton>
           <div
             className="report-section__controls"
@@ -275,33 +283,28 @@ export function DayPatternsReport({ budgetId }: Props) {
           </div>
         </div>
         <p className="report-section__subtitle">
-          Do you spend more right after getting paid? Based on {paydayEventCount} income events in
-          the last 12 months.
+          Do you spend more right after getting paid?
+          {paydayData &&
+            ` ${paydayEventCount} payday${paydayEventCount === 1 ? '' : 's'}, ${formatDate(paydayData.window_start)} – ${formatDate(paydayData.window_end)}.`}
         </p>
 
         {paydayLoading ? (
           <div className="report-loading">Loading…</div>
         ) : paydayEventCount === 0 ? (
-          <div className="reports-empty">
-            Not enough income events detected to analyze payday spending patterns.
-          </div>
+          <div className="reports-empty">No paydays found to compare against.</div>
         ) : (
           <>
             <MetricRow>
               <MetricCard
-                label="Baseline Daily"
+                label="Typical day"
                 value={formatMoneyOrDash(paydayBaseline)}
-                sub={
-                  paydayBaseline === null
-                    ? 'No days fall outside a payday window'
-                    : 'Average on non-payday periods'
-                }
+                sub={`Median of ${paydayData?.baseline_days ?? 0} days`}
               />
-              {paydayPeakDay && (
+              {peak && (
                 <MetricCard
-                  label="Peak Spending Day"
-                  value={paydayPeakDay.offset === 0 ? 'Payday' : `Day +${paydayPeakDay.offset}`}
-                  sub={formatMoney(paydayPeakDay.avg_spend)}
+                  label="Peak day after payday"
+                  value={peak.offset === 0 ? 'Payday' : `Day +${peak.offset}`}
+                  sub={`${formatMoney(peak.median_spend)} on the median payday`}
                 />
               )}
             </MetricRow>
@@ -315,36 +318,69 @@ export function DayPatternsReport({ budgetId }: Props) {
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                   width={moneyAxis.width}
                 />
+                {/* Unlabelled on the plot: its label sat on the bars it
+                    crossed. The key below names it. */}
                 {paydayBaseline !== null && (
                   <ReferenceLine
                     y={paydayBaseline}
                     stroke="var(--text-muted)"
                     strokeDasharray="4 4"
-                    label={{
-                      value: 'Baseline',
-                      position: 'insideTopRight',
-                      fill: 'var(--text-muted)',
-                      fontSize: 11,
-                    }}
                   />
                 )}
                 <Tooltip
-                  formatter={(v: unknown) => [formatMoney(Number(v)), 'Avg Daily Spend']}
+                  content={({ active, payload }) => {
+                    const row = payload?.[0]?.payload as
+                      (typeof paydayChartData)[number] | undefined
+                    if (!active || !row) return null
+                    return (
+                      <div className="chart-tooltip">
+                        <div className="chart-tooltip__label">
+                          {row.offset === 0 ? 'Payday' : `${row.offset} days after`}
+                        </div>
+                        <div className="chart-tooltip__row">
+                          <span className="chart-tooltip__name">Median payday</span>
+                          <span className="chart-tooltip__value">{formatMoney(row.spend)}</span>
+                        </div>
+                        <div className="chart-tooltip__row">
+                          <span className="chart-tooltip__name">Paydays</span>
+                          <span className="chart-tooltip__value">{row.paydays}</span>
+                        </div>
+                      </div>
+                    )
+                  }}
                   offset={16}
                   isAnimationActive={false}
-                  {...TOOLTIP_STYLE}
                 />
-                <Bar dataKey="spend" radius={[3, 3, 0, 0]} barSize={28}>
-                  {paydayChartData.map((entry, i) => (
+                <Bar dataKey="spend" radius={[3, 3, 0, 0]} maxBarSize={28}>
+                  {paydayChartData.map((entry) => (
                     <Cell
-                      key={i}
-                      fill={entry.aboveBaseline ? 'var(--color-warning)' : CHART_COLORS[0]}
+                      key={entry.offset}
+                      fill={entry.aboveBaseline ? CHART_COLORS[1] : CHART_COLORS[0]}
                       fillOpacity={0.85}
                     />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            <div className="chart-key">
+              <span className="chart-key__item">
+                <span className="chart-key__swatch" style={{ background: CHART_COLORS[1] }} />
+                Above a typical day
+              </span>
+              <span className="chart-key__item">
+                <span className="chart-key__swatch" style={{ background: CHART_COLORS[0] }} />
+                At or below
+              </span>
+              {paydayBaseline !== null && (
+                <span className="chart-key__item">
+                  <span
+                    className="chart-key__swatch chart-key__swatch--line"
+                    style={{ background: 'var(--text-muted)' }}
+                  />
+                  Typical day (median)
+                </span>
+              )}
+            </div>
           </>
         )}
       </div>

@@ -31,7 +31,6 @@ from sqlalchemy import insert
 from igab.db.models import payee_tags
 from igab.domain.activity_class import NecessityTier
 from igab.domain.dates import add_months, month_end
-from igab.guide.concepts import essentials_since
 from igab.guide.detection import GuideDetection
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
@@ -247,6 +246,37 @@ class TestTheServedReport:
         # And the shares are of the wide total, so they add to 100.
         assert sum(g["share"] for g in report["groups"]) == D("100.00")
 
+    async def test_groups_are_keyed_by_id_not_by_name(self, db_session):
+        """The page found its Uncategorized bucket by comparing a group's name
+        to "Uncategorized", so a real group a household had named that opened
+        as every row with no category. Each group is served with its id, and
+        the bucket — here an unfiled loan payment, which joins the tier by
+        class — with None; the two share a name and nothing else."""
+        budget, checking, bills, tags, by_key = await _household(db_session)
+        named = await create_category_group(db_session, budget, "Uncategorized")
+        water = await create_category(db_session, budget, named, "Water")
+        await tags.set_category_tags(water.id, [by_key["essential"].id])
+        await create_transaction(
+            db_session, budget, checking, "-80.00", _last_month(), category=water
+        )
+        student_loan = await create_account(
+            db_session, budget, "Harborstone Student Loan", account_type="loan", on_budget=False
+        )
+        await create_transfer(db_session, budget, checking, student_loan, "150.00", _last_month())
+
+        report = await cost_of_living(db_session, budget.id, months=1)
+        uncategorized = sorted(
+            ((g["group_id"] or ""), g["total"], g["category_ids"])
+            for g in report["groups"]
+            if g["group_name"] == "Uncategorized"
+        )
+        assert uncategorized == [
+            ("", D("150.00"), []),
+            (str(named.id), D("80.00"), [str(water.id)]),
+        ]
+        by_id = {g["group_id"]: g["group_name"] for g in report["groups"]}
+        assert by_id[str(bills.id)] == "Bills"
+
     async def test_it_serves_the_complete_month_figures_the_ratios_divide(self, db_session):
         """Required and the essentials ratio are the page's, not this
         service's — they divide two of the figures below, and the client is
@@ -365,30 +395,35 @@ class TestTheEmergencyFundStaysLean:
 
     async def test_the_figure_that_sizes_the_fund_is_the_lean_one(self, db_session):
         """The table above is not what sizes the fund. The headline is —
-        `essentials`, rolling 90 days ÷ 3 — and the reserve, the Emergency
-        Coverage headline and the Guide's target all read it. A cleanup that
-        gave `essential_spend` the wide tier by default, or passed it there,
-        moved every one of them while the table-only pin above stayed green.
+        `essentials`, the last three complete months (`essentials_at`) — and
+        the reserve, the Emergency Coverage headline and the Guide's target
+        all read it. A cleanup that gave the essentials read the wide tier by
+        default, or passed it there, moved every one of them while the
+        table-only pin above stayed green.
 
-        1,400 of essentials in the 90 days is 466.67 a month; the wide tier's
-        1,800 would be 600.00. Hand-computed, not derived.
+        This household's history is one complete month, so the figure is that
+        month: 1,400 of essentials, not 1,400 ÷ 3 as the ninety-day figure
+        read a young budget. The wide tier's same month is 1,800.
+        Hand-computed, not derived.
         """
         budget, *_ = await _household(db_session)
         summary = await essentials_summary(db_session, budget.id, 1)
         guide = await GuideDetection(db_session).essential_expenses(budget.id)
 
-        assert summary["essentials"].monthly == D("466.67")
-        assert guide.value == D("466.67")
+        assert summary["essentials"].monthly == D("1400.00")
+        assert guide.value == D("1400.00")
         reserve = {r["months"]: r["amount"] for r in summary["reserve"]}
-        assert reserve[3] == D("1400.01")
+        assert reserve[3] == D("4200.00")
 
-        # And it is below what the wide tier reads over the same 90 days.
-        today = _today()
+        # And it is below what the wide tier reads over the same month.
         wide, _ = await TransactionRepository(db_session).essential_spend(
-            budget.id, essentials_since(today), today, tier=NecessityTier.COST_OF_LIVING
+            budget.id,
+            _first_of_last_month(),
+            month_end(_first_of_last_month()),
+            tier=NecessityTier.COST_OF_LIVING,
         )
         assert -wide == EXPECTED.cost_of_living
-        assert summary["essentials"].monthly < D("600.00")
+        assert summary["essentials"].monthly < EXPECTED.cost_of_living
 
 
 async def _rent_and_streaming(db_session, *, tag_streaming: bool):

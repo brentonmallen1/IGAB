@@ -42,9 +42,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Budget, Category, CategoryGroup, CategoryTarget
 from igab.domain.carryover import next_carryover
-from igab.domain.dates import add_months, clamped_month_end, report_months
+from igab.domain.dates import add_months, clamped_month_end, report_window
 from igab.domain.drains import drains_total, shape_drains
 from igab.domain.enums import TargetStatus, TargetType
+from igab.domain.tracking_start import entered, place_entries
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.budget_move_repo import BudgetMoveRepository
 from igab.repositories.category_filters import (
@@ -58,7 +59,9 @@ from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.txn_filters import SAVINGS_ACCOUNT
+from igab.services.report_day import reader_today
 from igab.services.target_service import TargetService
+from igab.services.tracking_start import opening_entries
 
 if TYPE_CHECKING:
     from igab.services.budget_service import EnvelopeSeries
@@ -143,17 +146,37 @@ async def _saved_accounts(
     return out
 
 
+def _saved_at(
+    envelopes: list[SavingsEnvelope], accounts: list[SavingsAccountRow], i: int
+) -> Decimal | None:
+    """Set aside at the end of month `i`: each envelope at its floored
+    Available, each account at its balance — or None when nothing in the
+    section has a figure yet. It read $0 in the months before a savings
+    account's first row, so linking one drew a climb from nothing."""
+    known_envelopes = [f for e in envelopes if (f := e["monthly_balances"][i]) is not None]
+    known_accounts = [f for a in accounts if (f := a["monthly_balances"][i]) is not None]
+    if not known_envelopes and not known_accounts:
+        return None
+    return sum((next_carryover(f) for f in known_envelopes), ZERO) + sum(known_accounts, ZERO)
+
+
 def _section_total(envelopes: list[SavingsEnvelope]) -> Decimal:
     """What a section's envelopes hold, each at its carryover-floored Available."""
     return sum((next_carryover(e["current_balance"]) for e in envelopes), ZERO)
 
 
-async def savings_report(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
-    """Saved, On the way to savings and Sinking funds over the last `months`."""
+async def savings_report(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+) -> dict:
+    """Saved, On the way to savings and Sinking funds over the last `months`
+    complete months and the running one (`report_window`), the newest point
+    being the reader's `today`. Balances, so not clamped to the first
+    transaction: an envelope holds money from its first assignment, which is
+    no transaction at all."""
     # No early return, tagged or not: two returned two empties (`months`
     # [] beside the window) and one dropped the drains this path keeps.
-    end_date = date.today()
-    month_list = report_months(end_date, months)
+    end_date = reader_today(today)
+    month_list = report_window(end_date, months).axis
     start_date = month_list[0]
 
     # What pulled from savings: moves out of every Savings or Emergency fund
@@ -259,14 +282,19 @@ async def savings_report(session: AsyncSession, budget_id: uuid.UUID, months: in
     accounts = await _saved_accounts(session, budget_id, month_list, end_date)
     envelopes_total = _section_total(saved)
     accounts_total = sum((a["current_balance"] for a in accounts), ZERO)
-    monthly_totals = [
-        sum(
-            (next_carryover(e["monthly_balances"][i] or ZERO) for e in saved),
-            ZERO,
-        )
-        + sum((a["monthly_balances"][i] or ZERO for a in accounts), ZERO)
-        for i in range(len(month_list))
-    ]
+    monthly_totals = [_saved_at(saved, accounts, i) for i in range(len(month_list))]
+    # The savings accounts' arrivals, as Net Worth marks them: the month an
+    # account was linked is a step up that nobody saved.
+    savings_ids = {a["account_id"] for a in accounts}
+    arrivals = place_entries(
+        [
+            e
+            for e in await opening_entries(session, budget_id, start_date, end_date)
+            if e.id in savings_ids
+        ],
+        [clamped_month_end(m, end_date) for m in month_list],
+        start_date,
+    )
 
     return {
         "saved": {
@@ -274,6 +302,8 @@ async def savings_report(session: AsyncSession, budget_id: uuid.UUID, months: in
             "envelopes_total": envelopes_total,
             "accounts_total": accounts_total,
             "monthly_totals": monthly_totals,
+            "monthly_entered": [entered(bucket) for bucket in arrivals],
+            "monthly_entries": [[e.__dict__ for e in bucket] for bucket in arrivals],
             "envelopes": saved,
             "accounts": accounts,
         },

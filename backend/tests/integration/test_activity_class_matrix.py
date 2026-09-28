@@ -28,6 +28,7 @@ from igab.domain.activity_class import (
 )
 from igab.repositories.tag_repo import TagRepository
 
+from .class_agreement import classes_of
 from .factories import (
     create_account,
     create_budget,
@@ -143,14 +144,7 @@ async def _world(db_session):
 
 
 async def _classify(db_session, txn) -> str:
-    # Transaction.id is not wanted; the class joins chain from it.
-    return (
-        await db_session.execute(
-            apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS).where(Transaction.id == txn.id)
-            )
-        )
-    ).one()[1]
+    return (await classes_of(db_session, txn))[0]
 
 
 async def _linked(db_session, w, src, dst, amount, category=None):
@@ -237,9 +231,9 @@ CASES = [
     ),
     ("to an investment marked not savings", "checking", "-800.00", None, "art", SPENDING),
     ("from an investment marked not savings", "checking", "800.00", None, "art", INCOME),
-    # The brokerage's leg of buying a car with it: rule 6 without the carve-out,
+    # The brokerage's leg of buying a car with it: rule 7 without the carve-out,
     # which is for on-budget legs only. (The car's leg of the same move is
-    # rule 4, which does not ask which side of the budget the leg is on, and
+    # rule 5, which does not ask which side of the budget the leg is on, and
     # is not pinned here.)
     ("brokerage to a car", "brokerage", "-4500.00", None, "vehicle", INTERNAL),
     # The flag is read for assets only.
@@ -299,7 +293,7 @@ class TestTheFarSideOfATransferIsNeverDoubleCounted:
     @pytest.mark.parametrize("target", ["brokerage", "loan", "vehicle", "crypto", "art"])
     async def test_tracked_side_is_internal(self, db_session, target, amount):
         """Including a car's side of its own sale. The on-budget leg's carve-out
-        from rule 6 must not reach this leg: it would fall to rule 7 and call
+        from rule 7 must not reach this leg: it would fall to rule 8 and call
         the sale an investment loss inside the vehicle account."""
         w = await _world(db_session)
         out = await _linked(db_session, w, w.checking, getattr(w, target), amount)

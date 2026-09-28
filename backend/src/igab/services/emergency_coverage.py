@@ -5,18 +5,21 @@ current coverage as one card's subtitle. This answers the other question —
 *am I covered, and is that getting better* — which is a stock measured against
 a flow, and neither half belongs on a chart of monthly spending.
 
-**Coverage is the fund divided by a trailing three-month average**, not by the
-month's own essentials. A quiet December over a fund that has not moved would
-otherwise show coverage jumping and then falling back, which is a story about
-December, not about the fund. Three months is the Guide's own window
-(`ESSENTIALS_WINDOW_DAYS` is 90) so this line and the roadmap's target cannot
-tell different stories about the same household.
+**Coverage is the fund divided by the essentials figure as of each month** —
+`guide.concepts.essentials_at`, the three complete months ending there — not
+by the month's own essentials. A quiet December over a fund that has not moved
+would otherwise show coverage jumping and then falling back, which is a story
+about December, not about the fund. It is the Guide's own figure, read from
+the same rows as the headline (`essentials_headline`'s `series`), so the
+newest point's essentials IS the headline's: the headline used to be a rolling
+ninety days beside a chart of complete-month averages, and the two disagreed
+on purpose. The headline's MONEY is not the chart's — "Covered" takes out
+what the cards owe today; see `covered` below.
 
 **Sinking-fund bills are spread** when the budget's setting is on, exactly as
-the headline spreads them (`guide.concepts.spread_average`): the rest of a
-month's essentials takes the trailing three-month average, and the sinking
-part is the twelve months ending there divided by twelve. Off, every point is
-the plain trailing average. Charts of what was spent never spread.
+the headline spreads them: the rest of a month's essentials takes the
+three-month average, and the sinking part is the twelve months ending there
+divided by twelve. Charts of what was spent never spread.
 
 **The target moves.** Three months of essentials is not a fixed sum: as
 spending grows the target grows with it, and a fund that stood still can lose
@@ -45,33 +48,11 @@ from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
-    SPREAD_MONTHS,
-    spread_average,
-    trailing_average,
 )
 from igab.guide.detection import budget_service_from
-from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.emergency_fund import EmergencyFund, fund_balance_at
-from igab.services.essentials import essentials_summary
-
-
-def history_index(months: list[date], history_from: date | None) -> int:
-    """The index of the first month in `months` the budget has history for.
-
-    From the budget's first transaction — `earliest_date`, the start "All
-    time" counts from — not from the first month with essentials spending.
-    That was the first version, and it is a second answer to "when does this
-    budget begin": a real month in which nothing essential was spent read as a
-    month before the budget existed, so a household whose first Essential bill
-    landed in March had March averaged alone instead of with the two quiet
-    months before it.
-
-    A budget with no transactions has no history to cut from: 0.
-    """
-    if history_from is None:
-        return 0
-    start = month_start(history_from)
-    return next((i for i, m in enumerate(months) if m >= start), len(months))
+from igab.services.essentials import LEAD_IN_MONTHS, EssentialMonths, essentials_headline
+from igab.services.report_day import reader_today
 
 
 def coverage_months(balance: Decimal, essentials: Decimal) -> Decimal | None:
@@ -89,60 +70,47 @@ class EmergencyCoverageService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def coverage(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+    async def coverage(
+        self, budget_id: uuid.UUID, months: int = 12, today: date | None = None
+    ) -> dict:
+        today = reader_today(today)
         # The budget page's own service, built the way the DI layer builds it,
         # so an envelope's balance here IS the budget page's balance rather
         # than a second derivation pinned equal by a comment.
         budgets = budget_service_from(self.session)
 
-        # The essentials window needs a run-up: the first point's denominator
-        # spreads sinking-fund bills over twelve months, so it needs the eleven
-        # months before it (the three-month average needs only two of them).
-        lead_in = SPREAD_MONTHS - 1
-        summary = await essentials_summary(self.session, budget_id, months=months + lead_in)
-        # The composition the Essentials report quotes — one reading, so the
-        # newest point, the headline and every other surface share a total.
+        # The composition the Essentials report quotes, read once for every
+        # point: `series` holds `months` answerable complete months after the
+        # eleven-month lead-in the twelve-month spread reads, and its newest
+        # point is the headline by construction.
+        #
+        # NOT the Essentials table's `history_window`, deliberately. That one
+        # is an average and must not divide by months before the history; this
+        # is a series of trailing averages that cut at the history themselves
+        # (`history_index`), and whose twelve-month spread reads the months
+        # before it as zeros by definition (`spread_average`). Clamping here
+        # would shorten the series under the lead-in and drop real points.
+        summary = await essentials_headline(self.session, budget_id, today, points=months)
         fund: EmergencyFund = summary["emergency_fund"]
         external = fund.external
-        spread_on = summary["essentials"].spread_on
-        series = summary["monthly_series"]
-        totals = [row["total"] for row in series]
-        sinking = [row["sinking_total"] for row in series]
-        first_data = history_index(
-            [row["month"] for row in series],
-            await TransactionRepository(self.session).earliest_date(budget_id),
-        )
-
-        today = date.today()
-        first_of_month = month_start(today)
-        points = []
+        read: EssentialMonths = summary["series"]
+        lead_in = LEAD_IN_MONTHS
         # Nothing identified as the fund: draw no line rather than a flat zero
         # one. A zero series is a claim — "you had nothing all year" — and the
         # honest answer is that the app has not been told what to look at.
-        if not fund.draws_history:
-            series = []
+        drawn = read.months[lead_in:] if fund.draws_history else []
+
+        first_of_month = month_start(today)
+        points = []
         # The newest month the chart can draw. The series runs to the last
         # COMPLETE month, so this is in the past — which is the whole reason
         # the external figure needs clamping below.
-        newest_end = _month_end(series[-1]["month"]) if series else None
-        balances = await fund_balance_at(
-            self.session,
-            budget_id,
-            fund,
-            [row["month"] for row in series[lead_in:]],
-            budgets,
-        )
-        for i, row in enumerate(series):
-            if i < lead_in:
-                continue
-            month: date = row["month"]
+        newest_end = _month_end(drawn[-1]) if drawn else None
+        balances = await fund_balance_at(self.session, budget_id, fund, drawn, budgets)
+        for offset, month in enumerate(drawn):
             month_end = _month_end(month)
-            essentials = (
-                spread_average(totals, sinking, i, first_data=first_data)
-                if spread_on
-                else trailing_average(totals, i, first_data=first_data)
-            )
-            balance = balances[i - lead_in]
+            essentials = read.at(lead_in + offset).monthly
+            balance = balances[offset]
             # A self-reported figure is carried flat from the month it was
             # reported, and "as of now" lands on the newest month the chart
             # draws.
@@ -181,10 +149,23 @@ class EmergencyCoverageService:
             "months": months,
             "tagged": summary["tagged"],
             "fund": fund,
-            # The Essentials report's own runway, quoted rather than recomputed:
-            # one figure, so the two reports cannot disagree about coverage.
-            "coverage_months": summary["runway_months"],
+            # The Essentials report's own `fund_runway`, quoted rather than
+            # recomputed: one figure, so the two reports cannot disagree about
+            # coverage.
+            #
+            # **The headline takes out what the cards owe; the chart does
+            # not.** "Covered" is the runway rule at (Essentials, the fund),
+            # and that rule always subtracts on-budget card debt — it is paid
+            # from the same money. The series stays the fund ÷ Essentials per
+            # month, as it always was: it answers "is the fund growing against
+            # a moving target", and a month-end card balance beside it would
+            # make a card paid off on the 1st read as the fund jumping. The
+            # gap between the newest point and the headline is today's card
+            # debt ÷ Essentials, plus what the fund did since the month ended —
+            # pinned in test_emergency_coverage.py, and said on the page.
+            "covered": summary["fund_runway"],
             "essentials": summary["essentials"],
+            "long_term_essentials": summary["long_term_essentials"],
             "target_low": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_LOW),
             "target_high": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_HIGH),
             "target_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),

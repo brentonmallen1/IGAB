@@ -11,9 +11,10 @@ Rates are None when there was no income. "No income recorded" and "saved
 nothing out of real income" are different facts and must not share a value.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain.dates import add_months
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.services.report_service import ReportService
@@ -32,6 +33,8 @@ from .factories import (
 
 TODAY = date.today()
 THIS_MONTH = TODAY.replace(day=1)
+LAST_MONTH = add_months(THIS_MONTH, -1)
+TWO_BACK = add_months(THIS_MONTH, -2)
 
 
 async def _world(db_session):
@@ -215,7 +218,9 @@ class TestEdgeCases:
     async def test_empty_budget_returns_a_full_series_of_none(self, db_session):
         w = await _world(db_session)
         result = await _rate(db_session, w["budget"], months=6)
-        assert len(result["months"]) == 6
+        # Six complete months and the running one (`ReportWindow`).
+        assert len(result["months"]) == 7
+        assert [m["partial_month"] for m in result["months"]] == [False] * 6 + [True]
         assert all(m["savings_rate"] is None for m in result["months"])
         assert result["summary"]["savings_rate"] is None
 
@@ -264,10 +269,37 @@ class TestEdgeCases:
 
     async def test_summary_totals_across_months(self, db_session):
         w = await _world(db_session)
-        await create_transaction(db_session, w["budget"], w["checking"], "1000.00", THIS_MONTH)
+        await create_transaction(db_session, w["budget"], w["checking"], "1000.00", LAST_MONTH)
+        await create_transaction(db_session, w["budget"], w["checking"], "600.00", TWO_BACK)
         result = await _rate(db_session, w["budget"], months=3)
+        assert result["summary"]["income"] == Decimal("1600.00")
+        # History from two months back: two complete months, then the running one.
+        assert [m["month"] for m in result["months"]] == [TWO_BACK, LAST_MONTH, THIS_MONTH]
+
+    async def test_the_running_month_is_drawn_but_not_in_the_summary(self, db_session):
+        """D5: the headline reads complete months. A few days of a new month —
+        the bills in, the pay not yet — flipped a +0.8% year to -1.8%."""
+        w = await _world(db_session)
+        cat = await create_category(db_session, w["budget"], w["group"], "Investments")
+        payee = await _transfer_payee(db_session, w["budget"], w["brokerage"])
+        await create_transaction(db_session, w["budget"], w["checking"], "1000.00", LAST_MONTH)
+        await create_transaction(
+            db_session, w["budget"], w["checking"], "-100.00", LAST_MONTH, category=cat, payee=payee
+        )
+        # The running month: a big transfer out, no pay yet.
+        await create_transaction(
+            db_session, w["budget"], w["checking"], "-400.00", THIS_MONTH, category=cat, payee=payee
+        )
+        result = await _rate(db_session, w["budget"], months=1)
         assert result["summary"]["income"] == Decimal("1000.00")
-        assert len(result["months"]) == 3
+        assert result["summary"]["savings"] == Decimal("100.00")
+        assert result["summary"]["savings_rate"] == 0.1
+        running = result["months"][-1]
+        assert running["partial_month"] is True
+        assert running["savings"] == Decimal("400.00")
+        # The window the dialog asks for is the complete months'.
+        assert result["start_date"] == LAST_MONTH
+        assert result["end_date"] == THIS_MONTH - timedelta(days=1)
 
 
 class TestEndpoint:
@@ -275,7 +307,7 @@ class TestEndpoint:
         user = api_client.test_user
         budget = await create_budget(db_session, user)
         checking = await create_account(db_session, budget, "Checking", on_budget=True)
-        await create_transaction(db_session, budget, checking, "2000.00", THIS_MONTH)
+        await create_transaction(db_session, budget, checking, "2000.00", TWO_BACK)
         payee = await create_payee(db_session, budget, "Employer")
         assert payee is not None
 
@@ -284,5 +316,6 @@ class TestEndpoint:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert len(body["months"]) == 3
+        # From the history's first month: two complete months and the running one.
+        assert [m["partial_month"] for m in body["months"]] == [False, False, True]
         assert money(body["summary"]["income"]) == Decimal("2000.00")

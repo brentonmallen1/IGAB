@@ -30,6 +30,7 @@ from typing import Any
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from igab.db.models import (
     Account,
@@ -45,6 +46,8 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
 )
+from igab.domain.spending import UNCATEGORIZED
+from igab.repositories.plan_rows import PLAN_SPENT_ROW
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -52,9 +55,11 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     NOT_RECONCILED,
     PARENT_ROW,
+    PAYEE_OF_RECORD,
     POSTED,
     UNPAIRED_TRANSFER_LEG,
     in_category_scope,
+    join_split_parent,
     search_matches,
 )
 
@@ -82,6 +87,9 @@ class TransactionFilters:
     #: rows the Discretionary report totals. A flag rather than a fourth
     #: tier: see there for why it is not a `NecessityTier`.
     discretionary: bool = False
+    #: Only the rows a plan report counts as spent (`plan_rows.PLAN_SPENT_ROW`)
+    #: — both ways, so a figure net of refunds opens a list that totals it.
+    plan_spent: bool = False
     direction: str | None = None
     day_of_week: int | None = None
     cleared: str | None = None
@@ -108,6 +116,9 @@ class WhereParts:
     class_joins: bool = False
     #: `search` matches on payee name, which needs the payee table.
     payee_join: bool = False
+    #: A payee filter reads `PAYEE_OF_RECORD`, which needs the row's split
+    #: parent: apply `join_split_parent`.
+    split_parent_join: bool = False
 
 
 def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | None) -> list:
@@ -137,6 +148,11 @@ def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | 
         # spending — a move to savings, a purchase on an off-budget account.
         # No fallback to resolve, so unlike a tier it needs no session.
         where.append(DISCRETIONARY_ROW)
+    if f.plan_spent:
+        # The plan ledger's own rows, not a category's outflows: those left
+        # out its refunds and a savings envelope's transfers out, and listed
+        # an untagged envelope's brokerage transfer it never counted.
+        where.append(PLAN_SPENT_ROW)
     return where
 
 
@@ -177,9 +193,22 @@ def _relations(f: TransactionFilters, scope: str) -> list:
         )
     if f.no_category:
         where.append(Transaction.category_id.is_(None))
-    if f.payee_ids:
-        where.append(Transaction.payee_id.in_(f.payee_ids))
-    if f.account_ids:
+    # The payee of record: a split leg's own payee, else its parent's. The
+    # legs of a split usually carry none — the parent names the shop — so on
+    # leaf scope the raw column dropped every leg, and the Pareto payee bar
+    # (which ranks by payee of record) opened a list short by every split
+    # purchase. A parent row has no split parent, so on parent scope, the
+    # register's, this is the row's own payee exactly as before.
+    #
+    # `is not None`: an empty list is a filter that matches nothing. The
+    # assistant's tools pass [] for a payee name that resolved to nobody, and
+    # a truthiness test turned that into "every payee".
+    if f.payee_ids is not None:
+        where.append(PAYEE_OF_RECORD.in_(f.payee_ids))
+    # `is not None`, as for payees: the assistant's tools pass [] for an
+    # account name that resolved to nothing, and a truthiness test read that
+    # as "every account" and answered with the whole budget.
+    if f.account_ids is not None:
         where.append(Transaction.account_id.in_(f.account_ids))
     if f.is_transfer is not None:
         where.append(
@@ -255,8 +284,12 @@ def build_where(
             *_relations(f, scope),
             *_state(f),
         ],
-        class_joins=bool(f.activity_classes) or f.necessity_tier is not None or f.discretionary,
+        class_joins=bool(f.activity_classes)
+        or f.necessity_tier is not None
+        or f.discretionary
+        or f.plan_spent,
         payee_join=bool(f.search),
+        split_parent_join=f.payee_ids is not None,
     )
 
 
@@ -283,6 +316,12 @@ class Dimension:
     description: str = ""
 
 
+#: The payee a grouped row is filed under (`PAYEE_OF_RECORD`). Its own alias:
+#: `search` joins `Payee` on the row's own payee, as the listing does, and one
+#: join serving both would change what a search matches under a payee rollup.
+PAYEE_OF_ROW = aliased(Payee, name="payee_of_record")
+
+
 #: Every legal `group_by`. A model picks a KEY here; the expression is one
 #: this module wrote. Nothing from the caller reaches the statement as SQL.
 GROUPABLE: dict[str, Dimension] = {
@@ -295,18 +334,23 @@ GROUPABLE: dict[str, Dimension] = {
         description="Monday … Sunday.",
     ),
     "category": Dimension(
-        func.coalesce(Category.name, "Uncategorized"),
+        func.coalesce(Category.name, UNCATEGORIZED),
         needs=("category",),
         description="Envelope name.",
     ),
     "category_group": Dimension(
-        func.coalesce(CategoryGroup.name, "Uncategorized"),
+        func.coalesce(CategoryGroup.name, UNCATEGORIZED),
         needs=("category", "category_group"),
         description="The group an envelope sits in.",
     ),
+    # The payee of record, as the payee filter and the Pareto and Payee
+    # Analysis bars read it. The rollup is leaf-scoped and a split's legs
+    # usually carry no payee — the parent names the shop — so grouping by the
+    # raw column filed every split purchase under "(no payee)", beside the
+    # same shop's unsplit rows.
     "payee": Dimension(
-        func.coalesce(Payee.name, "(no payee)"),
-        needs=("payee",),
+        func.coalesce(PAYEE_OF_ROW.name, "(no payee)"),
+        needs=("payee_of_record",),
         description="Who was paid.",
     ),
     "account": Dimension(
@@ -336,6 +380,8 @@ MAX_GROUPS = 200
 
 
 def _apply_dimension_joins(q: Select, needs: tuple[str, ...]) -> Select:
+    if "payee_of_record" in needs:
+        q = q.outerjoin(PAYEE_OF_ROW, PAYEE_OF_RECORD == PAYEE_OF_ROW.id)
     if "category" in needs:
         q = q.outerjoin(Category, Transaction.category_id == Category.id)
     if "category_group" in needs:
@@ -392,6 +438,8 @@ async def grouped_totals(
     if parts.class_joins:
         q = apply_class_joins(q)
     needs = dimension.needs
+    if parts.split_parent_join or "payee_of_record" in needs:
+        q = join_split_parent(q)
     if parts.payee_join and "payee" not in needs:
         needs = needs + ("payee",)
     q = _apply_dimension_joins(q, needs)

@@ -297,7 +297,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['discretionary', 'wants', 'optional spending'],
     short:
       'Spending outside cost of living: what you chose to spend once the committed bills are paid.',
-    body: 'The rest of your spending once cost of living is set aside — dining out, hobbies, shopping, a trip. It is not the same as non-essential: non-essential is the part of cost of living that is committed but sheddable, like a subscription or a gym membership, while discretionary sits outside both tiers and can change next month without cancelling anything. Savings, debt payments and transfers are neither.',
+    body: 'The rest of your spending once cost of living is set aside — dining out, hobbies, shopping, a trip. It is not the same as committed-but-not-essential: that is the part of cost of living that is committed but sheddable, like a subscription or a gym membership, while discretionary sits outside both tiers and can change next month without cancelling anything. Savings, debt payments and transfers are neither.',
     inIgab:
       'Spending in any category tagged neither Essential nor Cost of living, net of refunds; spending with no category counts until it is filed. The Discretionary report shows it by category and by month, with its share of all spending — once something carries one of those tags, since with nothing tagged every category would count.',
     related: ['cost-of-living', 'essential-expenses', 'cooling-off'],

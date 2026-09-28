@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import {
   CartesianGrid,
   Legend,
@@ -19,7 +19,6 @@ import { COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
-import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { burnChangeLine, PRIOR_SERIES } from './burnRateView'
@@ -31,10 +30,9 @@ interface Props {
 
 export function BurnRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
-  const [logScale, setLogScale] = useState(false)
   const { data, isLoading, isError, error, refetch } = useBurnRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -45,7 +43,7 @@ export function BurnRateReport({ budgetId }: Props) {
   const latest = points[points.length - 1]
 
   const chartData = points.map((p) => ({
-    date: p.date.slice(0, 7),
+    date: formatMonthShort(p.date),
     '30-Day': p.rolling_30,
     [PRIOR_SERIES]: p.prior_60,
   }))
@@ -57,8 +55,10 @@ export function BurnRateReport({ budgetId }: Props) {
         <ReportInfoButton title="Rolling Burn Rate">
           <p>
             Each point is your spending over the <strong>30 days</strong> ending on that month’s
-            last day — today, for this month — beside the <strong>60 days before them</strong>,
-            averaged per 30 days. Refunds count against the spending they return.
+            last day beside the <strong>60 days before them</strong>, averaged per 30 days. The
+            picker&apos;s months are complete months; this month&apos;s point, and the cards, end{' '}
+            <strong>yesterday</strong> — today&apos;s transactions are rarely all in yet. Refunds
+            count against the spending they return.
           </p>
           <p>
             The two windows share no day, so a change in the last 30 days shows as a gap between the
@@ -71,7 +71,6 @@ export function BurnRateReport({ budgetId }: Props) {
         <p className="report-section__subtitle">Last 30 days against the 60 before them</p>
         <div className="flex-row ms-auto">
           <ReportRangeSelect />
-          <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="burn-rate"
             getRows={() =>
@@ -113,7 +112,6 @@ export function BurnRateReport({ budgetId }: Props) {
                 tickFormatter={moneyAxis.tickFormatter}
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                 width={moneyAxis.width}
-                {...logAxisProps(logScale)}
               />
               <Tooltip
                 content={<ChartTooltip showTotal={false} formatter={formatMoney} />}

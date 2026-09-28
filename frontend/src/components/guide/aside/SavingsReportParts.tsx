@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { savingsModeLabel } from '../../../utils/savingsModes'
+import { SET_ASIDE, savingsModeLabel } from '../../../utils/savingsModes'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 
 const SAVINGS = systemTagName('savings')
@@ -7,7 +7,7 @@ const FUND = systemTagName('emergency_fund')
 
 const PARTS: { title: string; lede: string; lines: string[] }[] = [
   {
-    title: 'Saved',
+    title: SET_ASIDE,
     lede: 'Money that is savings now.',
     lines: [
       `${SAVINGS} and ${FUND} envelopes that count as saved ${savingsModeLabel('kept_here')}`,
@@ -19,7 +19,7 @@ const PARTS: { title: string; lede: string; lines: string[] }[] = [
     lede: 'Waiting to be sent.',
     lines: [
       `What ${SAVINGS} envelopes that count as saved ${savingsModeLabel('sent_out')} still hold`,
-      'Counted as saved once it leaves, so not added to Saved',
+      `Counted as saved once it leaves, so not added to ${SET_ASIDE}`,
     ],
   },
   {

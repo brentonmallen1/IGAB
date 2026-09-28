@@ -46,6 +46,7 @@ from igab.guide.bindings import fold_external, resolve
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import IN_EMERGENCY_FUND
 from igab.repositories.txn_filters import EMERGENCY_FUND_ACCOUNT
+from igab.services.report_day import reader_today
 
 if TYPE_CHECKING:
     from igab.services.budget_service import BudgetService
@@ -163,7 +164,7 @@ async def emergency_fund(
 ) -> EmergencyFund:
     """The emergency fund today: what was chosen, what each part holds, and
     the total every surface quotes."""
-    today = today or date.today()
+    today = reader_today(today)
     categories, accounts = await chosen(session, budget_id)
     external = await _external(session, budget_id)
 

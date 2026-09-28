@@ -8,7 +8,7 @@
 // The Date → YYYY-MM-DD conversion lives in utils/dates (`toISODate`): this
 // module had the one copy the reports read, beside a second name for it and
 // three more spellings elsewhere in utils/.
-import { currentMonthStart, toISODate, today } from './dates'
+import { addMonths, currentMonthStart, toISODate, today } from './dates'
 
 function parts(s: string): [number, number, number] {
   const [y, m, d] = s.split('-').map(Number)
@@ -60,10 +60,29 @@ export function monthWindow(month: string): { start: string; end: string } {
   return { start, end: lastDay < t ? lastDay : t }
 }
 
-/** "This month so far": the 1st through today. The report filters' default and
- * the date picker's "This Month" preset are this one value — the picker
- * highlights a preset by string equality, so two spellings of it that drift
- * leave the default filter matching no preset. */
+/** "This month so far": the 1st through today — the date picker's "This Month
+ * so far" preset. */
 export function thisMonthWindow(): { start: string; end: string } {
   return monthWindow(currentMonthStart())
+}
+
+/** The last complete month, whole. The report filters' default and the date
+ * picker's "Last Month" preset are this one value — the picker highlights a
+ * preset by string equality, so two spellings of it that drift leave the
+ * default matching no preset.
+ *
+ * The default because a month in progress is half a month: the Overview
+ * opened on "This Month", and against pay that lands twice a month it read
+ * "105% over income" with one of the two paychecks in. */
+export function lastMonthWindow(): { start: string; end: string } {
+  return monthWindow(addMonths(currentMonthStart(), -1))
+}
+
+/** The last `n` COMPLETE months, whole: the first of the month `n` back
+ * through the last day of last month — what every "N months" means (backend
+ * `domain.dates.ReportWindow`). "Last 3 Months" was the running month and
+ * the two before, through today, so its every figure mixed in a partial
+ * month. */
+export function lastMonthsWindow(n: number): { start: string; end: string } {
+  return { start: monthsAgoStartISO(n), end: lastMonthWindow().end }
 }

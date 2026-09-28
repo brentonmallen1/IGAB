@@ -34,12 +34,13 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
     basis_is_chosen,
+    counted_class_filter,
     tier_scope,
 )
-from igab.guide.concepts import EssentialsWindows, essentials_since, sinking_since
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
     IS_CATEGORIZABLE,
+    IS_SINKING_FUND,
     LIVE_CATEGORY,
     NOT_ARCHIVED_ANYWHERE,
     tagged_category_ids,
@@ -67,10 +68,12 @@ from igab.repositories.txn_filters import (
     POSTED,
     PROVISIONALLY_LINKED,
     REGISTER_RANK,
+    SPENDING_ROW,
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
     in_category_scope,
+    join_split_parent,
     orphaned_link,
     search_matches,
     sync_created_pending,
@@ -228,7 +231,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         # `is not None`, not truthiness: None means no category scope was asked
         # for, an empty list means one was and nothing matched. Conflating them
         # hands back the whole window for a scope that should return nothing —
-        # the same distinction `report_service.scoped` states for the reports,
+        # the same distinction `report_scope.scoped` states for the reports,
         # and the drill-down panel reads this listing.
         if category_ids is not None:
             # `in_category_scope`: these are parent rows, and a split parent
@@ -275,6 +278,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         activity_classes: list[str] | None = None,
         necessity_tier: NecessityTier | None = None,
         discretionary: bool = False,
+        plan_spent: bool = False,
         direction: str | None = None,
         day_of_week: int | None = None,
         cleared: str | None = None,
@@ -331,6 +335,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 activity_classes=activity_classes,
                 necessity_tier=necessity_tier,
                 discretionary=discretionary,
+                plan_spent=plan_spent,
                 direction=direction,
                 day_of_week=day_of_week,
                 cleared=cleared,
@@ -363,6 +368,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         if parts.payee_join:
             rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
+        if parts.split_parent_join:
+            rows_q = join_split_parent(rows_q)
+            totals_q = join_split_parent(totals_q)
         if order == "register":
             # The ladder lives in txn_filters (REGISTER_LADDER): pending,
             # unfiled, unapproved, uncleared, cleared, reconciled. Paging in
@@ -1287,39 +1295,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         ).scalar_one()
         return Decimal(total), basis
 
-    async def essential_windows(
-        self,
-        budget_id: uuid.UUID,
-        today: date,
-        bound_categories: Sequence[uuid.UUID] | None = None,
-        tier: NecessityTier = NecessityTier.ESSENTIAL,
-    ) -> tuple[EssentialsWindows, str]:
-        """The three signed sums `guide.concepts.essentials_monthly` reads, in
-        one query over `essential_spend`'s scope, and the rule that scoped it.
-
-        One scan of the 365-day window with FILTERed sums, so the 90-day total
-        and its sinking-fund part are the same rows by construction — the
-        spread figure subtracts one from the other, and two queries would be
-        two chances to disagree about a row.
-        """
-        scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
-        recent = Transaction.date >= essentials_since(today)
-
-        def _sum(*where):
-            return func.coalesce(func.sum(Transaction.amount).filter(*where), 0)
-
-        q = (
-            select(_sum(recent), _sum(recent, IN_SINKING_FUND), _sum(IN_SINKING_FUND))
-            .select_from(Transaction)
-            .where(*self._necessity_where(budget_id, sinking_since(today), today, scope))
-        )
-        row = (await self.session.execute(apply_class_joins(q))).one()
-        windows = EssentialsWindows(*(Decimal(v) for v in row))
-        return windows, basis
-
     async def essential_tagged_categories(self, budget_id: uuid.UUID) -> list:
-        """(id, name, group_name) for every category tagged Essential that is
-        still on the budget.
+        """(id, name, group_name, sinking) for every category tagged Essential
+        that is still on the budget; `sinking` is whether it is also a
+        Long-term expense (`IS_SINKING_FUND`).
 
         The reports built on `essential_spend_by_category_month` are built from
         TRANSACTION rows, so a tagged category that has not been spent in the
@@ -1349,6 +1328,8 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Category.id,
                 Category.name,
                 CategoryGroup.name.label("group_name"),
+                # Also a Long-term expense: what the spread setting spreads.
+                IS_SINKING_FUND.label("sinking"),
             )
             .select_from(Category)
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
@@ -1370,7 +1351,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         bound_categories: Sequence[uuid.UUID] | None = None,
         tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[list, str]:
-        """(category_id, category_name, group_name, month, total, sinking) rows
+        """(category_id, category_name, group_id, group_name, month, total, sinking) rows
         over the same predicate as `essential_spend`, grouped by calendar
         month. A payee-tagged row without a category groups under None.
 
@@ -1384,6 +1365,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             select(
                 Transaction.category_id,
                 Category.name.label("category_name"),
+                CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
                 month,
                 func.sum(Transaction.amount).label("total"),
@@ -1393,7 +1375,14 @@ class TransactionRepository(BaseRepository[Transaction]):
             .outerjoin(Category, Category.id == Transaction.category_id)
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
             .where(*self._necessity_where(budget_id, since, until, scope))
-            .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month, sinking)
+            .group_by(
+                Transaction.category_id,
+                Category.name,
+                CategoryGroup.id,
+                CategoryGroup.name,
+                month,
+                sinking,
+            )
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis
@@ -1482,6 +1471,35 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis
+
+    async def spending_by_month(self, budget_id: uuid.UUID, since: date, until: date) -> list:
+        """(month, total, sinking) rows of ALL spending in the window — the
+        one spending definition (`SPENDING_ROW` with `counted_class_filter`,
+        on-budget accounts, as `ReportService._spending_query` reads it
+        unscoped), net of refunds, grouped by calendar month and by whether
+        the row's category is a sinking fund.
+
+        The shape `essential_spend_by_category_month` returns, so the runway's
+        "all spending" month is composed by the same `essentials_at` as its
+        Essentials and Cost of living months — same window, same spread
+        setting — and the three bases differ only in which rows they count.
+        """
+        month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        sinking = IN_SINKING_FUND.label("sinking")
+        q = (
+            select(month, func.sum(Transaction.amount).label("total"), sinking)
+            .select_from(Transaction)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.date >= since,
+                Transaction.date <= until,
+                SPENDING_ROW,
+                ON_BUDGET_ACCOUNT,
+                counted_class_filter(),
+            )
+            .group_by(month, sinking)
+        )
+        return list((await self.session.execute(apply_class_joins(q))).all())
 
     async def earliest_date(self, budget_id: uuid.UUID) -> date | None:
         """The oldest transaction in the budget, or None for an empty one.

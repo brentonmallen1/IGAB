@@ -98,7 +98,7 @@ class TestTheFiguresMatchTheApp:
                 "include_savings": True,
             },
         )
-        assert "debt principal" in fuller["covers"]
+        assert "debt payments" in fuller["covers"]
 
     async def test_budget_vs_actual_matches(self, ctx):
         data = await ctx.reports.budget_vs_actual(ctx.budget_id, MONTH, TODAY)
@@ -126,6 +126,32 @@ class TestTheFiguresMatchTheApp:
         assert result["total_rows"] == 0
         assert "No envelope matches" in result["note"]
 
+    async def test_an_unmatched_payee_returns_nothing_not_everything(self, ctx):
+        """The payee half of the same promise. The handler passed [] and the
+        listing read an empty list as no filter, so the note said nothing was
+        searched above every row in the budget."""
+        result = await handlers.search_transactions(ctx, {"payee_name": "Yacht Club"})
+        assert result["total_rows"] == 0
+        assert "No payee matches" in result["note"]
+
+    async def test_an_unmatched_account_returns_nothing_not_everything(self, ctx):
+        """The account half of the same promise: the handler passed [] and
+        the listing read an empty list as no filter."""
+        result = await handlers.search_transactions(ctx, {"account_name": "Tidewater Savings"})
+        assert result["total_rows"] == 0
+        assert "No account matches" in result["note"]
+        rolled = await handlers.query_transactions(
+            ctx, {"account_name": "Tidewater Savings", "group_by": "category"}
+        )
+        assert (rolled["groups"], rolled["group_count"]) == ([], 0)
+
+    async def test_budget_vs_actual_states_the_headline_the_rows_sum_to(self, ctx):
+        data = await ctx.reports.budget_vs_actual(ctx.budget_id, MONTH, TODAY)
+        result = await handlers.budget_vs_actual(
+            ctx, {"start_date": MONTH.isoformat(), "end_date": TODAY.isoformat()}
+        )
+        assert result["total_variance"] == float(sum(c["variance"] for c in data["categories"]))
+
     async def test_data_range_is_reported_so_the_model_does_not_invent_history(self, ctx):
         result = await handlers.get_data_range(ctx, {})
         assert result["months_available"] >= 1
@@ -150,9 +176,9 @@ class TestTheFiguresMatchTheApp:
         assert any(r["payee"] == "Cascade Market" for r in payees["rows"])
         # The service counts every payee in the window, and the handler passes
         # that count on: under the cap of 25 the ranking is the whole set.
-        _, _, served_count, _ = await ctx.reports.payee_analysis(
-            ctx.budget_id, MONTH, TODAY, limit=25
-        )
+        served_count = (await ctx.reports.payee_analysis(ctx.budget_id, MONTH, TODAY, limit=25))[
+            "payee_count"
+        ]
         assert payees["total_rows"] == served_count == len(payees["rows"])
         assert payees["truncated"] is False
         assert "rows" in await handlers.large_transactions(ctx, window)
@@ -168,7 +194,7 @@ class TestTheCheckupIsNotSecondGuessed:
         """Off means off. Empty findings rendered as "nothing wrong" would
         invent a clean bill of health nobody issued."""
 
-        async def disabled(budget_id, *, stamp=False):
+        async def disabled(budget_id, *, stamp=False, today=None):
             return {"enabled": False, "metrics": [], "findings": []}
 
         monkeypatch.setattr(ctx.guide, "checkup", disabled)
@@ -181,7 +207,7 @@ class TestTheCheckupIsNotSecondGuessed:
         asked in the chat is not the user running their health report."""
         seen: dict = {}
 
-        async def spy(budget_id, *, stamp=False):
+        async def spy(budget_id, *, stamp=False, today=None):
             seen["stamp"] = stamp
             return {"enabled": True, "as_of": TODAY, "metrics": [], "findings": []}
 

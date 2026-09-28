@@ -6,7 +6,13 @@ import { GuideTabLink } from '../guide/GuideTabLink'
 import { ReportErrorState } from './ReportErrorState'
 import { sharePhrase } from './drillDownTotals'
 import { pct } from './charts/savingsRateView'
-import { foldIncomeSources, rateFormula, SAVED_DEFINITION } from './savingsRateBreakdown'
+import {
+  foldIncomeSources,
+  INVISIBLE_SAVING,
+  rateFormula,
+  SAVED_DEFINITION,
+} from './savingsRateBreakdown'
+import { DEBT_PAYMENTS, SAVED, savingsRateLabel } from '../../utils/flowLabels'
 import { DetailFigure, DetailFigures, DetailRow, DetailRows, DetailSection } from './ReportDetail'
 import './SavingsRateDialog.css'
 
@@ -38,7 +44,7 @@ export function SavingsRateDialog({
   withDebt,
   onClose,
 }: Props) {
-  const title = withDebt ? 'Savings rate (with debt)' : 'Savings rate'
+  const title = savingsRateLabel(withDebt)
   const { data, isLoading, isError, error, refetch } = useSavingsContributors(
     budgetId,
     startDate,
@@ -72,11 +78,11 @@ function Contributors({
   const income = foldIncomeSources(data.income_sources, data.income)
   const debtSection = (
     <ContributorSection
-      title="Where the debt principal went"
+      title="Where the debt payments went"
       contributors={data.debt_contributors}
       whole={data.debt_principal}
-      shareLabel="of debt principal"
-      empty="No debt principal paid in this period."
+      shareLabel="of debt payments"
+      empty="No debt payments in this period."
       note={withDebt ? null : 'Not part of this rate.'}
     />
   )
@@ -94,14 +100,14 @@ function Contributors({
 
       <DetailFigures>
         <DetailFigure label="Income" value={formatMoney(data.income)} />
-        <DetailFigure label="Saved" value={formatMoney(data.savings)} />
+        <DetailFigure label={SAVED} value={formatMoney(data.savings)} />
         {data.savings_held !== 0 && (
           <>
             <DetailFigure label="Moved to savings" value={formatMoney(data.savings_moved)} />
             <DetailFigure label="Held in envelopes" value={formatMoney(data.savings_held)} />
           </>
         )}
-        <DetailFigure label="Debt principal" value={formatMoney(data.debt_principal)} />
+        <DetailFigure label={DEBT_PAYMENTS} value={formatMoney(data.debt_principal)} />
       </DetailFigures>
 
       <ContributorSection
@@ -146,6 +152,7 @@ function Contributors({
           neither is moving money between two of your budget accounts. Spending is not part of the
           rate at all.
         </p>
+        <p className="dialog__body">{INVISIBLE_SAVING}</p>
         <p className="dialog__body">
           To count money as saved, transfer it to a tracked (off-budget) account that counts as
           savings — no tag needed. For money that goes somewhere IGAB does not track, tag its

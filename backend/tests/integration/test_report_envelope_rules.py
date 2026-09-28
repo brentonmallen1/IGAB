@@ -53,6 +53,22 @@ async def _world(db_session):
     return services, budget, checking, group, cat
 
 
+def _running_spent(pvr: dict) -> Decimal:
+    """What Plan vs Reality drew as spent this month. The month is running,
+    so its cells are drawn and its figures left out of the complete-month
+    totals (D5, `domain.dates.ReportWindow`); the planned-spend universe these
+    tests pin is read off the cells."""
+    return sum(
+        (
+            cell["spent"]
+            for c in pvr["categories"]
+            for cell in c["monthly"]
+            if cell["month"] == pvr["running_month"]
+        ),
+        D("0"),
+    )
+
+
 async def _soft_delete_group(db_session, group):
     """The reachable anomaly: the group row is soft-deleted while its
     categories stay live. `UNDER_DELETED_GROUP` is the check that reports it,
@@ -110,11 +126,11 @@ class TestTheTwoRulesAgreeWhereTheyMust:
 
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
 
         assert bva["total_assigned"] == D("100.00")
         assigned_in_variance = sum(
-            D(str(m.get("budget_assigned", 0))) for m in (variance or []) if isinstance(m, dict)
+            D(str(m.get("assigned", 0))) for m in (variance or []) if isinstance(m, dict)
         )
         assert assigned_in_variance == D("100.00"), variance
 
@@ -126,7 +142,7 @@ class TestTheTwoRulesAgreeWhereTheyMust:
         reports = ReportService(db_session)
         grouped = await reports.spending_grouped(budget.id, FIRST, TODAY)
         volatility = await reports.category_volatility(budget.id, months=2)
-        plan = await reports.plan_vs_reality(budget.id, months=2)
+        plan = await reports.plan_vs_spent(budget.id, months=2)
 
         # None of the three may silently drop the row the others keep.
         assert grouped, "spending_grouped dropped it"
@@ -146,12 +162,17 @@ class TestTheDeliberateDivergence:
         from igab.repositories.category_filters import (
             BUDGETED_ENVELOPE,
             IN_SYSTEM_GROUP,
+            LINKED_TO_CARD,
             LIVE_CATEGORY,
+            PLANNED_ENVELOPE,
             SPENT_ENVELOPE,
         )
 
         assert str(SPENT_ENVELOPE) == str(not_(IN_SYSTEM_GROUP))
-        assert str(BUDGETED_ENVELOPE) == str(and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP)))
+        # The plan family's two sides still differ by liveness alone; both
+        # leave a card's envelope out, which the spending rollups keep.
+        assert str(PLANNED_ENVELOPE) == str(and_(SPENT_ENVELOPE, not_(LINKED_TO_CARD)))
+        assert str(BUDGETED_ENVELOPE) == str(and_(LIVE_CATEGORY, PLANNED_ENVELOPE))
 
     async def test_spending_left_behind_by_a_deleted_category_still_counts(self, db_session):
         """The money moved. Deleting the envelope afterwards does not unspend
@@ -236,7 +257,7 @@ class TestArchivedEnvelopes:
 
 
 class TestThePlannedSpendUniverse:
-    """`PLANNED_SPEND_ROW` + the activity-class filter: what plan-vs-actual
+    """`PLAN_LEDGER_ROW` + `plan.plan_effect`: what plan-vs-actual
     may call "spent". Before the extraction, `cumulative_variance` and
     `budget_vs_actual` carried byte-identical inline copies missing the same
     three terms — no class filter, no `ON_BUDGET_ACCOUNT`, no envelope rule —
@@ -250,11 +271,13 @@ class TestThePlannedSpendUniverse:
     they counted nothing — and its chronic flag feeds the Guide."""
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
-        """Out of an UNTAGGED envelope. The class is what excludes it. A
-        savings category — tagged Savings or Emergency fund, in either mode —
-        is the one exception: the same shape out of one does count against its
-        plan, pinned by `test_kept_here_transfer_to_hysa_counts_against_plan`
-        and `TestASavingsTaggedEnvelope`."""
+        """Out of an UNTAGGED envelope. The class is what excludes it from
+        spent; it lowers the plan instead (money moved out, `plan_effect`), so
+        the 500 plan is 300 and nothing of it was spent. A savings category —
+        tagged Savings or Emergency fund, in either mode — is the one
+        exception: the same shape out of one is spent against its plan,
+        pinned by `test_kept_here_transfer_to_hysa_counts_against_plan` and
+        `TestASavingsTaggedEnvelope`."""
         services, budget, checking, group, cat = await _world(db_session)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
@@ -267,14 +290,15 @@ class TestThePlannedSpendUniverse:
         )
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("0")
-        assert variance[-1]["monthly_variance"] == D("500.00")
+        assert variance[-1]["spent"] == D("0")
+        assert variance[-1]["moved_out"] == D("200.00")
+        assert variance[-1]["variance"] == D("300.00")
         assert bva["total_spent"] == D("0")
-        assert pvr["total_spent"] == D("0")
+        assert _running_spent(pvr) == D("0")
 
     @pytest.mark.parametrize(
         ("tag_key", "mode"),
@@ -283,7 +307,7 @@ class TestThePlannedSpendUniverse:
     )
     async def test_kept_here_transfer_to_hysa_counts_against_plan(self, db_session, tag_key, mode):
         """A kept-here savings envelope moving its balance to a tracked HYSA.
-        The row classes SAVINGS by where it went (rule 4), not by the tag, and
+        The row classes SAVINGS by where it went (rule 5), not by the tag, and
         the plan still meant that money to leave the envelope. An Emergency
         fund envelope is kept here by default, and the plan arm must reach it
         although it carries no Savings tag."""
@@ -302,14 +326,14 @@ class TestThePlannedSpendUniverse:
         await create_transfer(db_session, budget, checking, hysa, "200.00", TODAY, category=cat)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("200.00")
-        assert variance[-1]["monthly_variance"] == D("300.00")
+        assert variance[-1]["spent"] == D("200.00")
+        assert variance[-1]["variance"] == D("300.00")
         assert bva["total_spent"] == D("200.00")
-        assert pvr["total_spent"] == D("200.00")
+        assert _running_spent(pvr) == D("200.00")
 
     async def test_tracking_account_activity_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -321,13 +345,13 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, brokerage, "-75.00", TODAY, category=cat)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("0")
+        assert variance[-1]["spent"] == D("0")
         assert bva["total_spent"] == D("0")
-        assert pvr["total_spent"] == D("0")
+        assert _running_spent(pvr) == D("0")
 
     async def test_a_system_group_row_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -339,31 +363,32 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=inflow)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("0")
+        assert variance[-1]["spent"] == D("0")
         assert bva["total_spent"] == D("0")
-        assert pvr["total_spent"] == D("0")
+        assert _running_spent(pvr) == D("0")
 
-    async def test_a_refund_does_not_reduce_spent(self, db_session):
-        """The deliberate divergence, pinned: `amount < 0` in
-        `PLANNED_SPEND_ROW` means a refund posted to a spending category
-        never reduces "spent". Flipping it would move every historical
-        variance figure — change it at the definition or not at all."""
+    async def test_a_refund_reduces_spent(self, db_session):
+        """Once a pinned divergence: `amount < 0` in the row shape meant a
+        refund never reduced "spent", so a returned purchase read as the whole
+        purchase — on the three reports that hold spending to a plan, while
+        the budget page, Category History, Burn and Discretionary netted it.
+        Changed at the definition (`plan.plan_effect`), for all three at once."""
         services, budget, checking, group, cat = await _world(db_session)
         await create_transaction(db_session, budget, checking, "-100.00", TODAY, category=cat)
         await create_transaction(db_session, budget, checking, "30.00", TODAY, category=cat)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("100.00")
-        assert bva["total_spent"] == D("100.00")
-        assert pvr["total_spent"] == D("100.00")
+        assert variance[-1]["spent"] == D("70.00")
+        assert bva["total_spent"] == D("70.00")
+        assert _running_spent(pvr) == D("70.00")
 
     async def test_every_report_spends_the_same_universe(self, db_session):
         """The consolidation itself: over a register that trips every
@@ -384,31 +409,39 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=inflow)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("100.00")
-        assert bva["total_spent"] == D("100.00")
-        assert pvr["total_spent"] == D("100.00")
+        # The 100 spent less the 30 refunded; nothing else counts.
+        assert variance[-1]["spent"] == D("70.00")
+        assert bva["total_spent"] == D("70.00")
+        assert _running_spent(pvr) == D("70.00")
 
 
 async def _tagged_envelope(db_session, key: str, name: str):
-    """One envelope carrying one system tag, 195 assigned last month and this
-    month, and 390 paid out of it today. Dates are read at run time, so a
-    month rollover between collection and run cannot move the window."""
+    """One envelope carrying one system tag, 195 assigned in each of the last
+    two complete months, and 390 paid out of it last month — complete months
+    only, which is all a plan verdict reads (D5). The budget's history starts
+    with the first assignment's month (an uncategorized row the plan never
+    counts), so the window is not clamped short. Dates are read at run time,
+    so a month rollover between collection and run cannot move the window.
+
+    Returns (budget, the first month, the day after the payout)."""
     services, budget, checking, group, _ = await _world(db_session)
     await seed_system_tags(db_session, budget.id)
     tags = TagRepository(db_session)
     envelope = await create_category(db_session, budget, group, name)
     await tags.set_category_tags(envelope.id, [(await tags.get_system_tag(budget.id, key)).id])
-    today = date.today()
-    this_month = today.replace(day=1)
+    this_month = date.today().replace(day=1)
     last_month = add_months(this_month, -1)
+    first_month = add_months(this_month, -2)
+    await create_transaction(db_session, budget, checking, "-1.00", first_month)
+    await create_budget_assignment(db_session, budget, envelope, first_month, "195.00")
     await create_budget_assignment(db_session, budget, envelope, last_month, "195.00")
-    await create_budget_assignment(db_session, budget, envelope, this_month, "195.00")
-    await create_transaction(db_session, budget, checking, "-390.00", today, category=envelope)
-    return budget, last_month, today
+    paid = last_month + timedelta(days=9)
+    await create_transaction(db_session, budget, checking, "-390.00", paid, category=envelope)
+    return budget, first_month, paid
 
 
 class TestASinkingFundsBillIsPlannedSpend:
@@ -421,27 +454,31 @@ class TestASinkingFundsBillIsPlannedSpend:
     against it alone passed on the old rule."""
 
     async def test_budget_vs_actual_counts_the_payout(self, db_session):
-        budget, last_month, today = await _tagged_envelope(
+        budget, first_month, paid = await _tagged_envelope(
             db_session, "long_term_expense", "Property Tax"
         )
-        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, first_month, paid)
 
         assert bva["total_assigned"] == D("390.00")
         assert bva["total_spent"] == D("390.00")
 
     async def test_cumulative_variance_counts_the_payout(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
-        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+        variance = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
+            "month_totals"
+        ]
 
-        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+        # The two complete months, then the running one — drawn, not drifted.
+        assert [(m["assigned"], m["spent"]) for m in variance[:2]] == [
             (D("195.00"), D("0")),
             (D("195.00"), D("390.00")),
         ]
-        assert variance[-1]["cumulative_variance"] == D("0")
+        assert variance[1]["cumulative_variance"] == D("0")
+        assert variance[-1]["partial_month"] is True
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=2)
 
         assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
 
@@ -465,7 +502,7 @@ class TestASavingsTaggedEnvelope:
     variance of +390 that never closed, permanently under-spent. That is the
     phantom underspend #182 removed for `long_term_expense` only.
 
-    `planned_spend_filter` is where the exception is stated: the household
+    `plan.plan_effect` is where the exception is stated: the household
     PLANNED that money to leave, so against the plan it is spent. The class
     itself does NOT move, and the rest of this class is the bound on the
     change — the savings rate still calls the 390 saving and the spending
@@ -476,28 +513,32 @@ class TestASavingsTaggedEnvelope:
     the other two read 0."""
 
     async def test_budget_vs_actual_counts_the_payout(self, db_session):
-        budget, last_month, today = await _tagged_envelope(
+        budget, first_month, paid = await _tagged_envelope(
             db_session, "savings", "Vacation Savings"
         )
-        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, first_month, paid)
 
         assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("390.00"))
 
     async def test_cumulative_variance_stops_compounding_the_underspend(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
-        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+        variance = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
+            "month_totals"
+        ]
 
         # 195 put by and unspent, then 195 put by and 390 taken out: the plan
         # closes at zero instead of carrying a +390 surplus forever.
-        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+        # The two complete months, then the running one — drawn, not drifted.
+        assert [(m["assigned"], m["spent"]) for m in variance[:2]] == [
             (D("195.00"), D("0")),
             (D("195.00"), D("390.00")),
         ]
-        assert variance[-1]["cumulative_variance"] == D("0")
+        assert variance[1]["cumulative_variance"] == D("0")
+        assert variance[-1]["partial_month"] is True
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=2)
 
         assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
 
@@ -516,12 +557,14 @@ class TestASavingsTaggedEnvelope:
         """The other half of the bound: the Breakdown and the Overview's Top
         Spending card read `SPENDING_ROW` plus the counted classes, not the
         plan universe, so the 390 does not appear there."""
-        budget, last_month, today = await _tagged_envelope(
+        budget, first_month, paid = await _tagged_envelope(
             db_session, "savings", "Vacation Savings"
         )
         rows, total = await ReportService(db_session).spending_by_category(
-            budget.id, last_month, today
+            budget.id, first_month, paid
         )
 
-        assert total == D("0")
+        # The 1.00 is the uncategorized row that starts the history, which
+        # the Breakdown counts as its Uncategorized line; the 390 is not there.
+        assert total == D("1.00")
         assert [r for r in rows if r["name"] == "Vacation Savings"] == []

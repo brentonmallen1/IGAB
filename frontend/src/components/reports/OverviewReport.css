@@ -104,3 +104,16 @@
   display: block;
   font-size: var(--font-size-xs);
 }
+
+/* The period a group of cards reads — the heading's second half, in the
+   heading's own muted colour and weight, not shouted in capitals. */
+.overview-report__period {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+}
+
+/* The second group sits a row's gap below the first. */
+.overview-report__section-heading--now {
+  margin-top: var(--spacing-lg);
+}

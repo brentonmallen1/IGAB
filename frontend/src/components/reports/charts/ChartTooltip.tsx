@@ -13,7 +13,6 @@
  * default. Pass `formatMoney` from `useFormatters()` for money, and an explicit
  * formatter for anything else; eslint refuses a `<ChartTooltip` without one.
  */
-import { drillDownFooter, type WiderSet } from '../drillDownTotals'
 import './ChartTooltip.css'
 
 interface TooltipEntry {
@@ -29,23 +28,15 @@ interface Props {
   /** How to render one entry. REQUIRED — see the note above.
    *
    * `name` is the series name, so a chart whose series are not all in the same
-   * unit can branch on it. `SavingsRateChart` needs that: three money bars and
-   * a percentage line share one tooltip.
+   * unit can branch on it — money bars and a percentage line, say.
    */
   formatter: (value: number, name: string) => string
   labelFormatter?: (label: string) => string
+  /** A Total row: the sum of the rows listed. A `wider` prop once drew the
+   *  whole beside a stack that listed only some of its series; no chart passed
+   *  it — Spending Trends and Subscriptions draw an Other band (`otherBand`)
+   *  instead — so it went, rather than stay a rule no caller exercises. */
   showTotal?: boolean
-  /** The wider set the listed rows are part of — a month's whole spend behind
-   *  ten drawn series, say. `label` is the plural noun, as on the drill table:
-   *  the row reads "All categories".
-   *
-   *  The Total line is the sum of the rows the tooltip LISTS, and a wider
-   *  figure is drawn beside it. Spending Trends showed the ten drawn series'
-   *  subtotal as "Total" inches above a table row headed All carrying a larger
-   *  number. The rule — what counts as partial, what heads the subtotal — is
-   *  `drillDownFooter`'s, called here rather than re-typed: this tooltip had
-   *  its own copy of the cent tolerance and its own wording ("Shown"). */
-  wider?: WiderSet
 }
 
 export function ChartTooltip({
@@ -55,7 +46,6 @@ export function ChartTooltip({
   formatter,
   labelFormatter,
   showTotal = false,
-  wider,
 }: Props) {
   if (!active || !payload?.length) return null
 
@@ -65,13 +55,8 @@ export function ChartTooltip({
     color: p.color ?? p.fill,
   }))
 
-  const footer = drillDownFooter(
-    entries.map((e) => ({ amount: e.value ?? 0 })),
-    wider,
-    (amount) => formatter(amount, 'Total')
-  )
+  const total = entries.reduce((sum, e) => sum + (e.value ?? 0), 0)
   const displayLabel = label ? (labelFormatter ? labelFormatter(label) : label) : null
-  const allLabel = wider?.label ? `All ${wider.label}` : 'All'
 
   return (
     <div className="chart-tooltip">
@@ -87,14 +72,8 @@ export function ChartTooltip({
       ))}
       {showTotal && entries.length > 1 && (
         <div className="chart-tooltip__row chart-tooltip__row--total">
-          <span className="chart-tooltip__name">{footer.totalLabel}</span>
-          <span className="chart-tooltip__value">{formatter(footer.shown, 'Total')}</span>
-        </div>
-      )}
-      {footer.wider !== null && (
-        <div className="chart-tooltip__row chart-tooltip__row--total">
-          <span className="chart-tooltip__name">{allLabel}</span>
-          <span className="chart-tooltip__value">{formatter(footer.wider, allLabel)}</span>
+          <span className="chart-tooltip__name">Total</span>
+          <span className="chart-tooltip__value">{formatter(total, 'Total')}</span>
         </div>
       )}
     </div>

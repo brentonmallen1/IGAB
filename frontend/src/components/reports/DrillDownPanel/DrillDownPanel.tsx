@@ -66,6 +66,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
       activityClasses: drillDown.activityClasses,
       necessityTier: drillDown.necessityTier,
       discretionary: drillDown.discretionary,
+      planSpent: drillDown.planSpent,
       accountIds: filters.accountIds.length > 0 ? filters.accountIds : undefined,
       limit,
     }),
@@ -83,7 +84,11 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
 
   const rows = data?.transactions ?? []
   const totalCount = data?.total_count ?? 0
-  const totalAmount = Math.abs(Number(data?.total_amount ?? 0))
+  // Signed, as the rows below it are: money out is negative. Spending drills
+  // list both directions now — the figures are net of refunds — so a line
+  // whose refunds outweighed its purchases opens a list that nets positive,
+  // and the magnitude alone read as spending under a negative bar.
+  const totalAmount = Number(data?.total_amount ?? 0)
   const canLoadMore = rows.length < totalCount && limit < MAX_ROWS
 
   return (

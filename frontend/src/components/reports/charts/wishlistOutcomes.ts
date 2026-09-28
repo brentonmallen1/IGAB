@@ -27,7 +27,10 @@ export function wishlistOutcomes(d: WishlistDisciplineReport): WishlistOutcome[]
     },
     { key: 'cooled_then_bought', label: 'Waited, then bought', count: d.cooled_then_bought },
     { key: 'bought_early', label: 'Bought before the wait was up', count: d.bought_early },
-    { key: 'still_open', label: 'Still waiting', count: d.still_open },
+    // Open wishes, split by whether the wait is over: one past it is waiting
+    // on a decision, not on the calendar, and "Still waiting" said neither.
+    { key: 'still_cooling', label: 'Still in the wait', count: d.still_cooling },
+    { key: 'ready_to_decide', label: 'Wait over, ready to decide', count: d.ready_to_decide },
   ]
   // Shown only when there are some, rather than folded into a bucket they
   // might not belong in: wishes with no waiting period, or ones that ended
@@ -45,4 +48,33 @@ export function wishlistOutcomes(d: WishlistDisciplineReport): WishlistOutcome[]
 /** Every wish, whatever became of it. */
 export function wishCount(d: WishlistDisciplineReport): number {
   return wishlistOutcomes(d).reduce((sum, r) => sum + r.count, 0)
+}
+
+/** "1 wish", "3 wishes". The card said "1 talked yourself out of". */
+export function wishes(n: number): string {
+  return `${n} ${n === 1 ? 'wish' : 'wishes'}`
+}
+
+/**
+ * A money card's sub-line: how many wishes its figure sums, and how many of
+ * them waited the period out — the same two facts, in the same words, under
+ * Resisted and Bought. Resisted's said "N talked yourself out of" while
+ * Bought's said "N after waiting", so an early drop read as the wait's doing
+ * on one card and the other card could not be compared with it.
+ */
+export function afterTheWait(count: number, waitedOut: number): string {
+  return `${wishes(count)} · ${waitedOut} after the wait`
+}
+
+/** The headline: of the wishes decided, the share that waited the period out.
+ *  "60%" — whole percent, as a habit is read — or "—" with nothing decided. */
+export function waitedOutShare(share: number | null): string {
+  return share === null ? '—' : `${Math.round(share * 100)}%`
+}
+
+/** "24d · your wait is 30 days": the average wait read against the person's
+ *  own waiting period, which is what makes it mean anything. */
+export function averageWaitSub(avgDays: number | null, coolingDays: number): string {
+  const period = `your wait is ${coolingDays} ${coolingDays === 1 ? 'day' : 'days'}`
+  return avgDays === null ? `nothing bought yet · ${period}` : `to buy · ${period}`
 }

@@ -19,6 +19,7 @@ import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { CardPaymentModal } from '../../components/accounts/CardPaymentModal'
+import { BUDGET_START_NOTE } from '../../components/accounts/budgetStartNote'
 import { LiabilityTermsHeader } from '../../components/liabilities/LiabilityTermsHeader'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
@@ -201,18 +202,12 @@ export function AccountPage() {
                       </Pill>
                     </button>
                     {/* Rows before this date are deliberately not flagged as
-                        needing a category, so the date has to be visible
-                        somewhere. An unexplained absence of nagging is as
-                        confusing as the nagging it replaced. */}
+                        needing a category, nor counted in reports, so the
+                        date has to be visible somewhere. An unexplained
+                        absence of nagging is as confusing as the nagging it
+                        replaced. */}
                     {account.budget_start_date && (
-                      <Pill
-                        tone="outline"
-                        title={
-                          'Anything before this date is opening balance: kept in the register, left ' +
-                          'uncategorized on purpose, and not counted as needing a category. On a card ' +
-                          'it shows as debt not covered and is paid down by assigning to the card.'
-                        }
-                      >
+                      <Pill tone="outline" title={BUDGET_START_NOTE}>
                         <CalendarClock size={12} />
                         Budget starts {formatDate(account.budget_start_date)}
                       </Pill>

@@ -83,6 +83,12 @@ export interface Liability {
   /** True = the entered minimum couldn't have amortized the original loan
    * (usually the P&I-vs-escrow data-entry trap) */
   implied_never_pays_off: boolean | null
+  /** The payment the original principal, rate and term imply, and whether
+   *  the entered payment contradicts it or the implied term — most often
+   *  escrow folded in. Server-computed: `amortization.terms_check`; the
+   *  Liabilities report's "terms disagree" reads the same check. */
+  level_payment: number | null
+  terms_disagree: boolean
   /** Promotional financing: 0% until this date, interest_rate after */
   promo_end_date: string | null
   /** Deal charges interest retroactively if not cleared by the deadline */
@@ -123,6 +129,13 @@ export interface Liability {
   live_payoff_date: string | null
   live_never_pays_off: boolean
   has_live_projection: boolean
+  /** The one payoff a page states when it states one: at the pace paid when
+   *  there is one, else at the minimum; null basis without terms.
+   *  Server-computed: `amortization.payoff_verdict`. Read this rather than
+   *  choosing between the live and baseline fields. */
+  payoff_basis: 'observed' | 'minimum' | null
+  payoff_date: string | null
+  payoff_never: boolean
   created_at: string
   updated_at: string
 }
@@ -206,6 +219,7 @@ export interface AmortizationResponse {
   baseline_schedule: AmortizationMonth[]
   baseline_payoff_date: string | null
   baseline_never_pays_off: boolean
+  /** Null when the minimum never retires the debt — no finite bill. */
   baseline_total_interest: number | null
   extra_payment: number | null
   /** One-off amount applied straight to the balance today; composes with
@@ -215,6 +229,11 @@ export interface AmortizationResponse {
   extra_payoff_date: string | null
   extra_never_pays_off: boolean
   extra_total_interest: number | null
+  /** What the what-if buys against the minimum (`amortization.paydown_gain`);
+   *  null is "no finite comparison" — against a minimum that never pays off
+   *  there is no month to beat and no bill to subtract from. */
+  months_sooner: number | null
+  interest_saved: number | null
   live_payoff_date: string | null
   live_never_pays_off: boolean
   live_typical_payment: number | null

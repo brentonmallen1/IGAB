@@ -35,6 +35,7 @@ import { equityOf } from '../../utils/equity'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useAccountTypes } from '../../api/accountTypes'
 import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
+import { formatRate } from '../../utils/rate'
 import './LiabilityPage.css'
 import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
@@ -217,19 +218,16 @@ export function LiabilityPage() {
   }
 
   // "Sooner" and "saved" are both differences against the contractual
-  // baseline, so neither exists without terms to form one.
+  // baseline, so neither exists without terms to form one — and both are
+  // served (`amortization.paydown_gain`): against a minimum that never pays
+  // off there is no finite figure, and this page subtracted the baseline's
+  // running total anyway, quoting a negative "less interest".
   const whatIfSavings =
     amortization?.terms_complete &&
     amortization.extra_schedule &&
     !amortization.extra_never_pays_off &&
     (extraPayment > 0 || curtailment > 0)
-      ? {
-          monthsSooner: amortization.baseline_never_pays_off
-            ? null
-            : amortization.baseline_schedule.length - amortization.extra_schedule.length,
-          interestSaved:
-            (amortization.baseline_total_interest ?? 0) - (amortization.extra_total_interest ?? 0),
-        }
+      ? { monthsSooner: amortization.months_sooner, interestSaved: amortization.interest_saved }
       : null
 
   return (
@@ -346,21 +344,36 @@ export function LiabilityPage() {
               would remain
               {liability.promo_projection.deferred_interest_estimate !== null
                 ? ` and ~${formatMoney(liability.promo_projection.deferred_interest_estimate)} of deferred interest could be charged retroactively`
-                : ` and the ${Number(liability.interest_rate)}% rate starts`}
+                : ` and the ${formatRate(Number(liability.interest_rate))} rate starts`}
               .
             </span>
           </div>
         ))}
 
-      {liability.implied_never_pays_off === true && (
+      {liability.implied_never_pays_off === true ? (
         <div className="liability-page__hint liability-page__hint--warning">
           <span>
             The {formatMoney(Number(liability.minimum_payment))} minimum payment couldn't have
             amortized the original {formatMoney(Number(liability.original_principal ?? 0))} loan at{' '}
-            {Number(liability.interest_rate)}% — if your real payment includes escrow or insurance,
-            enter just the principal + interest portion for accurate projections.
+            {formatRate(Number(liability.interest_rate))} — if your real payment includes escrow or
+            insurance, enter just the principal + interest portion for accurate projections.
           </span>
         </div>
+      ) : (
+        liability.terms_disagree &&
+        liability.level_payment !== null && (
+          // The same check the Liabilities report flags a row with
+          // (`amortization.terms_check`), said with its figures.
+          <div className="liability-page__hint liability-page__hint--warning">
+            <span>
+              Terms disagree: {formatMoney(Number(liability.original_principal ?? 0))} at{' '}
+              {formatRate(Number(liability.interest_rate))} over {liability.term_months} months
+              comes to {formatMoney(liability.level_payment)} a month, but the minimum payment is{' '}
+              {formatMoney(Number(liability.minimum_payment))}. If that includes escrow or
+              insurance, enter just the principal + interest portion for accurate projections.
+            </span>
+          </div>
+        )
       )}
 
       <MetricRow>
@@ -388,7 +401,7 @@ export function LiabilityPage() {
         <MetricCard
           variant="raised"
           label="Interest Rate"
-          value={liability.interest_rate === null ? 'Not set' : `${liability.interest_rate}%`}
+          value={liability.interest_rate === null ? 'Not set' : formatRate(liability.interest_rate)}
           sub={liability.interest_rate === null ? 'Add it for a payoff date' : undefined}
         />
         <MetricCard

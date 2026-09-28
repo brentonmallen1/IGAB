@@ -132,8 +132,6 @@ REPORTS: list[tuple[str, dict]] = [
     ("reports/account-composition", {"months": 3}),
     ("reports/burn-rate", {"months": 3}),
     ("reports/cash-flow", WINDOW),
-    ("reports/budget-actual", WINDOW),
-    ("reports/variance", {"months": 3}),
     ("reports/volatility", {"months": 3}),
     ("reports/seasonality", {"months": 3}),
     ("reports/payee-analysis", WINDOW),
@@ -145,7 +143,7 @@ REPORTS: list[tuple[str, dict]] = [
     ("reports/savings-rate", {"months": 3}),
     ("reports/anomalies", {"months": 3}),
     ("reports/payday-effect", {"months": 3}),
-    ("reports/plan-vs-reality", {"months": 3}),
+    ("reports/plan-vs-spent", {"months": 3}),
 ]
 
 

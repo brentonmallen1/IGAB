@@ -143,7 +143,7 @@ async def list_accounts(ctx: ToolContext, args: dict) -> dict:
 
 
 async def get_data_range(ctx: ToolContext, args: dict) -> dict:
-    result = await ctx.reports.available_range(ctx.budget_id)
+    result = await ctx.reports.available_range(ctx.budget_id, ctx.today)
     earliest = result.get("earliest_month")
     return {
         "earliest_month": earliest.isoformat() if isinstance(earliest, date) else None,
@@ -169,7 +169,7 @@ async def spending_by_category(ctx: ToolContext, args: dict) -> dict:
     result["start_date"] = start.isoformat()
     result["end_date"] = end.isoformat()
     result["covers"] = (
-        "spending, savings and debt principal" if include_savings else "day-to-day spending only"
+        "spending, savings and debt payments" if include_savings else "day-to-day spending only"
     )
     return result
 
@@ -177,12 +177,21 @@ async def spending_by_category(ctx: ToolContext, args: dict) -> dict:
 async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     start = _date(args, "start_date", ctx.today.replace(day=1))
     end = _date(args, "end_date", ctx.today)
-    data = await ctx.reports.budget_vs_actual(ctx.budget_id, start, end)
+    # Whole months: a plan is a month's, so the range is widened to the months
+    # it touches, and the dates reported are the ones read.
+    data = await ctx.reports.budget_vs_actual(ctx.budget_id, start, end, today=ctx.today)
     rows = [
         {
             "category": c["category_name"],
             "group": c["category_group_name"],
             "assigned": money(c["assigned"]),
+            # Money moved into the envelope raises its plan and money moved
+            # out lowers it; `planned` is what `variance` is measured
+            # against, so the assistant never compares a bill paid from a
+            # savings transfer, or a debt payment, with `assigned`.
+            "moved_in": money(c["moved_in"]),
+            "moved_out": money(c["moved_out"]),
+            "planned": money(c["plan"]),
             "spent": money(c["spent"]),
             "variance": money(c["variance"]),
         }
@@ -190,17 +199,26 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     ]
     result = clip(rows)
     result["total_assigned"] = money(data["total_assigned"])
+    result["total_moved_in"] = money(data["total_moved_in"])
+    result["total_moved_out"] = money(data["total_moved_out"])
+    result["total_planned"] = money(data["total_plan"])
     result["total_spent"] = money(data["total_spent"])
-    result["start_date"] = start.isoformat()
-    result["end_date"] = end.isoformat()
+    # The report's headline, so the assistant cannot quote a raw
+    # assigned-minus-spent that the rows above disagree with.
+    result["total_variance"] = money(data["total_variance"])
+    result["start_date"] = data["start_date"].isoformat()
+    result["end_date"] = data["end_date"].isoformat()
     return result
 
 
 async def income_vs_expense(ctx: ToolContext, args: dict) -> dict:
-    rows = await ctx.reports.income_vs_expense(ctx.budget_id, _months(args))
+    rows = await ctx.reports.income_vs_expense(ctx.budget_id, _months(args), ctx.today)
     shaped = [
         {
             "month": r["month"].isoformat() if isinstance(r["month"], date) else str(r["month"]),
+            # The running month's figures are month-to-date, as the chart
+            # labels them "so far" — said here in the anomaly tool's words.
+            "month_still_running": r["partial_month"],
             "income": money(r["income"]),
             "expenses": money(r["expenses"]),
             "savings": money(r["savings"]),
@@ -214,7 +232,7 @@ async def income_vs_expense(ctx: ToolContext, args: dict) -> dict:
 
 
 async def savings_rate(ctx: ToolContext, args: dict) -> dict:
-    data = await ctx.reports.savings_rate(ctx.budget_id, _months(args))
+    data = await ctx.reports.savings_rate(ctx.budget_id, _months(args), ctx.today)
     summary = data.get("summary", {})
     return {
         "summary": {k: money(v) for k, v in summary.items()},
@@ -228,6 +246,7 @@ async def savings_rate(ctx: ToolContext, args: dict) -> dict:
                 "savings_moved": money(m.get("savings_moved")),
                 "savings_held": money(m.get("savings_held")),
                 "savings_rate": m.get("savings_rate"),
+                "month_still_running": m.get("partial_month"),
             }
             for m in data.get("months", [])[:36]
         ],
@@ -468,22 +487,25 @@ async def _resolve_category(ctx: ToolContext, name: str):
 async def payee_analysis(ctx: ToolContext, args: dict) -> dict:
     start = _date(args, "start_date", ctx.today.replace(day=1))
     end = _date(args, "end_date", ctx.today)
-    rows, total, payee_count, _ = await ctx.reports.payee_analysis(
-        ctx.budget_id, start, end, limit=25
-    )
+    report = await ctx.reports.payee_analysis(ctx.budget_id, start, end, limit=25)
     shaped = [
         {
             "payee": r["payee_name"],
             "total": money(r["total"]),
             "count": r["count"],
-            "recurring": r.get("is_recurring", False),
+            "recurring": r["is_recurring"],
         }
-        for r in rows
+        for r in report["payees"]
     ]
     # A ranked top-N, not a page, so `clip` would report "25 rows, not
     # truncated". The total spans every payee and so does the count, which is
     # why this one may state it.
-    return ranked(shaped, measure="amount spent", total_amount=total, total_rows=payee_count)
+    return ranked(
+        shaped,
+        measure="amount spent, net of refunds",
+        total_amount=report["total"],
+        total_rows=report["payee_count"],
+    )
 
 
 async def large_transactions(ctx: ToolContext, args: dict) -> dict:
@@ -509,7 +531,7 @@ async def guide_checkup(ctx: ToolContext, args: dict) -> dict:
     your checkup", and a question the user asked the chat is not them running
     their health report.
     """
-    data = await ctx.guide.checkup(ctx.budget_id)
+    data = await ctx.guide.checkup(ctx.budget_id, today=ctx.today)
     if not data.get("enabled", False):
         # Off means off. Reporting empty findings as "nothing wrong" would
         # invent a clean bill of health nobody issued.
@@ -554,16 +576,19 @@ async def get_debt_status(ctx: ToolContext, args: dict) -> dict:
     is not a shorter answer, it is a different one — an imported loan arrives
     with no rate at all, and saying nothing beats inventing a date.
     """
-    report = await ctx.liabilities.liabilities_report(ctx.budget_id)
+    report = await ctx.liabilities.liabilities_report(ctx.budget_id, as_of=ctx.today)
     rows = [
         {
             "name": item["name"],
             "type": item["liability_type"],
             "balance": money(item["current_balance"]),
             "interest_rate": float(item["interest_rate"]) if item["interest_rate"] else None,
-            "payoff_date": (
-                item["live_payoff_date"].isoformat() if item["live_payoff_date"] else None
-            ),
+            # The report's one verdict: at the pace paid when there is one,
+            # else at the minimum. This read the pace's date alone, so a debt
+            # with a month of history had no payoff date here while the
+            # report beside it gave the minimum's.
+            "payoff_date": item["payoff_date"].isoformat() if item["payoff_date"] else None,
+            "payoff_basis": item["payoff_basis"],
             "interest_remaining": (
                 money(item["total_interest_remaining"])
                 if item["total_interest_remaining"] is not None
@@ -595,21 +620,36 @@ def _iso(value: Any) -> Any:
 
 
 async def get_net_worth(ctx: ToolContext, args: dict) -> dict:
-    """Assets minus debts, at each of the last months' ends."""
+    """Assets minus debts, at each of the last months' ends, and the change
+    over them like-for-like (`ReportService.net_worth`).
+
+    The change is the one to answer "is it going up" with: the drawn one
+    counts accounts being linked and values first entered as growth. A month
+    where that happened carries `started_tracking`, so the model can say why
+    a line jumped. This read `assets` and `liabilities` keys no point has,
+    and answered $0 for both.
+    """
     months = _months(args, 12)
-    history = await ctx.reports.net_worth_history(ctx.budget_id, months)
+    report = await ctx.reports.net_worth(ctx.budget_id, months, ctx.today)
     points = [
         {
             "month": _iso(point["date"]),
-            "assets": money(point.get("assets", 0)),
-            "liabilities": money(point.get("liabilities", 0)),
-            "net_worth": money(point.get("net_worth", 0)),
+            "assets": money(point["total_assets"]),
+            "liabilities": money(point["total_liabilities"]),
+            "net_worth": money(point["net_worth"]),
+            **({"started_tracking": money(point["entered"])} if point["entered"] else {}),
         }
-        for point in history
+        for point in report["points"]
     ]
+    change = report["like_for_like_change"]
     return summarize_if_large(
-        {"months": points, "latest": points[-1] if points else None},
-        keep=("latest",),
+        {
+            "months": points,
+            "latest": points[-1] if points else None,
+            "change_like_for_like": money(change) if change is not None else None,
+            "change_as_drawn": money(report["change"]),
+        },
+        keep=("latest", "change_like_for_like"),
         max_chars=ctx.result_max_chars,
     )
 
@@ -656,31 +696,63 @@ async def list_scheduled(ctx: ToolContext, args: dict) -> dict:
 async def cash_projection(ctx: ToolContext, args: dict) -> dict:
     """Where the balance goes next, and whether it crosses zero.
 
-    `goes_negative_date` is the whole point of the tool and is served first
-    class rather than left for a model to find by scanning the points: "will
-    I run out" is the question, and a null answer means no, not unknown.
+    The two crossing dates are the whole point of the tool and are served
+    first class rather than left for a model to find by scanning the points:
+    "will I run out" is the question, and a null answer means no, not unknown.
+    `goes_negative_date` is the median path's; `p10_negative_date` the day
+    about 1 path in 10 is below zero — the report's softer warning, so the
+    assistant can say "unlikely, but possible" where the chart does.
+
+    `if_income_stopped` is the other half of "will I run out": the runway rule
+    (`domain.runway`) at every spending × money choice the page offers, so "how
+    long could we last without a paycheck" is answered by the same figure the
+    Overview's Runway card shows — never by a division the model does itself.
+
+    From the user's today, like the chart they see. Events carry `payee`;
+    this read `payee_name`, which no event has, so every upcoming bill was
+    named null.
     """
     try:
         horizon = max(7, min(365, int(args.get("horizon_days", 90))))
     except (TypeError, ValueError):
         horizon = 90
-    report = await ctx.reports.cash_projection(ctx.budget_id, horizon)
-    goes_negative = report.get("goes_negative_date")
+    report = await ctx.reports.cash_projection(ctx.budget_id, horizon, today=ctx.today)
+    goes_negative = report["goes_negative_date"]
+    p10_negative = report["p10_negative_date"]
+    stopped = report["if_income_stopped"]
     return summarize_if_large(
         {
             "horizon_days": horizon,
-            "start_balance": money(report.get("start_balance", 0)),
+            "start_balance": money(report["start_balance"]),
             "goes_negative_date": _iso(goes_negative) if goes_negative else None,
+            "p10_negative_date": _iso(p10_negative) if p10_negative else None,
+            # The runway, at every choice the page offers: how long the money
+            # lasts if income stopped, card debt already taken out.
+            "if_income_stopped": [
+                {
+                    "spending": option["spending"],
+                    "money": option["money"],
+                    "monthly_spending": money(option["monthly_spending"]),
+                    "money_after_card_debt": money(option["money_total"]),
+                    "months": money(option["months"]),
+                    "runs_out_on": _iso(option["runs_out_on"]) if option["runs_out_on"] else None,
+                }
+                for option in stopped["options"]
+            ],
+            "if_income_stopped_default": {
+                "spending": stopped["default_spending"],
+                "money": stopped["default_money"],
+            },
             "upcoming": [
                 {
-                    "date": _iso(event.get("date")),
-                    "payee": event.get("payee_name") or event.get("description"),
-                    "amount": money(event.get("amount", 0)),
+                    "date": _iso(event["date"]),
+                    "payee": event["payee"],
+                    "amount": money(event["amount"]),
                 }
-                for event in report.get("events", [])
+                for event in report["events"]
             ],
         },
-        keep=("goes_negative_date", "start_balance", "horizon_days"),
+        keep=("goes_negative_date", "p10_negative_date", "start_balance", "horizon_days"),
         max_chars=ctx.result_max_chars,
     )
 
@@ -708,18 +780,19 @@ async def burn_rate(ctx: ToolContext, args: dict) -> dict:
 async def spending_anomalies(ctx: ToolContext, args: dict) -> dict:
     """Category-months well off their own baseline, worst first.
 
-    The threshold and the baseline rule belong to `report_stats.anomaly_rows`
+    The threshold and the baseline rule belong to `report_stats.anomaly_scan`
     and are not re-decided here — a tool with its own idea of "unusual" would
     disagree with the report the user can open beside it.
     """
     months = _months(args, 12)
-    report = await ctx.reports.anomalies_report(ctx.budget_id, months)
+    report = await ctx.reports.anomalies_report(ctx.budget_id, months, today=ctx.today)
     rows = [
         {
             "category": row["category_name"],
             "month": _iso(row["month"]),
             "spent": money(row["actual"]),
             "usual": money(row["baseline_mean"]),
+            "usual_range": [money(row["usual_low"]), money(row["usual_high"])],
             "direction": row["direction"],
             "month_still_running": row["partial_month"],
         }

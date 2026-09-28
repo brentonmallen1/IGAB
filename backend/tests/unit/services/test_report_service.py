@@ -29,6 +29,24 @@ def row(**kwargs):
     return Row(**kwargs)
 
 
+def ledger_row(category_id, day: date, amount, name="Groceries", group="Everyday", cls="spending"):
+    """One bucket of `plan_ledger`'s rows query: what `plan_effect` reads
+    (class, savings envelope, sign) beside the summed amount. The class is
+    decided in SQL, so a mock states it — which is why the rules themselves
+    are tested against a real database (`test_report_envelope_rules.py`)."""
+    return row(
+        category_id=category_id,
+        month=day.replace(day=1),
+        cls=cls,
+        savings_envelope=False,
+        inflow=amount > 0,
+        amount=amount,
+        category_name=name,
+        group_name=group,
+        sinking=False,
+    )
+
+
 def mock_result(rows: list) -> MagicMock:
     """Result that responds to .all()."""
     r = MagicMock()
@@ -155,26 +173,28 @@ class TestIncomeVsExpense:
     def _rows(*triples):
         return [row(month=m, cls=c, total=t) for m, c, t in triples]
 
+    @staticmethod
+    def _svc(rows) -> ReportService:
+        # The window asks where the history starts first (`budget_window`).
+        return ReportService(make_session(earliest_result(None), mock_result(rows)))
+
     async def test_buckets_by_month(self):
         today = date.today()
         first = today.replace(day=1)
         last_month = add_months(first, -1)
 
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (last_month, "income", D("3000.00")),
-                        (last_month, "spending", D("-500.00")),
-                        (first, "income", D("3000.00")),
-                        (first, "spending", D("-800.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (last_month, "income", D("3000.00")),
+                (last_month, "spending", D("-500.00")),
+                (first, "income", D("3000.00")),
+                (first, "spending", D("-800.00")),
             )
         )
         result = await svc.income_vs_expense(BUDGET, months=2)
 
-        assert len(result) == 2
+        # Two complete months, then the running one.
+        assert len(result) == 3
         prev = next(r for r in result if r["month"] == last_month)
         curr = next(r for r in result if r["month"] == first)
 
@@ -183,44 +203,44 @@ class TestIncomeVsExpense:
         assert curr["income"] == D("3000.00")
         assert curr["expenses"] == D("800.00")
 
+    async def test_n_months_are_n_complete_months_and_the_running_one(self):
+        """D5: "2 months" drew one complete month and the running one; now it
+        is two complete months, and the running month is flagged apart."""
+        first = date.today().replace(day=1)
+        result = await self._svc([]).income_vs_expense(BUDGET, months=2)
+        assert [r["month"] for r in result] == [add_months(first, -2), add_months(first, -1), first]
+        assert [r["partial_month"] for r in result] == [False, False, True]
+
     async def test_savings_is_broken_out_of_expenses(self):
         """The point of the change: money moved into savings is not spending."""
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (first, "income", D("3000.00")),
-                        (first, "spending", D("-800.00")),
-                        (first, "savings", D("-1000.00")),
-                        (first, "debt_principal", D("-200.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (first, "income", D("3000.00")),
+                (first, "spending", D("-800.00")),
+                (first, "savings", D("-1000.00")),
+                (first, "debt_principal", D("-200.00")),
             )
         )
         result = await svc.income_vs_expense(BUDGET, months=1)
-        assert result[0]["expenses"] == D("800.00")
-        assert result[0]["savings"] == D("1000.00")
-        assert result[0]["debt_principal"] == D("200.00")
+        assert result[-1]["expenses"] == D("800.00")
+        assert result[-1]["savings"] == D("1000.00")
+        assert result[-1]["debt_principal"] == D("200.00")
 
     async def test_the_parts_reconcile(self):
         """net must stay income minus everything that left the accounts, or a
         stacked chart drifts away from its own total. Money-moved: with
         nothing held, saved and moved are the same figure."""
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (first, "income", D("3000.00")),
-                        (first, "spending", D("-800.00")),
-                        (first, "savings", D("-1000.00")),
-                        (first, "debt_principal", D("-200.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (first, "income", D("3000.00")),
+                (first, "spending", D("-800.00")),
+                (first, "savings", D("-1000.00")),
+                (first, "debt_principal", D("-200.00")),
             )
         )
-        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        r = (await svc.income_vs_expense(BUDGET, months=1))[-1]
         assert r["net"] == r["income"] - r["expenses"] - r["savings_moved"] - r["debt_principal"]
         assert r["savings"] == r["savings_moved"] == D("1000.00")
         assert r["savings_held"] == D("0")
@@ -228,24 +248,19 @@ class TestIncomeVsExpense:
 
     async def test_internal_transfers_are_ignored(self):
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(
-                mock_result(
-                    self._rows(
-                        (first, "income", D("1000.00")),
-                        (first, "transfer_internal", D("-400.00")),
-                    )
-                )
+        svc = self._svc(
+            self._rows(
+                (first, "income", D("1000.00")),
+                (first, "transfer_internal", D("-400.00")),
             )
         )
-        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        r = (await svc.income_vs_expense(BUDGET, months=1))[-1]
         assert r["expenses"] == D("0")
         assert r["net"] == D("1000.00")
 
     async def test_empty_fills_all_months_with_zeros(self):
-        svc = ReportService(make_session(mock_result([])))
-        result = await svc.income_vs_expense(BUDGET, months=3)
-        assert len(result) == 3
+        result = await self._svc([]).income_vs_expense(BUDGET, months=3)
+        assert len(result) == 4
         for r in result:
             assert r["income"] == D("0")
             assert r["expenses"] == D("0")
@@ -254,11 +269,9 @@ class TestIncomeVsExpense:
 
     async def test_expenses_are_absolute_values(self):
         first = date.today().replace(day=1)
-        svc = ReportService(
-            make_session(mock_result(self._rows((first, "spending", D("-300.00")))))
-        )
+        svc = self._svc(self._rows((first, "spending", D("-300.00"))))
         result = await svc.income_vs_expense(BUDGET, months=1)
-        assert result[0]["expenses"] == D("300.00")
+        assert result[-1]["expenses"] == D("300.00")
 
 
 # ─── dashboard_metrics ────────────────────────────────────────────────────────
@@ -279,12 +292,13 @@ class TestBudgetVsActual:
             assigned=assigned,
             category_name=cat_name,
             group_name=group_name,
+            sinking=False,
         )
 
     def _spend(self, cat_id, amount, name="Groceries", group="Everyday"):
         # The names travel with the spend rows now: a category spent from but
         # never assigned to in the window used to be served as "Unknown".
-        return row(category_id=cat_id, amount=amount, category_name=name, group_name=group)
+        return ledger_row(cat_id, JAN, amount, name, group)
 
     async def test_basic_variance(self):
         assigns = [self._assignment(CAT_A, JAN, D("500.00"))]
@@ -324,26 +338,85 @@ class TestBudgetVsActual:
 
         assert result["total_assigned"] == D("800.00")
         assert result["total_spent"] == D("650.00")
+        assert result["total_variance"] == D("150.00")
+
+    async def test_the_headline_variance_is_the_rows_not_the_raw_totals(self):
+        """300 drained out of A with nothing spent, B 150 over its 200. Raw
+        `total_assigned - total_spent` is -450; the rows read on plan and
+        150 over, and the headline has to say what the rows say."""
+        assigns = [
+            self._assignment(CAT_A, JAN, D("-300.00"), "A"),
+            self._assignment(CAT_B, JAN, D("200.00"), "B"),
+        ]
+        spends = [self._spend(CAT_B, D("-350.00"), name="B")]
+        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
+        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
+
+        # The drained envelope is a row (something was assigned) on plan, and
+        # the totals are the rows'.
+        drained = next(c for c in result["categories"] if c["category_name"] == "A")
+        assert (drained["plan"], drained["variance"], drained["over"]) == (
+            D("0"),
+            D("0"),
+            False,
+        )
+        assert result["total_variance"] == D("-150.00")
+        assert result["total_variance"] == sum(c["variance"] for c in result["categories"])
 
     async def test_empty_returns_zeros(self):
         svc = ReportService(make_session(mock_result([]), mock_result([])))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
-        assert result == {"categories": [], "total_assigned": D("0"), "total_spent": D("0")}
+        assert result == {
+            "categories": [],
+            "total_assigned": D("0"),
+            "total_moved_in": D("0"),
+            "total_moved_out": D("0"),
+            "total_plan": D("0"),
+            "total_spent": D("0"),
+            "total_variance": D("0"),
+            "start_date": JAN,
+            "end_date": date(2026, 1, 31),
+        }
 
-    async def test_variance_pct_zero_when_no_assignment(self):
-        """Category with spending but no assignment gets 0% variance_pct.
+    @pytest.mark.parametrize(
+        ("start", "end", "today", "read"),
+        [
+            # A range that cuts a month reads the whole month: a plan is a
+            # month's, and half a month's spending against its whole
+            # assignment would read every envelope under plan.
+            (date(2026, 1, 10), date(2026, 1, 20), date(2026, 5, 1), (JAN, date(2026, 1, 31))),
+            (date(2026, 1, 31), date(2026, 2, 1), date(2026, 5, 1), (JAN, date(2026, 2, 28))),
+            # Never past today: the running month is month-to-date.
+            (
+                date(2026, 4, 3),
+                date(2026, 4, 30),
+                date(2026, 4, 17),
+                (date(2026, 4, 1), date(2026, 4, 17)),
+            ),
+            # Whole months already: unchanged.
+            (JAN, date(2026, 3, 31), date(2026, 5, 1), (JAN, date(2026, 3, 31))),
+        ],
+        ids=["cuts-one-month", "straddles-two", "running-month", "whole-months"],
+    )
+    async def test_it_reads_the_whole_months_a_range_touches(self, start, end, today, read):
+        svc = ReportService(make_session(mock_result([]), mock_result([])))
+        result = await svc.budget_vs_actual(BUDGET, start, end, today=today)
+        assert (result["start_date"], result["end_date"]) == read
 
-        A percentage of nothing has no value, so 0.0 is a placeholder rather
-        than a measurement — `variance` carries the real answer (-100 here).
-        Stated because the same 0.0 also means "spent its plan to the cent";
-        the two are distinguishable only by looking at `assigned`.
+    async def test_variance_pct_is_none_when_no_assignment(self):
+        """Category with spending but no assignment has no variance_pct.
+
+        A percentage of nothing has no value. It was served as 0.0, which is
+        also what "spent its plan to the cent" serves, so the chart printed
+        "0.0%" for spending nobody planned. `variance` carries the real answer
+        (-100 here).
         """
         assigns = []
         spends = [self._spend(CAT_A, D("-100.00"), name="Cascade Point Dues")]
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
         cat = result["categories"][0]
-        assert cat["variance_pct"] == 0.0
+        assert cat["variance_pct"] is None
         assert cat["variance"] == D("-100.00")
         assert cat["assigned"] == D("0")
         # And it is named, not "Unknown" with a blank group.
@@ -351,51 +424,98 @@ class TestBudgetVsActual:
         assert cat["category_group_name"] == "Everyday"
 
 
-# ─── cumulative_variance ──────────────────────────────────────────────────────
+# ─── plan_vs_spent: the totals row ────────────────────────────────────────────
 
 
-class TestCumulativeVariance:
+class TestPlanVsSpentMonthTotals:
+    """The row of month totals — what Cumulative Variance served."""
+
+    @staticmethod
+    def _svc(assigns, spends) -> ReportService:
+        return ReportService(
+            make_session(earliest_result(None), mock_result(assigns), mock_result(spends))
+        )
+
     async def test_cumulative_carries_forward(self):
         # Use real current dates to avoid patching the date class (which breaks isinstance).
-        today = date.today()
-        first = today.replace(day=1)
-        m1 = add_months(first, -1)  # last month
-        m2 = first  # current month
+        first = date.today().replace(day=1)
+        m1 = add_months(first, -2)
+        m2 = add_months(first, -1)
 
         assigns = [
-            row(month=m1, assigned=D("500.00")),
-            row(month=m2, assigned=D("500.00")),
+            row(
+                category_id=CAT_A,
+                month=m,
+                assigned=D("500.00"),
+                category_name="Groceries",
+                group_name="Food",
+                sinking=False,
+            )
+            for m in (m1, m2)
         ]
         spends = [
-            row(date=m1.replace(day=15), amount=D("-400.00")),
-            row(date=m2.replace(day=10), amount=D("-600.00")),
+            ledger_row(CAT_A, m1.replace(day=15), D("-400.00")),
+            ledger_row(CAT_A, m2.replace(day=10), D("-600.00")),
         ]
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.cumulative_variance(BUDGET, months=2)
+        result = (await self._svc(assigns, spends).plan_vs_spent(BUDGET, months=2))["month_totals"]
 
-        assert len(result) == 2
+        assert len(result) == 3
         r0 = next(r for r in result if r["month"] == m1)
         r1 = next(r for r in result if r["month"] == m2)
-        assert r0["monthly_variance"] == D("100.00")
+        assert r0["variance"] == D("100.00")
         assert r0["cumulative_variance"] == D("100.00")
-        assert r1["monthly_variance"] == D("-100.00")
+        assert r1["variance"] == D("-100.00")
         assert r1["cumulative_variance"] == D("0.00")
 
-    async def test_months_with_no_data_count_as_zero(self):
-        today = date.today()
-        first = today.replace(day=1)
-        m1 = add_months(first, -1)
-        m2 = first
+    async def test_the_running_month_is_drawn_but_not_in_the_drift(self):
+        """Its whole assignment lands on the 1st while its spending arrives
+        over the month: counted, the drift leapt "under budget" every 1st."""
+        first = date.today().replace(day=1)
+        last = add_months(first, -1)
+        assigns = [
+            row(
+                category_id=CAT_A,
+                month=m,
+                assigned=D(amount),
+                category_name="Groceries",
+                group_name="Food",
+                sinking=False,
+            )
+            for m, amount in ((last, "400.00"), (first, "900.00"))
+        ]
+        spends = [ledger_row(CAT_A, first, D("-100.00"))]
+        result = (await self._svc(assigns, spends).plan_vs_spent(BUDGET, months=1))["month_totals"]
 
-        assigns = [row(month=m1, assigned=D("400.00"))]
-        spends = []
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.cumulative_variance(BUDGET, months=2)
+        done, running = result
+        assert (done["partial_month"], running["partial_month"]) == (False, True)
+        assert done["cumulative_variance"] == D("400.00")
+        # Its own figures so far are served; its drift is not.
+        assert running["assigned"] == D("900.00")
+        assert running["spent"] == D("100.00")
+        assert running["variance"] == D("800.00")
+        assert running["cumulative_variance"] is None
+
+    async def test_months_with_no_data_count_as_zero(self):
+        first = date.today().replace(day=1)
+        m1 = add_months(first, -2)
+        m2 = add_months(first, -1)
+
+        assigns = [
+            row(
+                category_id=CAT_A,
+                month=m1,
+                assigned=D("400.00"),
+                category_name="Groceries",
+                group_name="Food",
+                sinking=False,
+            )
+        ]
+        result = (await self._svc(assigns, []).plan_vs_spent(BUDGET, months=2))["month_totals"]
 
         r1 = next(r for r in result if r["month"] == m1)
         r2 = next(r for r in result if r["month"] == m2)
-        assert r1["monthly_variance"] == D("400.00")
-        assert r2["monthly_variance"] == D("0.00")
+        assert r1["variance"] == D("400.00")
+        assert r2["variance"] == D("0.00")
         assert r2["cumulative_variance"] == D("400.00")
 
 
@@ -478,22 +598,34 @@ class TestSpendingGrouped:
 
 
 def spend_row(**kwargs):
-    """A day-patterns row. The class filter moved out of the WHERE and into a
-    Python partition, so every row now carries its class and category."""
+    """A `ReportService._spending_query` row: every reader of the one spending
+    definition gets the same columns, so a fixture states them all. Each row
+    is its own purchase unless a `txn_id` says otherwise."""
     kwargs.setdefault("cls", "spending")
     kwargs.setdefault("id", uuid.uuid4())
+    kwargs.setdefault("name", "Shopping")
+    kwargs.setdefault("group_id", GRP_1)
+    kwargs.setdefault("group_name", "Everyday")
+    kwargs.setdefault("payee_id", PAYEE_1)
+    kwargs.setdefault("payee_name", "Amazon")
+    kwargs.setdefault("txn_id", uuid.uuid4())
     return row(**kwargs)
+
+
+def day_session(rows, earliest=None):
+    """The rows, then when the budget's history starts."""
+    return make_session(mock_result(rows), earliest_result(earliest))
 
 
 class TestDayPatterns:
     async def test_seven_days_always_returned(self):
-        svc = ReportService(make_session(mock_result([])))
+        svc = ReportService(day_session([]))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         assert len(days) == 7
         assert {r["day_of_week"] for r in days} == set(range(7))
 
     async def test_day_names_correct(self):
-        svc = ReportService(make_session(mock_result([])))
+        svc = ReportService(day_session([]))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         by_idx = {r["day_of_week"]: r["day_name"] for r in days}
         assert by_idx[0] == "Monday"
@@ -506,7 +638,7 @@ class TestDayPatterns:
             spend_row(date=date(2026, 1, 5), amount=D("-50.00")),
             spend_row(date=date(2026, 1, 6), amount=D("-200.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(day_session(rows))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
 
         monday = next(r for r in days if r["day_name"] == "Monday")
@@ -515,19 +647,55 @@ class TestDayPatterns:
         assert monday["count"] == 2
         assert tuesday["total"] == D("200.0")
 
-    async def test_avg_transaction(self):
+    async def test_the_average_is_per_calendar_monday_quiet_ones_included(self):
+        """Two Mondays in the window, one with 300 spent: a typical Monday is
+        150. The average per transaction said 150 too, by coincidence — with
+        three purchases that Monday it would have said 100."""
         rows = [
             spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
-            spend_row(date=date(2026, 1, 5), amount=D("-200.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-120.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-80.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        svc = ReportService(day_session(rows))
+        days = (await svc.day_patterns(BUDGET, date(2026, 1, 5), date(2026, 1, 18)))["days"]
         monday = next(r for r in days if r["day_name"] == "Monday")
-        assert monday["avg_transaction"] == pytest.approx(D("150.0"), rel=D("0.01"))
+        assert monday["weekdays"] == 2
+        assert monday["avg_per_day"] == D("150.00")
+        assert monday["count"] == 3
+
+    async def test_days_before_the_history_are_not_quiet_days(self):
+        """A range reaching back before the first transaction divides by the
+        Mondays since it, not by Mondays nobody recorded."""
+        rows = [spend_row(date=date(2026, 1, 12), amount=D("-90.00"))]
+        svc = ReportService(day_session(rows, earliest=date(2026, 1, 12)))
+        result = await svc.day_patterns(BUDGET, date(2026, 1, 1), date(2026, 1, 25))
+        monday = next(r for r in result["days"] if r["day_name"] == "Monday")
+        assert result["window_start"] == date(2026, 1, 12)
+        assert monday["weekdays"] == 2
+        assert monday["avg_per_day"] == D("45.00")
+
+    async def test_a_split_is_one_purchase(self):
+        """Two legs of one trip share a `txn_id`: one purchase on the chart."""
+        trip = uuid.uuid4()
+        rows = [
+            spend_row(date=date(2026, 1, 5), amount=D("-60.00"), txn_id=trip),
+            spend_row(date=date(2026, 1, 5), amount=D("-40.00"), txn_id=trip),
+        ]
+        days = (await ReportService(day_session(rows)).day_patterns(BUDGET, JAN, APR))["days"]
+        assert days[0]["count"] == 1
+        assert days[0]["total"] == D("100.00")
+
+    async def test_a_refund_lowers_its_day(self):
+        rows = [
+            spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("30.00")),
+        ]
+        days = (await ReportService(day_session(rows)).day_patterns(BUDGET, JAN, APR))["days"]
+        assert days[0]["total"] == D("70.00")
 
     async def test_empty_days_return_zero_not_missing(self):
         rows = [spend_row(date=date(2026, 1, 5), amount=D("-100.00"))]  # Monday only
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(day_session(rows))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         sunday = next(r for r in days if r["day_name"] == "Sunday")
         assert sunday["total"] == D("0")
@@ -541,7 +709,7 @@ class TestDayPatterns:
             spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
             spend_row(date=date(2026, 1, 5), amount=D("-900.00"), cls="savings", id=cat),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(day_session(rows))
         days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
         monday = next(r for r in days if r["day_name"] == "Monday")
         assert monday["total"] == D("100.0")
@@ -551,12 +719,10 @@ class TestDayPatterns:
         cat = uuid.uuid4()
         rows = [spend_row(date=date(2026, 1, 5), amount=D("-900.00"), cls="savings", id=cat)]
 
-        unscoped = await ReportService(make_session(mock_result(rows))).day_patterns(
-            BUDGET, JAN, APR
-        )
+        unscoped = await ReportService(day_session(rows)).day_patterns(BUDGET, JAN, APR)
         assert unscoped["class_excluded"] is None
 
-        scoped = await ReportService(make_session(mock_result(rows))).day_patterns(
+        scoped = await ReportService(day_session(rows)).day_patterns(
             BUDGET, JAN, APR, category_ids=[cat]
         )
         assert scoped["class_excluded"] == [
@@ -574,13 +740,18 @@ class TestDayPatterns:
 
 class TestPayeeAnalysis:
     def _txn(self, txn_date, amount, payee_id=None, payee_name="Amazon", cat_name="Shopping"):
-        return row(
+        return spend_row(
             date=txn_date,
             amount=amount,
             payee_id=payee_id or PAYEE_1,
             payee_name=payee_name,
-            category_id=CAT_A,
-            category_name=cat_name,
+            id=CAT_A,
+            name=cat_name,
+        )
+
+    async def _analysis(self, rows, start=JAN, end=APR, **kwargs):
+        return await ReportService(make_session(mock_result(rows))).payee_analysis(
+            BUDGET, start, end, **kwargs
         )
 
     async def test_is_recurring_three_or_more_months(self):
@@ -589,18 +760,36 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 2, 15), D("-50.00")),
             self._txn(date(2026, 3, 15), D("-50.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees[0]["is_recurring"] is True
+        report = await self._analysis(rows)
+        assert report["recurring_min_months"] == 3
+        assert report["payees"][0]["is_recurring"] is True
 
     async def test_not_recurring_two_months(self):
         rows = [
             self._txn(date(2026, 1, 15), D("-50.00")),
             self._txn(date(2026, 2, 15), D("-50.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees[0]["is_recurring"] is False
+        report = await self._analysis(rows)
+        assert report["payees"][0]["is_recurring"] is False
+
+    async def test_over_a_year_three_months_is_not_a_habit(self):
+        """Recurring is relative to the window: over twelve months it takes
+        six. A fixed three called a payee seen in three scattered months of a
+        year recurring."""
+        rows = [
+            self._txn(date(2026, 1, 15), D("-50.00")),
+            self._txn(date(2026, 5, 15), D("-50.00")),
+            self._txn(date(2026, 9, 15), D("-50.00")),
+        ]
+        report = await self._analysis(rows, JAN, date(2026, 12, 31))
+        assert report["recurring_min_months"] == 6
+        assert report["payees"][0]["is_recurring"] is False
+
+    async def test_a_short_window_calls_nothing_recurring_and_says_so(self):
+        rows = [self._txn(date(2026, 1, 15), D("-50.00"))]
+        report = await self._analysis(rows, JAN, date(2026, 2, 28))
+        assert report["recurring_min_months"] is None
+        assert report["payees"][0]["is_recurring"] is False
 
     async def test_monthly_trend(self):
         rows = [
@@ -608,10 +797,8 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 20), D("-50.00")),
             self._txn(date(2026, 2, 5), D("-75.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-
-        trend = {t["month"]: t["total"] for t in payees[0]["monthly_trend"]}
+        report = await self._analysis(rows)
+        trend = {t["month"]: t["total"] for t in report["payees"][0]["monthly_trend"]}
         assert trend[date(2026, 1, 1)] == D("150.0")
         assert trend[date(2026, 2, 1)] == D("75.0")
 
@@ -620,29 +807,35 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 1), D("-100.00")),
             self._txn(date(2026, 1, 2), D("-200.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, grand_total, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees[0]["total"] == D("300.0")
-        assert payees[0]["count"] == 2
-        assert grand_total == D("300.0")
+        report = await self._analysis(rows)
+        assert report["payees"][0]["total"] == D("300.0")
+        assert report["payees"][0]["count"] == 2
+        assert report["total"] == D("300.0")
+
+    async def test_a_refund_lowers_its_payee(self):
+        rows = [
+            self._txn(date(2026, 1, 1), D("-100.00")),
+            self._txn(date(2026, 1, 9), D("40.00")),
+        ]
+        report = await self._analysis(rows)
+        assert report["payees"][0]["total"] == D("60.00")
+        assert report["total"] == D("60.00")
 
     async def test_top_categories(self):
         rows = [
             self._txn(date(2026, 1, 1), D("-100.00"), cat_name="Groceries"),
             self._txn(date(2026, 1, 2), D("-300.00"), cat_name="Electronics"),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        top = {c["category_name"]: c["total"] for c in payees[0]["top_categories"]}
+        report = await self._analysis(rows)
+        top = {c["category_name"]: c["total"] for c in report["payees"][0]["top_categories"]}
         assert top["Electronics"] == D("300.0")
         assert top["Groceries"] == D("100.0")
 
     async def test_empty_returns_empty(self):
-        svc = ReportService(make_session(mock_result([])))
-        payees, total, count, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
-        assert payees == []
-        assert total == D("0")
-        assert count == 0
+        report = await self._analysis([])
+        assert report["payees"] == []
+        assert report["total"] == D("0")
+        assert report["payee_count"] == 0
 
     async def test_the_total_and_count_span_every_payee_not_the_ranked_ones(self):
         # The cap is what this report IS — a ranking, not a page — so both
@@ -655,11 +848,11 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 2), D("-300.00"), PAYEE_2, "Cascade Grocers"),
             self._txn(date(2026, 1, 3), D("-100.00"), third, "Alder Street Cafe"),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        payees, total, count, _to80 = await svc.payee_analysis(BUDGET, JAN, APR, limit=2)
+        report = await self._analysis(rows, limit=2)
+        payees = report["payees"]
         assert [p["payee_name"] for p in payees] == ["Harborstone Realty", "Cascade Grocers"]
-        assert total == D("800.0")
-        assert count == 3
+        assert report["total"] == D("800.0")
+        assert report["payee_count"] == 3
         # 400 / 800, not 400 / 700.
         assert round(payees[0]["pct"], 1) == 50.0
 
@@ -668,31 +861,26 @@ class TestPayeeAnalysis:
 
 
 class TestBurnRate:
-    # The newest point's window ends at TODAY, so test dates anchor there.
+    # The newest point's windows end YESTERDAY (`burn_as_of`): today almost
+    # never has synced rows, so a window ending today read one quiet day low.
+    # Test dates anchor there — `as_of` below — and each case runs mid-month,
+    # on the day before a month ends, and on a 1st, whose yesterday is the
+    # last day of the month before.
     #
-    # These used to anchor to the current month's last day, with a comment
-    # saying dates relative to today "drift out of the window as the month
-    # progresses and made these tests calendar-flaky". That flakiness was the
-    # bug talking: the window ran to `_last_day` of the current month, which is
-    # a future date, so the newest point was month-to-date wearing a "30-day"
-    # label — and it contradicted the Overview's "30-Day Burn Rate", a genuine
-    # trailing thirty days, every day of the month. Anchored on today the
-    # window is stable and the label is true.
-    #
-    # The service clock is pinned. These read the real `date.today()`, and
-    # near a month's end the old `_last_day` window covered the same rows as
-    # the trailing one — so a revert passed on the 26th-30th of a 30-day month
-    # and the future-reaching window could ship on those days. Each case runs
-    # mid-month and on the day before a month ends; never ON a last day, where
-    # "tomorrow" is next month and both windows miss it.
+    # The service clock is pinned. These read the real `date.today()`, and a
+    # window reaching into the future could otherwise pass on some days of
+    # the month and ship.
 
-    @pytest.fixture(params=[date(2026, 9, 10), date(2026, 9, 29), date(2026, 2, 27)], ids=str)
+    @pytest.fixture(
+        params=[date(2026, 9, 10), date(2026, 9, 29), date(2026, 2, 27), date(2026, 10, 1)],
+        ids=str,
+    )
     def today(self, request):
         with report_today(request.param) as today:
             yield today
 
     async def _newest(self, rows, **kwargs) -> dict:
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
         return (await svc.burn_rate(BUDGET, months=1, **kwargs))[-1]
 
     @staticmethod
@@ -700,28 +888,33 @@ class TestBurnRate:
         """One (date, class, signed total) row, as the grouped query returns it."""
         return row(date=day, cls=cls, amount=D(amount))
 
-    async def test_rolling_30_sums_the_last_30_days(self, today):
+    async def test_rolling_30_sums_the_30_days_to_yesterday(self, today):
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=25), "-200.00"),
-            self._spend(today - timedelta(days=3), "-300.00"),
+            self._spend(as_of - timedelta(days=25), "-200.00"),
+            self._spend(as_of - timedelta(days=3), "-300.00"),
         ]
         assert (await self._newest(rows))["rolling_30"] == D("500.00")
 
-    async def test_the_30_day_window_is_today_and_the_29_days_before(self, today):
-        """Day 30 counting today as day 1 is in; day 31 is the prior window's."""
+    async def test_the_30_day_window_is_yesterday_and_the_29_days_before(self, today):
+        """Day 30 counting yesterday as day 1 is in; day 31 is the prior
+        window's."""
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=30), "-700.00"),
-            self._spend(today - timedelta(days=29), "-200.00"),
-            self._spend(today, "-300.00"),
+            self._spend(as_of - timedelta(days=30), "-700.00"),
+            self._spend(as_of - timedelta(days=29), "-200.00"),
+            self._spend(as_of, "-300.00"),
         ]
         newest = await self._newest(rows)
         assert newest["rolling_30"] == D("500.00")
         assert newest["prior_60"] == D("350.00")
 
-    async def test_the_newest_window_does_not_reach_past_today(self, today):
-        """A row dated tomorrow is not money that has been burned."""
+    async def test_today_is_not_in_the_newest_burn(self, today):
+        """A row dated today — the day the bank has not finished posting —
+        counts tomorrow, and a row dated tomorrow is not money burned."""
         rows = [
             self._spend(today - timedelta(days=2), "-300.00"),
+            self._spend(today, "-400.00"),
             self._spend(today + timedelta(days=1), "-900.00"),
         ]
         newest = await self._newest(rows)
@@ -731,29 +924,43 @@ class TestBurnRate:
     async def test_prior_60_is_the_sixty_days_before_the_thirty_halved(self, today):
         # 1,200 in days 31–90 is 600 per thirty; the 300 inside the last
         # thirty is not part of it, as it was of the old ninety-day average.
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=85), "-600.00"),
-            self._spend(today - timedelta(days=50), "-600.00"),
-            self._spend(today - timedelta(days=10), "-300.00"),
+            self._spend(as_of - timedelta(days=85), "-600.00"),
+            self._spend(as_of - timedelta(days=50), "-600.00"),
+            self._spend(as_of - timedelta(days=10), "-300.00"),
         ]
         cur = await self._newest(rows)
         assert cur["prior_60"] == D("600.00")
         assert cur["rolling_30"] == D("300.00")
 
     async def test_the_prior_window_ends_on_day_90(self, today):
+        as_of = today - timedelta(days=1)
         rows = [
-            self._spend(today - timedelta(days=90), "-300.00"),
-            self._spend(today - timedelta(days=89), "-900.00"),
+            self._spend(as_of - timedelta(days=90), "-300.00"),
+            self._spend(as_of - timedelta(days=89), "-900.00"),
         ]
         assert (await self._newest(rows))["prior_60"] == D("450.00")
 
     async def test_the_readers_today_overrides_the_server_clock(self, today):
-        """`client_today` a day ahead: tomorrow's row is the reader's today."""
+        """`client_today` a day ahead: the server's today is the reader's
+        yesterday, so its row is in the reader's newest burn."""
         ahead = today + timedelta(days=1)
-        rows = [self._spend(ahead, "-250.00")]
+        rows = [self._spend(today, "-250.00")]
         newest = await self._newest(rows, today=ahead)
         assert newest["rolling_30"] == D("250.00")
         assert newest["date"] == ahead.replace(day=1)
+
+    async def test_a_complete_months_point_ends_on_its_last_day(self, today):
+        """Every point but the running month's is the thirty days to that
+        month's last day: "12 months" is twelve complete months of points."""
+        last_month_end = today.replace(day=1) - timedelta(days=1)
+        rows = [self._spend(last_month_end, "-120.00")]
+        svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+        points = await svc.burn_rate(BUDGET, months=1)
+        assert len(points) == 2
+        assert points[0]["date"] == last_month_end.replace(day=1)
+        assert points[0]["rolling_30"] == D("120.00")
 
 
 # ─── net_worth_history ────────────────────────────────────────────────────────
@@ -767,18 +974,12 @@ class TestBurnRate:
 
 class TestCategoryVolatility:
     async def test_statistical_output(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def vrow(d, amt):
-                return row(
-                    date=d,
-                    amount=amt,
-                    category_id=CAT_A,
-                    category_name="Groceries",
-                    group_name="Food",
-                )
+                return ledger_row(CAT_A, d, amt, "Groceries", "Food")
 
             # months=3 with today in March means the three COMPLETE months
             # Dec, Jan, Feb. March is the partial current month and is out —
@@ -810,18 +1011,12 @@ class TestCategoryVolatility:
         the budget. `min_val` could never be zero either, so a dormant category
         showed a floor it had never spent as little as.
         """
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 7, 10)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def vrow(d, amt):
-                return row(
-                    date=d,
-                    amount=amt,
-                    category_id=CAT_A,
-                    category_name="Property Tax",
-                    group_name="Long Term",
-                )
+                return ledger_row(CAT_A, d, amt, "Property Tax", "Long Term")
 
             # Two charges of 600 in a six-month window: Jan and Apr.
             rows = [vrow(date(2026, 1, 20), D("-600.00")), vrow(date(2026, 4, 20), D("-600.00"))]
@@ -843,18 +1038,12 @@ class TestCategoryVolatility:
         """The toggle's whole path below the route. Nothing passed amortize=True
         here, so dropping the argument left every test green and the toggle
         quietly showing the raw reading."""
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 7, 10)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def vrow(d):
-                return row(
-                    date=d,
-                    amount=D("-600.00"),
-                    category_id=CAT_A,
-                    category_name="Property Tax",
-                    group_name="Long Term",
-                )
+                return ledger_row(CAT_A, d, D("-600.00"), "Property Tax", "Long Term")
 
             # Jan–Jun, 600 in Jan and Apr: 200 a month once spread.
             rows = [vrow(date(2026, 1, 20)), vrow(date(2026, 4, 20))]
@@ -865,7 +1054,7 @@ class TestCategoryVolatility:
         assert r["months_included"] == 2
 
     async def test_empty_returns_empty(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(make_session(earliest_result(None), mock_result([])))
@@ -883,12 +1072,12 @@ class TestCategoryVolatility:
 
 class TestSeasonality:
     async def test_cells_and_categories(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
 
             def srow(d, amt):
-                return row(date=d, amount=amt, category_id=CAT_A, category_name="Groceries")
+                return spend_row(date=d, amount=amt, id=CAT_A, name="Groceries")
 
             # Two complete months before February: December and January.
             rows = [srow(date(2025, 12, 10), D("-120.00")), srow(date(2026, 1, 10), D("-100.00"))]
@@ -900,14 +1089,14 @@ class TestSeasonality:
         # always a blank column and December's cells had none.
         assert result["months"] == [date(2025, 12, 1), date(2026, 1, 1)]
         assert {c["month"] for c in result["cells"]} <= set(result["months"])
-        assert any(c["id"] == str(CAT_A) for c in result["categories"])
+        assert any(c["id"] == CAT_A for c in result["categories"])
         jan_cell = next(c for c in result["cells"] if c["month"] == date(2026, 1, 1))
         assert jan_cell["total"] == D("100.0")
 
     async def test_the_axis_starts_where_the_history_does(self):
         """A budget three weeks old on "12 months" has one complete month. The
         axis drew eleven blank columns before it, which reads as data loss."""
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 20)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(make_session(earliest_result(date(2026, 1, 28)), mock_result([])))
@@ -916,7 +1105,7 @@ class TestSeasonality:
         assert result["months"] == [date(2026, 1, 1)]
 
     async def test_empty_returns_months_no_cells(self):
-        with patch("igab.services.report_service.date") as mock_date:
+        with patch("igab.services.report_day.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(make_session(earliest_result(None), mock_result([])))
@@ -981,57 +1170,5 @@ class TestLargeTransactions:
         assert result == []
 
 
-# ─── account_composition ──────────────────────────────────────────────────────
-
-
-class TestAccountComposition:
-    async def test_groups_by_account_type(self):
-        # account_composition delegates to net_worth_history and reshapes
-        history = [
-            {
-                "date": JAN,
-                "total_assets": D("10000"),
-                "total_liabilities": D("2000"),
-                "net_worth": D("8000"),
-                "asset_value_total": D("0"),
-                "accounts": [
-                    {
-                        "account_type": "checking",
-                        "balance": D("6000"),
-                        "account_id": str(ACCT_1),
-                        "account_name": "Bank",
-                    },
-                    {
-                        "account_type": "savings",
-                        "balance": D("4000"),
-                        "account_id": str(ACCT_2),
-                        "account_name": "Savings",
-                    },
-                    {
-                        "account_type": "credit_card",
-                        "balance": D("-2000"),
-                        "account_id": str(uuid.uuid4()),
-                        "account_name": "Visa",
-                    },
-                    # Custom types must appear as their own series
-                    {
-                        "account_type": "pension",
-                        "balance": D("9000"),
-                        "account_id": str(uuid.uuid4()),
-                        "account_name": "Work Pension",
-                    },
-                ],
-            }
-        ]
-        svc = ReportService(AsyncMock())
-        svc.net_worth_history = AsyncMock(return_value=history)
-
-        result = await svc.account_composition(BUDGET, months=1)
-        assert len(result) == 1
-        balances = result[0]["balances"]
-        assert balances["checking"] == D("6000")
-        assert balances["savings"] == D("4000")
-        assert balances["credit_card"] == D("-2000")
-        assert balances["pension"] == D("9000")
-        # Absent types stay absent — the series set is exactly what exists
-        assert "loan" not in balances
+# account_composition reads the account registry and live accounts itself;
+# it is tested against a database in tests/integration/test_tracking_start.py.

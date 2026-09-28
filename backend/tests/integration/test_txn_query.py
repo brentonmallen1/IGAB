@@ -27,6 +27,7 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
+    create_payee,
     create_transaction,
     create_user,
 )
@@ -229,3 +230,127 @@ class TestOneClauseBothCallers:
         assert parts.payee_join is True
         assert parts.class_joins is False
         assert len(parts.where) >= 3
+
+
+async def _split_at(db_session):
+    """A -100 split at Harborstone Market — the payee on the parent only, as
+    the app's split editor writes it — beside a plain -25 there."""
+    budget, checking, _card, groceries = await _budget_with_spending(db_session)
+    market = await create_payee(db_session, budget, "Harborstone Market")
+    when = date(2026, 8, 20)
+    parent = await create_transaction(
+        db_session, budget, checking, "-100", when, payee=market, is_split=True
+    )
+    for amount in ("-60", "-40"):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            amount,
+            when,
+            category=groceries,
+            parent_transaction_id=parent.id,
+        )
+    await create_transaction(db_session, budget, checking, "-25", when, payee=market)
+    await db_session.flush()
+    return budget, market
+
+
+class TestThePayeeFilter:
+    """The filter reads the payee of record (`PAYEE_OF_RECORD`), which the
+    Pareto and Payee Analysis bars rank by."""
+
+    async def test_the_rollup_counts_a_split_by_the_payee_its_parent_names(self, db_session):
+        # The assistant's grouped query: leaf scope, like the listing's drill.
+        # The raw column matched only the plain -25.
+        budget, market = await _split_at(db_session)
+        groups, _ = await grouped_totals(
+            db_session,
+            budget.id,
+            group_by="month",
+            filters=TransactionFilters(payee_ids=[market.id]),
+        )
+        assert [(g["value"], g["rows"]) for g in groups] == [(-125, 3)]
+
+    async def test_the_listing_and_the_rollup_still_agree_on_it(self, db_session):
+        budget, market = await _split_at(db_session)
+        _rows, count, total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, payee_ids=[market.id], scope="leaf"
+        )
+        groups, _ = await grouped_totals(
+            db_session,
+            budget.id,
+            group_by="category",
+            filters=TransactionFilters(payee_ids=[market.id]),
+        )
+        assert (count, total) == (3, -125)
+        assert sum(g["value"] for g in groups) == total
+
+    async def test_an_empty_payee_list_matches_nothing(self, db_session):
+        """The assistant's tools pass [] for a payee name that resolved to
+        nobody, and say "nothing was searched". A truthiness test read [] as
+        no filter and answered with the whole budget."""
+        budget, _market = await _split_at(db_session)
+        _rows, count, _total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, payee_ids=[], scope="leaf"
+        )
+        assert count == 0
+
+    async def test_the_payee_rollup_files_a_split_under_the_shop_its_parent_names(self, db_session):
+        """The MCP grouped query's payee dimension grouped by the raw column,
+        so the -100 split's legs (payee on the parent only) read "(no payee)"
+        beside the same shop's -25."""
+        budget, market = await _split_at(db_session)
+        groups, _ = await grouped_totals(
+            db_session,
+            budget.id,
+            group_by="payee",
+            filters=TransactionFilters(start_date=date(2026, 8, 20), end_date=date(2026, 8, 20)),
+        )
+        assert [(g["group"], g["value"], g["rows"]) for g in groups] == [
+            ("Harborstone Market", -125, 3)
+        ]
+
+    async def test_a_payee_rollup_and_a_search_still_agree(self, db_session):
+        """The dimension joins its own alias: `search` still matches the row's
+        own payee, as the listing's does, under a payee rollup."""
+        budget, market = await _split_at(db_session)
+        filters = TransactionFilters(search="Harborstone Market")
+        _rows, count, total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, search="Harborstone Market", scope="leaf"
+        )
+        groups, _ = await grouped_totals(db_session, budget.id, group_by="payee", filters=filters)
+        assert sum(g["rows"] for g in groups) == count
+        assert sum(g["value"] for g in groups) == total
+
+    def test_only_a_payee_filter_asks_for_the_split_parent(self):
+        budget_id = uuid.uuid4()
+        asked = build_where(budget_id, TransactionFilters(payee_ids=[uuid.uuid4()]))
+        assert asked.split_parent_join is True
+        assert build_where(budget_id, TransactionFilters()).split_parent_join is False
+
+
+class TestTheAccountFilter:
+    async def test_an_empty_account_list_matches_nothing(self, db_session):
+        """The assistant's tools pass [] for an account name that resolved to
+        nothing, and say "nothing was searched". A truthiness test read [] as
+        no filter and answered with every row in the budget — the payee
+        filter's bug, which was fixed on its own."""
+        budget, *_ = await _budget_with_spending(db_session)
+        _rows, count, _total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, account_ids=[], scope="leaf"
+        )
+        groups, total_groups = await grouped_totals(
+            db_session,
+            budget.id,
+            group_by="category",
+            filters=TransactionFilters(account_ids=[]),
+        )
+        assert (count, groups, total_groups) == (0, [], 0)
+
+    async def test_no_account_filter_is_still_every_account(self, db_session):
+        budget, *_ = await _budget_with_spending(db_session)
+        _rows, count, _total = await TransactionRepository(db_session).list_for_budget(
+            budget.id, account_ids=None, scope="leaf"
+        )
+        assert count == 5

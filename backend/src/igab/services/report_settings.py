@@ -1,7 +1,7 @@
 """Per-budget settings that change what the reports count.
 
 One so far: whether the essentials figures spread sinking-fund bills over
-twelve months (`guide.concepts.essentials_monthly`). It is a budget setting
+twelve months (`guide.concepts.essentials_at`). It is a budget setting
 rather than a per-report toggle because the Overview card, the Essentials and
 Emergency Fund reports and the Guide's target all quote one figure — a toggle
 on one surface that left the others as they were would be a second answer to

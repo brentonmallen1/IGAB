@@ -32,7 +32,7 @@ export interface Account {
   on_budget: boolean
   /** Whether transfers with this account count as saving — read only for an
    *  off-budget asset (`utils/accountKinds.isTrackedAsset`). Served from the
-   *  column; the rule is `domain/activity_class.py` rules 4 and 6. */
+   *  column; the rule is `domain/activity_class.py` rules 5 and 7. */
   counts_as_savings: boolean
   /** The stored emergency-fund mark. Whether the balance is counted is
    *  decided on the server — home is `repositories/txn_filters.py
@@ -671,7 +671,8 @@ export interface SplitCreate {
 }
 
 export interface SpendingCategory {
-  id: string
+  /** null on the Uncategorized line — backend `domain/spending.py`. */
+  id: string | null
   name: string
   group_name: string
   total: number
@@ -688,6 +689,10 @@ export interface SpendingReport {
 
 export interface IncomeExpenseMonth {
   month: string
+  /** The running month: its figures are month-to-date. Drawn apart and
+   *  labelled "so far" (`utils/reportMonths.ts`), never in an average, total
+   *  or headline. Home: backend `domain.dates.ReportWindow`. */
+  partial_month: boolean
   income: number
   /** Money spent. Saving and debt principal are separate — both leave the
    *  budget, but neither is spending. */
@@ -705,6 +710,8 @@ export interface IncomeExpenseMonth {
 
 export interface IncomeExpenseReport {
   months: IncomeExpenseMonth[]
+  /** The classes `expenses` counts — what the Expenses drill-down lists. */
+  expense_classes: string[]
 }
 
 export interface CategoryTarget {
@@ -775,7 +782,7 @@ export type AssignStrategy =
 /** What a lean month costs, both ways — served by the dashboard, the
  *  Essentials and Emergency Fund reports, the Guide's essential-expenses signal
  *  and the sizer. Home: `guide/concepts.py::essentials_monthly`, read through
- *  `services/essentials.py`. `as_paid` is the 90-day figure as bills landed;
+ *  `services/essentials.py`. `as_paid` is the last three complete months as bills landed;
  *  `spread` swaps Long-term expense bills for a twelfth of the year's;
  *  `spread_on` is the budget's setting and `monthly` the one it selects. */
 export interface EssentialsFigures {
@@ -783,6 +790,10 @@ export interface EssentialsFigures {
   spread: number
   spread_on: boolean
   monthly: number
+  /** The complete months `as_paid` averages — the last three, or fewer on a
+   *  young budget; null before any history. Said wherever the figure is. */
+  window_start: string | null
+  window_end: string | null
 }
 
 /** GET/PUT /reports/settings — `services/report_settings.py`. */
@@ -790,9 +801,54 @@ export interface ReportSettings {
   spread_sinking_funds: boolean
 }
 
+/** What a month costs, for a runway (backend `domain/runway.py`
+ *  `SpendingBasis`): all spending, the Cost of Living tier, or Essentials —
+ *  each the three complete months the Essentials headline averages. */
+export type RunwaySpending = 'all' | 'cost_of_living' | 'essentials'
+
+/** What money a runway spends (backend `MoneyBasis`): the budget's cash, plus
+ *  what the emergency fund holds outside it, plus every off-budget savings
+ *  account — or, on the Emergency Fund report, the fund alone. */
+export type RunwayMoney = 'checking' | 'with_fund' | 'with_savings' | 'fund'
+
+/** How long the money lasts if income stopped, at one choice — the one runway
+ *  rule, server-computed (`domain/runway.py`). Every surface that quotes a
+ *  runway reads this shape, so each can say what it read. */
+export interface RunwayFigure {
+  spending: RunwaySpending
+  money: RunwayMoney
+  /** null when nothing is tagged into the tier: unknown, not zero. */
+  monthly_spending: number | null
+  /** The money counted, on-budget card debt already subtracted; null when it
+   *  would count an emergency fund nobody has chosen. */
+  money_total: number | null
+  /** What was subtracted for the cards (owed, positive). */
+  card_debt: number
+  /** One decimal. null when nothing is being spent; 0 when the money is
+   *  already gone. */
+  months: number | null
+  /** The reader's today plus `months`. */
+  runs_out_on: string | null
+}
+
+/** The Overview's Runway card: Essentials against the cash and the emergency
+ *  fund, falling back (and saying why) when either is missing. */
+export interface OverviewRunway extends RunwayFigure {
+  fund_chosen: boolean
+  essentials_known: boolean
+  window_start: string | null
+  window_end: string | null
+}
+
 export interface DashboardMetrics {
   net_worth: number
   net_worth_prev: number
+  /** What began being counted between `net_worth_prev`'s day and today —
+   *  accounts arriving with their opening balances, values first stated —
+   *  and the change less it: the card's figure. Server-computed:
+   *  `domain/tracking_start.py`. */
+  net_worth_entered: number
+  net_worth_change: number
   /** Net spending over the last 30 days, and over the 60 days before them
    *  per 30 days — no day in both. Server-computed: `domain/burn_rate.py`;
    *  the change between them is composed in `charts/burnRateView.ts`. */
@@ -807,7 +863,9 @@ export interface DashboardMetrics {
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
   savings_rate: number | null
-  days_until_zero: number | null
+  /** How long the money lasts if income stopped (backend
+   *  `services/runway.py`). */
+  runway: OverviewRunway
   income_this_month: number
   expenses_this_month: number
   /** Spending over the equal-length window before this one
@@ -819,7 +877,8 @@ export interface DashboardMetrics {
    *  COST_OF_LIVING_CLASSES — spending plus debt payments, never savings.
    *  Read against income by `components/reports/livingMeans.ts`. */
   outflows_this_month: number
-  top_categories: { id: string; name: string; group_name: string; total: number }[]
+  /** `id` is null on the Uncategorized line. */
+  top_categories: { id: string | null; name: string; group_name: string; total: number }[]
   /** The last 12 complete months, oldest first, whatever the requested window
    *  — fewer on a younger budget, none on an empty one; a quiet month inside
    *  the window is zeros. Served by `report_basics.means_months` with the
@@ -835,6 +894,21 @@ export interface MeansMonth {
   month: string
   income: number
   outflows: number
+}
+
+/** Something that began being counted in a point's stretch
+ *  (`domain/tracking_start.py`): an account arriving with its opening balance,
+ *  or a stated value or manual debt at its first dated point. `amount` is
+ *  signed as the chart it rides on reads it — net worth's sign on Net Worth,
+ *  Account Composition and Savings; owed (positive) on Liabilities. */
+export interface TrackingEntry {
+  /** `account`: a Starting Balance; `pre_start`: history from before the
+   *  account's budget start, on an account that may already be drawn. */
+  kind: 'account' | 'pre_start' | 'stated_asset' | 'manual_debt'
+  id: string
+  name: string
+  day: string
+  amount: number
 }
 
 export interface NetWorthPoint {
@@ -853,12 +927,40 @@ export interface NetWorthPoint {
     classification: string | null
     balance: number
   }[]
+  /** What entered net worth in the stretch this point closes. */
+  entered: number
+  entries: TrackingEntry[]
 }
 
 export interface NetWorthReport {
   points: NetWorthPoint[]
   unmanaged_liability_total: number
   asset_value_total: number
+  /** Newest point less oldest, as drawn. */
+  change: number
+  /** The same, less what began being counted after the oldest point — the
+   *  headline. Null with no points. */
+  like_for_like_change: number | null
+  /** `change` less `like_for_like_change`. */
+  entered_total: number
+  /** Figures told rather than added up, with the day each was last true. */
+  stated_values: {
+    kind: 'stated_asset' | 'manual_debt'
+    id: string
+    name: string
+    value: number
+    as_of: string | null
+  }[]
+  /** Figures in today's net worth unmoved for 60+ days
+   *  (`tracking_start.STALE_AFTER_DAYS`). */
+  stale_balances: {
+    kind: 'account' | 'stated_asset' | 'manual_debt'
+    id: string
+    name: string
+    last_changed: string | null
+  }[]
+  /** The threshold `stale_balances` was built with, for the page's copy. */
+  stale_after_days: number
 }
 
 export interface LiabilitiesReportItem {
@@ -870,25 +972,52 @@ export interface LiabilitiesReportItem {
   interest_rate: number | null
   baseline_payoff_date: string | null
   live_payoff_date: string | null
-  /** Null when the terms are unset — no schedule, so no interest to project */
+  /** At the minimum payment. Null when the terms are unset, and when the
+   *  minimum never retires the debt — there is no interest bill to quote
+   *  (backend `AmortizationResult.interest_to_payoff`). */
   total_interest_remaining: number | null
+  /** The minimum-payment schedule never retires the debt. */
+  baseline_never_pays_off: boolean
+  /** The payoff verdict, measured at `payoff_basis`. */
   never_pays_off: boolean
+  /** What that verdict was measured at: the pace actually paid, or the
+   *  minimum when there is no payment history. Null without terms. */
+  payoff_basis: 'observed' | 'minimum' | null
+  /** The verdict's date (`amortization.payoff_verdict`). */
+  payoff_date: string | null
   terms_complete: boolean
+  /** Why there is no payoff at the pace paid, when there is none — the cell
+   *  says this instead of "—" (`liability_service.pace_missing`). */
+  pace_missing: 'no_terms' | 'payments_not_linked' | 'too_little_history' | null
+  /** The entered payment contradicts the loan's own terms
+   *  (`amortization.terms_check`) — most often escrow folded into it. */
+  terms_disagree: boolean
 }
 
 export interface LiabilitiesBalancePoint {
   date: string
+  /** Keyed by liability id; a debt is absent before its first point. */
   per_liability: Record<string, number>
   total: number
+  /** Owed (positive) that began being counted this month, keyed to the
+   *  liability. */
+  entered: number
+  entries: TrackingEntry[]
 }
 
 export interface LiabilitiesReport {
   items: LiabilitiesReportItem[]
   total_balance: number
-  /** Sums only the rows whose terms are known */
+  /** Sums only the rows with a finite interest bill */
   total_interest_remaining: number
-  /** How many rows were left out of that total */
+  /** Rows left out of that total for want of terms */
   liabilities_missing_terms: number
+  /** What those rows owe. */
+  missing_terms_balance: number
+  /** Rows owing anything today. */
+  carrying_balance_count: number
+  /** Rows left out of it because their minimum never retires the debt */
+  liabilities_never_paying_off: number
   balance_over_time: LiabilitiesBalancePoint[]
   /** Owed on accounts closed with a balance still on them, excluded from
    *  `total_balance`. Net worth counts it, so the page says so rather than
@@ -900,8 +1029,12 @@ export interface LiabilitiesReport {
 
 export interface AccountCompositionPoint {
   date: string
-  // Balance per account-type key present in the budget (custom types included)
+  /** Balance per account-type key in `series` (custom types included). */
   balances: Record<string, number>
+  /** The bands no account holds, so the stack sums to `net_worth`: stated
+   *  asset values (positive) and debts with no account (negative). */
+  stated_assets: number
+  manual_debts: number
   /** Net worth at this point — served (report_service.account_composition)
    *  rather than summed from `balances`, because unmanaged debts and stated
    *  asset values sit in net worth without appearing in any account series. */
@@ -909,10 +1042,15 @@ export interface AccountCompositionPoint {
   /** The stated-asset share of the gap between the net line and the visible
    *  stack — footnoted when non-zero. */
   asset_value_total: number
+  entered: number
+  entries: TrackingEntry[]
 }
 
 export interface AccountCompositionReport {
   points: AccountCompositionPoint[]
+  /** Every account type a live account has, registry order: a series'
+   *  colour is its place here, so it holds across ranges. */
+  series: string[]
 }
 
 /** One month of the Burn Rate chart: the 30 days ending on its last day
@@ -932,13 +1070,18 @@ export interface BurnRateReport {
 export interface SankeyNode {
   id: string
   name: string
-  type: 'income_payee' | 'budget' | 'category_group' | 'category' | 'expense_payee'
+  /** Left of the hub: an income source, an `inflow` (refunds, from savings,
+   *  borrowed, re-planned) or the `shortfall` that balances the sides. The
+   *  hub is `budget`. Right of it: groups (and their categories) or the
+   *  `left_over` sink. Backend `domain/cash_flow.py`. */
+  type:
+    'income_payee' | 'inflow' | 'shortfall' | 'budget' | 'category_group' | 'category' | 'left_over'
   /** The entity this node stands for. `id` is a display key that may compose
    *  several ids — a category node is keyed by (group, category) so one
    *  category can sit under both its own group and the savings trunk. */
   entity_id?: string | null
   /** Spent-mode category nodes: the activity classes the node counted, which
-   *  its drill-down must list. The Savings, Debt Payments and Uncategorized
+   *  its drill-down must list. The Savings, Debt payments and Uncategorized
    *  pseudo-nodes differ by nothing else. */
   activity_classes?: string[] | null
 }
@@ -955,84 +1098,153 @@ export interface CategoryPayee {
   total: number
 }
 
+/** A payee band under a Sankey category: its payee of record's id, or null
+ *  for "Other payees" and payee-less rows (backend `SankeyPayee`). */
+export interface SankeyPayee extends CategoryPayee {
+  payee_id: string | null
+}
+
+/** Sources → the hub (`__budget__`) → groups → categories, both sides of
+ *  the hub balanced by a Left over or Shortfall node. Spent mode is net: a
+ *  refund comes off its category, a withdrawal off what was saved. Backend
+ *  `domain/cash_flow.py`. */
 export interface CashFlowReport {
   nodes: SankeyNode[]
   links: SankeyLink[]
+  /** Income vs Expenses' income for the same window. */
   total_income: number
-  /** Everything that left the budget — the links off the budget node sum to
-   *  this. `total_spending` + `total_savings` + `total_debt_principal` is how
-   *  it splits; a card labelled "Expenses" must use the first, not this. */
+  /** What the right side draws, Left over aside. */
   total_expense: number
-  /** null in budgeted mode, which draws from assignments and has no activity
-   *  class to split by — "not claimed", never zero. */
+  /** Net per class, as Income vs Expenses reads them. null in budgeted mode,
+   *  which draws from assignments and has no activity class to split by —
+   *  "not claimed", never zero. Savings and debt can be negative: more drawn
+   *  out, or borrowed, than put in. */
   total_spending: number | string | null
   total_savings: number | string | null
   total_debt_principal: number | string | null
-  category_payees: Record<string, CategoryPayee[]>
+  /** Budgeted mode: assignments net of re-planning. null in spent mode. */
+  total_assigned: number | string | null
+  /** Spent mode: money in less money out — Income vs Expenses' `net` for the
+   *  same window. null in budgeted mode, which has no such figure. */
+  net: number | string | null
+  category_payees: Record<string, SankeyPayee[]>
   group_categories: Record<string, CategoryPayee[]>
+  /** Per category node whose drawn payees are wider than it: what came back
+   *  (a refund from a payee with no charge in the window), drawn as a source
+   *  at the payee level so that level balances too. */
+  category_returns: Record<string, CategoryPayee>
 }
 
-export interface BudgetActualItem {
+/** One category-month of Plan vs Spent (backend `services/plan_vs_spent.py`). */
+export interface PlanVsSpentCell {
+  month: string
+  assigned: number
+  /** Money moved into the envelope — a transfer from savings, a deposit filed
+   *  to it. It raises the plan (backend `domain/plan.py` `plan_effect`). */
+  moved_in: number
+  /** Non-negative: money moved out and not spent — a transfer to a
+   *  brokerage, a principal payment from an untagged envelope. It lowers the
+   *  plan (backend `plan_effect`). */
+  moved_out: number
+  /** `assigned + moved_in - moved_out`, floored at zero — backend
+   *  `plan_outcome`. Served — never add the parts here. */
+  plan: number
+  /** Net of refunds; negative only when refunds beat the spending. */
+  spent: number
+  variance: number
+  /** The verdict: past the plan by at least $1 and 1% of it. Tint by this,
+   *  never by the variance's sign — a few cents over is on plan. Never true
+   *  in the running month. */
+  over: boolean
+  /** Anything assigned, moved in, moved out or spent (backend
+   *  `PlanMonth.quiet`): the cells the matrix fills. Served, as the count
+   *  `months_active` reads it — never re-derived from plan and spent here. */
+  active: boolean
+}
+
+/** A category over the complete months — the Total column, which was a
+ *  Budget vs Actual row: its cells added up, each plan floored for its own
+ *  month (backend `domain/plan.py` `summed_outcome`). */
+export interface PlanVsSpentTotal {
+  assigned: number
+  moved_in: number
+  moved_out: number
+  plan: number
+  spent: number
+  variance: number
+  /** Null where there was no plan to take a share of: "no plan", not 0%. */
+  variance_pct: number | null
+  /** The server's verdict. Never re-derive it from `spent > assigned`: a
+   *  drained envelope has a negative assignment. */
+  over: boolean
+}
+
+export interface PlanVsSpentCategory {
   category_id: string
   category_name: string
   category_group_name: string
-  assigned: number
-  spent: number
-  /** Against the plan floored at zero — backend `domain/plan.py`. */
-  variance: number
-  variance_pct: number
-  /** The server's verdict, same rule as Plan vs Reality. Never re-derive it
-   * from `spent > assigned`: a drained envelope has a negative assignment. */
-  overspent: boolean
+  monthly: PlanVsSpentCell[]
+  months_over: number
+  months_active: number
+  avg_overspend: number
+  /** Backend `domain/plan.py` `is_chronic`; the Guide reads the same flag. */
+  chronic: boolean
+  /** Tagged Long-term expense, which is never chronic. */
+  sinking_fund: boolean
+  total: PlanVsSpentTotal
 }
 
-export interface BudgetActualReport {
-  categories: BudgetActualItem[]
+/** One month over every category — the totals row, which was a Cumulative
+ *  Variance point: its cells summed, each plan floored for its month. */
+export interface PlanVsSpentMonth {
+  month: string
+  /** The running month: its figures are month-to-date. Drawn apart and
+   *  labelled "so far" (`utils/reportMonths.ts`), never in an average, total
+   *  or headline. Home: backend `domain.dates.ReportWindow`. */
+  partial_month: boolean
+  assigned: number
+  moved_in: number
+  moved_out: number
+  /** The month's category plans summed: `plan - spent === variance`. */
+  plan: number
+  spent: number
+  variance: number
+  /** The complete months' drift through this one; null on the running month,
+   *  whose whole assignment lands on the 1st and its spending over thirty
+   *  days. */
+  cumulative_variance: number | null
+  /** Categories over plan this month; 0 on the running month. */
+  categories_over: number
+}
+
+export interface PlanVsSpentReport {
+  months: string[]
+  /** The newest of `months`, still running: its cells are month-to-date and
+   *  labelled "so far"; no verdict or total reads it (backend
+   *  `ReportWindow`). */
+  running_month: string
+  /** The dates the Total column and the window totals cover — the complete
+   *  months — for the drills that open them. Null when there are none yet. */
+  totals_start: string | null
+  totals_end: string | null
+  categories: PlanVsSpentCategory[]
+  month_totals: PlanVsSpentMonth[]
   total_assigned: number
+  total_moved_in: number
+  total_moved_out: number
+  /** The categories' plans summed: `total_plan - total_spent ===
+   *  total_variance`. */
+  total_plan: number
   total_spent: number
+  /** The headline: the categories' Totals summed — the month totals summed,
+   *  and the last complete month's running total. Never `total_assigned -
+   *  total_spent`, which disagrees with the rows wherever an envelope was
+   *  drained. */
+  total_variance: number
+  chronic_count: number
   /** A saved filter was named and could not be found — backend
    *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
   filter_unavailable: boolean
-}
-
-export interface PlanRealityCell {
-  month: string
-  assigned: number
-  spent: number
-  variance: number
-}
-
-export interface PlanRealityCategory {
-  category_id: string
-  category_name: string
-  category_group_name: string
-  monthly: PlanRealityCell[]
-  months_over: number
-  months_active: number
-  total_assigned: number
-  total_spent: number
-  avg_overspend: number
-  chronic: boolean
-}
-
-export interface PlanRealityReport {
-  months: string[]
-  categories: PlanRealityCategory[]
-  total_assigned: number
-  total_spent: number
-  chronic_count: number
-}
-
-export interface VariancePoint {
-  month: string
-  budget_assigned: number
-  actual_spent: number
-  monthly_variance: number
-  cumulative_variance: number
-}
-
-export interface VarianceReport {
-  points: VariancePoint[]
 }
 
 export interface VolatilityItem {
@@ -1060,10 +1272,15 @@ export interface VolatilityReport {
 }
 
 export interface SpendingGroupItem {
-  id: string
+  /** null on the Uncategorized line: spending with no category, drilled by
+   *  `noCategory` (backend `domain/spending.py`). Net of refunds, so `total`
+   *  can be negative. */
+  id: string | null
   name: string
   parent_id: string | null
-  parent_name: string | null
+  /** Always named, the Uncategorized line's group too (server
+   *  `domain/spending.py`): the page never names a group itself. */
+  parent_name: string
   total: number
   count: number
   pct: number
@@ -1099,6 +1316,10 @@ export interface SpendingGroupedReport extends SavedFilterScope {
   /** Savings / debt activity in categories the user is looking at that a
    *  spending report will not count. Empty without a selection or view. */
   class_excluded: SpendingClassExcluded[]
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 export interface CategoryClassSlice {
@@ -1117,16 +1338,25 @@ export interface CategoryClassification {
 }
 
 export interface SeasonalityCell {
-  category_id: string
+  /** null on the Uncategorized row. */
+  category_id: string | null
   category_name: string
   month: string
+  /** Net of refunds: a month that took back more than it spent is negative. */
   total: number
 }
 
 export interface SeasonalityReport {
   cells: SeasonalityCell[]
   months: string[]
-  categories: { id: string; name: string }[]
+  /** The largest by net spending (backend `SEASONALITY_TOP`). */
+  categories: { id: string | null; name: string }[]
+  /** Every category that spent in the window — "top 20 of N". */
+  category_count: number
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 /** One envelope or account the emergency fund counted. */
@@ -1165,9 +1395,9 @@ export interface EmergencyFund {
 export interface CoveragePoint {
   month: string
   fund_balance: number
-  /** Trailing three-month average of essential spending — the Guide's 90-day
-   *  window said in months, so this line and the roadmap's target cannot tell
-   *  different stories about the same household. */
+  /** The essentials figure as of this month (backend `essentials_at`): the
+   *  three complete months ending here, so the newest point IS the headline and
+   *  this line and the roadmap's target cannot tell different stories. */
   essentials: number
   /** Null, never zero, for a month with no essential spending to divide by. */
   coverage_months: number | null
@@ -1184,9 +1414,15 @@ export interface EmergencyCoverageReport {
   tagged: boolean
   /** The emergency fund and what it counted — the Essentials report's own. */
   fund: EmergencyFund
-  /** The Essentials report's own runway, quoted rather than recomputed. */
-  coverage_months: number | null
+  /** "Covered": the Essentials report's own `fund_runway`, quoted — the fund,
+   *  what the cards owe taken out, over Essentials. The series is the fund
+   *  alone, so its newest point and this differ by today's card debt. */
+  covered: RunwayFigure
   essentials: EssentialsFigures
+  /** How many Essential categories are also Long-term expense. None: the
+   *  spread setting has nothing to spread, so its toggle is hidden and the
+   *  page says why (`utils/essentialsFigures.ts`). */
+  long_term_essentials: number
   target_low: number
   target_high: number
   target_range: [number, number]
@@ -1201,7 +1437,14 @@ export interface EssentialsReport {
   months: number
   window_start: string
   window_end: string
+  /** The complete months the table's averages divide by: `months`, or fewer
+   *  when the budget's history is younger (backend `history_window`). */
+  months_averaged: number
   essentials: EssentialsFigures
+  /** How many Essential categories are also Long-term expense. None: the
+   *  spread setting has nothing to spread, so its toggle is hidden and the
+   *  page says why (`utils/essentialsFigures.ts`). */
+  long_term_essentials: number
   monthly_total_average: number
   categories: {
     category_id: string | null
@@ -1218,16 +1461,18 @@ export interface EssentialsReport {
   roadmap_range: [number, number]
   /** The emergency fund and what it counted, whatever the Guide tracks. */
   emergency_fund: EmergencyFund
-  /** How many lean months `emergency_fund.total` covers. Null when nothing
-   *  was chosen, or nothing is tagged Essential. */
-  runway_months: number | null
+  /** How long the fund lasts on Essentials, card debt taken out — the
+   *  runway rule at (Essentials, the fund); `months` null when nothing was
+   *  chosen or nothing is tagged Essential. */
+  fund_runway: RunwayFigure
   /** Tagged Essential and still not counted, by class — see
    *  `CostOfLivingReport.class_excluded`. */
   class_excluded: SpendingClassExcluded[]
 }
 
 export interface SpendingTrendSeries {
-  id: string
+  /** null on the Uncategorized series. */
+  id: string | null
   name: string
   group_id: string | null
   group_name: string | null
@@ -1240,7 +1485,18 @@ export interface SpendingTrendsReport extends SavedFilterScope {
   series: SpendingTrendSeries[]
   monthly_totals: number[]
   total: number
+  /** `total` over the months the range holds whole and that are over —
+   *  `months_averaged` of them (backend `complete_months_within`). Null with
+   *  none: a range inside the running month has nothing to average. */
+  avg_monthly: number | null
+  months_averaged: number
+  /** The running month when the range draws it: month-to-date, "so far". */
+  running_month: string | null
   class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 export interface IncomeSource {
@@ -1267,8 +1523,18 @@ export interface CategoryHistoryReport {
   category_name: string
   months: {
     month: string
+    /** The running month, month-to-date: drawn apart and labelled "so far",
+     *  never in a headline (backend `ReportWindow`). */
+    partial_month: boolean
     assigned: number
     activity: number
+    /** Spent as every plan report counts it — net of refunds, and not the
+     *  money moved in or out, which `activity` nets away (backend
+     *  `services/plan_ledger.py`). */
+    spent: number
+    moved_in: number
+    /** Non-negative: money moved out and not spent (backend `plan_effect`). */
+    moved_out: number
     /** Null for an income category: "Income categories do not hold money", so
      *  their available is a lifetime carryover the budget page never draws.
      *  Their monthly activity is meaningful and is still served. Null too for
@@ -1276,6 +1542,10 @@ export interface CategoryHistoryReport {
      *  `CategoryHistoryMonth.available`. */
     available: number | null
   }[]
+  /** `spent` averaged over the window's complete months — served, so the
+   *  running month's month-to-date figure never pulls it down. */
+  average_spent: number
+  months_averaged: number
 }
 export interface PayeeSpending {
   payee_id: string
@@ -1300,17 +1570,30 @@ export interface PayeeAnalysisReport {
    *  card used to report the ranking cap. */
   payee_count: number
   /** How many of the largest payees make up 80% of `total`, counted over
-   *  every payee — the Pareto card's figure, which the top 25 cannot give
+   *  every payee — Where it went's 80% line, which the top 25 cannot give
    *  (backend `domain/concentration.py`). null when nothing was spent. */
   payees_to_80pct: number | null
+  /** Months of the window a payee must appear in to be `is_recurring`
+   *  (backend `domain.spending.recurring_months`); null when the window is
+   *  too short to call anything recurring. */
+  recurring_min_months: number | null
+  /** The activity classes these figures count, served so a drill-down lists
+   *  exactly them (backend `ReportService._spending_rows`). Pass it as the
+   *  drill's `activityClasses`, never a client copy of the class set. */
+  counted_classes: string[]
 }
 
 export interface DayPatternItem {
   day_of_week: number
   day_name: string
+  /** Net spending on this weekday across the window. */
   total: number
+  /** Purchases, not rows: a split's legs are one purchase. */
   count: number
-  avg_transaction: number
+  /** How many of this weekday the window holds, quiet ones included. */
+  weekdays: number
+  /** `total / weekdays`: a typical such day. null when there are none. */
+  avg_per_day: number | null
 }
 
 export interface DayPatternsReport extends SavedFilterScope {
@@ -1321,6 +1604,10 @@ export interface DayPatternsReport extends SavedFilterScope {
   /** The activity classes these figures count, passed to the drill-down so a
    *  bar and the panel it opens total the same. */
   counted_classes: string[]
+  /** The days `weekdays` counts: the range, from the budget's first
+   *  transaction at the earliest, through today at the latest. */
+  window_start: string
+  window_end: string
 }
 
 export interface TimelineTransaction {
@@ -1346,54 +1633,72 @@ export interface TimelineReport extends SavedFilterScope {
   transactions: TimelineTransaction[]
 }
 
-/** The figures a recurring line carries — same shape for a category and for
- *  a payee inside it, because the arithmetic is the same, except
- *  `avg_monthly`, which a category rolls up from its payees. */
-export interface RecurringSpend {
-  monthly_amounts: number[]
-  /** True monthly burden, from the server
-   *  (`services/report_basics._recurring_spend`). Per payee: total / complete
-   *  months since THAT service's first charge. Per category: the sum of its
-   *  payees', so the nested table adds up and a service that started after
-   *  its envelope did is not lost to a shared divisor. */
-  avg_monthly: number
-  total: number
-  /** Typical charge: total / charge count */
-  avg_per_charge: number
-  last_charge_date: string | null
-  transaction_count: number
-}
-
-export interface SubscriptionPayee extends RecurringSpend {
+/** One service — a payee inside a Subscription-tagged category — and what it
+ *  costs a year. Served by `domain/subscriptions.py`; the page adds nothing
+ *  up and decides nothing about cadence. */
+export interface SubscriptionService {
   payee_id: string | null
   payee_name: string
+  /** How `annual` was arrived at: the last 12 complete months' charges
+   *  ("observed"), projected from the latest charge for a service younger than
+   *  that year ("new") or one whose price changed ("price_change"), or zero
+   *  because it has had no charge for 1.5 cycles ("stopped"). */
+  basis: 'observed' | 'new' | 'price_change' | 'stopped'
+  /** Net of refunds; zero when stopped. */
+  annual: number
+  /** annual ÷ 12 */
+  monthly: number
+  interval_days: number
+  /** "monthly"/"yearly" are calendar cadences; "days" is every `interval_days`. */
+  cadence: 'monthly' | 'yearly' | 'days'
+  /** One charge says nothing about cadence, so monthly was assumed. */
+  cadence_assumed: boolean
+  latest_charge: number
+  first_charge_date: string
+  last_charge_date: string
+  charges_in_year: number
+  refunded_in_year: number
 }
 
-export interface SubscriptionCategory extends RecurringSpend {
+export interface SubscriptionCategory {
   category_id: string
   category_name: string
   group_name: string
-  payees: SubscriptionPayee[]
+  /** The sum of its services' annual. */
+  annual: number
+  monthly: number
+  /** Net charges per month of `months` — the chart. The range picker moves
+   *  only these. */
+  monthly_amounts: number[]
+  total: number
+  last_charge_date: string
+  services: SubscriptionService[]
 }
 
 export interface SubscriptionsSummary {
-  /** The sum of every category's `avg_monthly`, each of which is the sum of
-   *  its payees': the headline is the rows added up. */
-  total_monthly: number
+  /** The sum of every category's `annual`. */
   total_annual: number
-  active_count: number
+  /** total_annual ÷ 12 */
+  total_monthly: number
+  /** Categories with a service still charging, of `tagged_categories`. */
+  charged_categories: number
+  tagged_categories: number
+  new_this_month: number
+  /** Services whose annual is projected ("new" or "price_change"). */
+  projected_services: number
+  stopped_services: number
 }
 
 export interface SubscriptionsReport {
-  /** The complete months the window holds — every entry of `months`, on
-   *  every day (backend `domain.dates.complete_month_window`). The MOST an
-   *  effective-monthly figure divides by: each SERVICE divides by the months
-   *  since its own first charge, and the category and summary figures are
-   *  sums of those. 0 when nothing was charged in the window. */
-  months_averaged: number
   subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary
+  /** The chart's complete months. */
   months: string[]
+  /** Every listed category's month, summed — the height of each stacked bar. */
+  monthly_totals: number[]
+  /** The 12 complete months `annual` reads, whatever the range says. */
+  year_start: string
+  year_end: string
 }
 
 /** An envelope's target on the Savings report, judged as the Budget page
@@ -1441,8 +1746,12 @@ export interface SavingsSaved {
   total: number
   envelopes_total: number
   accounts_total: number
-  /** Saved at each month's end, aligned with `SavingsReport.months`. */
-  monthly_totals: number[]
+  /** Set aside at each month's end, aligned with `SavingsReport.months`;
+   *  null before anything in the section has a figure. */
+  monthly_totals: (number | null)[]
+  /** What savings accounts brought in by being linked, per month. */
+  monthly_entered: number[]
+  monthly_entries: TrackingEntry[][]
   envelopes: SavingsEnvelope[]
   accounts: SavingsAccount[]
 }
@@ -1500,33 +1809,50 @@ export interface AnomalyItem {
   month: string
   actual: number
   baseline_mean: number
+  /** The baseline's mean one σ either way, floored at zero: "usually $a–$b". */
+  usual_low: number
+  usual_high: number
   z_score: number
   direction: 'high' | 'low'
   /** True when `month` is the month still in progress, so `actual` is a
-   *  month-to-date figure — backend `services/report_stats.anomaly_rows`,
+   *  month-to-date figure — backend `services/report_stats.anomaly_scan`,
    *  which also says why those rows are always `direction: 'high'`. Never
    *  recompute it here from `month` and the clock: which month the report
    *  calls "in progress" is the server's, and it is what scored the row. */
   partial_month: boolean
-  history: number[]
+  /** Twelve calendar months ending with `month`; null before the category's
+   *  first spending in the window — absent, not zero. */
+  history: (number | null)[]
 }
 
 export interface AnomalyReport {
   anomalies: AnomalyItem[]
+  /** Categories with spending in the window, sinking funds aside. */
+  categories_seen: number
+  /** Of those, how many had six earlier months to be scored against. */
+  categories_tested: number
+  /** Long-term expense categories, which are never tested. */
+  sinking_funds_skipped: number
 }
 
 export interface PaydayEffectDay {
   offset: number
-  avg_spend: number
+  /** The median payday's discretionary spending this many days after it. */
+  median_spend: number
+  /** Paydays this day has happened for. */
+  paydays: number
 }
 
 export interface PaydayEffectReport {
   days: PaydayEffectDay[]
-  /** null when the payday windows cover every day, so there is no "outside"
-   *  to average — backend PaydayEffectResponse. Never read it as 0.00: that
-   *  says the household spends nothing between paydays. */
+  /** The median day's discretionary spending across the whole window, over
+   *  `baseline_days` days. null only when there were no paydays. */
   baseline_daily: number | null
+  baseline_days: number
+  /** Paydays found in the window. */
   event_count: number
+  window_start: string
+  window_end: string
   /** The smallest inflow the server counted as a payday — backend
    *  PAYDAY_FLOOR, served so the info panel quotes the rule it applied. */
   payday_floor: number
@@ -1539,7 +1865,6 @@ export interface CashProjectionPoint {
   p50: number
   p75: number
   p90: number
-  deterministic: number
 }
 
 export interface CashProjectionEvent {
@@ -1553,7 +1878,33 @@ export interface CashProjectionReport {
   start_balance: number
   points: CashProjectionPoint[]
   events: CashProjectionEvent[]
+  /** The first day the median path is below zero. */
   goes_negative_date: string | null
+  /** The first day the 1-in-10 low band is below zero — never later than
+   *  `goes_negative_date`. Backend `domain/cash_projection.py`; the softer
+   *  warning reads it (`cashProjectionView.projectionWarning`). */
+  p10_negative_date: string | null
+  /** The runway at every choice the page offers, each with its burn-down. */
+  if_income_stopped: IfIncomeStopped
+}
+
+/** One "If income stopped" choice: the runway, and its straight burn-down —
+ *  today's money, then zero on `runs_out_on` or the balance at the horizon
+ *  (`domain/runway.burn_down`). */
+export interface StoppedIncomeOption extends RunwayFigure {
+  line: { date: string; balance: number }[]
+}
+
+export interface IfIncomeStopped {
+  /** Every spending × money choice, in picker order. */
+  options: StoppedIncomeOption[]
+  /** The Overview's choice, which the pickers open on. */
+  default_spending: RunwaySpending
+  default_money: RunwayMoney
+  fund_chosen: boolean
+  essentials_known: boolean
+  window_start: string | null
+  window_end: string | null
 }
 
 export interface SimilarTransaction {
@@ -1640,6 +1991,9 @@ export interface TransactionMatch {
 }
 
 export interface CostOfLivingGroup {
+  /** null for the Uncategorized bucket — the flag its drill reads (backend
+   *  `report_basics.cost_of_living`). Never test the name. */
+  group_id: string | null
   group_name: string
   monthly_amounts: number[]
   total: number
@@ -1674,6 +2028,11 @@ export interface CostOfLivingReport {
    *  not what a household could not cut. */
   avg_monthly_essentials: number | null
   avg_monthly_income: number
+  /** Spending outside both tiers over the same window — the Discretionary
+   *  report's own rows — so the verdict lays take-home out whole: committed,
+   *  discretionary and left over (`necessityView.takeHomeSplit`). Null when
+   *  nothing is tagged, as that report serves it. */
+  avg_monthly_discretionary: number | null
   /* The gap between the tiers, and the two ratios against take-home, are NOT
    * served: they are arithmetic on the three averages above, so they are
    * composed once in `components/reports/charts/necessityView.ts`
@@ -1717,7 +2076,7 @@ export interface DiscretionaryGroup {
 /** Spending outside Cost of living (backend
  *  `domain.activity_class.DISCRETIONARY_ROW`): SPENDING-class rows in no
  *  category tagged Essential or Cost of living, net of refunds. Not the Cost of
- *  Living report's Non-essential, which is Cost of living minus Essentials. */
+ *  Living report's "Committed, not essential", which is Cost of living minus Essentials. */
 export interface DiscretionaryReport {
   months: string[]
   /** How many months `avg_monthly` divides by: every entry of `months`, all
@@ -1740,6 +2099,10 @@ export interface DiscretionaryReport {
   /** The SPENDING class over the same window, which `total` is a part of. The
    *  share between them is composed in `discretionaryView.ts`, not served. */
   spending_total: number | null
+  /** The Cost of living tier over the same window, positive. With `total` it
+   *  is `spending_total` plus the debt payments that tier counts by class —
+   *  said in one line (`discretionaryView.tierSumLine`). Null untagged. */
+  cost_of_living_total: number | null
   groups: DiscretionaryGroup[]
 }
 
@@ -1751,13 +2114,30 @@ export interface WishlistDisciplineReport {
    *  something the cooling-off period did. */
   dropped_early: number
   still_open: number
+  /** Open wishes past their wait (or with none) — waiting on a decision, not
+   *  the calendar — and the rest of `still_open`. Served: whether a wish is
+   *  cooling is the server's `guide.wishlist.is_cooling`, on the reader's
+   *  day. */
+  ready_to_decide: number
+  still_cooling: number
+  /** Decided wishes the server can place against their wait, how many came
+   *  after it, and that share — the report's headline. Null with nothing
+   *  decided, which is not 0%. */
+  decided_count: number
+  waited_out_count: number
+  waited_out_share: number | null
   /** Every dropped wish's cost, waited on or not. */
   resisted_total: number
   /** How many wishes `resisted_total` sums — the card's count. */
   resisted_count: number
   bought_total: number
+  /** How many wishes `bought_total` sums. */
+  bought_count: number
   open_total: number
+  /** Mean days from adding a wish to buying it. */
   avg_days_to_buy: number | null
   avg_wish_cost: number | null
   unplaced: number
+  /** The person's own waiting period for new wishes, in days. */
+  cooling_days: number
 }

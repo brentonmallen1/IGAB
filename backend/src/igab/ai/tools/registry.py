@@ -154,9 +154,10 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="spending_by_category",
         description=(
-            "Total spent per envelope between two dates, largest first. By default "
-            "this covers day-to-day spending only; set include_savings to also count "
-            "money moved to savings and debt principal."
+            "Total spent per envelope between two dates, largest first, net of "
+            "refunds, with uncategorized spending as its own line. By default this "
+            "covers day-to-day spending only; set include_savings to also count "
+            "money moved to savings and debt payments."
         ),
         parameters=_obj(
             {
@@ -164,7 +165,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "end_date": _END,
                 "include_savings": {
                     "type": "boolean",
-                    "description": "Include savings contributions and debt principal.",
+                    "description": "Include savings contributions and debt payments.",
                 },
             },
             ("start_date", "end_date"),
@@ -176,8 +177,12 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="budget_vs_actual",
         description=(
-            "Assigned versus spent per envelope over a date range, with the variance. "
-            "Use this for 'am I over budget' questions."
+            "Plan versus spent per envelope, with the variance — the Plan vs Spent "
+            "report's Total column. Reads whole months: the range is widened to the 1st "
+            "of its first month through the end of its last (never past today), and "
+            "start_date/end_date in the result are the dates read. Each month's plan is "
+            "assigned plus money moved in, less money moved out, never below zero; the "
+            "months are then added up. Use this for 'am I over budget' questions."
         ),
         parameters=_obj({"start_date": _START, "end_date": _END}, ("start_date", "end_date")),
         handler=handlers.budget_vs_actual,
@@ -187,10 +192,12 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="income_vs_expense",
         description=(
-            "Income, expenses, savings and debt principal per month. 'savings' is saved: "
+            "Income, expenses, savings and debt payments per month. 'savings' is saved: "
             "money moved into savings ('savings_moved') plus the balance held in Savings "
-            "envelopes that count while money is in the budget ('savings_held'). 'net' "
-            "subtracts only the moved part."
+            "envelopes that count while money is in the budget ('savings_held'). "
+            "'debt_principal' is debt payments: what was paid into tracked debts, kept "
+            "apart from 'savings'. 'net' is how much the budget accounts grew (cash, "
+            "less card debt): it subtracts only the moved part of savings."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.income_vs_expense,
@@ -202,7 +209,9 @@ TOOLS: tuple[ToolSpec, ...] = (
             "What share of income was kept, per month and overall. Saved = money moved into "
             "savings ('savings_moved') plus what Savings envelopes that count while money is in "
             "the budget came to hold "
-            "('savings_held'); the rate divides that total by income."
+            "('savings_held'); the rate divides that total by income. Debt payments are "
+            "not in it. Saving that never passes through the budget — a paycheck split "
+            "straight to savings, a 401(k) deferral — is invisible to it."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.savings_rate,
@@ -289,11 +298,13 @@ TOOLS: tuple[ToolSpec, ...] = (
         name="get_net_worth",
         description=(
             "Assets minus debts at each of the last months' ends. Use this for "
-            "net worth, whether it is going up, and what it is made of."
+            "net worth and what it is made of; answer whether it is going up "
+            "from change_like_for_like, which leaves out accounts being linked "
+            "and values first entered (a month's started_tracking)."
         ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.get_net_worth,
-        delegates_to="ReportService.net_worth_history",
+        delegates_to="ReportService.net_worth",
     ),
     ToolSpec(
         name="list_scheduled",
@@ -316,9 +327,16 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="cash_projection",
         description=(
-            "Where the balance is heading, and the date it would go negative "
-            "if it does. Use this for 'will I make it to payday', 'can I "
-            "afford this', and anything about running out."
+            "Where the cash balance is heading if things carry on — recent "
+            "cash in and out, paychecks included, replayed on top of scheduled "
+            "bills — with the date the median path would go negative and the "
+            "date about 1 path in 10 would; and the runway if income stopped "
+            "(months, and the date the money runs out, card debt taken out) for "
+            "each spending basis (all, cost of living, essentials) and money "
+            "(checking, + emergency fund, + savings accounts that hold cash — "
+            "never retirement or brokerage). Use this for 'will I "
+            "make it to payday', 'can I afford this', 'how long could we last "
+            "without a paycheck', and anything about running out."
         ),
         parameters=_obj(
             {

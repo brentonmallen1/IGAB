@@ -470,6 +470,28 @@ class TestCoolingReviewAndStillWanted:
         no_cooling = await _add(api_client, budget, name="Now", cooling_days=0)
         assert no_cooling["cooling"] is False
 
+    async def test_the_report_reads_the_persons_period_and_whats_ready(
+        self, db_session, api_client
+    ):
+        """The Wishlist report compares the average wait with the person's own
+        waiting period, and counts an open wish past its wait as ready to
+        decide — the same "cooling" the tab's badge reads."""
+        budget = await _budget(db_session, api_client)
+        await api_client.put(f"{_url(budget)}/settings", json={"cooling_days": 14})
+        cooling = await _add(api_client, budget, name="Kayak")
+        ready = await _add(api_client, budget, name="Headphones", cooling_days=0)
+        assert (cooling["cooling"], ready["cooling"]) == (True, False)
+
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/wishlist", params={"client_today": TODAY.isoformat()}
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["cooling_days"] == 14
+        assert (body["still_open"], body["still_cooling"], body["ready_to_decide"]) == (2, 1, 1)
+        assert body["decided_count"] == 0
+        assert body["waited_out_share"] is None
+
     async def test_affirm_stamps_and_clears_review(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         wish = await _add(api_client, budget, cooling_days=0)

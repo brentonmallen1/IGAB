@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
-  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -20,36 +20,45 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
-import { useReportMonths } from '../../../stores/reportStore'
+import { averagedOver, completeMonths } from './averagedOver'
+import { ChartLegend } from './ChartLegend'
+import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL } from './chartColors'
+import { historySpentColor } from './categoryHistoryView'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
+import {
+  completeMonthRows,
+  monthRange,
+  reportMonthLabel,
+  RUNNING_MONTH_OPACITY,
+} from '../../../utils/reportMonths'
+import { fromCents, sumToCents } from '../../../utils/money'
 
 interface Props {
   budgetId: string
 }
 
 /** One category, month by month: assigned, spent, and what was left — the
- *  budget page's own figures, from the same service. */
+ *  budget page's own assigned, activity and available, and the plan
+ *  reports' Spent. */
 export function CategoryHistoryReport({ budgetId }: Props) {
-  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(320)
-  const [categoryId, setCategoryId] = useState('')
+  const storedId = useReportStore((s) => s.historyCategoryId)
+  const setCategoryId = useReportStore((s) => s.setHistoryCategoryId)
   const months = useReportMonths()
   const captureRef = useRef<HTMLDivElement>(null)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
-  const sections = useMemo(
-    () =>
-      groupedCategorySections(
-        categories.filter((c) => c.is_categorizable),
-        groups
-      ),
-    [categories, groups]
-  )
+  const pickable = useMemo(() => categories.filter((c) => c.is_categorizable), [categories])
+  const sections = useMemo(() => groupedCategorySections(pickable, groups), [pickable, groups])
+  // A remembered pick that no longer names a category you can pick (deleted,
+  // archived, another budget's) asks again rather than asking the server.
+  const categoryId = pickable.some((c) => c.id === storedId) ? storedId : ''
   const { data, isLoading, isError, error, refetch } = useCategoryHistoryReport(
     budgetId,
     categoryId || null,
@@ -59,13 +68,13 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   const chartData = useMemo(
     () =>
       (data?.months ?? []).map((m) => ({
-        month: formatMonth(m.month),
+        month: reportMonthLabel(m.month, m.partial_month, formatMonthShort),
         Assigned: m.assigned,
-        Spent: Math.abs(Math.min(m.activity, 0)),
+        Spent: m.spent,
         // Null for an income category: no line rather than a false one.
         Available: m.available ?? undefined,
       })),
-    [data, formatMonth]
+    [data, formatMonthShort]
   )
 
   const rows = data?.months ?? []
@@ -74,8 +83,17 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   const latestAvailable = rows[rows.length - 1]?.available ?? null
   const availableNow = formatMoneyOrDash(latestAvailable)
 
-  const spent = rows.reduce((sum, m) => sum + Math.abs(Math.min(m.activity, 0)), 0)
-  const assigned = rows.reduce((sum, m) => sum + m.assigned, 0)
+  // The cards read complete months only: the running month's plan is all in
+  // from the 1st while its spending arrives over the month, and adding it in
+  // read every category low at the start of a month. The average is served,
+  // over the same complete months.
+  const complete = completeMonthRows(rows)
+  const spent = fromCents(sumToCents(complete.map((m) => m.spent)))
+  const assigned = fromCents(sumToCents(complete.map((m) => m.assigned)))
+  const covered = monthRange(complete[0]?.month, complete.at(-1)?.month, formatMonthShort)
+  const over = covered ?? `over ${completeMonths(complete.length)}`
+  const anyMovedIn = rows.some((m) => m.moved_in !== 0)
+  const anyMovedOut = rows.some((m) => m.moved_out !== 0)
 
   return (
     <div className="report-section surface">
@@ -84,9 +102,19 @@ export function CategoryHistoryReport({ budgetId }: Props) {
         <ReportInfoButton title="Category History">
           <p>
             One category over time: what was assigned each month, what was spent, and what was left
-            at month end. These are the budget page&apos;s own figures for each month, not a
-            re-derivation.
+            at month end. Assigned, Activity and Available are the budget page&apos;s own figures.
           </p>
+          <p>
+            <strong>Spent</strong> is net of refunds and leaves out money moved into or out of the
+            envelope — a transfer from savings, or to a brokerage, is not spending, though Activity
+            nets it. It is the figure the plan reports count. A Spent bar turns red in a month the
+            envelope ended overspent.
+          </p>
+          <p>
+            The totals and the average cover the picker&apos;s complete months. The month in
+            progress is drawn after them, marked <em>so far</em>.
+          </p>
+          <ReportScopeNote report="category-history" />
         </ReportInfoButton>
         <div className="flex-row">
           <select
@@ -106,7 +134,11 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             getRows={() =>
               rows.map((m) => ({
                 month: m.month,
+                partial_month: m.partial_month,
                 assigned: m.assigned,
+                moved_in: m.moved_in,
+                moved_out: m.moved_out,
+                spent: m.spent,
                 activity: m.activity,
                 available: m.available,
               }))
@@ -127,16 +159,12 @@ export function CategoryHistoryReport({ budgetId }: Props) {
       ) : data ? (
         <div ref={captureRef} className="report-capture">
           <MetricRow>
-            <MetricCard
-              label="Assigned"
-              value={formatMoney(assigned)}
-              sub={`over ${months} months`}
-            />
-            <MetricCard label="Spent" value={formatMoney(spent)} sub={`over ${months} months`} />
+            <MetricCard label="Assigned" value={formatMoney(assigned)} sub={over} />
+            <MetricCard label="Spent (net of refunds)" value={formatMoney(spent)} sub={over} />
             <MetricCard
               label="Average spent"
-              value={formatMoney(rows.length ? spent / rows.length : 0)}
-              sub="per month"
+              value={data.months_averaged > 0 ? formatMoney(data.average_spent) : '—'}
+              sub={averagedOver('per month', data.months_averaged)}
             />
             <MetricCard label="Available now" value={availableNow} />
           </MetricRow>
@@ -166,11 +194,22 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                     />
                   )}
                 />
-                <Legend />
-                <Bar dataKey="Assigned" fill={COLOR_POSITIVE} />
-                <Bar dataKey="Spent" fill={COLOR_NEGATIVE} />
+                <Bar dataKey="Assigned" fill={COLOR_NEUTRAL}>
+                  {rows.map((m) => (
+                    <Cell key={m.month} fillOpacity={m.partial_month ? RUNNING_MONTH_OPACITY : 1} />
+                  ))}
+                </Bar>
+                <Bar dataKey="Spent" fill={CHART_COLORS[0]}>
+                  {rows.map((m) => (
+                    <Cell
+                      key={m.month}
+                      fill={historySpentColor(m.available)}
+                      fillOpacity={m.partial_month ? RUNNING_MONTH_OPACITY : 1}
+                    />
+                  ))}
+                </Bar>
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="Available"
                   stroke={COLOR_NET}
                   dot={false}
@@ -179,6 +218,18 @@ export function CategoryHistoryReport({ budgetId }: Props) {
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+          {/* Not recharts' legend: it keys Spent by the series fill, and a
+              Spent bar takes its colour from its month's state. */}
+          <ChartLegend
+            series={[
+              { id: 'assigned', name: 'Assigned', color: COLOR_NEUTRAL },
+              { id: 'spent', name: 'Spent', color: CHART_COLORS[0] },
+              { id: 'overspent', name: 'Spent, envelope overspent', color: COLOR_NEGATIVE },
+              { id: 'available', name: 'Available', color: COLOR_NET },
+            ]}
+            active={null}
+            onHover={() => {}}
+          />
           <table className="report-table">
             <caption className="sr-only">{data.category_name} by month</caption>
             <thead>
@@ -188,6 +239,19 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
                   Assigned
+                </th>
+                {anyMovedIn && (
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    Moved in
+                  </th>
+                )}
+                {anyMovedOut && (
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    Moved out
+                  </th>
+                )}
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Spent
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
                   Activity
@@ -200,8 +264,13 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             <tbody>
               {rows.map((m) => (
                 <tr key={m.month}>
-                  <td>{formatMonth(m.month)}</td>
+                  <td>{reportMonthLabel(m.month, m.partial_month, formatMonthShort)}</td>
                   <td style={{ textAlign: 'right' }}>{formatMoney(m.assigned)}</td>
+                  {anyMovedIn && <td style={{ textAlign: 'right' }}>{formatMoney(m.moved_in)}</td>}
+                  {anyMovedOut && (
+                    <td style={{ textAlign: 'right' }}>{formatMoney(m.moved_out)}</td>
+                  )}
+                  <td style={{ textAlign: 'right' }}>{formatMoney(m.spent)}</td>
                   <td style={{ textAlign: 'right' }}>{formatMoney(m.activity)}</td>
                   <td
                     style={{

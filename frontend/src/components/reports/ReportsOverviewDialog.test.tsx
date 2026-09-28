@@ -16,7 +16,7 @@ vi.mock('./charts/DayOfWeekChart', () => ({ DayPatternsReport: () => null }))
 import { ReportsPage } from '../../pages/ReportsPage/ReportsPage'
 import { REPORT_TABS, TAB_GROUPS, useReportStore } from '../../stores/reportStore'
 import { useAppStore } from '../../stores/appStore'
-import { REPORT_CATALOG, REPORT_SECTIONS } from './reportCatalog'
+import { NEVER_COUNTED, REPORT_CATALOG, REPORT_SECTIONS } from './reportCatalog'
 import { SCOPE_COPY } from './reportScope'
 
 function renderPage() {
@@ -60,6 +60,14 @@ describe('ReportsOverviewDialog', () => {
     const row = within(dialog).getByRole('button', { name: 'Net Worth' }).closest('tr')!
     expect(row.textContent).toContain(SCOPE_COPY['all-accounts'])
     expect(row.textContent).toContain(REPORT_CATALOG['net-worth'].leavesOut)
+  })
+
+  it('says once what no report counts', () => {
+    // Starting balances, pre-start history and unfiled card credits leave
+    // every report alike, so the table's rows need not each repeat it.
+    renderPage()
+    const dialog = openOverview()
+    expect(within(dialog).getByText(NEVER_COUNTED)).toBeInTheDocument()
   })
 
   it('switches to a report and closes when its name is picked', () => {

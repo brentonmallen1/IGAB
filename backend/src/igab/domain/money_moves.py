@@ -42,6 +42,7 @@ from igab.domain.activity_class import (
     LegFacts,
     class_magnitude,
 )
+from igab.domain.plan import plan_effect
 from igab.domain.savings import SAVINGS_RATE_NUMERATORS, SavingsFigure, savings_rates
 from igab.domain.transfers import leg_may_carry_category
 
@@ -276,9 +277,11 @@ def leg_facts(leg: Leg) -> LegFacts:
     Each counterpart fact is coalesced exactly as both column readers coalesce
     it when there is no counterpart: an asset, counting as savings.
 
-    Never a starting balance: every move here is money moving, and an opening
-    is where an account's counting begins. The ladder the explorer serves
-    still names that rule — it is the classifier's, not the explorer's.
+    Never a starting balance, and never from before an account's budget
+    start: every move here is money moving now, and an opening — one row or
+    an account's unbudgeted past — is where an account's counting begins. The
+    ladder the explorer serves still names both rules — they are the
+    classifier's, not the explorer's.
     """
     cp = leg.counterpart
     return LegFacts(
@@ -286,6 +289,7 @@ def leg_facts(leg: Leg) -> LegFacts:
         own_is_liability=leg.shape.is_liability,
         transfer_leg=cp is not None,
         starting_balance=False,
+        before_budget_start=False,
         tracked_counterpart=cp is not None and not cp.on_budget,
         counterpart_is_liability=cp is not None and cp.is_liability,
         counterpart_counts_as_savings=True if cp is None else cp.counts_as_savings,
@@ -359,14 +363,16 @@ def counts_as_planned_spend_by_tag(leg: Leg, cls: ActivityClass) -> bool:
     category's outflow, in either mode, which Budget vs Actual holds against
     the plan.
 
-    Stated as the policy's exception only: an on-budget categorized outflow
-    (`PLANNED_SPEND_ROW`'s shape) from a savings category.
+    Stated as the policy's exception only — an on-budget categorized row
+    (`PLAN_LEDGER_ROW`'s shape) whose class is not spending and which
+    `plan.plan_effect` still counts as spent — and asked of `plan_effect`
+    itself, so this cannot come to disagree with the reports it explains.
     """
     return (
         leg.shape.on_budget
-        and leg.amount < 0
-        and leg.category in SAVINGS_KINDS
         and cls not in SPENDING_CLASSES
+        and plan_effect(leg.amount, cls.value, savings_envelope=leg.category in SAVINGS_KINDS).spent
+        != 0
     )
 
 

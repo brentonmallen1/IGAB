@@ -575,10 +575,11 @@ class AccountHygieneService:
         before it is opening position by construction, and the walk never
         reserves against it in the first place.
 
-        An account's `budget_start_date` is NOT that. It narrows only
-        `NEEDS_CATEGORY` — the card walk reads every row — so the action once
-        told a user to set a start date their card already had, and nothing
-        moved. The action says what does work: assigning to the card.
+        An account's `budget_start_date` is NOT that. It narrows what the app
+        asks about (`NEEDS_CATEGORY`) and what the reports count (the activity
+        class), never the card walk, which reads every row — so the action
+        once told a user to set a start date their card already had, and
+        nothing moved. The action says what does work: assigning to the card.
         """
         if walk.anchor is not None:
             return None

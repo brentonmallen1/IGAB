@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { drillDownFooter, isPartial, shareOfTotal, sharePhrase } from './drillDownTotals'
+import { drillDownFooter, isPartial, otherBand, shareOfTotal, sharePhrase } from './drillDownTotals'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 const rows = (amounts: number[]) => amounts.map((amount) => ({ amount }))
@@ -78,6 +78,43 @@ describe('isPartial', () => {
     expect(isPartial(700, 699.996)).toBe(false)
     expect(isPartial(700, 700.007)).toBe(true)
     expect(isPartial(700, 700.5)).toBe(true)
+  })
+})
+
+describe('the Other band', () => {
+  it('keeps a genuine cent that float subtraction puts just under 0.01', () => {
+    // 1000.01 − (600 + 400) is 0.00999… in floating point; `>= 0.01` lost it.
+    expect(otherBand(1000.01, [600, 400])).toBeCloseTo(0.01, 10)
+  })
+
+  it('draws no band for float dust on either side of zero', () => {
+    // `rest > 0` gave every month a phantom source worth $0.00.
+    expect(otherBand(0.3, [0.1, 0.2])).toBeNull()
+    expect(otherBand(1000, [600, 399.9999999])).toBeNull()
+    expect(otherBand(1000, [600, 400.0000001])).toBeNull()
+  })
+
+  it('draws no band when the shown series are the whole month', () => {
+    expect(otherBand(1000, [600, 400])).toBeNull()
+  })
+
+  it('carries the rest when series beyond the shown ones hold something', () => {
+    expect(otherBand(6250, [6000])).toBe(250)
+  })
+
+  it('carries a negative rest rather than dropping it', () => {
+    // Northwind Payserv paid 3,000 and a −75 reconciliation adjustment was
+    // filed to Ready to Assign under a payee outside the shown series. `rest >
+    // 0` dropped the 75, so the stack stood at 3,000 over a table whose All
+    // row read 2,925.
+    expect(otherBand(2925, [3000])).toBe(-75)
+    // A whole cent the other way is a band too, not a rounding artifact.
+    expect(otherBand(1000, [600, 400.01])).toBeCloseTo(-0.01, 10)
+  })
+
+  it('is the whole when nothing is shown, and nothing when the whole is empty', () => {
+    expect(otherBand(500, [])).toBe(500)
+    expect(otherBand(0, [])).toBeNull()
   })
 })
 

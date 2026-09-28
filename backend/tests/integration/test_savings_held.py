@@ -9,6 +9,11 @@ vs Expenses.
 
 Names are the shared invented vocabulary; amounts are round enough to check
 on paper. The clock is pinned mid-month so "future-dated" has a meaning.
+
+March is the running month, so the Savings Rate tab serves it as its newest
+row, flagged `partial_month`, and leaves it out of the summary (D5,
+`domain.dates.ReportWindow`). Where these checks read "the tab's March" they
+read that row; the summary is held to the complete months it covers.
 """
 
 import json
@@ -112,8 +117,10 @@ async def test_assigning_to_a_kept_envelope_is_saved(db_session):
 
     assert await _saved(db_session, w, MAR, TODAY) == (D("500"), D("0"), D("500"))
     tab = await ReportService(db_session).savings_rate(w["budget"].id, months=1)
-    assert tab["summary"]["savings"] == D("500")
-    assert tab["summary"]["savings_rate"] == 0.1
+    march = tab["months"][-1]
+    assert march["partial_month"] is True
+    assert march["savings"] == D("500")
+    assert march["savings_rate"] == 0.1
 
 
 async def test_spending_from_a_kept_envelope_dissaves(db_session):
@@ -200,6 +207,10 @@ async def test_future_dated_row_is_not_held_until_its_date(db_session):
     assert await held_between(db_session, budget_id, MAR, date(2026, 3, 31)) == D("-200")
     with report_today(date(2026, 3, 25)):
         tab = await ReportService(db_session).savings_rate(budget_id, months=1)
+    assert tab["months"][-1]["savings_held"] == D("-200")
+    # A complete month later the summary holds it too.
+    with report_today(date(2026, 4, 2)):
+        tab = await ReportService(db_session).savings_rate(budget_id, months=1)
     assert tab["summary"]["savings_held"] == D("-200")
 
 
@@ -235,14 +246,19 @@ async def test_unrecovered_months_fall_back_to_flows(db_session):
     held = await held_by_month(db_session, budget.id, months, TODAY)
     assert held == [D("0"), D("0"), D("0"), D("0"), D("50")]
 
-    tab = await ReportService(db_session).savings_rate(budget.id, months=5)
-    december = tab["months"][1]
+    # The complete months and the running March, clamped to the history: its
+    # first ROW is the December transfer (November holds only an assignment).
+    tab = await ReportService(db_session).savings_rate(budget.id, months=4)
+    assert [m["month"] for m in tab["months"]] == months[1:]
+    december = tab["months"][0]
     assert (december["savings"], december["savings_moved"], december["savings_held"]) == (
         D("300"),
         D("300"),
         D("0"),
     )
-    assert tab["summary"]["savings_held"] == D("50")
+    # The summary is the complete months; March's 50 is the running row's.
+    assert tab["summary"]["savings_held"] == D("0")
+    assert tab["months"][-1]["savings_held"] == D("50")
     assert await held_between(db_session, budget.id, months[0], TODAY) == D("50")
 
 
@@ -276,8 +292,10 @@ async def test_monthly_held_telescopes_to_the_window(db_session):
             db_session, budget_id, cut.fromordinal(cut.toordinal() + 1), TODAY
         )
         assert before + after == whole, cut
-    tab = await ReportService(db_session).savings_rate(budget_id, months=3)
-    assert tab["summary"]["savings_held"] == whole
+    tab = await ReportService(db_session).savings_rate(budget_id, months=2)
+    # The complete months telescope to the summary, the running one to its row.
+    assert tab["summary"]["savings_held"] == months[0] + months[1] == D("0")
+    assert tab["summary"]["savings_held"] + tab["months"][-1]["savings_held"] == whole
 
 
 async def test_archived_and_hidden_kept_envelopes_still_hold(db_session):
@@ -317,7 +335,7 @@ async def test_income_or_card_envelope_tagged_savings_holds_nothing(db_session):
 
 
 async def test_sent_out_category_contributes_no_held(db_session):
-    """A sent-out Savings envelope counts its outflows (rule 1), never its
+    """A sent-out Savings envelope counts its outflows (rule 2), never its
     balance: assigning 500 saves nothing, spending 100 saves 100."""
     w = await _world(db_session)
     vacation = await create_category(db_session, w["budget"], w["goals"], "Vacation")
@@ -405,16 +423,27 @@ async def test_the_overview_card_the_savings_rate_tab_and_the_dialog_agree(db_se
 
     card = await svc.dashboard_metrics(budget_id, MAR, date(2026, 3, 31))
     tab = await svc.savings_rate(budget_id, months=1)
-    dialog = await savings_contributors(db_session, budget_id, tab["start_date"], tab["end_date"])
+    # March is running: the tab draws it as its newest row, and the card —
+    # this month so far — and the dialog over the same days read it too.
+    march = tab["months"][-1]
+    dialog = await savings_contributors(db_session, budget_id, MAR, TODAY)
 
-    assert card["savings_rate"] == tab["summary"]["savings_rate"] == 0.17
+    assert card["savings_rate"] == march["savings_rate"] == 0.17
     assert float(dialog["savings"] / dialog["income"]) == card["savings_rate"]
-    assert tab["summary"]["savings_held"] == dialog["savings_held"] == D("100")
-    assert tab["summary"]["savings_held"] == await held_between(db_session, budget_id, MAR, TODAY)
-    assert tab["months"][0]["savings"] == tab["summary"]["savings"] == D("850")
+    assert march["savings_held"] == dialog["savings_held"] == D("100")
+    assert march["savings_held"] == await held_between(db_session, budget_id, MAR, TODAY)
+    assert march["savings"] == D("850")
 
-    resp_month = (await svc.income_vs_expense(budget_id, months=1))[0]
-    assert resp_month["savings"] == tab["summary"]["savings"]
+    resp_month = (await svc.income_vs_expense(budget_id, months=1))[-1]
+    assert resp_month["savings"] == march["savings"]
+
+    # A month on, March is complete: the summary, and the dialog over the
+    # window the tab serves, are March's.
+    with report_today(date(2026, 4, 3)):
+        later = await svc.savings_rate(budget_id, months=1)
+    assert (later["start_date"], later["end_date"]) == (MAR, date(2026, 3, 31))
+    assert later["summary"]["savings_rate"] == 0.17
+    assert later["summary"]["savings"] == D("850")
 
 
 async def test_income_vs_expense_net_stays_money_moved(db_session):
@@ -423,7 +452,7 @@ async def test_income_vs_expense_net_stays_money_moved(db_session):
     exactly the held part."""
     w = await _mixed_month(db_session)
 
-    row = (await ReportService(db_session).income_vs_expense(w["budget"].id, months=1))[0]
+    row = (await ReportService(db_session).income_vs_expense(w["budget"].id, months=1))[-1]
 
     assert (row["savings"], row["savings_moved"], row["savings_held"]) == (
         D("850"),
@@ -447,10 +476,10 @@ async def test_the_endpoints_serve_both_parts(api_client, db_session):
 
     rate = await api_client.get(f"/api/v1/{budget.id}/reports/savings-rate", params={"months": 1})
     assert rate.status_code == 200, rate.text
-    assert D(rate.json()["summary"]["savings_held"]) == D("500")
+    assert D(rate.json()["months"][-1]["savings_held"]) == D("500")
     ive = await api_client.get(f"/api/v1/{budget.id}/reports/income-expense", params={"months": 1})
     assert ive.status_code == 200, ive.text
-    assert D(ive.json()["months"][0]["savings_moved"]) == D("0")
+    assert D(ive.json()["months"][-1]["savings_moved"]) == D("0")
     contrib = await api_client.get(
         f"/api/v1/{budget.id}/reports/savings-contributors",
         params={"start_date": "2026-03-01", "end_date": "2026-03-31"},

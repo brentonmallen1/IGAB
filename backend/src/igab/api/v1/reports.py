@@ -6,14 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from igab.api.route import CommitRoute
-from igab.api.v1.params import parse_uuid_list
+from igab.api.v1.params import ReaderToday, parse_uuid_list
 from igab.api.v1.schemas.report import (
     AccountCompositionPoint,
     AccountCompositionResponse,
     AnomalyItem,
     AnomalyReportResponse,
-    BudgetActualItem,
-    BudgetActualResponse,
     BurnRatePoint,
     BurnRateResponse,
     CashFlowResponse,
@@ -30,6 +28,7 @@ from igab.api.v1.schemas.report import (
     DiscretionaryResponse,
     EmergencyCoverageResponse,
     EssentialsReportResponse,
+    IfIncomeStopped,
     IncomeBySourceResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
@@ -40,14 +39,9 @@ from igab.api.v1.schemas.report import (
     MeansMonth,
     NetWorthPoint,
     NetWorthResponse,
-    PaydayEffectDay,
     PaydayEffectResponse,
     PayeeAnalysisResponse,
-    PayeeSpending,
-    PayeeTopCategory,
-    PayeeTrend,
-    PlanRealityCategory,
-    PlanRealityResponse,
+    PlanVsSpentResponse,
     ReportFavoritesResponse,
     ReportFavoritesUpdate,
     ReportRangeResponse,
@@ -69,8 +63,6 @@ from igab.api.v1.schemas.report import (
     TimelineResponse,
     TimelineTransaction,
     TopCategory,
-    VariancePoint,
-    VarianceResponse,
     VolatilityItem,
     VolatilityResponse,
     WishlistDisciplineResponse,
@@ -88,7 +80,8 @@ from igab.dependencies import (
     get_tag_repo,
 )
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
-from igab.domain.dates import report_months
+from igab.domain.money_moves import REPORT_FAMILY_CLASSES, ReportFamily
+from igab.domain.plan import CHRONIC_MONTHS
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
@@ -96,7 +89,9 @@ from igab.services.budget_service import BudgetService
 from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.essentials import essentials_summary
 from igab.services.liability_service import LiabilityService
+from igab.services.plan_ledger import spent_series
 from igab.services.report_basics import (
+    budget_window,
     cost_of_living,
     discretionary,
     income_by_source,
@@ -136,17 +131,11 @@ MAX_REPORT_MONTHS = 600
 
 ReportMonths = Annotated[int, Query(ge=1, le=MAX_REPORT_MONTHS)]
 
-#: The browser's local date, for a report whose figures end "today" — the
-#: trailing burn windows. A GET has no body to carry `ClientDated`, so it rides
-#: as a query parameter; a caller that omits it gets the server's day. Near
-#: midnight the two disagree, and the reader's clock is the one that decides
-#: which thirty days they are looking at.
-ClientToday = Annotated[date | None, Query()]
-
-#: plan-vs-reality reads "chronic" as over-plan in 3+ of the window's last 6
-#: months, so a window shorter than 3 has nothing to say. That floor is the
+#: Plan vs Spent reads "chronic" as over-plan in 3+ of the window's last 6
+#: months (`domain.plan.CHRONIC_MONTHS`), so a window shorter than 3 has
+#: nothing to say. That floor is the
 #: report's own rule and stays; only its old 24-month ceiling is gone.
-PlanRealityMonths = Annotated[int, Query(ge=3, le=MAX_REPORT_MONTHS)]
+PlanVsSpentMonths = Annotated[int, Query(ge=CHRONIC_MONTHS, le=MAX_REPORT_MONTHS)]
 
 
 #: Bounds for every report parameter that is not a month window.
@@ -177,9 +166,10 @@ async def emergency_coverage_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     session: SessionDep,
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> EmergencyCoverageResponse:
-    data = await EmergencyCoverageService(session).coverage(budget_id, months=months)
+    data = await EmergencyCoverageService(session).coverage(budget_id, months=months, today=today)
     return EmergencyCoverageResponse(**data)
 
 
@@ -227,10 +217,11 @@ async def report_range(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
 ) -> ReportRangeResponse:
     """How far back this budget's reports can look, so the range picker offers
     only windows that exist — and can resolve "All" to a real number."""
-    return ReportRangeResponse(**await report_svc.available_range(budget_id))
+    return ReportRangeResponse(**await report_svc.available_range(budget_id, today))
 
 
 @router.get("/{budget_id}/reports/spending", response_model=SpendingReportResponse)
@@ -240,6 +231,7 @@ async def spending_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
@@ -251,7 +243,6 @@ async def spending_report(
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
 ) -> SpendingReportResponse:
-    today = date.today()
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
     scope = await resolve_category_scope(
@@ -283,10 +274,14 @@ async def income_expense_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> IncomeExpenseResponse:
-    data = await report_svc.income_vs_expense(budget_id, months)
-    return IncomeExpenseResponse(months=[IncomeExpenseMonth.model_validate(m) for m in data])
+    data = await report_svc.income_vs_expense(budget_id, months, today)
+    return IncomeExpenseResponse(
+        months=[IncomeExpenseMonth.model_validate(m) for m in data],
+        expense_classes=[c.value for c in REPORT_FAMILY_CLASSES[ReportFamily.SPENDING]],
+    )
 
 
 @router.get("/{budget_id}/reports/export")
@@ -314,14 +309,13 @@ async def dashboard_metrics(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
-    client_today: ClientToday = None,
 ) -> DashboardMetrics:
-    today = client_today or date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    data = await report_svc.dashboard_metrics(budget_id, start, end, today=client_today)
+    data = await report_svc.dashboard_metrics(budget_id, start, end, today=today)
     return DashboardMetrics(
         **{k: v for k, v in data.items() if k not in ("top_categories", "means_months")},
         top_categories=[TopCategory.model_validate(c) for c in data["top_categories"]],
@@ -334,13 +328,18 @@ async def net_worth_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> NetWorthResponse:
-    data = await report_svc.net_worth_history(budget_id, months)
-    return NetWorthResponse(
-        points=[NetWorthPoint.model_validate(p) for p in data],
-        unmanaged_liability_total=data[-1]["unmanaged_liability_total"] if data else Decimal("0"),
-        asset_value_total=data[-1]["asset_value_total"] if data else Decimal("0"),
+    data = await report_svc.net_worth(budget_id, months, today)
+    points = data["points"]
+    return NetWorthResponse.model_validate(
+        {
+            **data,
+            "points": [NetWorthPoint.model_validate(p) for p in points],
+            "unmanaged_liability_total": points[-1]["unmanaged_liability_total"],
+            "asset_value_total": points[-1]["asset_value_total"],
+        }
     )
 
 
@@ -349,11 +348,13 @@ async def account_composition_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> AccountCompositionResponse:
-    data = await report_svc.account_composition(budget_id, months)
+    data = await report_svc.account_composition(budget_id, months, today)
     return AccountCompositionResponse(
-        points=[AccountCompositionPoint.model_validate(p) for p in data]
+        points=[AccountCompositionPoint.model_validate(p) for p in data["points"]],
+        series=data["series"],
     )
 
 
@@ -362,10 +363,10 @@ async def burn_rate_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
-    client_today: ClientToday = None,
 ) -> BurnRateResponse:
-    data = await report_svc.burn_rate(budget_id, months, today=client_today)
+    data = await report_svc.burn_rate(budget_id, months, today=today)
     return BurnRateResponse(points=[BurnRatePoint.model_validate(p) for p in data])
 
 
@@ -374,12 +375,12 @@ async def cash_flow_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     mode: str = "spent",  # "spent" or "budgeted"
     account_ids: str | None = Query(None),
 ) -> CashFlowResponse:
-    today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
     acct_ids = parse_uuid_list(account_ids)
@@ -391,25 +392,25 @@ async def cash_flow_report(
     return CashFlowResponse.model_validate(data)
 
 
-@router.get("/{budget_id}/reports/budget-actual", response_model=BudgetActualResponse)
-async def budget_actual_report(
+@router.get("/{budget_id}/reports/plan-vs-spent", response_model=PlanVsSpentResponse)
+async def plan_vs_spent_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
-    start_date: date | None = None,
-    end_date: date | None = None,
+    today: ReaderToday,
+    months: PlanVsSpentMonths = 12,
     category_ids: str | None = Query(None),
     #: A saved filter: its effective category set (named + tagged) scopes the
     #: report — the same resolution the budget page reads.
     filter_id: uuid.UUID | None = None,
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
-) -> BudgetActualResponse:
-    today = date.today()
-    start = start_date or today.replace(day=1)
-    end = end_date or today
+) -> PlanVsSpentResponse:
+    """The matrix, its month totals and its category totals, from one read of
+    the plan ledger — the one endpoint Budget vs Actual, Cumulative Variance
+    and Plan vs Reality used to be three of."""
     scope = await resolve_category_scope(
         budget_id,
         category_ids=parse_uuid_list(category_ids),
@@ -418,41 +419,10 @@ async def budget_actual_report(
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
-    data = await report_svc.budget_vs_actual(budget_id, start, end, scope.category_ids)
-    return BudgetActualResponse(
-        categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
-        total_assigned=data["total_assigned"],
-        total_spent=data["total_spent"],
-        filter_unavailable=scope.filter_unavailable,
+    data = await report_svc.plan_vs_spent(budget_id, months, today, scope.category_ids)
+    return PlanVsSpentResponse.model_validate(
+        {**data, "filter_unavailable": scope.filter_unavailable}
     )
-
-
-@router.get("/{budget_id}/reports/plan-vs-reality", response_model=PlanRealityResponse)
-async def plan_vs_reality_report(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: PlanRealityMonths = 12,
-) -> PlanRealityResponse:
-    data = await report_svc.plan_vs_reality(budget_id, months)
-    return PlanRealityResponse(
-        months=data["months"],
-        categories=[PlanRealityCategory.model_validate(c) for c in data["categories"]],
-        total_assigned=data["total_assigned"],
-        total_spent=data["total_spent"],
-        chronic_count=data["chronic_count"],
-    )
-
-
-@router.get("/{budget_id}/reports/variance", response_model=VarianceResponse)
-async def variance_report(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: ReportMonths = 12,
-) -> VarianceResponse:
-    data = await report_svc.cumulative_variance(budget_id, months)
-    return VarianceResponse(points=[VariancePoint.model_validate(p) for p in data])
 
 
 @router.get("/{budget_id}/reports/volatility", response_model=VolatilityResponse)
@@ -460,6 +430,7 @@ async def volatility_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
     amortize: bool = False,
 ) -> VolatilityResponse:
@@ -469,7 +440,7 @@ async def volatility_report(
     which separates a bill with steady cost and irregular timing from a
     category whose cost genuinely swings.
     """
-    data = await report_svc.category_volatility(budget_id, months, amortize)
+    data = await report_svc.category_volatility(budget_id, months, amortize, today)
     return VolatilityResponse(
         categories=[VolatilityItem.model_validate(c) for c in data["categories"]],
         amortized=amortize,
@@ -485,6 +456,7 @@ async def spending_grouped_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
@@ -499,7 +471,6 @@ async def spending_grouped_report(
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
 ) -> SpendingGroupedResponse:
-    today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
     scope = await resolve_category_scope(
@@ -531,6 +502,7 @@ async def spending_grouped_report(
         ],
         view_unavailable=notes["view_unavailable"],
         filter_unavailable=scope.filter_unavailable,
+        counted_classes=notes["counted_classes"],
     )
 
 
@@ -541,6 +513,7 @@ async def spending_trends_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
@@ -552,7 +525,6 @@ async def spending_trends_report(
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
 ) -> SpendingTrendsResponse:
-    today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
     scope = await resolve_category_scope(
@@ -571,14 +543,19 @@ async def spending_trends_report(
         scope.category_ids,
         parse_uuid_list(account_ids),
         _spending_classes(include_savings),
+        today,
     )
     return SpendingTrendsResponse(
         months=data["months"],
         series=[SpendingTrendSeries.model_validate(e) for e in data["series"]],
         monthly_totals=data["monthly_totals"],
         total=data["total"],
+        avg_monthly=data["avg_monthly"],
+        months_averaged=data["months_averaged"],
+        running_month=data["running_month"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
         filter_unavailable=scope.filter_unavailable,
+        counted_classes=data["counted_classes"],
     )
 
 
@@ -587,9 +564,10 @@ async def income_by_source_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> IncomeBySourceResponse:
-    data = await income_by_source(report_svc.session, budget_id, months)
+    data = await income_by_source(report_svc.session, budget_id, months, today)
     return IncomeBySourceResponse(
         months=data["months"],
         sources=[IncomeSource.model_validate(e) for e in data["sources"]],
@@ -606,15 +584,21 @@ async def category_history_report(
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     category_id: uuid.UUID = Query(...),
     months: ReportMonths = 12,
 ) -> CategoryHistoryReportResponse:
     """One category month by month, from the same BudgetService the budget
-    page reads — this endpoint orchestrates, it computes nothing."""
+    page reads, and its Spent from the plan ledger every plan report reads —
+    this endpoint orchestrates, it computes nothing."""
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    month_list = report_months(date.today(), months)
+    # `months` complete months and the running one (`budget_window`); the
+    # running month is flagged so no headline adds a partial month in.
+    window = await budget_window(category_repo.session, budget_id, months, today)
+    month_list = window.axis
     # `envelope_series`, the Budget page's own month-by-month figures (card
     # correction and card reserves included), assembled once for the span —
     # and `in_system_group` comes off the row rather than being re-derived
@@ -628,19 +612,35 @@ async def category_history_report(
     series = (await budget_service.envelope_series(budget_id, [category_id], month_list))[
         category_id
     ]
+    spent = await spent_series(report_svc.session, budget_id, category_id, window, today)
     out = [
         CategoryHistoryMonth(
             month=month,
+            partial_month=window.is_running(month),
             assigned=assigned,
             activity=activity,
+            spent=spent_in_month,
+            moved_in=moved_in,
+            moved_out=moved_out,
             available=None if series.in_system_group else available,
         )
-        for month, assigned, activity, available in zip(
-            month_list, series.assigned, series.activity, series.available, strict=True
+        for month, assigned, activity, available, spent_in_month, moved_in, moved_out in zip(
+            month_list,
+            series.assigned,
+            series.activity,
+            series.available,
+            spent.spent,
+            spent.moved_in,
+            spent.moved_out,
+            strict=True,
         )
     ]
     return CategoryHistoryReportResponse(
-        category_id=category_id, category_name=category.name, months=out
+        category_id=category_id,
+        category_name=category.name,
+        months=out,
+        average_spent=spent.average_spent,
+        months_averaged=spent.months_averaged,
     )
 
 
@@ -649,13 +649,12 @@ async def seasonality_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
+    include_savings: bool = False,
 ) -> SeasonalityResponse:
-    data = await report_svc.seasonality(budget_id, months)
-    return SeasonalityResponse(
-        cells=data["cells"],
-        months=data["months"],
-        categories=data["categories"],
+    return SeasonalityResponse.model_validate(
+        await report_svc.seasonality(budget_id, months, today, _spending_classes(include_savings))
     )
 
 
@@ -664,9 +663,10 @@ async def essentials_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     session: SessionDep,
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> EssentialsReportResponse:
-    return EssentialsReportResponse(**await essentials_summary(session, budget_id, months))
+    return EssentialsReportResponse(**await essentials_summary(session, budget_id, months, today))
 
 
 @router.get("/{budget_id}/reports/payee-analysis", response_model=PayeeAnalysisResponse)
@@ -674,37 +674,19 @@ async def payee_analysis_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     limit: ReportLimit = 25,
     payee_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
 ) -> PayeeAnalysisResponse:
-    today = date.today()
     start = start_date or today.replace(year=today.year - 1, day=1)
     end = end_date or today
     p_ids = parse_uuid_list(payee_ids)
     acct_ids = parse_uuid_list(account_ids)
-    payees, total, payee_count, payees_to_80pct = await report_svc.payee_analysis(
-        budget_id, start, end, limit, p_ids, acct_ids
-    )
-    return PayeeAnalysisResponse(
-        payees=[
-            PayeeSpending(
-                payee_id=p["payee_id"],
-                payee_name=p["payee_name"],
-                total=p["total"],
-                count=p["count"],
-                pct=p["pct"],
-                monthly_trend=[PayeeTrend.model_validate(t) for t in p["monthly_trend"]],
-                top_categories=[PayeeTopCategory.model_validate(c) for c in p["top_categories"]],
-                is_recurring=p["is_recurring"],
-            )
-            for p in payees
-        ],
-        total=total,
-        payee_count=payee_count,
-        payees_to_80pct=payees_to_80pct,
+    return PayeeAnalysisResponse.model_validate(
+        await report_svc.payee_analysis(budget_id, start, end, limit, p_ids, acct_ids)
     )
 
 
@@ -715,6 +697,7 @@ async def day_patterns_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
@@ -725,7 +708,6 @@ async def day_patterns_report(
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
 ) -> DayPatternsResponse:
-    today = date.today()
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
     scope = await resolve_category_scope(
@@ -737,7 +719,7 @@ async def day_patterns_report(
         tag_repo=tag_repo,
     )
     acct_ids = parse_uuid_list(account_ids)
-    data = await report_svc.day_patterns(budget_id, start, end, scope.category_ids, acct_ids)
+    data = await report_svc.day_patterns(budget_id, start, end, scope.category_ids, acct_ids, today)
     return DayPatternsResponse(
         days=[DayPatternItem.model_validate(d) for d in data["days"]],
         class_excluded=[
@@ -745,6 +727,8 @@ async def day_patterns_report(
         ],
         filter_unavailable=scope.filter_unavailable,
         counted_classes=data["counted_classes"],
+        window_start=data["window_start"],
+        window_end=data["window_end"],
     )
 
 
@@ -755,6 +739,7 @@ async def timeline_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    today: ReaderToday,
     start_date: date | None = None,
     end_date: date | None = None,
     limit: ReportLimit = 50,
@@ -765,8 +750,9 @@ async def timeline_report(
     filter_id: uuid.UUID | None = None,
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
+    #: Money out only — the page's default view (`large_transactions`).
+    outflows_only: bool = False,
 ) -> TimelineResponse:
-    today = date.today()
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
     scope = await resolve_category_scope(
@@ -779,7 +765,7 @@ async def timeline_report(
     )
     acct_ids = parse_uuid_list(account_ids)
     data = await report_svc.large_transactions(
-        budget_id, start, end, limit, scope.category_ids, acct_ids
+        budget_id, start, end, limit, scope.category_ids, acct_ids, outflows_only
     )
     return TimelineResponse(
         transactions=[TimelineTransaction.model_validate(t) for t in data],
@@ -792,18 +778,23 @@ async def liabilities_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     liability_svc: Annotated[LiabilityService, Depends(get_liability_service)],
+    today: ReaderToday,
     liability_type: str | None = Query(default=None),
     mode: str | None = Query(default=None),
+    months: ReportMonths = 12,
 ) -> LiabilitiesReportResponse:
     """Consolidated liability rollup — per-liability deep-dives live on /liabilities/:id."""
     data = await liability_svc.liabilities_report(
-        budget_id, liability_type=liability_type, mode=mode
+        budget_id, liability_type=liability_type, mode=mode, as_of=today, months=months
     )
     return LiabilitiesReportResponse(
         items=[LiabilitiesReportItem.model_validate(i) for i in data["items"]],
         total_balance=data["total_balance"],
         total_interest_remaining=data["total_interest_remaining"],
         liabilities_missing_terms=data["liabilities_missing_terms"],
+        missing_terms_balance=data["missing_terms_balance"],
+        carrying_balance_count=data["carrying_balance_count"],
+        liabilities_never_paying_off=data["liabilities_never_paying_off"],
         balance_over_time=[
             LiabilitiesBalancePoint.model_validate(p) for p in data["balance_over_time"]
         ],
@@ -817,15 +808,19 @@ async def subscriptions_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> SubscriptionsReportResponse:
-    """Recurring charges filed to categories tagged 'subscription', by category."""
-    data = await subscriptions_report_data(report_svc.session, budget_id, months)
+    """Recurring charges filed to categories tagged 'subscription', by category,
+    with what each service costs a year (`domain.subscriptions`)."""
+    data = await subscriptions_report_data(report_svc.session, budget_id, months, today)
     return SubscriptionsReportResponse(
         subscriptions=[SubscriptionCategory.model_validate(s) for s in data["subscriptions"]],
         summary=SubscriptionsSummary.model_validate(data["summary"]),
         months=data["months"],
-        months_averaged=data["months_averaged"],
+        monthly_totals=data["monthly_totals"],
+        year_start=data["year_start"],
+        year_end=data["year_end"],
     )
 
 
@@ -834,12 +829,13 @@ async def savings_rate_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> SavingsRateResponse:
     """How much of what came in was kept. Distinct from /reports/savings, which
     asks what you *budgeted* toward savings; this asks what actually left as
     saving."""
-    data = await report_svc.savings_rate(budget_id, months)
+    data = await report_svc.savings_rate(budget_id, months, today)
     return SavingsRateResponse.model_validate(data)
 
 
@@ -848,6 +844,7 @@ async def savings_contributors_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     start_date: date,
     end_date: date,
 ) -> SavingsContributorsResponse:
@@ -855,7 +852,7 @@ async def savings_contributors_report(
     went, and where the income came from. Both dates are required — the dialog
     passes the window of the card that opened it, and a default here would be
     a third spelling of which window that is."""
-    data = await savings_contributors(report_svc.session, budget_id, start_date, end_date)
+    data = await savings_contributors(report_svc.session, budget_id, start_date, end_date, today)
     return SavingsContributorsResponse.model_validate(data)
 
 
@@ -864,10 +861,11 @@ async def savings_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> SavingsReportResponse:
     """Savings report — Saved, On the way to savings, and Sinking funds."""
-    data = await savings_report_data(report_svc.session, budget_id, months)
+    data = await savings_report_data(report_svc.session, budget_id, months, today)
     return SavingsReportResponse.model_validate(data)
 
 
@@ -876,13 +874,17 @@ async def anomalies_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
     threshold: AnomalyThreshold = 2.0,
 ) -> AnomalyReportResponse:
     """Anomaly detection — category-months with spending outside baseline z-score."""
-    data = await report_svc.anomalies_report(budget_id, months, threshold)
+    data = await report_svc.anomalies_report(budget_id, months, threshold, today)
     return AnomalyReportResponse(
-        anomalies=[AnomalyItem.model_validate(a) for a in data["anomalies"]]
+        anomalies=[AnomalyItem.model_validate(a) for a in data["anomalies"]],
+        categories_seen=data["categories_seen"],
+        categories_tested=data["categories_tested"],
+        sinking_funds_skipped=data["sinking_funds_skipped"],
     )
 
 
@@ -891,16 +893,13 @@ async def payday_effect_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     window: PaydayWindow = 14,
     months: ReportMonths = 12,
 ) -> PaydayEffectResponse:
-    """Payday effect — average daily spending for N days after income events."""
-    data = await report_svc.payday_effect(budget_id, window, months)
-    return PaydayEffectResponse(
-        days=[PaydayEffectDay.model_validate(d) for d in data["days"]],
-        baseline_daily=data["baseline_daily"],
-        event_count=data["event_count"],
-        payday_floor=data["payday_floor"],
+    """Payday effect — median discretionary spending on the N days after a payday."""
+    return PaydayEffectResponse.model_validate(
+        await report_svc.payday_effect(budget_id, window, months, today)
     )
 
 
@@ -909,15 +908,19 @@ async def cash_projection_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     days: ProjectionDays = 90,
 ) -> CashProjectionResponse:
-    """Cash projection — fan chart with deterministic and stochastic layers."""
-    data = await report_svc.cash_projection(budget_id, days)
+    """Cash projection — a fan chart of where the cash lands if things carry
+    on, beside the runway if income stopped, starting on the reader's today."""
+    data = await report_svc.cash_projection(budget_id, days, today=today)
     return CashProjectionResponse(
         start_balance=data["start_balance"],
         points=[CashProjectionPoint.model_validate(p) for p in data["points"]],
         events=[CashProjectionEvent.model_validate(e) for e in data["events"]],
-        goes_negative_date=data.get("goes_negative_date"),
+        goes_negative_date=data["goes_negative_date"],
+        p10_negative_date=data["p10_negative_date"],
+        if_income_stopped=IfIncomeStopped.model_validate(data["if_income_stopped"]),
     )
 
 
@@ -926,10 +929,11 @@ async def cost_of_living_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> CostOfLivingResponse:
     """The two necessity tiers and the gap between them, against take-home."""
-    data = await cost_of_living(report_svc.session, budget_id, months)
+    data = await cost_of_living(report_svc.session, budget_id, months, today)
     return CostOfLivingResponse(
         months=data["months"],
         window_start=data["window_start"],
@@ -939,6 +943,7 @@ async def cost_of_living_report(
         avg_monthly_cost_of_living=data["avg_monthly_cost_of_living"],
         avg_monthly_essentials=data["avg_monthly_essentials"],
         avg_monthly_income=data["avg_monthly_income"],
+        avg_monthly_discretionary=data["avg_monthly_discretionary"],
         basis=data["basis"],
         tagged=data["tagged"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
@@ -952,10 +957,13 @@ async def discretionary_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
     months: ReportMonths = 12,
 ) -> DiscretionaryResponse:
     """Spending outside Cost of living, by category within its group."""
-    return DiscretionaryResponse.model_validate(await discretionary(report_svc, budget_id, months))
+    return DiscretionaryResponse.model_validate(
+        await discretionary(report_svc, budget_id, months, today)
+    )
 
 
 @router.get("/{budget_id}/reports/wishlist", response_model=WishlistDisciplineResponse)
@@ -963,10 +971,12 @@ async def wishlist_discipline_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
 ) -> WishlistDisciplineResponse:
     """What the cooling-off period did. All time, because a habit measured
     over twelve months forgets the wish you talked yourself out of two years
-    ago."""
+    ago. Dated all the same: whether an open wish is past its wait is a
+    question about the reader's day."""
     return WishlistDisciplineResponse.model_validate(
-        await wishlist_discipline(report_svc.session, budget_id)
+        await wishlist_discipline(report_svc.session, budget_id, today)
     )

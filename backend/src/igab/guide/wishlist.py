@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from igab.domain.dates import add_months, report_months
+from igab.domain.dates import add_months, months_ending
 from igab.domain.money import quantize_cents
 
 ZERO = Decimal("0")
@@ -143,7 +143,7 @@ def trailing_average(
 ) -> Decimal:
     """Average assigned over this month and the ones before it, missing
     months counted as nothing — the fallback pace when no target says one."""
-    total = sum((assigned_by_month.get(m, ZERO) for m in report_months(month, months)), ZERO)
+    total = sum((assigned_by_month.get(m, ZERO) for m in months_ending(month, months)), ZERO)
     return quantize_cents(total / months)
 
 
@@ -244,6 +244,17 @@ def project_summary(
     )
 
 
+def is_cooling(cooling_until: date | None, today: date) -> bool:
+    """Is a wish still inside its cooling-off period on `today`?
+
+    The period is over ON its end date — a purchase or a drop that day counts
+    as having waited (`_ended_after_cooling`). A wish with no period is not
+    cooling. The Wishlist tab's "cooling" badge, the review clock and the
+    report's "ready to decide" all ask this; each spelled it inline.
+    """
+    return cooling_until is not None and cooling_until > today
+
+
 def review_due(
     created: date,
     last_affirmed: date | None,
@@ -253,7 +264,7 @@ def review_due(
 ) -> bool:
     """Not affirmed for `review_days`. A wish still cooling off is not asked —
     it has not had its chance yet."""
-    if cooling_until is not None and cooling_until > today:
+    if is_cooling(cooling_until, today):
         return False
     since = last_affirmed if last_affirmed is not None else created
     return since + timedelta(days=review_days) <= today
@@ -350,6 +361,21 @@ class Discipline:
     #: period did. The `done` branch had drawn this distinction all along.
     dropped_early: int
     still_open: int
+    #: Open wishes whose cooling-off is over (or that never had one): the
+    #: wait has done its part, and what is left is a decision. The rest of
+    #: `still_open` is `still_cooling`; the two partition it.
+    ready_to_decide: int
+    still_cooling: int
+    #: Every decided wish — bought or dropped — whose ending can be placed
+    #: against its cooling-off period, and how many of those came after it.
+    #: This is what the waiting period did, and the report leads with it:
+    #: "Resisted" counts a wish dropped on day three of thirty, which the
+    #: wait played no part in.
+    decided_count: int
+    waited_out_count: int
+    #: `waited_out_count / decided_count`; None with nothing decided, which
+    #: is not 0%.
+    waited_out_share: float | None
     #: Every dropped wish — waited on, abandoned early, or unplaceable. The
     #: money was wanted and not spent whichever it was.
     resisted_total: Decimal
@@ -359,6 +385,9 @@ class Discipline:
     #: yourself out of".
     resisted_count: int
     bought_total: Decimal
+    #: How many wishes `bought_total` sums — the card's count, as
+    #: `resisted_count` is Resisted's.
+    bought_count: int
     open_total: Decimal
     #: Mean days from adding a wish to buying it. None with nothing bought —
     #: an average of no days is not zero days.
@@ -378,8 +407,9 @@ def _ended_after_cooling(ended: date | None, cooling_until: date | None) -> bool
     return ended >= cooling_until
 
 
-def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
-    """Cooling-off outcomes across every wish, open and closed.
+def discipline(wishes: Iterable[DisciplineInput], today: date) -> Discipline:
+    """Cooling-off outcomes across every wish, open and closed, on `today`
+    — the reader's day, which decides whether an open wish is still cooling.
 
     `bought_early` counts a wish bought before its cooling-off period ended,
     and `dropped_early` one abandoned before it ended — both are the period
@@ -389,7 +419,7 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
     the habit, not a score.
     """
     cooled_bought = cooled_dropped = early = dropped_early = still_open = unplaced = 0
-    resisted_count = 0
+    resisted_count = bought_count = ready = 0
     resisted = bought = open_total = ZERO
     days: list[int] = []
     costs: list[Decimal] = []
@@ -399,12 +429,15 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
         if w.status == "open":
             still_open += 1
             open_total += w.cost
+            if not is_cooling(w.cooling_until, today):
+                ready += 1
             continue
 
         ended = w.done_at if w.status == "done" else w.dropped_at
         after = _ended_after_cooling(ended, w.cooling_until)
         if w.status == "done":
             bought += w.cost
+            bought_count += 1
             if ended is not None:
                 days.append((ended - w.created_at).days)
             if after is True:
@@ -423,15 +456,23 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
             else:
                 unplaced += 1
 
+    waited_out = cooled_bought + cooled_dropped
+    decided = waited_out + early + dropped_early
     return Discipline(
         cooled_then_bought=cooled_bought,
         cooled_then_dropped=cooled_dropped,
         bought_early=early,
         dropped_early=dropped_early,
         still_open=still_open,
+        ready_to_decide=ready,
+        still_cooling=still_open - ready,
+        decided_count=decided,
+        waited_out_count=waited_out,
+        waited_out_share=waited_out / decided if decided else None,
         resisted_total=quantize_cents(resisted),
         resisted_count=resisted_count,
         bought_total=quantize_cents(bought),
+        bought_count=bought_count,
         open_total=quantize_cents(open_total),
         avg_days_to_buy=round(sum(days) / len(days)) if days else None,
         avg_wish_cost=quantize_cents(sum(costs, ZERO) / len(costs)) if costs else None,

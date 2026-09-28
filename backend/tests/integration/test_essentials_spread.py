@@ -1,7 +1,7 @@
 """Sinking-fund bills spread over twelve months, on every essentials surface.
 
 One household throughout: $2,000 of Essential rent in each of the last three
-months, and a $2,400 yearly home-insurance premium filed last month to a
+complete months, and a $2,400 yearly home-insurance premium filed last month to a
 category tagged Essential and Long-term expense. As paid that is
 (6,000 + 2,400) / 3 = $2,800 a month; spread it is 2,000 + 2,400 / 12 =
 $2,200. Three months of essentials is $6,600 spread and $8,400 as paid.
@@ -69,11 +69,18 @@ async def _household(db_session, api_client):
     await create_transaction(
         db_session, budget, checking, "-4.00", add_months(LAST_MONTH, -13), category=coffee
     )
-    for days in (5, 35, 65):
+    # Rent in each of the last three COMPLETE months — the months the
+    # essentials figure averages (`guide.concepts.essentials_at`).
+    for back in (0, 1, 2):
         await create_transaction(
-            db_session, budget, checking, "-2000.00", TODAY - timedelta(days=days), category=rent
+            db_session,
+            budget,
+            checking,
+            "-2000.00",
+            add_months(LAST_MONTH, -back) + timedelta(days=4),
+            category=rent,
         )
-    # Day 3 of last month is always 29–61 days back: inside the 90-day window.
+    # The premium last month: inside the three complete months.
     await create_transaction(
         db_session, budget, checking, "-2400.00", LAST_MONTH + timedelta(days=2), category=insurance
     )
@@ -161,14 +168,8 @@ async def test_charts_stay_as_paid(db_session, api_client):
     last = next(m for m in report["monthly_series"] if m["month"] == LAST_MONTH.isoformat())
     assert money(last["sinking_total"]) == Decimal("2400.00")
     assert sum(money(m["sinking_total"]) for m in report["monthly_series"]) == Decimal("2400.00")
-    # Every dollar as it was paid: the premium whole, plus the rent that fell
-    # in complete months.
-    rent_paid = sum(
-        Decimal("2000.00")
-        for days in (5, 35, 65)
-        if TODAY - timedelta(days=days) < month_start(TODAY)
-    )
-    assert sum(money(m["total"]) for m in report["monthly_series"]) == rent_paid + Decimal(
+    # Every dollar as it was paid: the premium whole, and three months of rent.
+    assert sum(money(m["total"]) for m in report["monthly_series"]) == Decimal("6000.00") + Decimal(
         "2400.00"
     )
 
@@ -204,7 +205,7 @@ async def test_a_category_that_is_also_savings_is_not_spread(db_session, api_cli
     )
     checking = await create_account(db_session, budget, "Second Checking")
     await create_transaction(
-        db_session, budget, checking, "-1200.00", TODAY - timedelta(days=8), category=both
+        db_session, budget, checking, "-1200.00", LAST_MONTH + timedelta(days=7), category=both
     )
     await db_session.commit()
 

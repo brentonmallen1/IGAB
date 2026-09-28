@@ -48,6 +48,30 @@ export function isPartial(shown: number, whole: number): boolean {
   return toCents(whole - shown) !== 0
 }
 
+/**
+ * What a whole holds beyond the parts drawn from it — a stacked chart's
+ * "Other" band — or null when the parts are the whole.
+ *
+ * The server quantizes each series' month and sums the quantized figures, so
+ * the true difference is a whole number of cents; what a float subtraction
+ * adds is dust. Whether there is a remainder at all is `isPartial`: `rest > 0`
+ * drew a band for the dust, and `rest >= 0.01` dropped a genuine cent, because
+ * 1000.01 − (600 + 400) is 0.00999… in floating point.
+ *
+ * The rest can be NEGATIVE, and that band is drawn too: the series beyond the
+ * drawn ones can net below zero (a reconciliation adjustment filed to Ready
+ * to Assign on Income by Source, a refund-heavy month on Spending Trends), and
+ * dropping it left the stack taller than the All row under it. Charts stack
+ * with `MIXED_SIGN_STACK`, so the band hangs below the axis.
+ *
+ * Income by Source's band, the savings-rate dialog's folded sources and
+ * Spending Trends' band are this one function.
+ */
+export function otherBand(whole: number, shown: readonly number[]): number | null {
+  const drawn = shown.reduce((sum, v) => sum + v, 0)
+  return isPartial(drawn, whole) ? whole - drawn : null
+}
+
 /** `part` as a percentage of `whole`, 0–100 — or null when there is no
  *  positive whole to be a share of.
  *

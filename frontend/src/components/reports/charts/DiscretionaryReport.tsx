@@ -29,6 +29,9 @@ import {
   discretionaryMonthDrill,
   discretionaryRows,
   discretionaryShare,
+  perMonth,
+  tierSum,
+  tierSumLine,
 } from './discretionaryView'
 import { ReportRangeSelect } from './rangeSelect'
 import './DiscretionaryReport.css'
@@ -69,6 +72,8 @@ export function DiscretionaryReport({ budgetId }: Props) {
   const report = data
   const rows = discretionaryRows(report.groups, report.total ?? 0)
   const share = discretionaryShare(report)
+  const spentPerMonth = perMonth(report.spending_total, report.months_averaged)
+  const tiers = tierSum(report)
   const drillWindow = { startDate: report.window_start, endDate: report.window_end }
   const chartData = report.months.map((month, idx) => ({
     month,
@@ -96,9 +101,9 @@ export function DiscretionaryReport({ budgetId }: Props) {
             line, until you file it.
           </p>
           <p>
-            Not the same as <strong>Non-essential</strong> on the Cost of Living report: that is
-            committed spending a lean month could shed. Discretionary is everything outside both
-            tiers.
+            Not the same as <strong>Committed, not essential</strong> on the Cost of Living report:
+            that is committed spending a lean month could shed. Discretionary is everything outside
+            both tiers.
           </p>
           <p>
             <strong>Share of spending</strong> is this against all spending over the same months —
@@ -163,10 +168,11 @@ export function DiscretionaryReport({ budgetId }: Props) {
               sub={
                 share === null
                   ? 'no spending on record'
-                  : `of ${formatMoneyOrDash(report.spending_total)} spent`
+                  : `of ${formatMoneyOrDash(spentPerMonth)}/mo spent`
               }
             />
           </MetricRow>
+          {tiers && <p className="reports-note">{tierSumLine(tiers, formatMoney)}</p>}
 
           {/* One series against its own average: the question is which months
               ran over, and a bar opens that month's rows. */}
@@ -196,18 +202,10 @@ export function DiscretionaryReport({ budgetId }: Props) {
                   isAnimationActive={false}
                   cursor={{ fill: 'var(--row-hover-bg)' }}
                 />
+                {/* Unlabelled inside the plot: the label sat on the tallest
+                    bars. The key under the chart names the line. */}
                 {report.avg_monthly !== null && (
-                  <ReferenceLine
-                    y={report.avg_monthly}
-                    stroke={COLOR_NET}
-                    strokeDasharray="6 3"
-                    label={{
-                      value: `Per month: ${formatMoney(report.avg_monthly)}`,
-                      position: 'insideTopRight',
-                      fill: 'var(--text-secondary)',
-                      fontSize: 11,
-                    }}
-                  />
+                  <ReferenceLine y={report.avg_monthly} stroke={COLOR_NET} strokeDasharray="6 3" />
                 )}
                 <Bar
                   dataKey="Discretionary"
@@ -219,6 +217,11 @@ export function DiscretionaryReport({ budgetId }: Props) {
                 />
               </BarChart>
             </ResponsiveContainer>
+            {report.avg_monthly !== null && (
+              <p className="discretionary-report__key">
+                Dashed line: {formatMoney(report.avg_monthly)} a month, the average of these months.
+              </p>
+            )}
           </div>
 
           <table className="report-table discretionary-report__table">
@@ -231,7 +234,7 @@ export function DiscretionaryReport({ budgetId }: Props) {
                 <th scope="col" className="discretionary-report__num">
                   Monthly
                 </th>
-                <th scope="col" className="discretionary-report__num">
+                <th scope="col" className="discretionary-report__num discretionary-report__total">
                   Total
                 </th>
                 <th scope="col" className="discretionary-report__num">
@@ -255,7 +258,9 @@ export function DiscretionaryReport({ budgetId }: Props) {
                     </button>
                   </td>
                   <td className="discretionary-report__num tabular">{formatMoney(r.avgMonthly)}</td>
-                  <td className="discretionary-report__num tabular">{formatMoney(r.total)}</td>
+                  <td className="discretionary-report__num discretionary-report__total tabular">
+                    {formatMoney(r.total)}
+                  </td>
                   <td className="discretionary-report__num tabular">
                     {r.share === null ? '—' : `${Math.round(r.share)}%`}
                   </td>
@@ -269,7 +274,7 @@ export function DiscretionaryReport({ budgetId }: Props) {
                 <td className="discretionary-report__num tabular">
                   {formatMoneyOrDash(report.avg_monthly)}
                 </td>
-                <td className="discretionary-report__num tabular">
+                <td className="discretionary-report__num discretionary-report__total tabular">
                   {formatMoneyOrDash(report.total)}
                 </td>
                 <td />

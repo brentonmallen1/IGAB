@@ -5,7 +5,10 @@ export interface WhatIfSavings {
   /** Null when the contractual baseline never pays off — there is no
    *  "sooner" to measure against something that never happens. */
   monthsSooner: number | null
-  interestSaved: number
+  /** Null for the same reason, and served (`amortization.paydown_gain`):
+   *  against a minimum that never pays off there is no interest bill to
+   *  subtract from, and the page used to quote a negative saving. */
+  interestSaved: number | null
 }
 
 interface Props {
@@ -130,7 +133,9 @@ export function PaydownWhatIf({
               ? `paid off ${savings.monthsSooner} month${savings.monthsSooner === 1 ? '' : 's'} sooner`
               : 'actually pays off'}
             {' · '}
-            {formatMoney(savings.interestSaved)} less interest
+            {savings.interestSaved !== null
+              ? `${formatMoney(savings.interestSaved)} less interest`
+              : 'no interest comparison: the minimum alone never pays it off'}
           </span>
           {extraPayment > 0 && !isSavedPlan && (
             <button

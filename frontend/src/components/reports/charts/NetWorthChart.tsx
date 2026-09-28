@@ -22,6 +22,10 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { useReportMonths } from '../../../stores/reportStore'
+import { arrivalMarks, likeForLikeLine } from '../../../utils/trackingStart'
+import { arrivalLines } from './arrivalLines'
+import { TrackingStartNote } from './TrackingStartNote'
+import { staleNote, statedNote } from './netWorthView'
 
 interface Props {
   budgetId: string
@@ -29,7 +33,7 @@ interface Props {
 
 export function NetWorthReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonthShort, formatDate } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useNetWorthReport(budgetId, months)
@@ -40,9 +44,20 @@ export function NetWorthReport({ budgetId }: Props) {
 
   const points = data?.points ?? []
   const latest = points[points.length - 1]
+  const marks = arrivalMarks(points, formatMoney)
+  const change = data
+    ? likeForLikeLine(data.like_for_like_change, data.entered_total, data.change, formatMoney)
+    : null
+  const assetsNote = data
+    ? statedNote(data.stated_values, 'stated_asset', formatMoney, formatDate)
+    : null
+  const debtsNote = data
+    ? statedNote(data.stated_values, 'manual_debt', formatMoney, formatDate)
+    : null
+  const stale = data ? staleNote(data.stale_balances, data.stale_after_days, formatDate) : null
 
   const chartData = points.map((p) => ({
-    date: p.date.slice(0, 7),
+    date: formatMonthShort(p.date),
     Assets: p.total_assets,
     Liabilities: p.total_liabilities,
     'Net Worth': p.net_worth,
@@ -54,14 +69,28 @@ export function NetWorthReport({ budgetId }: Props) {
         <h2 className="report-section__title">Net Worth Over Time</h2>
         <ReportInfoButton title="Net Worth Over Time">
           <p>
-            <strong>Net worth</strong> = total assets minus total liabilities across{' '}
-            <strong>all accounts</strong> — on-budget, tracking, and loans — plus any manually
-            tracked debts.
+            <strong>Net worth</strong> = assets minus liabilities. <strong>Assets</strong> are what
+            every account holds — on-budget and tracking alike — plus the stated value of things
+            with no account behind them, like a home. <strong>Liabilities</strong> are what cards
+            and loans owe, plus debts you track by hand; both are subtracted.
           </p>
           <p>
-            The stacked area shows how <strong>assets</strong> and <strong>liabilities</strong>{' '}
-            compose your net worth each month. A growing gap between them means you're building
-            wealth.
+            Each point is the balance at the end of its month; the last is today. The three lines
+            are drawn over each other from zero, not stacked, and straight between points — a
+            balance is known at each point, not in between.
+          </p>
+          <p>
+            <strong>Started tracking</strong>: a numbered line marks a month something began being
+            counted — an account linked with the balance it already had (its Starting Balance, and
+            any history from before its budget start), or a home or a debt given its first value.
+            That is the register filling in, not money you made or lost, so{' '}
+            <strong>Change, like-for-like</strong> leaves it out: the change over the range less
+            everything that began being counted after its first month.
+          </p>
+          <p>
+            A stated value counts from the date it was entered, and a balance that has not moved in{' '}
+            {data?.stale_after_days ?? 60} days is listed under the chart — flat there means nothing
+            updated it.
           </p>
           <ReportScopeNote report="net-worth" />
         </ReportInfoButton>
@@ -75,6 +104,7 @@ export function NetWorthReport({ budgetId }: Props) {
                 assets: p.total_assets,
                 liabilities: p.total_liabilities,
                 net_worth: p.net_worth,
+                started_tracking: p.entered,
               }))
             }
             captureRef={captureRef}
@@ -86,28 +116,21 @@ export function NetWorthReport({ budgetId }: Props) {
         {latest && (
           <MetricRow>
             <MetricCard label="Current Net Worth" value={formatMoney(latest.net_worth)} />
+            {change && (
+              <MetricCard label="Change, like-for-like" value={change.value} sub={change.sub} />
+            )}
             <MetricCard label="Total Assets" value={formatMoney(latest.total_assets)} />
             <MetricCard label="Total Liabilities" value={formatMoney(latest.total_liabilities)} />
           </MetricRow>
         )}
-        {Number(data?.unmanaged_liability_total ?? 0) > 0 && (
-          <p className="report-section__subtitle">
-            Liabilities include {formatMoney(data!.unmanaged_liability_total)} of manually tracked
-            debt (no linked account).
-          </p>
-        )}
-        {Number(data?.asset_value_total ?? 0) > 0 && (
-          <p className="report-section__subtitle">
-            Assets include {formatMoney(data!.asset_value_total)} of stated value — a home, a
-            vehicle — with no account behind it.
-          </p>
-        )}
+        {debtsNote && <p className="report-section__subtitle">{debtsNote}</p>}
+        {assetsNote && <p className="report-section__subtitle">{assetsNote}</p>}
 
         {chartData.length === 0 ? (
           <div className="reports-empty">No account data available.</div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="nw-assets" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={COLOR_POSITIVE} stopOpacity={0.3} />
@@ -131,15 +154,16 @@ export function NetWorthReport({ budgetId }: Props) {
                 isAnimationActive={false}
               />
               <Legend />
+              {arrivalLines(marks, (i) => chartData[i].date)}
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="Assets"
                 stroke={COLOR_POSITIVE}
                 fill="url(#nw-assets)"
                 strokeWidth={2}
               />
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="Liabilities"
                 stroke={COLOR_NEGATIVE}
                 fill="none"
@@ -147,7 +171,7 @@ export function NetWorthReport({ budgetId }: Props) {
                 strokeDasharray="5 3"
               />
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="Net Worth"
                 stroke={COLOR_NET}
                 fill="url(#nw-net)"
@@ -155,6 +179,16 @@ export function NetWorthReport({ budgetId }: Props) {
               />
             </AreaChart>
           </ResponsiveContainer>
+        )}
+        <TrackingStartNote
+          marks={marks}
+          formatMoney={formatMoney}
+          formatMonthShort={formatMonthShort}
+        />
+        {stale && (
+          <p className="report-note" role="note">
+            {stale}
+          </p>
         )}
       </div>
     </div>

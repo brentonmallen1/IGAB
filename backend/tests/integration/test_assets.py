@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.repositories.asset_repo import AssetRepository
-from igab.services.report_service import ReportService
+from igab.services.tracking_start import stated_values
 
 from .factories import (
     create_account,
@@ -183,8 +183,8 @@ async def test_an_asset_outlives_its_loan(db_session):
 
     await db_session.delete(loan)
     await db_session.flush()
-    asset_now, _ = await ReportService(db_session)._asset_values(budget.id)
-    assert asset_now == D("9000.0000")
+    (house,) = [s for s in await stated_values(db_session, budget.id) if s.kind == "stated_asset"]
+    assert house.current == D("9000.0000")
 
 
 async def test_the_value_register_lists_edits_and_refuses_strangers(api_client, db_session):

@@ -38,7 +38,7 @@ describe('MetricCard details', () => {
       <MetricCard
         label="Net Worth"
         value="$1,100.00"
-        delta={{ value: 10, label: 'vs prior period' }}
+        delta={{ value: 10, label: 'vs prior period', good: 'up' }}
         details={{ label: 'Net worth. Show more', onOpen: () => {} }}
       />
     )
@@ -56,5 +56,32 @@ describe('MetricCard details', () => {
     expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus()
     await userEvent.keyboard('{Enter}')
     expect(onOpen).toHaveBeenCalledOnce()
+  })
+})
+
+describe('MetricCard delta', () => {
+  it('draws more spending as bad news, though the sign is plus', () => {
+    // "Spent +21%" was green: the card coloured a delta by its sign.
+    const { container } = render(
+      <MetricCard label="Spent" value="$3,630.00" delta={{ value: 21, good: 'down' }} />
+    )
+    expect(container.querySelector('.metric-card__delta')).toHaveClass('metric-card__delta--bad')
+    expect(screen.getByText(/\+21\.0%/)).toBeInTheDocument()
+  })
+
+  it('draws net worth up as good news', () => {
+    const { container } = render(
+      <MetricCard label="Net Worth" value="$1,100.00" delta={{ value: 10, good: 'up' }} />
+    )
+    expect(container.querySelector('.metric-card__delta')).toHaveClass('metric-card__delta--good')
+  })
+
+  it('draws a neutral figure’s change in neither colour', () => {
+    const { container } = render(
+      <MetricCard label="Transactions" value="42" delta={{ value: -30, good: 'neutral' }} />
+    )
+    expect(container.querySelector('.metric-card__delta')).toHaveClass(
+      'metric-card__delta--neutral'
+    )
   })
 })

@@ -11,8 +11,7 @@ that contained them. Each case below is one of the differences that made:
 - the unit (both copies divided a ninety-day total by 3): sixty days ÷ 2;
 - the sign (both copies filtered `amount < 0`): a refund lowers the burn, as
   it lowers Spent This Period and Essentials;
-- the Guide (`guide.concepts`, a third `90` and `3`): its essentials window is
-  this lookback, derived rather than restated.
+- the newest burn ends yesterday (`burn_as_of`): today is nearly always empty.
 """
 
 from datetime import date, timedelta
@@ -22,15 +21,13 @@ import pytest
 
 from igab.domain.activity_class import ActivityClass
 from igab.domain.burn_rate import (
-    LOOKBACK_DAYS,
-    LOOKBACK_MONTHS,
     PRIOR_MONTHS,
     RECENT_DAYS,
     DayClassTotal,
     burn,
+    burn_as_of,
     burn_windows,
 )
-from igab.guide.concepts import ESSENTIALS_WINDOW_DAYS, TRAILING_MONTHS, essentials_since
 
 D = Decimal
 AS_OF = date(2026, 9, 25)
@@ -107,9 +104,6 @@ class TestComparison:
         assert burn([spend(50, "-100.01")], AS_OF).prior == D("50.00")
         assert burn([spend(50, "-100.03")], AS_OF).prior == D("50.02")
 
-    def test_runway_divides_the_recent_burn_by_its_days(self):
-        assert burn([spend(5, "-900.00")], AS_OF).per_day == D("30")
-
 
 class TestSign:
     def test_a_refund_lowers_the_recent_burn(self):
@@ -147,18 +141,33 @@ class TestZero:
     def test_an_empty_budget_burns_nothing(self):
         result = burn([], AS_OF)
         assert (str(result.recent), str(result.prior)) == ("0.00", "0.00")
-        assert result.per_day == 0
 
     def test_a_fully_refunded_window_is_positive_zero(self):
         result = burn([spend(3, "-80.00"), spend(1, "80.00")], AS_OF)
         assert str(result.recent) == "0.00"
 
 
-class TestTheGuideReadsTheSameNinetyDays:
-    def test_the_essentials_window_is_the_burn_lookback(self):
-        assert ESSENTIALS_WINDOW_DAYS == LOOKBACK_DAYS == 90
-        assert TRAILING_MONTHS == LOOKBACK_MONTHS == 3
+class TestTheNewestBurnEndsYesterday:
+    """Today almost never has synced rows yet, so a burn ending today counted
+    one empty day and read low every morning (WP-B)."""
 
-    @pytest.mark.parametrize("as_of", [AS_OF, date(2026, 3, 1), date(2024, 2, 29)], ids=str)
-    def test_both_start_on_the_same_day(self, as_of):
-        assert essentials_since(as_of) == burn_windows(as_of).prior_start
+    @pytest.mark.parametrize(
+        ("today", "yesterday"),
+        [
+            (date(2026, 9, 25), date(2026, 9, 24)),
+            # The reader's first of the month: yesterday is last month's end.
+            (date(2026, 10, 1), date(2026, 9, 30)),
+            (date(2027, 1, 1), date(2026, 12, 31)),
+            (date(2028, 3, 1), date(2028, 2, 29)),
+        ],
+        ids=str,
+    )
+    def test_yesterday(self, today, yesterday):
+        assert burn_as_of(today) == yesterday
+
+    def test_a_row_dated_today_is_not_in_the_newest_burn(self):
+        # Today's row is outside a window ending yesterday — it counts
+        # tomorrow, once the day is whole.
+        today_row = DayClassTotal(AS_OF, SPENDING, D("-300.00"))
+        assert burn([today_row], burn_as_of(AS_OF)).recent == D("0.00")
+        assert burn([today_row], AS_OF).recent == D("300.00")

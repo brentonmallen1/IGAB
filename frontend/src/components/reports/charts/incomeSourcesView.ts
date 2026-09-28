@@ -1,28 +1,27 @@
-/** Pure view math for the Income by Source report. */
-import { isPartial } from '../drillDownTotals'
+/** Pure view math for the Income by Source report. Its stack is Spending
+ *  Trends' (`stackTrends`), Other band and all. */
+import type { TrendRow } from './spendingTrends'
 
-/**
- * A month's income from payees outside the shown series — the "Other" band —
- * or null when there is none.
- *
- * The server quantizes each payee's month and sums the quantized figures, so
- * the true difference is a whole number of cents; what a float subtraction
- * adds is dust. Read it in cents: `rest > 0` drew a band for the dust, and
- * `rest >= 0.01` dropped a genuine cent, because 1000.01 − (600 + 400) is
- * 0.00999… in floating point. Whether the shown sources are the whole month
- * is `isPartial`, the tooltip's and the drill table's rule.
- *
- * The rest can be NEGATIVE, and that band is drawn too: a month's income can
- * carry a reconciliation adjustment filed to Ready to Assign, so the payees
- * beyond the shown series can net below zero. Dropping it left the stack
- * taller than the month the table's All row reports. The chart stacks with
- * `stackOffset="sign"`, so the band hangs below the axis instead of painting
- * over the series beneath it.
- */
-export function otherIncome(monthTotal: number, shown: readonly number[]): number | null {
-  const drawn = shown.reduce((sum, v) => sum + v, 0)
-  const rest = monthTotal - drawn
-  return isPartial(drawn, monthTotal) ? rest : null
+/** The chart-row key of the income that came with no payee. */
+export const NO_PAYEE_KEY = '__none__'
+
+/** The served sources as the shared stack's rows, keyed by payee id — never
+ *  by name, which two payees can share. */
+export function incomeSourceRows(
+  sources: readonly {
+    payee_id: string | null
+    payee_name: string
+    monthly: number[]
+    total: number
+  }[]
+): TrendRow[] {
+  return sources.map((s) => ({
+    key: s.payee_id ?? NO_PAYEE_KEY,
+    name: s.payee_name,
+    group_name: null,
+    monthly: s.monthly,
+    total: s.total,
+  }))
 }
 
 /**

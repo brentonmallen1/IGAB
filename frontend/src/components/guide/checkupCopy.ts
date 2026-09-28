@@ -62,7 +62,7 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     glossary: ['credit-utilization', 'balance-transfer'],
   },
   essential_expenses: {
-    what: 'What a lean month costs: your spending on the things you could not do without, averaged over the last 90 days, with yearly bills in Long-term expense categories spread over 12 months unless you turn that off. It is the yardstick the emergency fund is measured against — three months of this is the target.',
+    what: 'What a lean month costs: your spending on the things you could not do without, averaged over the last three complete months, with yearly bills in Long-term expense categories spread over 12 months unless you turn that off. It is the yardstick the emergency fund is measured against — three months of this is the target.',
     why: 'An emergency fund sized against everything you spend is bigger than it needs to be; one sized against essentials is what would actually carry you through a bad month. Until something is tagged Essential this falls back to all your spending, which overstates a lean month.',
     decide: [
       'Tag what you could not do without — rent, groceries, utilities, minimum payments — as Essential, and this narrows to those',
@@ -108,7 +108,7 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     glossary: ['savings-rate', '401k', 'ira', 'employer-match'],
   },
   chronic_overspend: {
-    what: 'Categories that went over budget in at least three of the last six months.',
+    what: 'Categories that went over plan — by at least $1 and 1% of it — in at least three of the last six months. Money moved into an envelope counts as plan and money moved out lowers it, a refund lowers what was spent, and a sinking fund paying the bill it saved for is never chronic.',
     why: 'Chronic overspending means the budget does not match how you live: money keeps getting pulled from everything else you funded to cover it, and the plan stops being trustworthy.',
     decide: [
       'Whether the assignment is too low for real life, or the spending needs reining in',

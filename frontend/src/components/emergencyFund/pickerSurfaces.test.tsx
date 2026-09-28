@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConceptInfo } from '../../api/guide'
 import { useAppStore } from '../../stores/appStore'
 import { FUND_COUNTING_LINE } from '../../test-utils/emergencyFundFixtures'
+import { runwayFigure } from '../../test-utils/runwayFixtures'
 
 vi.mock('../../api/emergencyFund', async () => {
   const f = await import('../../test-utils/emergencyFundFixtures')
@@ -70,6 +71,7 @@ vi.mock('../../api/reports', () => ({
       months: 12,
       window_start: '2025-09-01',
       window_end: '2026-08-31',
+      months_averaged: 12,
       essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
       monthly_total_average: 1000,
       categories: [],
@@ -77,7 +79,7 @@ vi.mock('../../api/reports', () => ({
       reserve: [],
       roadmap_range: [3, 6],
       emergency_fund: FUND,
-      runway_months: 9.4,
+      fund_runway: runwayFigure({ money: 'fund', months: 9.4 }),
       class_excluded: [],
     },
   }),
@@ -88,7 +90,7 @@ vi.mock('../../api/reports', () => ({
       months: 12,
       tagged: true,
       fund: FUND,
-      coverage_months: 9.4,
+      covered: runwayFigure({ money: 'fund', months: 9.4 }),
       essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
       target_low: 3000,
       target_high: 6000,

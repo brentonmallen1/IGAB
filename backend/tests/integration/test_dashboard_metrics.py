@@ -38,6 +38,8 @@ from .factories import (
 
 TODAY = date.today()
 MONTH_START = TODAY.replace(day=1)
+#: The burn ends yesterday (`burn_as_of`): read tomorrow, today's rows are in it.
+TOMORROW = TODAY + timedelta(days=1)
 
 
 async def _household(db_session, *, income="5000.00", spend="3000.00", to_brokerage="2000.00"):
@@ -73,7 +75,11 @@ class TestTheCardsAgreeWithTheTabs:
         card = await svc.dashboard_metrics(budget.id, MONTH_START, TODAY)
         tab = await svc.savings_rate(budget.id, months=1)
 
-        assert card["savings_rate"] == pytest.approx(tab["summary"]["savings_rate"])
+        # This month is running: the card's month so far is the tab's
+        # running row, which the tab's complete-month summary leaves out.
+        running = tab["months"][-1]
+        assert running["partial_month"] is True
+        assert card["savings_rate"] == pytest.approx(running["savings_rate"])
         assert card["savings_rate"] == pytest.approx(0.4)
 
     async def test_expenses_match_income_vs_expenses(self, db_session):
@@ -108,7 +114,9 @@ class TestTheCardsAgreeWithTheTabs:
     async def test_saving_is_not_reported_as_spending(self, db_session):
         """The whole point: $2,000 to a brokerage is not $2,000 spent."""
         budget = await _household(db_session)
-        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        card = await ReportService(db_session).dashboard_metrics(
+            budget.id, MONTH_START, TODAY, TOMORROW
+        )
         assert card["expenses_this_month"] == Decimal("3000.00")
         assert card["burn_rate_30"] == Decimal("3000.00")
 
@@ -200,30 +208,24 @@ class TestFiguresPreservedFromTheOldSuite:
 
         assert [c["name"] for c in card["top_categories"]] == ["Rent", "Groceries", "Fun"]
 
-    async def test_days_until_zero_uses_the_burn_rate(self, db_session):
+    async def test_a_row_dated_today_is_not_yet_burned(self, db_session):
+        """Today is rarely all posted, so the burn ends yesterday: a charge
+        dated today moves the card tomorrow, not while the day is half-read."""
         user = await create_user(db_session)
         budget = await create_budget(db_session, user)
         checking = await create_account(db_session, budget, "Checking", on_budget=True)
         group = await create_category_group(db_session, budget, "Everyday")
         cat = await create_category(db_session, budget, group, "Groceries")
-        await create_transaction(db_session, budget, checking, "3000.00", TODAY - timedelta(days=5))
         await create_transaction(db_session, budget, checking, "-300.00", TODAY, category=cat)
         await db_session.flush()
 
-        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        svc = ReportService(db_session)
+        now = await svc.dashboard_metrics(budget.id, MONTH_START, TODAY, TODAY)
+        tomorrow = await svc.dashboard_metrics(budget.id, MONTH_START, TODAY, TOMORROW)
 
-        assert card["days_until_zero"] == pytest.approx(float(card["net_worth"]) / (300 / 30))
-
-    async def test_days_until_zero_is_none_without_burn(self, db_session):
-        user = await create_user(db_session)
-        budget = await create_budget(db_session, user)
-        checking = await create_account(db_session, budget, "Checking", on_budget=True)
-        await create_transaction(db_session, budget, checking, "3000.00", TODAY)
-        await db_session.flush()
-
-        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
-
-        assert card["days_until_zero"] is None
+        assert now["burn_rate_30"] == Decimal("0.00")
+        assert now["expenses_this_month"] == Decimal("300.00")
+        assert tomorrow["burn_rate_30"] == Decimal("300.00")
 
 
 class TestTopSpendingIsSpending:

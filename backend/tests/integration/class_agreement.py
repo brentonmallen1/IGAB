@@ -28,7 +28,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Account, Category, Transaction
-from igab.domain.activity_class import CLASS_JOINS
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    ACTIVITY_CLASS_SUBQUERY,
+    ACTIVITY_REASON,
+    ACTIVITY_REASON_SUBQUERY,
+    CLASS_JOINS,
+    apply_class_joins,
+)
 from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 
 #: Sentinel: `joins=None` means "whatever the shipped expression needs", which
@@ -110,6 +117,38 @@ async def _describe(session: AsyncSession, txn_ids: list[uuid.UUID]) -> dict[uui
         )
         for r in rows
     }
+
+
+async def classes_of(session: AsyncSession, txn: Transaction) -> tuple[str, str]:
+    """(class, reason) for one row, from BOTH implementations — which must
+    agree, or this raises before any caller asserts on the answer.
+
+    The per-row form of `assert_class_agreement`, for a test that names the
+    row it means. Four suites each wrote their own lookup, and only one of
+    them asked the oracle, so a rule whose two readings of a column disagreed
+    passed three of them on whichever reading the reports run.
+    """
+    joined = (
+        await session.execute(
+            # Transaction.id is not wanted; the class joins chain from it.
+            apply_class_joins(
+                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
+                    Transaction.id == txn.id
+                )
+            )
+        )
+    ).one()
+    oracle = (
+        await session.execute(
+            select(Transaction.id, ACTIVITY_CLASS_SUBQUERY, ACTIVITY_REASON_SUBQUERY).where(
+                Transaction.id == txn.id
+            )
+        )
+    ).one()
+    assert (joined[1], joined[2]) == (oracle[1], oracle[2]), (
+        f"joined says {tuple(joined[1:])}, the subquery oracle says {tuple(oracle[1:])}"
+    )
+    return joined[1], joined[2]
 
 
 async def assert_class_agreement(

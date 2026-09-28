@@ -12,7 +12,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from igab.services.report_stats import anomaly_rows, balance_sheet, volatility_stats
+from igab.services.report_stats import (
+    anomaly_scan,
+    balance_sheet,
+    sample_std,
+    volatility_stats,
+)
 
 
 class Row:
@@ -312,16 +317,21 @@ class TestBalanceSheet:
         assert got["accounts"] == [] and got["net_worth"] == Decimal("0")
 
 
-class TestAnomalyRows:
+class TestAnomalyScan:
     """Which months are scored, and which verdicts survive.
 
-    Every figure is written by hand. The baseline alternates 380/420, so its
-    mean is 400 and its population standard deviation is exactly 20 — a spike
-    of 1,200 is 40 sigma, and that is checkable on paper. Today is 2026-07-15,
-    so July is the month in progress and June the newest complete one.
+    Every figure is written by hand. The baseline is 370, 430, 390, 410, 400,
+    400: its mean is 400 and its sample standard deviation (n − 1, the one σ
+    the reports use) is exactly 20, since the squared deviations sum to 2,000
+    over five. A spike of 1,200 is 40 σ — checkable on paper. Today is
+    2026-07-15, so July is the month in progress and June the newest complete
+    one.
     """
 
-    BASELINE = ["380", "420", "380", "420", "380", "420"]
+    BASELINE = ["370", "430", "390", "410", "400", "400"]
+    TODAY = date(2026, 7, 15)
+    #: Jul 2025 through the month in progress.
+    GRID = [date(2025, m, 1) for m in range(7, 13)] + [date(2026, m, 1) for m in range(1, 8)]
 
     def month_back(self, n: int) -> date:
         month, year = 7 - n, 2026
@@ -329,19 +339,24 @@ class TestAnomalyRows:
             month, year = month + 12, year - 1
         return date(year, month, 1)
 
-    def rows(self, complete: list[str], running: str | None = None):
-        """One `(category_id, name, group, month, signed_total)` per month:
-        `complete` ends with June 2026, `running` lands in July."""
+    def rows(self, complete: list[str], running: str | None = None, cid: str = "c1"):
+        """One `(category_id, name, group, month, spent)` per month: `complete`
+        ends with June 2026, `running` lands in July. A "0" is left out, as a
+        quiet month is: no row at all."""
         out = [
-            ("c1", "Groceries", "Everyday", self.month_back(len(complete) - i), Decimal(f"-{a}"))
+            (cid, "Groceries", "Everyday", self.month_back(len(complete) - i), Decimal(a))
             for i, a in enumerate(complete)
+            if a != "0"
         ]
         if running is not None:
-            out.append(("c1", "Groceries", "Everyday", date(2026, 7, 1), Decimal(f"-{running}")))
+            out.append((cid, "Groceries", "Everyday", date(2026, 7, 1), Decimal(running)))
         return out
 
+    def scan(self, rows, threshold: float = 2.0):
+        return anomaly_scan(rows, months=self.GRID, today=self.TODAY, threshold=threshold)
+
     def score(self, rows, threshold: float = 2.0):
-        return anomaly_rows(rows, today=date(2026, 7, 15), threshold=threshold)
+        return self.scan(rows, threshold).anomalies
 
     def test_a_spike_in_the_month_in_progress_flags_the_day_it_happens(self):
         got = self.score(self.rows(self.BASELINE, running="1200"))
@@ -362,18 +377,15 @@ class TestAnomalyRows:
         assert self.score(self.rows(self.BASELINE, running="12")) == []
 
     def test_a_complete_month_still_flags_low(self):
-        got = self.score(self.rows(["180", "220", "180", "220", "180", "220", "40"]))
+        got = self.score(self.rows([*self.BASELINE, "40"]))
 
         assert len(got) == 1
         assert got[0]["month"] == date(2026, 6, 1)
-        assert got[0]["z_score"] == pytest.approx(-8.0)  # (40 - 200) / 20
+        assert got[0]["z_score"] == pytest.approx(-18.0)  # (40 - 400) / 20
         assert got[0]["direction"] == "low"
         assert got[0]["partial_month"] is False
 
     def test_the_month_in_progress_is_in_no_other_months_baseline(self):
-        """June's 1,200 is 40 sigma off the six months before it. Let July's
-        5.00 into that baseline and the mean falls to 343.57 while the spread
-        triples, so June would read about 6 sigma instead."""
         got = self.score(self.rows([*self.BASELINE, "1200"], running="5"))
 
         assert len(got) == 1
@@ -382,5 +394,95 @@ class TestAnomalyRows:
         assert got[0]["z_score"] == pytest.approx(40.0)
         assert got[0]["partial_month"] is False
 
-    def test_the_month_in_progress_needs_six_complete_months_like_any_other(self):
-        assert self.score(self.rows(["380", "420", "380", "420", "380"], running="1200")) == []
+    def test_a_month_needs_six_earlier_complete_months(self):
+        assert self.score(self.rows(self.BASELINE[:5], running="1200")) == []
+
+    def test_the_baseline_is_the_months_before_not_after(self):
+        """May is judged against November–April. The baseline was every other
+        month, so June's 5,000 sat in May's: mean near 1,100, and a 1,200 May
+        — three times its history — was not unusual at all."""
+        got = self.score(self.rows([*self.BASELINE, "1200", "5000"]))
+
+        may = next(a for a in got if a["month"] == date(2026, 5, 1))
+        assert may["baseline_mean"] == Decimal("400.00")
+        assert may["z_score"] == pytest.approx(40.0)
+
+    def test_a_quiet_month_is_a_zero_in_the_baseline(self):
+        """300, nothing, 200, 100, 150, 150 and then 750. January has no row.
+        Counted as a zero the baseline is mean 150, σ 100 (squared deviations
+        50,000 over five), and June is 6 σ. Skipped, as it was, the baseline
+        was the five busy months — mean 180 — and the quiet month that made
+        the category's spending irregular was nowhere in it."""
+        got = self.score(self.rows(["300", "0", "200", "100", "150", "150", "750"]))
+
+        assert len(got) == 1
+        assert got[0]["baseline_mean"] == Decimal("150.00")
+        assert got[0]["z_score"] == pytest.approx(6.0)
+
+    def test_the_usual_range_is_one_sigma_either_side(self):
+        (got,) = self.score(self.rows(["300", "0", "200", "100", "150", "150", "750"]))
+        assert (got["usual_low"], got["usual_high"]) == (Decimal("50.00"), Decimal("250.00"))
+
+    def test_the_usual_range_never_goes_below_zero(self):
+        # Mean 50, σ ≈ 122: "usually −$72" is not a thing a household spends.
+        (got,) = self.score(self.rows(["300", "0", "0", "0", "0", "0", "900"]))
+        assert got["usual_low"] == Decimal("0.00")
+
+    def test_the_sparkline_is_calendar_months(self):
+        """Twelve calendar months ending with the flagged one. It was the last
+        twelve ROWS padded with zeros in front, so quiet months vanished and
+        a sparse category's points bunched at the right edge. A month before
+        the category's first spending is absent, not zero."""
+        (got,) = self.score(self.rows(["300", "0", "200", "100", "150", "150", "750"]))
+
+        c = Decimal
+        assert got["history"] == [None] * 5 + [
+            c("300.00"),  # December
+            c("0.00"),  # January: quiet, a zero
+            c("200.00"),
+            c("100.00"),
+            c("150.00"),
+            c("150.00"),
+            c("750.00"),  # June
+        ]
+
+    def test_months_before_the_first_spending_are_not_zeros(self):
+        """A category first used in December is not a category that spent
+        nothing from July to November: counted as zeros, its ordinary months
+        would read as spikes."""
+        got = self.score(self.rows([*self.BASELINE, "400"]))
+        assert got == []
+
+    def test_it_says_how_many_categories_it_could_test(self):
+        rows = [
+            *self.rows([*self.BASELINE, "400"], cid="c1"),
+            *self.rows(["100", "100", "100"], cid="c2"),
+        ]
+        scan = self.scan(rows)
+        assert (scan.categories, scan.tested) == (2, 1)
+
+    def test_a_row_outside_the_grid_counts_nowhere(self):
+        rows = [("c1", "Groceries", "Everyday", date(2024, 1, 1), Decimal("9000"))]
+        scan = self.scan([*rows, *self.rows([*self.BASELINE, "400"])])
+        assert scan.anomalies == []
+        assert scan.categories == 1
+
+
+class TestOneSigma:
+    """Anomalies measured in the population σ (n) while Volatility's σ column
+    is polars' sample σ (n − 1): one symbol, two numbers."""
+
+    def test_the_sample_deviation(self):
+        assert sample_std([370, 430, 390, 410, 400, 400]) == pytest.approx(20.0)
+
+    def test_it_is_the_deviation_volatility_reports(self):
+        rows = [
+            Row(date(2026, m, 5), f"-{a}", name="Groceries")
+            for m, a in zip(range(1, 7), [370, 430, 390, 410, 400, 400], strict=True)
+        ]
+        (r,) = volatility_stats(rows, YEAR[:6])
+        assert float(r["std_dev"]) == pytest.approx(sample_std([370, 430, 390, 410, 400, 400]))
+
+    def test_fewer_than_two_values_have_no_spread(self):
+        assert sample_std([]) == 0.0
+        assert sample_std([400]) == 0.0

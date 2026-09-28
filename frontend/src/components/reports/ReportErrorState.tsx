@@ -1,5 +1,5 @@
 import { apiErrorMessage } from '../../api/client'
-import { TAB_FILTER_SUPPORT, useReportStore } from '../../stores/reportStore'
+import { filterSupport, useReportStore } from '../../stores/reportStore'
 
 interface Props {
   onRetry: () => void
@@ -43,7 +43,8 @@ export function ReportErrorState({ onRetry, error }: Props) {
 
   const transient = isTransient(error)
   const detail = detailOf(error)
-  const viewInPlay = !transient && !!viewId && !!TAB_FILTER_SUPPORT[activeTab]?.views
+  const groupBy = useReportStore((s) => s.filters.groupBy)
+  const viewInPlay = !transient && !!viewId && !!filterSupport(activeTab, groupBy).views
 
   return (
     <div className="report-error" role="alert">

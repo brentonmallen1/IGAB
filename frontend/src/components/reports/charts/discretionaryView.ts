@@ -10,6 +10,7 @@
 import type { DrillDownContext } from '../../../stores/reportStore'
 import type { DiscretionaryGroup, DiscretionaryReport } from '../../../types'
 import { monthWindow } from '../../../utils/dateWindow'
+import { fromCents, toCents } from '../../../utils/money'
 import { shareOfTotal } from '../drillDownTotals'
 
 /**
@@ -26,6 +27,73 @@ export function discretionaryShare(
 ): number | null {
   if (report.total === null || report.spending_total === null) return null
   return shareOfTotal(report.total, report.spending_total)
+}
+
+/**
+ * A window total as a monthly figure, to the cent: the total over the months
+ * the window holds. The Share card said "of $52,000 spent" — a year's total
+ * under a headline that is per month — so the reader compared a monthly
+ * figure with an annual one. Null when there is no total or no month.
+ */
+export function perMonth(total: number | null, monthsAveraged: number): number | null {
+  if (total === null || monthsAveraged <= 0) return null
+  return fromCents(Math.round(toCents(total) / monthsAveraged))
+}
+
+/** The four figures behind `tierSumLine`, per month. */
+export interface TierSum {
+  costOfLiving: number
+  discretionary: number
+  spending: number
+  /** Cost of living + Discretionary − spending: the debt payments Cost of
+   *  living counts by class, which spending never does. */
+  debtPayments: number
+}
+
+/**
+ * How the two tiers and spending fit, per month: Cost of living +
+ * Discretionary is all spending plus the debt payments the wide tier counts
+ * by class. Said because the two tiers add up to MORE than the Expenses on
+ * Income vs Expenses, and without the line that gap reads as a bug.
+ *
+ * Composed from served window totals in whole cents, so the line adds up as
+ * printed. Null untagged — no tier figure is served then.
+ */
+export function tierSum(
+  report: Pick<
+    DiscretionaryReport,
+    'total' | 'spending_total' | 'cost_of_living_total' | 'months_averaged'
+  >
+): TierSum | null {
+  const n = report.months_averaged
+  if (
+    report.total === null ||
+    report.spending_total === null ||
+    report.cost_of_living_total === null ||
+    n <= 0
+  ) {
+    return null
+  }
+  const monthly = (total: number) => Math.round(toCents(total) / n)
+  const col = monthly(report.cost_of_living_total)
+  const disc = monthly(report.total)
+  const spend = monthly(report.spending_total)
+  return {
+    costOfLiving: fromCents(col),
+    discretionary: fromCents(disc),
+    spending: fromCents(spend),
+    debtPayments: fromCents(col + disc - spend),
+  }
+}
+
+/** "Cost of living $3,000.00 + Discretionary $900.00 = $3,500.00 spent +
+ *  $400.00 debt payments, a month". */
+export function tierSumLine(sum: TierSum, formatMoney: (amount: number) => string): string {
+  return (
+    `Cost of living ${formatMoney(sum.costOfLiving)} + Discretionary ` +
+    `${formatMoney(sum.discretionary)} = ${formatMoney(sum.spending)} spent + ` +
+    `${formatMoney(sum.debtPayments)} debt payments, a month`
+  )
 }
 
 /** Which rows a table line opens, before the window is attached. */

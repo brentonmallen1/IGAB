@@ -41,3 +41,18 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.discretionary-report__key {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* On a phone the four columns ran past the card and Share — the column the
+   report is about — sat off-screen behind a sideways scroll. The window
+   total is on the card above; the table keeps Monthly and Share. */
+@media (max-width: 768px) {
+  .discretionary-report__total {
+    display: none;
+  }
+}

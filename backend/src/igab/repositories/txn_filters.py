@@ -46,11 +46,13 @@ from igab.db.models import (
     Transaction,
     TransactionAttachment,
 )
+from igab.domain.account_types import CASH_ACCOUNT_TYPE_KEYS
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES, STARTING_BALANCE_PAYEE
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
     IS_SINKING_FUND,
+    PLANNED_ENVELOPE,
     SPENDABLE,
     tagged_category_ids,
 )
@@ -413,7 +415,7 @@ def account_scope(q: Select, account_ids: Sequence[uuid.UUID] | None) -> tuple[S
     not. **None means no selection; an empty list means one was made and
     matched nothing** — `in_([])` renders false, so it returns no rows rather
     than falling through to every on-budget account (the distinction
-    `report_service.scoped` keeps for categories).
+    `report_scope.scoped` keeps for categories).
 
     The flag rides along because the class widening turns on the same fact
     (`counted_classes(scoped_accounts=...)`). This block was written out at
@@ -448,6 +450,27 @@ ON_CARD_ACCOUNT = Transaction.account_id.in_(
 #: envelope: not work to categorize (`NEEDS_CATEGORY`), and not a charge
 #: wrongly filed as income (`CARD_ROW_FILED_AS_INCOME`).
 CARD_LEDGER_CORRECTION = and_(ON_CARD_ACCOUNT, BALANCE_ADJUSTMENT_ROW)
+
+
+def dated_from_budget_start(budget_start_date) -> ColumnElement[bool]:
+    """The row is not older than `budget_start_date`, its account's place in
+    the budget — the one spelling of the comparison, whichever way the column
+    is reached.
+
+    Two readers reach it two ways: `AFTER_BUDGET_START` below through a
+    correlated EXISTS, for queries that select from Transaction alone, and the
+    activity classifier through the account row it already joins
+    (`activity_class._JOINED_INPUTS`), where an EXISTS per row would undo the
+    reason the joins exist. The column differs; the rule about it must not.
+    `tests/integration/class_agreement.py` holds the two readings to each
+    other over every row of a realistic budget.
+
+    NULL — every account until someone answers — passes, and as TRUE rather
+    than UNKNOWN, so the classifier's negation of it is two-valued too.
+    """
+    return or_(budget_start_date.is_(None), Transaction.date >= budget_start_date)
+
+
 #: The row is not older than its account's place in the budget.
 #:
 #: A synced account arrives with whatever history the bank kept, and that
@@ -462,7 +485,11 @@ CARD_LEDGER_CORRECTION = and_(ON_CARD_ACCOUNT, BALANCE_ADJUSTMENT_ROW)
 #: spelling of the date comparison is how the badge and the filter would
 #: come to disagree about the same row.
 #:
-#: NULL `budget_start_date` — every account until someone answers — passes.
+#: The reports read the same comparison (`dated_from_budget_start`): a
+#: pre-start row nobody filed classes `OPENING_BALANCE` (`activity_class`,
+#: rule 4), so a row the register calls opening position is income or
+#: spending in no report either.
+#:
 #: Correlated like `ON_BUDGET_ACCOUNT`, not a bare column comparison: every
 #: caller of `NEEDS_CATEGORY` selects from Transaction alone, and a reference
 #: to `Account.budget_start_date` would quietly add a cross join and multiply
@@ -471,10 +498,7 @@ AFTER_BUDGET_START = (
     select(Account.id)
     .where(
         Account.id == Transaction.account_id,
-        or_(
-            Account.budget_start_date.is_(None),
-            Transaction.date >= Account.budget_start_date,
-        ),
+        dated_from_budget_start(Account.budget_start_date),
     )
     .correlate(Transaction)
     .exists()
@@ -507,7 +531,7 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 )
 
 #: An account whose balance is savings: a live off-budget asset that counts as
-#: savings — the shape above, which is also the account the classifier's rule 4
+#: savings — the shape above, which is also the account the classifier's rule 5
 #: (`domain/activity_class.py`, TRANSFER_TO_TRACKED_ASSET) sends saved money
 #: into. The Savings report lists these under Saved.
 #:
@@ -515,9 +539,19 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
 #: already in the envelopes, and the envelopes say what each dollar is for.
 #: Closed accounts stay in — a closed account's past balances were savings —
 #: and the report omits one that held nothing in its window.
-#: `test_savings_report_sections.py` pins that this and rule 4 agree on every
+#: `test_savings_report_sections.py` pins that this and rule 5 agree on every
 #: account shape.
 SAVINGS_ACCOUNT = and_(LIVE_ACCOUNT, EMERGENCY_FUND_ACCOUNT_SHAPE)
+
+#: A savings account the runway may spend: one of the above whose type holds
+#: cash (`domain.account_types.CASH_ACCOUNT_TYPE_KEYS`) — a HYSA, or checking
+#: or cash kept off budget. Not a 401k, an IRA or a brokerage (Investment), nor
+#: crypto or a house marked as savings (Other Asset): the Savings report lists
+#: those, because money put there was saved, but reaching them takes a sale, a
+#: tax or a penalty. "How long the money lasts if income stopped" counted
+#: every savings account and read years of runway on a budget whose cash
+#: covered a small part of that, the rest being retirement and brokerage.
+CASH_SAVINGS_ACCOUNT = and_(SAVINGS_ACCOUNT, Account.account_type.in_(CASH_ACCOUNT_TYPE_KEYS))
 
 #: An account the emergency-fund picker may offer: a live, open off-budget
 #: asset. `counts_as_savings` is NOT required — the picker turns it on in the
@@ -720,9 +754,17 @@ CARD_PAYMENT_FROM_CASH = and_(Transaction.amount > 0, TRANSFER_LEG, COUNTERPART_
 _leg = aliased(Transaction)
 
 #: A split leg's parent, for a rule that reads what the legs itemise. Any
-#: query using `PAYEE_OF_RECORD` needs
-#: `.outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)`.
+#: query using `PAYEE_OF_RECORD` needs `join_split_parent`.
 SPLIT_PARENT = aliased(Transaction)
+
+
+def join_split_parent(stmt: Select) -> Select:
+    """Bring in `SPLIT_PARENT` for a query that reads `PAYEE_OF_RECORD`.
+
+    An outer join: a row that is not a split leg has no parent, and must stay.
+    """
+    return stmt.outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
+
 
 #: Payee of record for a leaf row: its own, falling back to its split parent's.
 #: Splits are one trip to the shop with the legs itemised, so the parent names
@@ -890,73 +932,85 @@ def category_tagged(*system_keys: str):
     )
 
 
-#: A row that spends money: what every spending rollup reads before its class
-#: set and its account scope — the Breakdown and the AI spending tool
-#: (`spending_by_category`, which the Overview's Top Spending card reads),
-#: the grouped and trend rollups (`_spending_query`), Day Patterns, Payee
-#: Analysis and Volatility.
+#: A row a spending report counts, whichever way its money went: the ONE row
+#: set behind "spending" on every report of that shape — Spending Trends,
+#: Where it went, Seasonality, Payees and Day Patterns, all
+#: through `ReportService._spending_query`, plus the AI spending tool and the
+#: Overview's Top Spending card. Apply the class set (`counted_classes`, with
+#: `apply_class_joins`) and the account scope (`account_scope`) beside it:
+#: they widen together, so they are applied together.
 #:
-#: Each spelled it by hand, and the copies drifted: `SPENT_ENVELOPE` reached
-#: two of them and not Day Patterns or Payee Analysis, so over an explicit
-#: tracked-brokerage selection a -400 filed to Ready to Assign read 20 on the
-#: Breakdown and 420 on the two beside it.
+#: **Net of refunds.** No sign term: a spending-class inflow — a refund filed
+#: to Groceries — lowers Groceries' spending, exactly as it lowers the
+#: envelope's activity and the Expenses bar on Income vs Expenses, which sums
+#: the same class over `CLASS_TOTAL_ROW`. This carried `amount < 0`, and the
+#: same twelve months read three ways: gross on Trends and the Breakdown,
+#: gross-plus-uncategorized on Payees and Day Patterns, net on Income vs
+#: Expenses and Burn Rate — a month of $6,300 net read $10,400 on Trends.
+#: The class does the work a sign cannot: an uncategorized inflow classes
+#: INCOME and a row in the system group classes INCOME, so neither can reach
+#: a spending total by being positive.
+#:
+#: **Uncategorized is counted**, and shown as its own line wherever a report
+#: lists categories: `_spending_query` outer-joins Category. The category
+#: rollups used to inner-join it, so they came in under Payees and Day
+#: Patterns by exactly the uncategorized spending, the one gap this carried.
 #:
 #: `not_(row_category(IN_SYSTEM_GROUP))`, not `row_category(SPENT_ENVELOPE)`:
-#: the positive EXISTS fails an uncategorized row, and the day and payee
-#: views count uncategorized spending. The category-keyed rollups join
-#: Category and so leave those rows out by construction. **That is the one
-#: deliberate gap**: Day Patterns and Payee Analysis exceed the Breakdown by
-#: exactly the uncategorized spending in scope, pinned by
-#: `test_reports_basic.py::TestTheClassRuleIsOneRule`.
+#: the positive EXISTS fails an uncategorized row.
 #:
-#: Not here: the class set (`counted_classes` / `counted_class_filter`, with
-#: `apply_class_joins`) and the account scope (`account_scope`), which widen
-#: together and so are applied together.
+#: Each report once spelled this by hand, and the copies drifted:
+#: `SPENT_ENVELOPE` reached two of them and not Day Patterns or Payee
+#: Analysis, so over an explicit tracked-brokerage selection a -400 filed to
+#: Ready to Assign read 20 on the Breakdown and 420 on the two beside it.
 SPENDING_ROW = and_(
     NOT_DELETED,
     POSTED,
-    Transaction.amount < 0,
     LEAF,
     CASH_FLOW_ROW,
     not_(row_category(IN_SYSTEM_GROUP)),
 )
 
 
-#: A row that spends planned money: the SHAPE half of what plan-vs-actual
-#: reports may count as "spent" against what `BUDGETED_ENVELOPE` counts as
-#: "assigned". **No report reads this directly** — they read
-#: `domain.activity_class.planned_spend_filter()`, which is this plus the
-#: class policy (the spending classes, or a savings-tagged envelope). The two
-#: halves travel as one predicate because spelling the class half at the call
-#: site is what let the three readers disagree.
+#: A row a plan report reads: the SHAPE half of what the plan-vs-actual family
+#: counts against what `BUDGETED_ENVELOPE` counts as "assigned". **No report
+#: reads this directly** — they read `domain.activity_class.PLAN_LEDGER`, which
+#: selects the class beside it, and `domain.plan.plan_effect`, which says what
+#: each row does to the plan: spent, moved in, or nothing. Shape and policy
+#: travel together because spelling either half at a call site is what let the
+#: readers disagree.
 #:
-#: This predicate existed twice — byte-identical, in `cumulative_variance` and
-#: `budget_vs_actual` — and both copies were missing the same three terms, so
-#: each subtracted a bigger spending universe from a smaller planning one:
+#: Either sign. It was `SPENDING_ROW` narrowed (`amount < 0`), so it saw only
+#: money leaving an envelope, and everything filed INTO one vanished: a refund
+#: never reduced "spent", and a transfer from savings into a Medical envelope
+#: that paid a 2,000 bill read as a 2,000 overrun on a plan the household had
+#: funded — the budget page, which nets the envelope's activity, showed the
+#: same envelope on plan. Half of a Cumulative Variance line was that.
+#:
+#: The terms each earned their place when this existed twice, byte-identical,
+#: in `cumulative_variance` and `budget_vs_actual`:
 #:
 #: - `ON_BUDGET_ACCOUNT`: categorized rows on tracking accounts counted as
 #:   spent; nothing is ever assigned against a tracking account.
-#: - The system-group rule (`SPENDING_ROW`'s): rows filed into system-group
-#:   categories counted as spent while `BUDGETED_ENVELOPE` excludes them from
-#:   assigned. Deleted categories stay IN, exactly as `SPENT_ENVELOPE`
-#:   documents — the money moved, and deleting the envelope afterwards does
-#:   not unspend it.
-#: - The activity-class filter, which cannot live in this module at all — it
-#:   reads `ACTIVITY_CLASS`, which is built from these constants. Without it,
-#:   a categorized brokerage transfer (SAVINGS) or a mortgage principal
-#:   payment (DEBT_PRINCIPAL) counted as spending with no matching
-#:   assignment, and cumulative variance compounded the gap every month. It
-#:   lives one import up, in `planned_spend_filter`, together with the joins
-#:   note: a query with the class filter and no joins is a cartesian product.
+#: - `PLANNED_ENVELOPE`: rows filed into system-group categories counted as
+#:   spent while `BUDGETED_ENVELOPE` excludes them from assigned, and a card's
+#:   envelope, which plans paydown and never spending. Deleted categories stay
+#:   IN, exactly as `SPENT_ENVELOPE` documents — the money moved, and deleting
+#:   the envelope afterwards does not unspend it.
+#: - The activity class, which cannot live in this module at all — it reads
+#:   `ACTIVITY_CLASS`, which is built from these constants.
 #:
-#: So it is `SPENDING_ROW` narrowed to what a plan can be held to: on-budget,
-#: and filed somewhere (the foreign key is `ON DELETE SET NULL`, so a
-#: category id names a Category row, deleted or not).
-#:
-#: One divergence is deliberate and stays: `amount < 0` means a refund posted
-#: to a spending category never reduces "spent". Pinned by test rather than
-#: silently changed — flipping it would move every historical variance figure.
-PLANNED_SPEND_ROW = and_(SPENDING_ROW, ON_BUDGET_ACCOUNT, Transaction.category_id.isnot(None))
+#: Filed somewhere: the foreign key is `ON DELETE SET NULL`, so a category id
+#: names a Category row, deleted or not.
+PLAN_LEDGER_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    LEAF,
+    CASH_FLOW_ROW,
+    ON_BUDGET_ACCOUNT,
+    Transaction.category_id.isnot(None),
+    row_category(PLANNED_ENVELOPE),
+)
 
 
 # ─── Free-text search ────────────────────────────────────────────────────────

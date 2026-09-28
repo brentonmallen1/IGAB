@@ -34,6 +34,28 @@ export function coverageTrend(series: readonly CoveragePoint[]): CoverageTrend |
   return { from, to, delta: Number((to - from).toFixed(1)), months: last - first + 1 }
 }
 
+/** How long a trend spans, in words: "in a year" for twelve months, "in 6
+ *  months" otherwise. */
+function spanPhrase(months: number): string {
+  if (months === 12) return 'in a year'
+  return `in ${months} ${months === 1 ? 'month' : 'months'}`
+}
+
+/**
+ * The trend as the Covered card says it: "up 0.3 months in a year", "down
+ * 1.2 months in 6 months", "unchanged in a year".
+ *
+ * It read "+0.3 months over 12 months" — a signed figure of months beside a
+ * span of months, which took a second look to tell the change from the span.
+ */
+export function coverageTrendPhrase(trend: CoverageTrend): string {
+  const span = spanPhrase(trend.months)
+  if (trend.delta === 0) return `unchanged ${span}`
+  const size = Math.abs(trend.delta)
+  const unit = size === 1 ? 'month' : 'months'
+  return `${trend.delta > 0 ? 'up' : 'down'} ${size} ${unit} ${span}`
+}
+
 /**
  * The month the self-reported part of the fund is counted from — the first
  * point the server marked `external_counted` — or null when none is.
@@ -84,7 +106,7 @@ export function monthsToTarget(series: readonly CoveragePoint[]): number | null 
   return Math.ceil(gap / pace)
 }
 
-/** The first chart's Y axis is months of runway, not money: its tooltip
+/** The first chart's Y axis is months covered, not money: its tooltip
  * reads "3.4 months". The shared tooltip's old default rendered "$3.40". */
 export function monthsCovered(value: number): string {
   return `${value.toFixed(1)} months`

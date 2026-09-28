@@ -10,18 +10,14 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from igab.db.models import Transaction
 from igab.domain.activity_class import (
-    ACTIVITY_CLASS,
-    ACTIVITY_REASON,
     ActivityClass,
-    apply_class_joins,
 )
 from igab.services.report_service import ReportService
 
+from .class_agreement import classes_of
 from .factories import (
     create_account,
     create_budget,
@@ -37,17 +33,7 @@ MONTH_START = TODAY.replace(day=1)
 
 
 async def _classify(db_session, txn):
-    row = (
-        await db_session.execute(
-            # Transaction.id is not wanted; the class joins chain from it.
-            apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
-                    Transaction.id == txn.id
-                )
-            )
-        )
-    ).first()
-    return row[1], row[2]
+    return await classes_of(db_session, txn)
 
 
 async def _budget(db_session):
@@ -197,7 +183,8 @@ class TestUncategorizedTransfersOutOfTheBudget:
         await create_transaction(db_session, budget, checking, "3000.00", TODAY, category=rta)
         await self._linked_transfer(db_session, budget, checking, brokerage, "-1000.00")
 
-        summary = (await ReportService(db_session).savings_rate(budget.id, months=1))["summary"]
+        # TODAY's month is running: its row, not the complete-month summary.
+        summary = (await ReportService(db_session).savings_rate(budget.id, months=1))["months"][-1]
 
         assert summary["income"] == Decimal("3000.00")
         assert summary["savings"] == Decimal("1000.00")
@@ -227,7 +214,7 @@ class TestNegativeInflowIsNegativeIncome:
 
     async def test_it_nets_against_income_rather_than_adding_spending(self, db_session):
         budget, _ = await self._reversal_world(db_session)
-        summary = (await ReportService(db_session).savings_rate(budget.id, months=1))["summary"]
+        summary = (await ReportService(db_session).savings_rate(budget.id, months=1))["months"][-1]
         assert summary["income"] == Decimal("1000.00")
         assert summary["spending"] == Decimal("0")
 

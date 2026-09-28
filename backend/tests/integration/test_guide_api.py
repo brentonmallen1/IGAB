@@ -569,7 +569,7 @@ class TestCheckup:
         assert Decimal(metric["value"]) == sum(1 for s in statuses if s != "underfunded") == 1
         assert Decimal(metric["target"]) == len(statuses) == 2
 
-    async def test_chronic_count_matches_the_plan_vs_reality_report(self, db_session, api_client):
+    async def test_chronic_count_matches_the_plan_vs_spent_report(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         account = await create_account(db_session, budget, account_type="checking")
         group = await create_category_group(db_session, budget, "Fun")
@@ -580,7 +580,7 @@ class TestCheckup:
             await create_budget_assignment(db_session, budget, dining, month, "100.00")
             await create_transaction(db_session, budget, account, "-150.00", month, category=dining)
 
-        report = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality")).json()
+        report = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-spent")).json()
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
 
         metric = next(m for m in body["metrics"] if m["key"] == "chronic_overspend")
@@ -717,10 +717,17 @@ class TestScenarios:
         account = await create_account(db_session, budget, account_type="checking")
         bills = await create_category_group(db_session, budget, "Bills")
         rent = await create_category(db_session, budget, bills, "Rent")
-        # 3,000 of spending over the last 90 days: essentials read 1,000 a month.
-        await create_transaction(
-            db_session, budget, account, "-3000.00", TODAY - timedelta(days=10), category=rent
-        )
+        # 1,000 of rent in each of the last three complete months: essentials
+        # read 1,000 a month whatever day it is.
+        for back in (1, 2, 3):
+            await create_transaction(
+                db_session,
+                budget,
+                account,
+                "-1000.00",
+                add_months(THIS_MONTH, -back).replace(day=10),
+                category=rent,
+            )
         savings = await create_category_group(db_session, budget, "Savings")
         ef = await create_category(db_session, budget, savings, "Emergency Fund")
         await tag_with_system_tags(db_session, ef, "emergency_fund")

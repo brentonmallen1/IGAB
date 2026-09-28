@@ -33,10 +33,6 @@ from sqlalchemy import select
 
 from igab.db.models import Transaction
 from igab.domain.activity_class import (
-    ACTIVITY_CLASS,
-    ACTIVITY_CLASS_SUBQUERY,
-    ACTIVITY_REASON,
-    ACTIVITY_REASON_SUBQUERY,
     INCOME_ROW,
     ActivityClass,
     ActivityReason,
@@ -55,6 +51,7 @@ from igab.services.money_moves_service import MoneyMovesService
 from igab.services.report_basics import class_excluded_note, discretionary, means_months
 from igab.services.report_service import ReportService
 
+from .class_agreement import classes_of
 from .factories import (
     create_account,
     create_budget,
@@ -77,31 +74,6 @@ OPENING = (ActivityClass.OPENING_BALANCE.value, ActivityReason.STARTING_BALANCE.
 def _today() -> date:
     # Read when a test runs, from the clock the services read.
     return date.today()
-
-
-async def _classes(db_session, txn: Transaction) -> tuple[str, str]:
-    """(class, reason) for one row, from BOTH implementations — which must
-    agree, or this raises before any caller asserts on the answer."""
-    joined = (
-        await db_session.execute(
-            apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
-                    Transaction.id == txn.id
-                )
-            )
-        )
-    ).one()
-    oracle = (
-        await db_session.execute(
-            select(Transaction.id, ACTIVITY_CLASS_SUBQUERY, ACTIVITY_REASON_SUBQUERY).where(
-                Transaction.id == txn.id
-            )
-        )
-    ).one()
-    assert (joined[1], joined[2]) == (oracle[1], oracle[2]), (
-        f"joined says {joined[1:]}, the subquery oracle says {oracle[1:]}"
-    )
-    return joined[1], joined[2]
 
 
 class World:
@@ -173,7 +145,7 @@ class TestTheRule:
             payee=w.starting,
             category=w.ready if filed else None,
         )
-        assert await _classes(db_session, opening) == OPENING
+        assert await classes_of(db_session, opening) == OPENING
 
     @pytest.mark.parametrize(("account", "amount", "filed", "otherwise"), SHAPES)
     async def test_it_is_the_name_that_decides(self, db_session, account, amount, filed, otherwise):
@@ -190,7 +162,7 @@ class TestTheRule:
             payee=other,
             category=w.ready if filed else None,
         )
-        assert (await _classes(db_session, row))[0] == otherwise.value
+        assert (await classes_of(db_session, row))[0] == otherwise.value
 
     async def test_the_partition_stays_total(self, db_session):
         w = await _world(db_session)
@@ -231,7 +203,7 @@ class TestWhatItMustNotReach:
         row = await create_transaction(
             db_session, w.budget, getattr(w, account), amount, _today(), payee=payee
         )
-        assert (await _classes(db_session, row))[0] == expected.value
+        assert (await classes_of(db_session, row))[0] == expected.value
 
     @pytest.mark.parametrize(
         "name",
@@ -243,7 +215,7 @@ class TestWhatItMustNotReach:
         row = await create_transaction(
             db_session, w.budget, w.checking, "-12.00", _today(), payee=cafe
         )
-        assert await _classes(db_session, row) == (
+        assert await classes_of(db_session, row) == (
             ActivityClass.SPENDING.value,
             ActivityReason.DEFAULT_SPENDING.value,
         )
@@ -255,14 +227,14 @@ class TestWhatItMustNotReach:
         row = await create_transaction(
             db_session, w.budget, w.checking, "-12.00", _today(), memo="Starting balance"
         )
-        assert (await _classes(db_session, row))[0] == ActivityClass.SPENDING.value
+        assert (await classes_of(db_session, row))[0] == ActivityClass.SPENDING.value
 
     async def test_a_payee_less_row_is_not_an_opening(self, db_session):
         """The joined reading compares a NULL name: it must read "no", not
         UNKNOWN, or the row would drop through a CASE arm by luck."""
         w = await _world(db_session)
         row = await create_transaction(db_session, w.budget, w.checking, "80.00", _today())
-        assert (await _classes(db_session, row))[0] == ActivityClass.INCOME.value
+        assert (await classes_of(db_session, row))[0] == ActivityClass.INCOME.value
 
     async def test_a_transfer_is_never_an_opening(self, db_session):
         """An opening someone later linked to the move that funded it IS that
@@ -275,7 +247,7 @@ class TestWhatItMustNotReach:
         in_leg.payee_id = w.starting.id
         await db_session.flush()
         for leg in (in_leg, out_leg):
-            assert await _classes(db_session, leg) == (
+            assert await classes_of(db_session, leg) == (
                 ActivityClass.TRANSFER_INTERNAL.value,
                 ActivityReason.INTERNAL_TRANSFER.value,
             )
@@ -290,8 +262,8 @@ class TestWhatItMustNotReach:
         )
         in_leg.payee_id = w.starting.id
         await db_session.flush()
-        assert (await _classes(db_session, out_leg))[0] == ActivityClass.SAVINGS.value
-        assert (await _classes(db_session, in_leg))[0] == ActivityClass.TRANSFER_INTERNAL.value
+        assert (await classes_of(db_session, out_leg))[0] == ActivityClass.SAVINGS.value
+        assert (await classes_of(db_session, in_leg))[0] == ActivityClass.TRANSFER_INTERNAL.value
 
 
 class TestWhereItSits:
@@ -325,7 +297,7 @@ class TestWhereItSits:
         row = await create_transaction(
             db_session, w.budget, account, amount, _today(), payee=w.starting, category=category
         )
-        assert await _classes(db_session, row) == OPENING
+        assert await classes_of(db_session, row) == OPENING
 
     async def test_the_guide_asks_the_same_ladder(self, db_session):
         """The explorer's FROM-less CASE over literal facts: a starting
@@ -337,6 +309,7 @@ class TestWhereItSits:
             own_is_liability=True,
             transfer_leg=False,
             starting_balance=True,
+            before_budget_start=False,
             tracked_counterpart=False,
             counterpart_is_liability=False,
             counterpart_counts_as_savings=True,
@@ -429,19 +402,22 @@ class TestTheReportsThisMonth:
     async def test_the_overview_and_burn_rate(self, db_session):
         budget, _ = await _household(db_session, _today())
         today = _today()
+        # The burn ends yesterday (`burn_as_of`), so it is read tomorrow.
+        tomorrow = today + timedelta(days=1)
         reports = ReportService(db_session)
-        cards = await reports.dashboard_metrics(budget.id, today.replace(day=1), today, today)
+        cards = await reports.dashboard_metrics(budget.id, today.replace(day=1), today, tomorrow)
         assert cards["income_this_month"] == INCOME
         assert cards["expenses_this_month"] == SPENDING
         assert cards["burn_rate_30"] == SPENDING
-        burn = await reports.burn_rate(budget.id, months=1, today=today)
+        burn = await reports.burn_rate(budget.id, months=1, today=tomorrow)
         assert burn[-1]["rolling_30"] == SPENDING
 
     async def test_the_savings_rate_divides_by_real_income(self, db_session):
         budget, _ = await _household(db_session, _today())
-        rate = await ReportService(db_session).savings_rate(budget.id, months=1)
-        assert rate["summary"]["income"] == INCOME
-        assert rate["summary"]["spending"] == SPENDING
+        # Today's month is running: its row, not the complete-month summary.
+        rate = (await ReportService(db_session).savings_rate(budget.id, months=1))["months"][-1]
+        assert rate["income"] == INCOME
+        assert rate["spending"] == SPENDING
 
     async def test_the_sankey_draws_neither_side_of_an_opening(self, db_session):
         budget, _ = await _household(db_session, _today())
@@ -459,9 +435,10 @@ class TestTheReportsThisMonth:
     async def test_starting_balance_is_not_a_top_payee(self, db_session):
         budget, _ = await _household(db_session, _today())
         today = _today()
-        payees, total, count, _ = await ReportService(db_session).payee_analysis(
+        report = await ReportService(db_session).payee_analysis(
             budget.id, today.replace(day=1), today
         )
+        payees, total, count = report["payees"], report["total"], report["payee_count"]
         assert {p["payee_name"] for p in payees} == {"Corner Market", "Thai Garden"}
         assert (total, count) == (SPENDING, 2)
 
@@ -477,6 +454,23 @@ class TestTheReportsThisMonth:
         ).all()
         assert len(rows) == 1
         assert openings[0].id not in {r.id for r in rows}
+
+    async def test_the_timeline_draws_no_opening(self, db_session):
+        """The timeline draws every class, so it has to leave openings out by
+        name: a card's opening debt was its "Largest Transaction" card, and a
+        checking account's opening deposit sat beside the paycheck."""
+        budget, openings = await _household(db_session, _today())
+        today = _today()
+        rows = await ReportService(db_session).large_transactions(
+            budget.id, today.replace(day=1), today
+        )
+        assert sorted(D(str(r["amount"])) for r in rows) == [
+            D("-400.00"),
+            D("-150.00"),
+            D("3000.00"),
+        ]
+        assert {r["id"] for r in rows}.isdisjoint({str(o.id) for o in openings})
+        assert all(r["payee_name"] != STARTING_BALANCE_PAYEE for r in rows)
 
 
 def _last_month() -> date:
@@ -548,7 +542,7 @@ class TestThePlanReportsLeaveAFiledOpeningOut:
         an "Old Overdraft" envelope, assigning 1,200 to it. The envelope's
         Activity carries the row, as it carries any row filed there. The plan
         reports ask what was SPENT, and an opening is not spending, so they
-        read 0 — the gap is the opening, and nothing else. `planned_spend_filter`
+        read 0 — the gap is the opening, and nothing else. `PLANNED_SPEND_TAG_KEYS`
         says why that is bounded; this fails if the gap ever widens.
         """
         services = make_services(db_session)
@@ -575,11 +569,19 @@ class TestThePlanReportsLeaveAFiledOpeningOut:
 
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, first, today)
-        variance = await reports.cumulative_variance(budget.id, months=1)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
         assert bva["total_spent"] == D("80.00")
-        assert variance[-1]["actual_spent"] == D("80.00")
-        assert pvr["total_spent"] == D("80.00")
+        assert variance[-1]["spent"] == D("80.00")
+        # This month is running, so its cells carry it; the totals are the
+        # complete months'.
+        running = [
+            cell["spent"]
+            for c in pvr["categories"]
+            for cell in c["monthly"]
+            if cell["month"] == pvr["running_month"]
+        ]
+        assert sum(running, D("0")) == D("80.00")
 
 
 # ─── The budget never reads a class ──────────────────────────────────────────
@@ -646,14 +648,14 @@ class TestTheBudgetNeverReadsTheClass:
             ]
 
         before = await budget_page()
-        assert [await _classes(db_session, o) for o in openings] == [OPENING, OPENING]
+        assert [await classes_of(db_session, o) for o in openings] == [OPENING, OPENING]
 
         other = await create_payee(db_session, budget, "Opening Deposit")
         for opening in openings:
             opening.payee_id = other.id
         await db_session.flush()
 
-        assert [(await _classes(db_session, o))[0] for o in openings] == [
+        assert [(await classes_of(db_session, o))[0] for o in openings] == [
             ActivityClass.INCOME.value,
             ActivityClass.SPENDING.value,
         ]

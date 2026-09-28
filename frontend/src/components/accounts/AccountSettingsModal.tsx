@@ -29,6 +29,7 @@ import { AccountNumbersSection } from './AccountNumbersSection'
 import { CardEndingsSection } from './CardEndingsSection'
 import { confirmAsync } from '../../stores/confirmStore'
 import { closeAccountMessage } from './closeAccountMessage'
+import { BUDGET_START_NOTE } from './budgetStartNote'
 
 interface Props {
   accountId: string
@@ -295,9 +296,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
             />
             <p className="dialog-form__hint">
               {budgetStart
-                ? 'Anything before this is opening balance — kept in the register, left ' +
-                  'uncategorized, and not counted as needing a category. On a card it shows ' +
-                  'as debt not covered and is paid down by assigning to the card.'
+                ? BUDGET_START_NOTE
                 : 'Leave empty to treat this account’s whole history as part of your budget. ' +
                   'Set a date when an account arrives with history from before you tracked it.'}
             </p>
