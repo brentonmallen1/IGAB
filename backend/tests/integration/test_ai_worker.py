@@ -11,11 +11,18 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from PIL import Image
+from sqlalchemy import func, select
 
 import igab.config
 from igab.ai.context import AICallContext, AICallResult
 from igab.ai.reply_json import ReplyNotJSON
-from igab.db.models import AIJob, Transaction, TransactionAttachment
+from igab.db.models import (
+    AccountCardEnding,
+    AIJob,
+    Category,
+    Transaction,
+    TransactionAttachment,
+)
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.services.ai_service import AIService
 from igab.tasks.ai_worker import (
@@ -617,14 +624,18 @@ class TestStubRefillOnRetry:
         assert txn.amount == Decimal("-42.50")
 
     @pytest.mark.parametrize("edit", ["approved", "cleared"])
-    async def test_retry_refuses_approved_or_cleared(
+    async def test_retry_on_approved_or_cleared_refreshes_payee_category_keeps_amount_date(
         self, db_session, attachments_dir, mock_extraction, edit
     ):
+        # A confirmed row belongs to the user's money, not to the pipeline:
+        # the read files it and names it, and the amount and date stand. It
+        # used to refuse outright, leaving the receipt unreadable forever.
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=3)
         await record_job_failure(db_session, job, httpx.ConnectError("refused"))
 
         txn = await db_session.get(Transaction, job.transaction_id)
+        stub_date = txn.date
         if edit == "approved":
             txn.approved = True
         else:
@@ -633,8 +644,19 @@ class TestStubRefillOnRetry:
         job.attempts = 1
         await db_session.flush()
 
-        with pytest.raises(NonRetryableJobError, match="approved or cleared"):
-            await process_one_job(db_session, job)
+        await process_one_job(db_session, job)
+
+        assert job.status == "done"
+        txn = await db_session.get(Transaction, job.transaction_id)
+        await db_session.refresh(txn)
+        assert (txn.amount, txn.date) == (Decimal("0.00"), stub_date)
+        assert txn.payee_id is not None
+        assert txn.category_id is not None
+        assert txn.memo != FAILURE_STUB_MEMO
+        assert (txn.approved, txn.cleared) == (
+            (True, "uncleared") if edit == "approved" else (False, "cleared")
+        )
+        await assert_financial_invariants(db_session, budget.id)
 
 
 class TestReprocess:
@@ -709,6 +731,133 @@ class TestReprocess:
             )
         ).fetchall()
         assert len(attachments) == 1
+
+    async def _reprocess_reading(self, db_session, mock_extraction, job: AIJob, **read):
+        mock_extraction.return_value = {**GOOD_EXTRACTION, **read}
+        self._reset_like_reprocess_endpoint(job)
+        await db_session.flush()
+        await process_one_job(db_session, job)
+        assert job.status == "done", job.error
+
+    @pytest.mark.parametrize(
+        "unread", [{"payee": None}, {"category": "Pet Supplies"}], ids=["payee", "category"]
+    )
+    async def test_an_unresolved_payee_or_category_keeps_the_rows_own(
+        self, db_session, attachments_dir, mock_extraction, unread
+    ):
+        # An explicit None clears a field, and the worker used to send one for
+        # whatever the new read could not resolve — a second, worse read
+        # blanked what the first had filed.
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await self._process_to_done(db_session, attachments_dir, budget, account)
+        txn = await db_session.get(Transaction, job.transaction_id)
+        payee_id, category_id = txn.payee_id, txn.category_id
+        assert payee_id is not None and category_id is not None
+
+        await self._reprocess_reading(db_session, mock_extraction, job, total=45.00, **unread)
+
+        await db_session.refresh(txn)
+        assert (txn.payee_id, txn.category_id) == (payee_id, category_id)
+        assert txn.amount == Decimal("-45.00")  # still the scan's own row: it re-reads
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_a_bank_matched_row_keeps_its_date_and_amount_and_gains_the_category(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        # The receipt was put on the bank's own row (card ending on file, one
+        # row at the amount). A reprocess used to overwrite that row's date
+        # and amount with whatever the new read said.
+        budget, checking = await _setup(db_session, attachments_dir)
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        db_session.add(AccountCardEnding(budget_id=budget.id, account_id=card.id, last4="4417"))
+        bank_row = await create_transaction(
+            db_session, budget, card, "-42.50", date(2026, 8, 1), approved=False
+        )
+        mock_extraction.return_value = {
+            **GOOD_EXTRACTION,
+            "category": "Pet Supplies",
+            "card_last4": "4417",
+        }
+        job = await _make_job(db_session, attachments_dir, budget, checking)
+        job.payload = {k: v for k, v in job.payload.items() if k != "account_id"}
+        await db_session.flush()
+        await process_one_job(db_session, job)
+        assert job.transaction_id == bank_row.id
+        await db_session.refresh(bank_row)
+        assert bank_row.category_id is None  # the first read named nothing here
+        rows_before = await _row_count(db_session, budget)
+
+        await self._reprocess_reading(
+            db_session, mock_extraction, job, total=44.00, date="2026-08-03", card_last4="4417"
+        )
+
+        assert job.transaction_id == bank_row.id
+        await db_session.refresh(bank_row)
+        groceries = await _category_named(db_session, budget, "Groceries")
+        assert (bank_row.amount, bank_row.date) == (Decimal("-42.50"), date(2026, 8, 1))
+        assert bank_row.category_id == groceries.id
+        assert (bank_row.approved, bank_row.cleared) == (False, "cleared")
+        assert await _row_count(db_session, budget) == rows_before
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_a_split_row_keeps_its_lines(self, db_session, attachments_dir, mock_extraction):
+        # The update path refuses a category or an amount on a split parent,
+        # so a reprocess that sent them failed the whole refresh.
+        from igab.services.transaction_service import SplitSpec, build_transaction_service
+
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await self._process_to_done(db_session, attachments_dir, budget, account)
+        groceries = await _category_named(db_session, budget, "Groceries")
+        household = await _category_named(db_session, budget, "Household")
+        svc = build_transaction_service(db_session)
+        await svc.convert_to_split(
+            budget.id,
+            job.transaction_id,
+            [
+                SplitSpec(amount=Decimal("-4.50"), category_id=groceries.id),
+                SplitSpec(amount=Decimal("-38.00"), category_id=household.id),
+            ],
+        )
+
+        await self._reprocess_reading(
+            db_session, mock_extraction, job, total=50.00, memo="Milk and towels"
+        )
+
+        parent = await db_session.get(Transaction, job.transaction_id)
+        await db_session.refresh(parent)
+        assert (parent.is_split, parent.category_id) == (True, None)
+        assert parent.amount == Decimal("-42.50")
+        assert parent.memo == "Milk and towels"
+        lines = (
+            (
+                await db_session.execute(
+                    select(Transaction.amount, Transaction.category_id)
+                    .where(
+                        Transaction.parent_transaction_id == parent.id,
+                        Transaction.is_deleted == False,  # noqa: E712
+                    )
+                    .order_by(Transaction.amount)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        assert lines == [(Decimal("-38.00"), household.id), (Decimal("-4.50"), groceries.id)]
+        await assert_financial_invariants(db_session, budget.id)
+
+
+async def _category_named(db_session, budget, name: str) -> Category:
+    return (
+        await db_session.execute(
+            select(Category).where(Category.budget_id == budget.id, Category.name == name)
+        )
+    ).scalar_one()
+
+
+async def _row_count(db_session, budget) -> int:
+    return await db_session.scalar(
+        select(func.count()).select_from(Transaction).where(Transaction.budget_id == budget.id)
+    )
 
 
 class TestRequestLogging:

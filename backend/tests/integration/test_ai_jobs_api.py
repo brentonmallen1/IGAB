@@ -4,11 +4,12 @@ ai_job_id link on transaction create, and the has_attachment filter."""
 import hashlib
 import uuid
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 
 import pytest
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 import igab.config
 from igab.db.models import AIJob, ChangeLog
@@ -849,6 +850,96 @@ class TestJobListingAndLifecycle:
         assert resp.status_code == 204
         assert not staged.exists()
         assert await db_session.get(AIJob, uuid.UUID(body["id"])) is None
+
+
+class TestReprocessRefreshesTheRow:
+    """Scan, approve and refile, then Reprocess — through the real endpoints.
+
+    The same row is refreshed: approval never refused it, the approved amount
+    and date stand, a payee the new read names replaces the old one, and the
+    category the new read cannot resolve is the one the user filed."""
+
+    READ = {
+        "payee": "Whole Foods",
+        "total": 42.50,
+        "date": "2026-08-01",
+        "category": "Groceries",
+        "confidence": 0.9,
+        "memo": None,
+        "suggested_split": [],
+    }
+
+    async def _run_worker(self, db_session, job_id: str) -> AIJob:
+        from igab.tasks.ai_worker import process_one_job
+
+        # What the worker's claim does; `claim_next` compares available_at
+        # with the test transaction's own start time, so it cannot see a job
+        # queued inside that transaction.
+        job = await db_session.get(AIJob, uuid.UUID(job_id))
+        job.status = "processing"
+        job.attempts = 1
+        await db_session.flush()
+        await process_one_job(db_session, job)
+        assert job.status == "done", job.error
+        return job
+
+    async def test_an_approved_row_is_refreshed_in_place(
+        self, api_client, db_session, attachments_dir, monkeypatch
+    ):
+        from unittest.mock import AsyncMock
+
+        from igab.db.models import Payee, Transaction
+
+        monkeypatch.setattr(
+            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
+        )
+        monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
+        extract = AsyncMock(return_value=self.READ)
+        monkeypatch.setattr(AIService, "extract_receipt", extract)
+
+        budget, account = await _setup(api_client, db_session)
+        group = await create_category_group(db_session, budget, "Everyday")
+        await create_category(db_session, budget, group, "Groceries")
+        household = await create_category(db_session, budget, group, "Household")
+        job_id = (await _submit(api_client, budget, account)).json()["id"]
+        job = await self._run_worker(db_session, job_id)
+        txn_id = job.transaction_id
+
+        refiled = await api_client.patch(
+            f"/api/v1/transactions/{txn_id}",
+            params={"budget_id": str(budget.id)},
+            json={"approved": True, "category_id": str(household.id)},
+        )
+        assert refiled.status_code == 200, refiled.text
+
+        extract.return_value = {
+            **self.READ,
+            "payee": "Corner Market",
+            "total": 45.00,
+            "date": "2026-08-04",
+            "category": "Pet Supplies",
+        }
+        resp = await api_client.post(f"/api/v1/{budget.id}/ai/jobs/{job_id}/reprocess")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "queued"
+        assert resp.json()["transaction_id"] == str(txn_id)
+
+        job = await self._run_worker(db_session, job_id)
+
+        assert job.transaction_id == txn_id
+        txn = await db_session.get(Transaction, txn_id)
+        await db_session.refresh(txn)
+        assert (txn.amount, txn.date) == (Decimal("-42.50"), date(2026, 8, 1))
+        assert txn.category_id == household.id
+        assert txn.approved is True
+        payee = await db_session.get(Payee, txn.payee_id)
+        assert payee.name == "Corner Market"
+        rows = await db_session.scalar(
+            select(func.count())
+            .select_from(Transaction)
+            .where(Transaction.budget_id == budget.id, Transaction.is_deleted == False)  # noqa: E712
+        )
+        assert rows == 1
 
 
 class TestAIJobLinkOnCreate:

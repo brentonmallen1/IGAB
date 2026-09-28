@@ -17,7 +17,7 @@ from PIL import Image
 from sqlalchemy import func, select
 
 import igab.config
-from igab.db.models import AccountCardEnding, AIJob, Transaction, TransactionAttachment
+from igab.db.models import AccountCardEnding, AIJob, Payee, Transaction, TransactionAttachment
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.services.ai_service import AIService
 from igab.tasks.ai_worker import NonRetryableJobError, process_one_job, record_job_failure
@@ -155,8 +155,12 @@ class TestTheWorker:
         assert job.transaction_id == bank_row.id
         assert await _txn_count(db_session, budget) == before
         await db_session.refresh(bank_row)
-        # Only what the row was missing comes from the receipt.
+        # Only what the row was missing comes from the receipt — a payee too,
+        # which placing used to leave off while filling the rest.
         assert (bank_row.category_id, bank_row.memo) == (garden.id, "Trowel and gloves")
+        assert (bank_row.amount, bank_row.date) == (Decimal("-24.00"), date(2026, 9, 21))
+        payee = await db_session.get(Payee, bank_row.payee_id)
+        assert payee is not None and payee.name == "Hardware Store"
         attachment = await db_session.get(TransactionAttachment, job.attachment_id)
         assert attachment.transaction_id == bank_row.id
 

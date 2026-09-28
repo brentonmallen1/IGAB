@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
@@ -6,6 +7,10 @@ import { useAIStatus } from './ai'
 import { ROOT } from './queryKeys'
 import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
+import { isJobInFlight, showJobQueued, useInvalidateWhenJobsSettle } from './aiJobSettled'
+
+/** A stable empty list for a watcher with nothing to watch yet. */
+const NO_JOBS: readonly AIJob[] = []
 
 /** `unplaced`: a receipt scanned with no account, waiting for one — no
  *  transaction exists yet, so nothing has moved (`receipt_placement`). */
@@ -145,7 +150,7 @@ export function useAIJobs(
     offset?: number
   } = {}
 ) {
-  return useQuery({
+  const query = useQuery({
     queryKey: [ROOT.aiJobs, budgetId, opts],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -167,19 +172,19 @@ export function useAIJobs(
     // the pre-completion snapshot forever. Self-derived, the interval turns
     // off only after the fetch that rendered the terminal state.
     refetchInterval: (query) =>
-      query.state.data?.jobs.some((j) => j.status === 'queued' || j.status === 'processing')
-        ? 4_000
-        : false,
+      query.state.data?.jobs.some((j) => isJobInFlight(j.status)) ? 4_000 : false,
     // Catch up when the PWA is foregrounded — "walk away, come back" is the
     // designed receipt flow (the app-wide default is false).
     refetchOnWindowFocus: true,
   })
+  useInvalidateWhenJobsSettle(query.data?.jobs ?? NO_JOBS)
+  return query
 }
 
 /** The AI job that created a given transaction — powers the review modal
  * when an AI transaction is opened from the register. */
 export function useAIJobForTransaction(budgetId: string | null, transactionId: string | null) {
-  return useQuery({
+  const query = useQuery({
     queryKey: [ROOT.aiJobForTxn, budgetId, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<AIJobListResponse>(`/${budgetId}/ai/jobs`, {
@@ -189,7 +194,21 @@ export function useAIJobForTransaction(budgetId: string | null, transactionId: s
     },
     enabled: !!budgetId && !!transactionId,
     staleTime: 30_000,
+    // "Try again" in the editor requeues this job: follow it until it settles,
+    // so the banner and the row it refreshed both catch up.
+    refetchInterval: (query) => {
+      const s = query.state.data?.status
+      return s && isJobInFlight(s) ? 2_000 : false
+    },
   })
+  useWatchedJob(query.data)
+  return query
+}
+
+/** One job some query is showing, watched for the moment it settles. */
+function useWatchedJob(job: AIJob | null | undefined): void {
+  const jobs = useMemo(() => (job ? [job] : NO_JOBS), [job])
+  useInvalidateWhenJobsSettle(jobs)
 }
 
 export interface AIJobCounts {
@@ -241,7 +260,8 @@ export function useSubmitReceipt(budgetId: string) {
       const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData)
       return data
     },
-    onSuccess: () => {
+    onSuccess: (job) => {
+      showJobQueued(qc, budgetId, job)
       qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
       qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
@@ -276,7 +296,8 @@ export function useRetryAIJob(budgetId: string) {
   return useMutation({
     mutationFn: (jobId: string) =>
       apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/retry`).then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: (job) => {
+      showJobQueued(qc, budgetId, job)
       qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
       qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
@@ -288,7 +309,8 @@ export function useReprocessAIJob(budgetId: string) {
   return useMutation({
     mutationFn: (jobId: string) =>
       apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/reprocess`).then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: (job) => {
+      showJobQueued(qc, budgetId, job)
       qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
       qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
@@ -327,7 +349,7 @@ export function useParseNLTransaction(budgetId: string) {
 
 /** Poll a single job while it's in flight — powers the in-modal receipt watch. */
 export function useAIJob(budgetId: string | null, jobId: string | null) {
-  return useQuery({
+  const query = useQuery({
     queryKey: [ROOT.aiJob, budgetId, jobId],
     queryFn: async () => {
       const { data } = await apiClient.get<AIJob>(`/${budgetId}/ai/jobs/${jobId}`)
@@ -336,7 +358,9 @@ export function useAIJob(budgetId: string | null, jobId: string | null) {
     enabled: !!budgetId && !!jobId,
     refetchInterval: (query) => {
       const s = query.state.data?.status
-      return s === 'done' || s === 'error' ? false : 2_000
+      return s && !isJobInFlight(s) ? false : 2_000
     },
   })
+  useWatchedJob(query.data)
+  return query
 }

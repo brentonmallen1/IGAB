@@ -28,13 +28,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, AIJob, Transaction
 from igab.domain.matching import DATE_WINDOW_DAYS
+from igab.domain.receipt_fields import (
+    FAILURE_STUB_MEMO,
+    ExistingRow,
+    ReceiptRead,
+    receipt_changes,
+    writable_fields,
+)
 from igab.repositories.card_ending_repo import card_ending_owner
 from igab.repositories.txn_filters import RECEIPT_CANDIDATE_ROW
 
 if TYPE_CHECKING:
     from igab.services.ai_draft_service import AIDraft
-
-FAILURE_STUB_MEMO = "Receipt scan failed — enter details from the image"
 
 #: A receipt scanned against no account, waiting for one. Not 'done' — the
 #: retention pass deletes done jobs and their staged image with them.
@@ -124,19 +129,54 @@ async def create_in(
 
 
 async def attach_to(svcs: dict, job: AIJob, txn: Transaction, draft: AIDraft | None) -> None:
-    """Put the receipt on an existing row: the bank's payee and amount stand,
-    and only what the row is missing — a category, a memo — comes from the
-    receipt. Recorded through TransactionService, so ⌘Z takes it back."""
-    from igab.services.transaction_service import UNSET, TransactionUpdate
-
+    """Put the receipt on an existing row: the bank's date and amount stand,
+    and only what the row is missing — a payee, a category, a memo — comes
+    from the receipt (`domain.receipt_fields`)."""
     if draft is None:
         return
-    update = TransactionUpdate()
-    if txn.category_id is None and not txn.is_split:
-        category_id = await svcs["drafts"].resolve_category(job.budget_id, draft.category_name)
-        if category_id is not None:
-            update.category_id = category_id
-    if not txn.memo and draft.memo:
-        update.memo = draft.memo
-    if any(v is not UNSET for v in vars(update).values()):
-        await svcs["transactions"].update(job.budget_id, txn.id, update)
+    await apply_read(svcs, job, txn, draft, refresh=False)
+
+
+async def apply_read(
+    svcs: dict, job: AIJob, txn: Transaction, draft: AIDraft, *, refresh: bool
+) -> Transaction:
+    """Write a read onto an existing row, under the one rule in
+    `domain.receipt_fields`: `refresh` overwrites what the read resolved,
+    otherwise only what the row is missing is filled. Recorded through
+    TransactionService, so ⌘Z takes it back."""
+    from igab.services.transaction_service import TransactionUpdate
+
+    row = ExistingRow(
+        own=txn.created_via == "ai_receipt",
+        confirmed=bool(txn.approved) or txn.cleared != "uncleared",
+        is_split=bool(txn.is_split),
+        is_transfer=txn.transfer_id is not None,
+        has_payee=txn.payee_id is not None,
+        has_category=txn.category_id is not None,
+        memo=txn.memo,
+    )
+    fields = writable_fields(row, refresh=refresh)
+    txn_svc = svcs["transactions"]
+    # Resolve only what may be written: resolving a payee name creates the
+    # payee when it is new, and a row that keeps its own must not leave one.
+    payee = (
+        await txn_svc._resolve_payee(job.budget_id, None, draft.payee_name)
+        if "payee_id" in fields
+        else None
+    )
+    category_id = (
+        await svcs["drafts"].resolve_category(job.budget_id, draft.category_name)
+        if "category_id" in fields
+        else None
+    )
+    read = ReceiptRead(
+        date=draft.date,
+        amount=draft.amount,
+        payee_id=payee.id if payee is not None else None,
+        category_id=category_id,
+        memo=draft.memo,
+    )
+    changes = receipt_changes(row, read, refresh=refresh)
+    if not changes:
+        return txn
+    return await txn_svc.update(job.budget_id, txn.id, TransactionUpdate(**changes))
