@@ -1,6 +1,6 @@
 import type { BudgetView, Category, CategoryGroup } from '../../../types'
 import { flatCategoryOptions } from '../../../utils/categoryPickers'
-import { renderableCategories } from '../../budget/budgetGroups'
+import { isCardEnvelope } from '../../budget/budgetGroups'
 import { groupByView } from '../../budget/BudgetTable/viewGrouping'
 import type { MultiSelectOption } from './MultiSelectCombobox'
 
@@ -28,8 +28,10 @@ export function categoryOptions(
   //
   // Card envelopes stay out, for a stronger reason: nothing can ever
   // be filed to one, so offering it is a filter that can only return an empty
-  // chart.
-  const visible = renderableCategories(categories)
+  // chart. `isCardEnvelope`, not the grid's `renderableCategories`: Interest &
+  // fees is drawn with the cards rather than in the grid, but it is spent from
+  // like any envelope, and its spending must be something a filter can isolate.
+  const visible = categories.filter((c) => !isCardEnvelope(c))
   const label = (c: Category) => (c.is_archived ? `${c.name} (archived)` : c.name)
   if (!view) {
     // The shared grouping, so a category whose group is not in the list reads

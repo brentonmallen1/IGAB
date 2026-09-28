@@ -30,6 +30,7 @@ import {
   rideMonths,
   otherCredits,
   cardLine,
+  envelopeRowShown,
   notCoveredWarns,
   sectionMark,
 } from './cardRow'
@@ -44,6 +45,8 @@ import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import type { PeekScope } from '../TransactionsPeekModal/TransactionsPeekModal'
 import { overspending } from '../budgetTotals'
+import { drawnCardSectionEnvelope } from '../budgetGroups'
+import { CategoryRow } from '../CategoryRow/CategoryRow'
 import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
@@ -592,6 +595,7 @@ function CardDetail({
   needed,
   liabilityId,
   envelope,
+  interestName,
   editing,
   draft,
   onDraft,
@@ -616,6 +620,8 @@ function CardDetail({
   needed: number | null
   liabilityId: string | null
   envelope: Category | null
+  /** What the budget's Interest & fees envelope is called, if it has one. */
+  interestName: string | null
   editing: boolean
   draft: string
   onDraft: (value: string) => void
@@ -689,6 +695,8 @@ function CardDetail({
         <p className="credit-cards__note">
           <span className="credit-cards__mark credit-cards__mark--to-file" aria-hidden />
           {toCategorize === 1 ? '1 transaction' : `${toCategorize} transactions`} to categorize
+          {/* Interest and fees are the rows that used to have nowhere to go. */}
+          {interestName && <> · interest and fees go in {interestName}</>}
           <button type="button" className="credit-cards__inline-link" onClick={onPeek}>
             Show
           </button>
@@ -827,7 +835,17 @@ function CardDetail({
   )
 }
 
-export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
+export function CreditCardsSection({
+  budgetId,
+  month,
+  envelopeMatch = null,
+}: {
+  budgetId: string
+  month: string
+  /** Whether Interest & fees matches the budget page's active filter, quick
+   *  filter or search — null when none is active. See `envelopeRowShown`. */
+  envelopeMatch?: boolean | null
+}) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
   const { formatMoney, formatMonth } = useFormatters()
@@ -855,6 +873,12 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   if (cards.length === 0) return null
 
   const balances = balancesByCategory(budgetMonth)
+  // Interest & fees: an ordinary envelope drawn under the cards that charge
+  // it, not in the grid. Absent when archived — the category list leaves
+  // archived envelopes out — and then nothing is drawn for it.
+  const interest = drawnCardSectionEnvelope(categories, cards.length)
+  const showInterest =
+    interest !== null && envelopeRowShown({ collapsed, filterMatch: envelopeMatch })
   // The server computes a card's envelope target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
@@ -1052,6 +1076,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       }
                       liabilityId={liabilityByAccount.get(card.account_id)?.id ?? null}
                       envelope={categories.find((c) => c.id === card.category_id) ?? null}
+                      interestName={interest?.name ?? null}
                       editing={editing === card.account_id}
                       draft={draft}
                       onDraft={setDraft}
@@ -1093,6 +1118,20 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               )
             })}
           </ul>
+        </div>
+      )}
+      {/* Full-bleed, outside the padded body, so its Assigned / Activity /
+          Available land in the grid's own columns below. The ordinary row,
+          not a card line: it is an ordinary envelope. Outside the fold's
+          body too, so an active filter it matches draws it on a folded band. */}
+      {showInterest && interest && (
+        <div className="credit-cards__envelope">
+          <CategoryRow
+            category={interest}
+            balance={balances.get(interest.id)}
+            budgetId={budgetId}
+            month={month}
+          />
         </div>
       )}
       {targetFor && (

@@ -18,8 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Budget, BudgetAssignment, Category, CategoryGroup
-from igab.sample_budget.card_scenarios import CardScenario
-from igab.services.card_payment import ensure_payment_category
+from igab.sample_budget.card_scenarios import INTEREST, CardScenario
+from igab.services.card_payment import ensure_payment_category, find_interest_envelope
 
 from .factories import (
     create_account,
@@ -98,6 +98,11 @@ async def apply_card_scenario(
     card = await create_account(session, budget, scenario.card, account_type="credit_card")
     await ensure_payment_category(session, card)
     await session.flush()
+    # The one envelope a scenario names that is not its own: the app made it
+    # with the card, and a scenario filing interest means that one.
+    interest = await find_interest_envelope(session, budget.id)
+    assert interest is not None, "ensure_payment_category makes Interest & fees with the card"
+    cache.setdefault(INTEREST, interest)
     payment_category = (
         await session.execute(select(Category).where(Category.linked_account_id == card.id))
     ).scalar_one()

@@ -13,6 +13,7 @@ import {
   cardCallout,
   sectionMark,
   type LineMark,
+  envelopeRowShown,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
 import { cardStatus } from '../../../test-utils/cardFixture'
@@ -547,5 +548,19 @@ describe('dueHeaderNote', () => {
         { name: 'B', notice: at(5) },
       ])
     ).toBe('2 bills due, soonest tomorrow')
+  })
+})
+
+describe('envelopeRowShown — Interest & fees under the fold and a filter', () => {
+  it('with no filter active, the fold decides, as it does for the card lines', () => {
+    expect(envelopeRowShown({ collapsed: false, filterMatch: null })).toBe(true)
+    expect(envelopeRowShown({ collapsed: true, filterMatch: null })).toBe(false)
+  })
+
+  it('with a filter active, the match decides and the fold does not', () => {
+    // The Overspent chip counts a red Interest & fees; a folded band must not
+    // then hide the one row the chip was counting.
+    expect(envelopeRowShown({ collapsed: true, filterMatch: true })).toBe(true)
+    expect(envelopeRowShown({ collapsed: false, filterMatch: false })).toBe(false)
   })
 })

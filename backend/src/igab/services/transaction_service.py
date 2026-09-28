@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.account_move import MoveRequest, refusal_for_move
 from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
+from igab.domain.card_charges import is_interest_or_fee
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
 from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
@@ -32,6 +33,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.card_payment import find_interest_envelope, is_card_account
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match, source_for
 from igab.services.filing import may_be_filed_to, require_categorizable
 from igab.services.ownership import require_in_budget
@@ -209,6 +211,30 @@ class TransactionService:
             source=source,
         )
 
+    async def _interest_or_fee_envelope(
+        self, budget_id: uuid.UUID, account: Account, data: TransactionCreate
+    ) -> uuid.UUID | None:
+        """The last auto-filing fallback: card interest and fees.
+
+        A new outflow on a card whose payee or bank description names interest
+        or an issuer's fee (`domain.card_charges`) goes to the budget's
+        Interest & fees envelope — found by key, so a renamed one still
+        catches it. Asked of `may_be_filed_to` like a payee default, so an
+        archived envelope files nothing. The row stays unapproved as any
+        auto-filed row does; the first one filed teaches payee history, which
+        answers every later one before this is reached.
+        """
+        if data.amount >= 0:
+            return None
+        if not (is_interest_or_fee(data.payee_name) or is_interest_or_fee(data.import_description)):
+            return None
+        if not is_card_account(account):
+            return None
+        envelope = await find_interest_envelope(self.session, budget_id)
+        if envelope is None or not await may_be_filed_to(self.session, envelope.id):
+            return None
+        return envelope.id
+
     async def create(
         self, budget_id: uuid.UUID, data: TransactionCreate, *, record: bool = True
     ) -> Transaction:
@@ -258,6 +284,8 @@ class TransactionService:
                 # it is a stored pointer, so it outlives what it points at.
                 if await may_be_filed_to(self.session, payee.default_category_id):
                     category_id = payee.default_category_id
+            if not category_id:
+                category_id = await self._interest_or_fee_envelope(budget_id, account, data)
 
         # The pair rule for a leg that has a partner by NAME but not by link.
         # Asked after auto-categorization on purpose: a payment leg whose

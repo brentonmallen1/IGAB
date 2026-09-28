@@ -418,6 +418,14 @@ class CategoryResponse(ApiModel):
     #: Required for the reason its siblings are: a path that forgets must
     #: raise, not report a savings envelope as an ordinary one.
     savings_role: SavingsRole
+    #: Drawn in the Credit cards section rather than the grid — a card's own
+    #: envelope, or Interest & fees. `CARD_SECTION_CATEGORY`
+    #: (repositories/category_filters.py); the client holds no copy of it.
+    #:
+    #: Required for the reason its siblings are: a path that forgets must
+    #: raise, not draw Interest & fees as a stray grid row under a
+    #: "Credit Card Payments" header.
+    in_card_section: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
     tags: list[TagOutSimple] = []

@@ -28,7 +28,11 @@ from igab.repositories.tag_repo import seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import EMERGENCY_FUND_ACCOUNT_SHAPE
 from igab.services.account_type_service import apply_type, resolve_type
-from igab.services.card_payment import ensure_payment_category
+from igab.services.card_payment import (
+    ensure_payment_category,
+    find_interest_envelope,
+    names_interest_envelope,
+)
 from igab.services.liability_service import ensure_for_account
 from igab.services.scheduled_transaction_service import (
     ScheduledTransactionCreate,
@@ -530,6 +534,15 @@ class YNABImporter:
         payee_map.update(await self.payee_repo.find_or_create_batch(self.budget_id, plain_names))
         return payee_map
 
+    async def _interest_envelope(self, category_name: str) -> Category | None:
+        """The budget's Interest & fees, when a "Credit Card Payments" entry
+        names it — made with the first card, which account resolution has
+        already imported. None for any other name: that is a card's reserve."""
+        envelope = await find_interest_envelope(self.session, self.budget_id)
+        if envelope is None or not names_interest_envelope(category_name, envelope.name):
+            return None
+        return envelope
+
     async def _resolve_row_category(
         self,
         account: Account,
@@ -546,11 +559,19 @@ class YNABImporter:
         if not (group_name and category_name):
             return None
         if is_credit_card_payments_group(group_name):
-            # A register row cannot be filed to a card's reserve. Dropped —
-            # but counted: this was the one place the importer lost
-            # information without reporting it.
-            result.credit_card_payment_categories_stripped += 1
-            return None
+            # Interest & fees lives in the card group but is an ordinary
+            # envelope, and IGAB's own export names it there: file to it.
+            interest = await self._interest_envelope(category_name)
+            if interest is None:
+                # A register row cannot be filed to a card's reserve. Dropped
+                # — but counted: this was the one place the importer lost
+                # information without reporting it.
+                result.credit_card_payment_categories_stripped += 1
+                return None
+            if not account.on_budget:
+                result.tracking_account_categories_stripped += 1
+                return None
+            return interest.id
         if not account.on_budget:
             result.tracking_account_categories_stripped += 1
             return None
@@ -968,7 +989,11 @@ class YNABImporter:
 
         for entry in budget.budget_entries:
             if is_credit_card_payments_group(entry.category_group):
-                linked = linked_by_name.get(account_key(entry.category))
+                # A card's reserve by the card's name first; otherwise the
+                # group's one ordinary envelope, Interest & fees.
+                linked = linked_by_name.get(
+                    account_key(entry.category)
+                ) or await self._interest_envelope(entry.category)
                 if linked is None:
                     result.credit_card_payment_assignments_skipped += 1
                     result.credit_card_payment_reserves_skipped += entry.assigned

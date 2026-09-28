@@ -472,3 +472,26 @@ export function dueHeaderNote(due: CardDue[]): string | null {
   if (due.length === 1) return `${soonest.name} due ${soonest.notice.phrase}`
   return `${due.length} bills due, soonest ${soonest.notice.phrase}`
 }
+
+/**
+ * Is the section's own envelope (Interest & fees) drawn right now?
+ *
+ * `filterMatch` is null while no filter, quick filter or search is active —
+ * then the fold decides, as it does for the card lines. While one IS active,
+ * the filter decides and the fold does not: the row is drawn exactly when it
+ * matches, the way a grid row is. A chip that counted a red Interest & fees and
+ * then showed nothing because the band happened to be folded would be the
+ * count and the rows disagreeing — the thing the chip exists not to do.
+ *
+ * The card lines are never filtered. They are not envelopes a filter selects
+ * among; they are the cards, and they stay put.
+ */
+export function envelopeRowShown({
+  collapsed,
+  filterMatch,
+}: {
+  collapsed: boolean
+  filterMatch: boolean | null
+}): boolean {
+  return filterMatch ?? !collapsed
+}

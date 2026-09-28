@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -29,7 +29,11 @@ from igab.db.models import (
 from igab.domain.splits import split_balances, split_sum
 from igab.domain.transfers import leg_may_carry_category
 from igab.guide.detection import budget_service_from
-from igab.repositories.category_filters import LINKED_TO_CARD, UNDER_DELETED_GROUP
+from igab.repositories.category_filters import (
+    IS_CARD_INTEREST_ENVELOPE,
+    LINKED_TO_CARD,
+    UNDER_DELETED_GROUP,
+)
 from igab.services.card_payment import CARD_PAYMENTS_GROUP
 from igab.utils.clock import today_utc
 
@@ -417,6 +421,10 @@ class IntegrityService:
         An envelope with no card: left behind when a card account is deleted.
         It sits in a hidden group holding whatever was assigned to it, invisible
         to the grid, still counted in the envelope term.
+
+        Interest & fees shares the group and is linked to no card, on purpose:
+        it is one ordinary envelope for every card's interest, found by its key.
+        It is not a card's envelope and is left out of both halves.
         """
         cards = (
             await self.session.execute(
@@ -436,6 +444,7 @@ class IntegrityService:
                     Category.budget_id == budget_id,
                     Category.is_deleted == False,  # noqa: E712
                     or_(LINKED_TO_CARD, CategoryGroup.name == CARD_PAYMENTS_GROUP),
+                    not_(IS_CARD_INTEREST_ENVELOPE),
                 )
             )
         ).all()

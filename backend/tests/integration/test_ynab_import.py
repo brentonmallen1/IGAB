@@ -1182,6 +1182,78 @@ async def test_a_register_row_filed_to_a_ccp_category_is_stripped_and_counted(db
     assert len(categorized) == 2
 
 
+async def test_interest_and_fees_in_the_ccp_group_is_not_a_cards_reserve(db_session):
+    """IGAB's own export files interest under "Credit Card Payments: Interest &
+    fees", because that is where the envelope lives. Read as a card's reserve,
+    a round trip stripped every interest row and dropped its assignments.
+    It lands on the budget's keyed Interest & fees instead — one envelope, not
+    a second one beside it — and a real card's reserve still routes by name."""
+    from igab.integrations.ynab.models import YNABBudgetEntry
+    from igab.services.card_payment import find_interest_envelope
+
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+            _txn(
+                "Visa",
+                "Interest Charge",
+                "-12.00",
+                group="Credit Card Payments",
+                category="Interest & fees",
+            ),
+            _txn("Visa", "Late Fee", "-30.00", group="Credit Card Payments", category="Visa"),
+        ],
+        budget_entries=[
+            YNABBudgetEntry(
+                month=JAN5.replace(day=1),
+                category_group="Credit Card Payments",
+                category="Interest & fees",
+                assigned=Decimal("12.00"),
+            ),
+            YNABBudgetEntry(
+                month=JAN5.replace(day=1),
+                category_group="Credit Card Payments",
+                category="Visa",
+                assigned=Decimal("100.00"),
+            ),
+        ],
+    )
+    result = await _importer(
+        services, db_session, budget, account_types={"Visa": ("credit_card", True)}
+    ).import_budget(data)
+
+    interest = await find_interest_envelope(db_session, budget.id)
+    assert interest is not None
+    rows = (
+        (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+        .scalars()
+        .all()
+    )
+    by_payee_amount = {r.amount: r.category_id for r in rows}
+    assert by_payee_amount[Decimal("-12.00")] == interest.id
+    # Filed to the card's reserve itself: still a reserve, still stripped.
+    assert by_payee_amount[Decimal("-30.00")] is None
+    assert result.credit_card_payment_categories_stripped == 1
+
+    linked = await services.category_repo.get_by_linked_account(
+        next(a for a in await services.account_repo.get_all(budget.id) if a.name == "Visa").id
+    )
+    assert linked is not None
+    by_cat = {
+        a.category_id: a.assigned
+        for a in await services.assignment_repo.get_all_for_budget(budget.id)
+    }
+    assert by_cat[interest.id] == Decimal("12.00")
+    assert by_cat[linked.id] == Decimal("100.00")
+    assert result.credit_card_payment_assignments_skipped == 0
+    names = [c.name for c in await services.category_repo.get_all(budget.id)]
+    assert names.count("Interest & fees") == 1
+
+
 # ─── Future-dated rows become upcoming transactions ──────────────────────────
 #
 # YNAB exports a scheduled transaction as its next dated instance, with no

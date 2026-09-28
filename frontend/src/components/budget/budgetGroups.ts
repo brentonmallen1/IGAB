@@ -19,14 +19,24 @@ export function renderableGroups<T extends { is_system: boolean }>(groups: reado
 }
 
 /**
- * A card's envelope is not a grid row either: the cards section
- * owns it, with liability-truthful columns (Balance / Set aside / Uncovered)
- * instead of assigned/activity/available. `linked_account_id` is the served
- * fact; drawing the row anyway would show the reserve as an ordinary
- * envelope and its negative as overspending, which it is not.
+ * The Credit cards section's envelopes are not grid rows: each card's own
+ * envelope, drawn there with liability-truthful columns (Balance / Set aside /
+ * Uncovered), and the budget's Interest & fees envelope, drawn there as an
+ * ordinary row under the cards that charge it.
+ *
+ * Reads the served `in_card_section` and does not re-derive it — home is
+ * `CARD_SECTION_CATEGORY` in repositories/category_filters.py, which the
+ * server's `is_card_only` and category reorder read too, so the grid, the
+ * group headers and a drag cannot disagree about a row. This read
+ * `linked_account_id` until Interest & fees existed: an envelope that is in
+ * the section without being linked to anything.
  */
-export function renderableCategories<T extends CategoryLink>(categories: readonly T[]): T[] {
-  return categories.filter((c) => !isCardEnvelope(c))
+export function renderableCategories<T extends CategoryPlacement>(categories: readonly T[]): T[] {
+  return categories.filter((c) => !inCardSection(c))
+}
+
+interface CategoryPlacement {
+  in_card_section?: boolean
 }
 
 interface CategoryLink {
@@ -34,17 +44,81 @@ interface CategoryLink {
 }
 
 /**
- * Is this category a card's envelope?
+ * Is this category drawn in the Credit cards section?
  *
- * One predicate rather than an inline comparison at each use, because the
- * two uses need opposite senses and a strict `=== null` gets *both* wrong
- * when the field is absent: the filter drops every category, and the
- * group test reads them all as linked and hides a real group. The server
- * always sends the field, but partial fixtures do not, and a rule that
- * flips meaning on a missing key is a rule waiting to be miswritten.
+ * Absent reads as "no", so a partial fixture keeps its rows in the grid
+ * rather than silently dropping every one of them. The server always sends
+ * the field (`CategoryResponse` requires it).
+ */
+export function inCardSection(category: CategoryPlacement): boolean {
+  return category.in_card_section === true
+}
+
+/**
+ * Is this category a card's OWN envelope — the reserve card arithmetic keeps,
+ * which nothing is ever filed to?
+ *
+ * A different question from `inCardSection`, and the difference matters to
+ * exactly one kind of surface: one that asks where money was SPENT. Interest &
+ * fees is in the section and is spent from like any envelope, so a report
+ * filter must offer it; a card's envelope can only ever return an empty chart.
+ * `linked_account_id` is the served fact. `!= null` rather than `!== null` so a
+ * fixture without the field reads as "not a card's envelope".
  */
 export function isCardEnvelope(category: CategoryLink): boolean {
   return category.linked_account_id != null
+}
+
+/**
+ * The Credit cards section's one ordinary envelope — Interest & fees — or
+ * null when the budget has none on screen (archived, or no card yet).
+ *
+ * In the section and not a card's own envelope: the server keys exactly one
+ * such envelope per budget, so this names it without the client knowing the
+ * key or the name, both of which are the server's.
+ */
+export function cardSectionEnvelope<T extends CategoryPlacement & CategoryLink>(
+  categories: readonly T[]
+): T | null {
+  return categories.find((c) => inCardSection(c) && !isCardEnvelope(c)) ?? null
+}
+
+/**
+ * The section envelope the budget page actually DRAWS: `cardSectionEnvelope`,
+ * but only while the Credit cards section is drawn at all — which is while the
+ * month has a card. The section and the filter bar's counts both ask this, so
+ * a chip cannot count a row the section is not there to show.
+ */
+export function drawnCardSectionEnvelope<T extends CategoryPlacement & CategoryLink>(
+  categories: readonly T[],
+  cardCount: number
+): T | null {
+  return cardCount > 0 ? cardSectionEnvelope(categories) : null
+}
+
+/**
+ * Every envelope row the budget page draws — the grid's rows, narrowed by an
+ * active view, plus the Credit cards section's own envelope (Interest & fees).
+ *
+ * What the filter bar's chips count ("Overspent 3", "Underfunded 2"). A chip's
+ * count and the rows clicking it shows must be one set, and Interest & fees is
+ * a row like any other: red, it is in the served `total_overspent` and in
+ * Cover Overspent, so a chip that left it out would say 2 over three red rows.
+ * A view does not reach it — a view arranges the grid, and the section is not
+ * the grid — so it is counted whatever view is active.
+ */
+export function budgetPageRowIds({
+  gridIds,
+  viewIds,
+  sectionEnvelopeId,
+}: {
+  gridIds: ReadonlySet<string>
+  viewIds: ReadonlySet<string> | null
+  sectionEnvelopeId: string | null
+}): Set<string> {
+  const ids = new Set([...gridIds].filter((id) => !viewIds || viewIds.has(id)))
+  if (sectionEnvelopeId) ids.add(sectionEnvelopeId)
+  return ids
 }
 
 /**
@@ -74,7 +148,7 @@ export function drawnGroups<G extends { is_card_only: boolean }>(
 /** The ids of the categories that sit in a renderable group. */
 export function renderableCategoryIds(
   groups: readonly CategoryGroup[],
-  categories: readonly ({ id: string; category_group_id: string } & CategoryLink)[]
+  categories: readonly ({ id: string; category_group_id: string } & CategoryPlacement)[]
 ): Set<string> {
   const groupIds = new Set(renderableGroups(groups).map((g) => g.id))
   return new Set(

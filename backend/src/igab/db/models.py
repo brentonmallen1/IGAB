@@ -556,6 +556,15 @@ class Category(Base):
             "savings_mode IN ('sent_out', 'kept_here')",
             name="ck_categories_savings_mode",
         ),
+        # One keyed envelope per budget among LIVE rows — the soft-delete rule
+        # the name index above follows, for the same reason.
+        Index(
+            "uq_category_budget_system_key_live",
+            "budget_id",
+            "system_key",
+            unique=True,
+            postgresql_where=text("system_key IS NOT NULL AND NOT is_deleted"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -592,6 +601,12 @@ class Category(Base):
     #: the answer is `savings_role`, never this column. Kept when the tags are
     #: removed, so re-tagging restores what the household chose.
     savings_mode: Mapped[str | None] = mapped_column(String(10))
+    #: An envelope the app makes and finds by key rather than by name, so a
+    #: rename does not lose it. `card_interest` (services/card_payment.py
+    #: `CARD_INTEREST_KEY`) is the only one: the budget's Interest & fees
+    #: envelope, drawn in the Credit cards section. Otherwise an ordinary
+    #: envelope — the key says where it lives, not what it may do.
+    system_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -599,6 +614,18 @@ class Category(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    #: Is this envelope drawn in the Credit cards section instead of the grid?
+    #: A card's own envelope, or the Interest & fees envelope. Not a column:
+    #: it is `linked_account_id` or `system_key`, and a stored copy of either
+    #: answer would be a second source for it. The rule is
+    #: `CARD_SECTION_CATEGORY` (repositories/category_filters.py), which
+    #: `GROUP_IS_CARD_ONLY` and the category reorder rule also read, so the
+    #: grid, the group header and the reorder cannot disagree about a row.
+    #: Populated by `CategoryRepository.with_eligibility`; required in the
+    #: response, so a path that forgets raises instead of drawing the envelope
+    #: in the grid.
+    in_card_section: Mapped[bool] = query_expression()
 
     #: 'none', 'sent_out' or 'kept_here' — how this category's money counts as
     #: saved. Not a column: it reads the category's tags, which change without

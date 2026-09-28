@@ -80,6 +80,10 @@ SCENARIO_INTENTS: dict[str, tuple[str, ...]] = {
     # Anyone can move money out of an envelope; the trap is moving out more
     # than it holds, and that is possible whatever way the card is run.
     "moved-out": ("in-full", "paying-down", "carrying"),
+    # Interest is what a carried balance costs; trailing interest is what it
+    # costs for a cycle after it is paid off.
+    "interest-funded": ("paying-down", "carrying"),
+    "interest-unfunded": ("paying-down", "carrying"),
 }
 
 #: What each event did, for a reader. `{amount}` and `{category}` are filled.

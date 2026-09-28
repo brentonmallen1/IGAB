@@ -38,12 +38,14 @@ from igab.sample_budget.spec import (
     AccountSpec,
     CategorySpec,
     ExplicitAssignment,
+    GroupSpec,
     OneOffTransfer,
     OneOffTxn,
     RelDate,
     SampleBudgetSpec,
     shift_months,
 )
+from igab.services.card_payment import CARD_INTEREST_NAME, CARD_PAYMENTS_GROUP
 
 ZERO = Decimal("0")
 
@@ -1516,6 +1518,113 @@ PAID_AHEAD_COVERED = CardScenario(
     ),
 )
 
+#: The budget's Interest & fees envelope, by the name the app gives it. The
+#: one category a scenario may name that is NOT its own: the app makes one per
+#: budget, in the card group, and every card's interest is filed there. The
+#: adapters resolve it to that envelope instead of making a second one — see
+#: `to_spec_elements` and `card_scenario_apply`.
+#:
+#: Shared, so the scenarios that file here keep to different months: a month's
+#: shortfall rides from whichever card carried it, and two cards short in the
+#: same month of one envelope would move each other's positions.
+INTEREST = CARD_INTEREST_NAME
+
+INTEREST_FUNDED = CardScenario(
+    slug="interest-funded",
+    title="Interest, filed to Interest & fees and funded",
+    story=(
+        "A balance carried for part of a statement cycle leaves trailing "
+        "interest on the next statement, even after the balance is paid off. "
+        "Interest is spending nobody chose, and it had nowhere to go: a "
+        "transfer is wrong (no money moved) and the card's own envelope "
+        "refuses filing, because card arithmetic overwrites it. So it sat in "
+        "'needs a category'. Filed to Interest & fees and funded like any "
+        "bill, it reserves on the card exactly as groceries do, and the card "
+        "reads fully covered."
+    ),
+    card="Sorrel Card",
+    short="Sorrel",
+    opening=_d("0"),
+    events=(
+        _fund(2, "300", "Sorrel Groceries"),
+        _spend(2, "300", "Sorrel Groceries"),
+        _pay(1, "300", day=5),
+        _fund(1, "10", INTEREST),
+        _spend(1, "10", INTEREST, day=20),
+    ),
+    # Hand-computed. 300 reserved and paid, then 10 of interest funded and
+    # charged: 10 set aside against 10 owed. Nothing happened this month.
+    expect=ExpectedPosition(
+        balance=_d("-10"),
+        set_aside=_d("10"),
+        uncovered=_d("0"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("0"),
+    ),
+    tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "The card charged $10 of interest, and you filed it to Interest & fees and funded it."
+        ),
+        reads=(
+            "Set aside holds the $10, so the card is fully covered, as it is after any funded "
+            "spending."
+        ),
+        todo="Nothing. Pay the $10 with the next bill.",
+    ),
+)
+
+INTEREST_UNFUNDED = CardScenario(
+    slug="interest-unfunded",
+    title="Interest nobody funded",
+    story=(
+        "The statement was paid in full, and the issuer charged interest this "
+        "month anyway. It was filed to Interest & fees but nothing was "
+        "assigned there, so the envelope reads red this month, as any "
+        "overspent envelope on a card does, and the card reads that much not "
+        "covered. It rides on the card as debt, the way any shortfall on a "
+        "card does, and never reaches Ready to Assign; assigning to Interest "
+        "& fees this month retires it."
+    ),
+    card="Tamarack Card",
+    short="Tamarack",
+    opening=_d("0"),
+    events=(
+        _fund(1, "100", "Tamarack Groceries"),
+        _spend(1, "100", "Tamarack Groceries"),
+        _pay(0, "100", day=1),
+        _spend(0, "15", INTEREST, day=1),
+    ),
+    # Hand-computed. 100 reserved and paid in full; then 15 of interest with
+    # nothing assigned behind it, so nothing reserves it: 0 set aside against
+    # 15 owed. The walk books a month's shortfall as the month stands, this
+    # one included, so all 15 already reads as riding — until Interest & fees
+    # is funded this month, which retires it.
+    expect=ExpectedPosition(
+        balance=_d("-15"),
+        set_aside=_d("0"),
+        uncovered=_d("15"),
+        riding=_d("15"),
+        charged_this_month=_d("15"),
+        inflows_this_month=_d("100"),
+        paid_this_month=_d("100"),
+        debt_change_this_month=_d("85"),
+    ),
+    tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "The card charged $15 of interest, filed to Interest & fees with nothing assigned "
+            "there."
+        ),
+        reads="Interest & fees reads −$15 this month, and the card reads $15 not covered.",
+        todo="Assign $15 to Interest & fees this month, and the card is covered again.",
+    ),
+)
+
 #: Order is the order the demo shows them: the healthy card first, so the
 #: strip does not open on an oddity the way it used to.
 ALL_SCENARIOS: tuple[CardScenario, ...] = (
@@ -1535,6 +1644,8 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     PAID_AHEAD,
     MIXED,
     MOVED_OUT,
+    INTEREST_FUNDED,
+    INTEREST_UNFUNDED,
 )
 
 
@@ -1789,6 +1900,10 @@ class SpecElements:
     assignments: tuple[ExplicitAssignment, ...]
     #: Spending categories the scenario files to, named after the card.
     spending_categories: tuple[str, ...]
+    #: Categories it files to that the app keeps in the card group — only
+    #: Interest & fees. Specced there, under the app's own group and name, so
+    #: `ensure_interest_envelope` adopts that row instead of making a second.
+    card_group_categories: tuple[str, ...]
     #: Payees its rows name. A spec that omits one fails generation with a
     #: bare KeyError, so they travel with the rows that need them.
     payees: tuple[str, ...]
@@ -1888,8 +2003,32 @@ def to_spec_elements(
         one_offs=tuple(one_offs),
         transfers=tuple(transfers),
         assignments=tuple(assignments),
-        spending_categories=scenario.categories(),
+        spending_categories=tuple(c for c in scenario.categories() if c != INTEREST),
+        card_group_categories=tuple(c for c in scenario.categories() if c == INTEREST),
         payees=tuple(dict.fromkeys([o.payee for o in one_offs])),
+    )
+
+
+def _card_group(
+    elements: list[SpecElements], tiers_of: list[tuple[str, ...]]
+) -> tuple[GroupSpec, ...]:
+    """The app's card group, holding the shared envelopes scenarios file to
+    — empty when none does, and then the app makes the group itself."""
+    tiers_by_name: dict[str, tuple[str, ...]] = {}
+    for element, tiers in zip(elements, tiers_of, strict=True):
+        for name in element.card_group_categories:
+            tiers_by_name[name] = tuple(dict.fromkeys((*tiers_by_name.get(name, ()), *tiers)))
+    if not tiers_by_name:
+        return ()
+    return (
+        GroupSpec(
+            CARD_PAYMENTS_GROUP,
+            tuple(
+                CategorySpec(name, assignments_are_explicit=True, tiers=tiers)
+                for name, tiers in tiers_by_name.items()
+            ),
+            tiers=tuple(dict.fromkeys(t for tiers in tiers_by_name.values() for t in tiers)),
+        ),
     )
 
 
@@ -1921,6 +2060,7 @@ _BY_CATEGORY = {
     "Streaming": "Netflix",
     "Shopping": "Amazon",
     "Groceries": "Corner Market",
+    INTEREST: "Interest Charge",
 }
 
 
@@ -1959,8 +2099,8 @@ def build_scenario_spec(
     spending = tuple(dict.fromkeys(c for e in elements for c in e.spending_categories))
     payees = tuple(
         dict.fromkeys(
-            [_PAYEES[k] for k in _PAYEES]
-            + [STARTING_BALANCE_PAYEE, "Employer Payroll", "Thai Garden", "Netflix", "Amazon"]
+            [*_PAYEES.values(), *_BY_CATEGORY.values()]
+            + [STARTING_BALANCE_PAYEE, "Employer Payroll"]
         )
     )
 
@@ -1986,6 +2126,7 @@ def build_scenario_spec(
                 ),
             ),
             GroupSpec("Debt", tuple(e.payment_category for e in elements)),
+            *_card_group(elements, [s.tiers for s in scenarios]),
         ),
         payees=tuple(PayeeSpec(p) for p in payees),
         monthly=(
@@ -2068,7 +2209,7 @@ def merge_into(
     return replace(
         spec,
         accounts=(*spec.accounts, *(e.account for e in elements)),
-        groups=(*spec.groups, demo_group),
+        groups=(*spec.groups, demo_group, *_card_group(elements, [s.tiers for s in scenarios])),
         payees=(*spec.payees, *new_payees),
         one_offs=(*spec.one_offs, *(o for e in elements for o in e.one_offs)),
         one_off_transfers=(

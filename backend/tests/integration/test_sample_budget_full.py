@@ -121,8 +121,9 @@ async def test_full_tier_shape_and_texture(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
     # The household accounts (a sold second car and the two off-budget savings
     # accounts among them) plus the card-shape demos — one per `full`-tier
-    # scenario, so this moves by one when a scenario is added, as `mixed` was.
-    assert counts.accounts == 35
+    # scenario, so this moves by one when a scenario is added, as `mixed` was
+    # and as the two Interest & fees cards did.
+    assert counts.accounts == 37
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -192,7 +193,7 @@ async def test_full_tier_liabilities(db_session):
     # account without one is the dead-end state this model exists to remove.
     # Five household debts plus a companion for each demo card — one per
     # `full`-tier scenario.
-    assert len(liabilities) == 21
+    assert len(liabilities) == 23
     for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -274,18 +275,23 @@ async def test_full_tier_keeps_starter_invariants(db_session):
         Decimal("0"),
     )
     assert red_cards > 0, "the full tier demos the below-zero card situations"
-    assert summary.total_overspent == Decimal("45.00") + red_cards
+    # Interest & fees reads −15: the `interest-unfunded` demo card's interest,
+    # filed there with nothing assigned. An ordinary envelope, so it is in the
+    # total like any other red one.
+    unfunded_interest = Decimal("15.00")
+    assert summary.total_overspent == Decimal("45.00") + red_cards + unfunded_interest
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    # Among ordinary envelopes, the one intentional overspend. The red card
-    # envelopes are counted above and belong to their demo cards.
-    overspent = [
+    # Among ordinary envelopes, the one intentional overspend — and Interest &
+    # fees, whose red belongs to its demo card. The red card envelopes are
+    # counted above and belong to their demo cards.
+    overspent = sorted(
         names[b.category_id]
         for b in summary.category_balances
         if b.available < 0 and not b.is_card_payment
-    ]
-    assert overspent == ["Dining Out"]
+    )
+    assert overspent == ["Dining Out", "Interest & fees"]
 
     report = await IntegrityService(db_session).run(budget.id)
     assert report.all_passed, [(c.name, c.details) for c in report.checks if not c.passed]
@@ -315,9 +321,9 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 35
+    assert counts["accounts"] == 37
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 21
+    assert counts["liabilities"] == 23
 
 
 async def test_the_sold_car_demonstrates_a_non_savings_asset(db_session):

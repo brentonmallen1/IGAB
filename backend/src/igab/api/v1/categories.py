@@ -352,6 +352,7 @@ async def update_category(
         changes = body.model_dump(exclude_unset=True)
         new_group = changes.get("category_group_id")
         if new_group is not None and new_group != current.category_group_id:
+            CategoryService.require_movable(current, new_group)
             await require_in_budget(
                 category_repo.session, CategoryGroup, new_group, current.budget_id, "Category group"
             )

@@ -63,6 +63,7 @@ from igab.domain.tag_implication import (
     SAVINGS_KEY,
     keys_counting_as,
 )
+from igab.services.card_payment import CARD_INTEREST_KEY
 
 NOT_ARCHIVED = Category.is_archived == False  # noqa: E712
 #: A category the arithmetic may still see. Soft-delete only: an *archived*
@@ -101,6 +102,27 @@ IN_ARCHIVED_GROUP = (
 #: may be filed to it — `get_budget_summary` overwrites its balance from card
 #: arithmetic, so a row filed here is money that leaves the budget silently.
 LINKED_TO_CARD = Category.linked_account_id.isnot(None)
+
+#: The budget's Interest & fees envelope (`card_payment.CARD_INTEREST_KEY`).
+#: Two-valued on purpose: `system_key` is NULL on every other category, and
+#: `NULL = 'card_interest'` is UNKNOWN, which a `not_()` would turn into a
+#: silently dropped row.
+IS_CARD_INTEREST_ENVELOPE = Category.system_key.is_not_distinct_from(CARD_INTEREST_KEY)
+
+#: Drawn in the Credit cards section rather than the grid: a card's own
+#: envelope, or the Interest & fees envelope beside them.
+#:
+#: The two are NOT the same kind of envelope, and nothing else here may treat
+#: them as one. A card's envelope is card arithmetic — nothing is filed to it,
+#: no picker offers it. Interest & fees is an ordinary spending envelope that
+#: happens to live with the cards: filed to, offered, funded, able to go red.
+#: So `IS_ASSIGNABLE`, `IS_CATEGORIZABLE` and `SPENDABLE` keep naming
+#: `LINKED_TO_CARD`, and only placement reads this.
+#:
+#: Served (`Category.in_card_section`) so the budget page draws from the one
+#: rule, and read here by `GROUP_IS_CARD_ONLY` and by the category reorder, so
+#: the grid, its headers and the drag cannot disagree about a row.
+CARD_SECTION_CATEGORY = or_(LINKED_TO_CARD, IS_CARD_INTEREST_ENVELOPE)
 
 #: Maintained by something other than the user filing a row: a credit-card
 #: card's envelope, or a debt category owned by a liability.
@@ -227,10 +249,11 @@ SPENT_ENVELOPE = not_(IN_SYSTEM_GROUP)
 PLANNED_ENVELOPE = and_(SPENT_ENVELOPE, not_(LINKED_TO_CARD))
 BUDGETED_ENVELOPE = and_(LIVE_CATEGORY, PLANNED_ENVELOPE)
 
-#: A group holding nothing but card envelopes. The budget grid never
-#: draws it — every one of its rows belongs to the cards section — so
-#: "Credit Card Payments" appears as no header at all, even where archived groups
-#: are deliberately shown.
+#: A group holding nothing but card-section envelopes (`CARD_SECTION_CATEGORY`
+#: — the cards' own, and Interest & fees). The budget grid never draws it —
+#: every one of its rows belongs to the cards section — so "Credit Card
+#: Payments" appears as no header at all, even where archived groups are
+#: deliberately shown.
 #:
 #: Served (`CategoryGroupResponse.is_card_only`) rather than derived on the
 #: client, and read by `CategoryGroupRepository.reorder` as well, because the
@@ -252,7 +275,7 @@ GROUP_IS_CARD_ONLY = and_(
         .where(
             Category.category_group_id == CategoryGroup.id,
             LIVE_CATEGORY,
-            not_(LINKED_TO_CARD),
+            not_(CARD_SECTION_CATEGORY),
         )
         .correlate(CategoryGroup)
         .exists()
