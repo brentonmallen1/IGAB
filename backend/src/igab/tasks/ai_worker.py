@@ -227,9 +227,9 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
 
     txn: Transaction | None = None
     if job.transaction_id is not None:
-        # A prior run already produced a transaction (failure stub, or a done
-        # job being reprocessed): refresh it in place while it still belongs
-        # to the AI pipeline.
+        # A prior run already produced a transaction (failure stub, a done
+        # job being reprocessed, or the bank row it was put on): refresh it
+        # in place — the same row, never a second one.
         txn = await _apply_draft_to_existing(svcs, job, draft)
         if txn is None:
             # The transaction was deleted since — start over with a fresh one.
@@ -294,37 +294,22 @@ async def finish_placement(svcs: dict, job: AIJob, txn: Transaction, file_bytes:
 
 
 async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction | None:
-    """Refresh the job's existing transaction (a failure stub, or the result
-    of a done job being reprocessed) with a freshly extracted draft.
+    """Refresh the job's existing transaction (a failure stub, the result of
+    a done job being reprocessed, or the bank row the receipt was put on)
+    with a freshly extracted draft.
 
     Returns None when the transaction was deleted so the caller can create a
-    replacement. An approved or cleared transaction belongs to the user —
-    refuse rather than overwrite."""
-    from igab.services.transaction_service import TransactionUpdate
+    replacement. Otherwise the row is refreshed in place, approved or not,
+    under `domain.receipt_fields`: the date and amount move only on the
+    scan's own unconfirmed row — a bank row or a confirmed one keeps the
+    bank's — and anything the new read cannot resolve keeps the row's own.
+    Approval is left as it is."""
+    from igab.services.receipt_placement import apply_read
 
-    txn_svc = svcs["transactions"]
-    txn = await txn_svc.transaction_repo.get(job.transaction_id)
+    txn = await svcs["transactions"].transaction_repo.get(job.transaction_id)
     if txn is None:
         return None
-    if txn.approved or txn.cleared != "uncleared":
-        raise NonRetryableJobError(
-            "The transaction for this receipt was already approved or cleared"
-            " — edit it directly, or delete it first to reprocess from scratch"
-        )
-
-    payee = await txn_svc._resolve_payee(job.budget_id, None, draft.payee_name)
-    category_id = await svcs["drafts"].resolve_category(job.budget_id, draft.category_name)
-    return await txn_svc.update(
-        job.budget_id,
-        txn.id,
-        TransactionUpdate(
-            date=draft.date,
-            amount=draft.amount,
-            payee_id=payee.id if payee else None,
-            category_id=category_id,
-            memo=draft.memo,
-        ),
-    )
+    return await apply_read(svcs, job, txn, draft, refresh=True)
 
 
 async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) -> None:

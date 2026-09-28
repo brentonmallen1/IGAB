@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Upload, X, Loader2, Sparkles, AlertTriangle, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useQueryClient } from '@tanstack/react-query'
 import {
   ATTACHMENT_ACCEPT,
   MAX_ATTACHMENT_LABEL,
@@ -10,10 +9,9 @@ import {
   isTooLargeToAttach,
 } from '../../../api/attachments'
 import { useSubmitReceipt, useAIJob, type AIJob } from '../../../api/aiJobs'
+import { isJobInFlight } from '../../../api/aiJobSettled'
 import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
-import { invalidateAfterTransactionChange } from '../../../api/invalidateAfterTransactionChange'
-import { ROOT } from '../../../api/queryKeys'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 
 type Stage =
@@ -44,7 +42,6 @@ export function ReceiptScanTab({
   onRememberAccount,
   onClose,
 }: Props) {
-  const qc = useQueryClient()
   const submitReceipt = useSubmitReceipt(budgetId)
   const [stage, setStage] = useState<Stage>({ kind: 'pick' })
   const [dragOver, setDragOver] = useState(false)
@@ -81,28 +78,17 @@ export function ReceiptScanTab({
   // Handle job completion
   useEffect(() => {
     if (!job || handled.current) return
-    if (job.status !== 'done' && job.status !== 'error') return
+    if (isJobInFlight(job.status)) return
     handled.current = true
 
-    // The worker created/updated a transaction outside any mutation hook, so
-    // this asks for exactly what a manual create asks for — by calling the
-    // same helper rather than by copying its list, which is how this copy
-    // came to be the only one carrying no account or budget id at all.
-    void invalidateAfterTransactionChange(qc, {
-      budgetId: null,
-      transactionIds: job.transaction_id ? [job.transaction_id] : [],
-    })
-    // Job state is this component's own, not a transaction's.
-    qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
-    qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
-    qc.invalidateQueries({ queryKey: [ROOT.aiJobForTxn] })
-
+    // The caches the worker's row made stale are `useAIJob`'s to refresh
+    // (aiJobSettled.ts) — every watcher of a job does it the same way.
     if (job.transaction_id) {
       onReviewReady(job)
     } else {
       setStage({ kind: 'failed', message: job.error ?? 'Receipt scan failed' })
     }
-  }, [job, qc, onReviewReady])
+  }, [job, onReviewReady])
 
   function selectFile(file: File) {
     if (!isAttachableFile(file)) {
