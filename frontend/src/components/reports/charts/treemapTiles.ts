@@ -1,5 +1,5 @@
 /**
- * The Spending Treemap's tiles, and which colour each one wears. Pure, so
+ * Where it went's treemap tiles, and which colour each one wears. Pure, so
  * "a category tile wears its group's colour" is a test instead of something
  * you have to click through a chart to notice.
  *
@@ -31,7 +31,7 @@ export interface TreeNode {
   groupKey: string
   size: number
   /** Share of what is on screen — the whole period, or the group drilled
-   *  into — as the Breakdown states it. Null when there is no positive total
+   *  into — as the table beside it states it. Null when there is no positive total
    *  to be a share of (see `shareOfTotal`). */
   pct: number | null
   fill?: string
@@ -51,7 +51,10 @@ export interface TreemapGroup {
 
 type Item = Pick<SpendingGroupItem, 'id' | 'name' | 'parent_id' | 'parent_name' | 'total'>
 
-const groupKey = (item: Item) => item.parent_id ?? '__none__'
+/** The key a category line is grouped under: its group id, or one key for
+ *  every line the server sent with none (the Uncategorized line). The one
+ *  spelling of it — the table, the tiles and the colour key all group by it. */
+export const groupKeyOf = (item: Pick<Item, 'parent_id'>) => item.parent_id ?? '__none__'
 
 function categoryTile(item: Item, group: TreemapGroup, shownTotal: number): TreeNode {
   return {
@@ -71,12 +74,12 @@ function categoryTile(item: Item, group: TreemapGroup, shownTotal: number): Tree
 /** Categories bucketed by group, each group given the next colour slot. A
  *  group's children state their share of the group — what is on screen once
  *  it is drilled into. The tile used to state its share of the whole period
- *  there, beside a Breakdown that said "of what is on screen". */
+ *  there, beside a table that said "of what is on screen". */
 export function treemapGroups(items: readonly Item[]): Map<string, TreemapGroup> {
   const map = new Map<string, TreemapGroup>()
   const members = new Map<string, Item[]>()
   for (const item of items) {
-    const gid = groupKey(item)
+    const gid = groupKeyOf(item)
     let g = map.get(gid)
     if (!g) {
       g = { key: gid, name: item.parent_name, total: 0, colorIdx: map.size, children: [] }
@@ -99,7 +102,7 @@ export function flatTiles(
   groups: ReadonlyMap<string, TreemapGroup>,
   grandTotal: number
 ): TreeNode[] {
-  return items.map((item) => categoryTile(item, groups.get(groupKey(item))!, grandTotal))
+  return items.map((item) => categoryTile(item, groups.get(groupKeyOf(item))!, grandTotal))
 }
 
 /** What a treemap can draw: a tile's area is its spending, so a line that

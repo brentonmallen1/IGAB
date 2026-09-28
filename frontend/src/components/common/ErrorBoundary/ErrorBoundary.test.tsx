@@ -20,7 +20,7 @@ beforeEach(() => {
   // localStorage comes from test-utils/setup — Node declares the global but
   // leaves it unusable, so the suite installs a working one.
   localStorage.setItem('igab-ui', '{"activeViewId":"v1"}')
-  localStorage.setItem('igab-reports', '{"activeTab":"pareto"}')
+  localStorage.setItem('igab-reports', '{"activeTab":"where-it-went"}')
   Object.defineProperty(window, 'location', {
     configurable: true,
     value: { ...window.location, reload },

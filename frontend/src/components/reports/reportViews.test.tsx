@@ -69,14 +69,12 @@ import { IncomeExpenseReport } from './charts/IncomeExpenseChart'
 import { IncomeSourcesReport } from './charts/IncomeSourcesReport'
 import { LiabilitiesReport } from './charts/LiabilitiesReport'
 import { NetWorthReport } from './charts/NetWorthChart'
-import { ParetoReport } from './charts/ParetoChart'
 import { PayeeReport } from './charts/PayeeChart'
 import { PlanVsRealityReport } from './charts/PlanVsRealityReport'
 import { SavingsReport } from './charts/SavingsReport'
 import { SavingsRateReport } from './charts/SavingsRateChart'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
-import { SpendingTreemapReport } from './charts/SpendingTreemap'
-import { SpendingBreakdownReport } from './charts/SpendingBreakdownReport'
+import { WhereItWentReport } from './charts/WhereItWentReport'
 import { SpendingTrendsReport } from './charts/SpendingTrendsReport'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
 import { VarianceReport } from './charts/VarianceChart'
@@ -102,9 +100,7 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['BudgetActual', BudgetActualReport],
   ['Variance', VarianceReport],
   ['Volatility', VolatilityReport],
-  ['Pareto', ParetoReport],
-  ['SpendingTreemap', SpendingTreemapReport],
-  ['SpendingBreakdown', SpendingBreakdownReport],
+  ['WhereItWent', WhereItWentReport],
   ['SpendingTrends', SpendingTrendsReport],
   ['Seasonality', SeasonalityReport],
   ['Subscriptions', SubscriptionsReport],
@@ -178,11 +174,7 @@ describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
 
 /** The spending charts that take a view, and so can be told what it hid.
  *  Spending Trends takes no view. */
-const VIEW_CHARTS = [
-  ['Pareto', ParetoReport],
-  ['Treemap', SpendingTreemapReport],
-  ['Breakdown', SpendingBreakdownReport],
-] as const
+const VIEW_CHARTS = [['WhereItWent', WhereItWentReport]] as const
 
 describe('view-hidden note on the spending charts', () => {
   const hiddenData = {
@@ -233,8 +225,8 @@ describe('view-hidden note on the spending charts', () => {
 const TOGGLE_CHARTS = [...VIEW_CHARTS, ['Trends', SpendingTrendsReport]] as const
 
 describe('class-excluded note on the spending charts', () => {
-  // One payload in both shapes — the grouped rollup (Pareto, Treemap,
-  // Breakdown) and the monthly series (Trends) — since every hook in this
+  // One payload in both shapes — the grouped rollup (Where it went) and the
+  // monthly series (Trends) — since every hook in this
   // suite serves the same data.
   const dataWithExcluded = {
     groups: [
@@ -367,45 +359,195 @@ describe('a deleted saved filter', () => {
         total: 120,
       },
     })
-    renderReport(<SpendingBreakdownReport budgetId="b1" />)
+    renderReport(<WhereItWentReport budgetId="b1" />)
     expect(screen.getByText(/nothing it named is included here/)).toBeInTheDocument()
     expect(screen.queryByText(/nothing to show/)).toBeNull()
   })
 })
 
-describe('treemap group-by fallback', () => {
-  it('draws group tiles — and says so — when the stored mode is payee', () => {
+/**
+ * Where it went: Breakdown, Pareto and Treemap as one report. A ranked table
+ * with its running share and the 80% line, a Group / Category / Payee mode,
+ * and a treemap view of the same rows.
+ */
+describe('Where it went', () => {
+  const groups = [
+    { id: 'c1', name: 'Rent', total: 500, count: 1, pct: 50, parent_id: 'g1', parent_name: 'Home' },
+    {
+      id: 'c2',
+      name: 'Groceries',
+      total: 300,
+      count: 5,
+      pct: 30,
+      parent_id: 'g2',
+      parent_name: 'Everyday',
+    },
+    {
+      id: 'c3',
+      name: 'Gas',
+      total: 150,
+      count: 3,
+      pct: 15,
+      parent_id: 'g2',
+      parent_name: 'Everyday',
+    },
+    {
+      id: 'c4',
+      name: 'Fun',
+      total: 50,
+      count: 2,
+      pct: 5,
+      parent_id: 'g2',
+      parent_name: 'Everyday',
+    },
+  ]
+  const data = {
+    groups,
+    total: 1000,
+    view_hidden_categories: 0,
+    view_hidden_total: 0,
+    class_excluded: [],
+    counted_classes: ['spending'],
+  }
+
+  afterEach(() => {
+    useReportStore.setState({ whereItWentView: 'table' })
+    useReportStore.getState().setFilters({ groupBy: 'category' })
+    useReportStore.getState().setDrillDown(null)
+  })
+
+  it('ranks the lines with their share and running share', () => {
+    setQuery({ data })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(cellsOf('Rent')).toEqual(['Rent', 'Home', '$500.00', '50%', '50%'])
+    expect(cellsOf('Groceries')).toEqual(['Groceries', 'Everyday', '$300.00', '30%', '80%'])
+    expect(cellsOf('Fun')).toEqual(['Fun', 'Everyday', '$50.00', '5%', '100%'])
+    expect(card('Spent').value).toBe('$1,000.00')
+  })
+
+  it('says how few lines make 80%, and marks the line where it is reached', () => {
+    // Rent + Groceries reach 80%: 2 of 4 categories. No verdict beside it —
+    // the old Pareto card added "spread thin, consider consolidating".
+    setQuery({ data })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(screen.getByText('2 of 4 categories make 80% of spending.')).toBeInTheDocument()
+    expect(screen.queryByText(/spread thin|concentrated/)).toBeNull()
+    const mark = screen.getByText('80% of spending is above this line').closest('tr')!
+    expect(mark.previousElementSibling?.textContent).toContain('Groceries')
+  })
+
+  it('lists a line that netted negative last, signed, and brings the running share back', () => {
+    setQuery({
+      data: {
+        ...data,
+        groups: [
+          ...groups,
+          {
+            id: 'c9',
+            name: 'Returns',
+            total: -100,
+            count: 1,
+            pct: 0,
+            parent_id: 'g9',
+            parent_name: 'Shopping',
+          },
+        ],
+        total: 900,
+      },
+    })
+    const { container } = renderReport(<WhereItWentReport budgetId="b1" />)
+    const names = [...container.querySelectorAll('tbody .report-table__drill')].map(
+      (b) => b.textContent
+    )
+    expect(names.at(-1)).toBe('Returns')
+    expect(cellsOf('Returns')).toEqual(['Returns', 'Shopping', '-$100.00', '-11%', '100%'])
+  })
+
+  it('says there is no share to state when refunds beat spending', () => {
+    setQuery({
+      data: {
+        ...data,
+        groups: [
+          { ...groups[0], total: 40 },
+          { ...groups[1], total: -100 },
+        ],
+        total: -60,
+      },
+    })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(screen.getByText(/no shares to state/)).toBeInTheDocument()
+    expect(cellsOf('Rent')).toEqual(['Rent', 'Home', '$40.00', '—', '—'])
+  })
+
+  it('ranks groups in group mode and opens one into its categories', () => {
+    useReportStore.getState().setFilters({ groupBy: 'group' })
+    setQuery({ data })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(cellsOf('Everyday')).toEqual(['Everyday', '$500.00', '50%', '100%'])
+    fireEvent.click(screen.getByRole('button', { name: "Open Everyday's categories" }))
+    // The opened group's categories, as shares of the group — what is on
+    // screen, as the Breakdown stated it.
+    expect(cellsOf('Groceries')).toEqual(['Groceries', '$300.00', '60%', '60%'])
+    expect(card('Everyday').value).toBe('$500.00')
+    expect(
+      screen.getByText('2 of 3 categories make 80% of the spending in Everyday.')
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'All groups' }))
+    expect(cellsOf('Home')).toEqual(['Home', '$500.00', '50%', '50%'])
+  })
+
+  it("lists an opened group's transactions — the rows its line added up", () => {
+    useReportStore.getState().setFilters({ groupBy: 'group' })
+    setQuery({ data })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: "Open Everyday's categories" }))
+    fireEvent.click(screen.getByRole('button', { name: 'List its transactions' }))
+    expect(useReportStore.getState().drillDown).toMatchObject({
+      kind: 'category-group',
+      label: 'Everyday',
+      categoryIds: ['c2', 'c3', 'c4'],
+      activityClasses: ['spending'],
+    })
+    expect(useReportStore.getState().drillDown?.direction).toBeUndefined()
+  })
+
+  it('draws the treemap view from the same rows, and keeps the key', () => {
+    useReportStore.setState({ whereItWentView: 'treemap' })
+    setQuery({ data })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(screen.getByRole('button', { name: 'Treemap' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('table')).toBeNull()
+    // Category mode shades by group and names the groups.
+    expect(screen.getByText('Home')).toBeInTheDocument()
+    expect(screen.getByText('2 of 4 categories make 80% of spending.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }))
+    expect(useReportStore.getState().whereItWentView).toBe('table')
+  })
+
+  it('draws the table in payee mode, without forgetting the treemap', () => {
+    // Payee mode holds the ranked 25 of every payee; as tiles they would fill
+    // the area and read as all of the spending.
+    useReportStore.setState({ whereItWentView: 'treemap' })
     useReportStore.getState().setFilters({ groupBy: 'payee' })
-    try {
-      setQuery({
-        data: {
-          groups: [
-            {
-              id: 'c1',
-              name: 'Dining',
-              parent_id: 'g1',
-              parent_name: 'Everyday',
-              total: 205,
-              count: 3,
-              pct: 100,
-            },
-          ],
-          total: 205,
-          view_hidden_categories: 0,
-          view_hidden_total: '0',
-          class_excluded: [],
-        },
-      })
-      renderReport(<SpendingTreemapReport budgetId="b1" />)
-      // The breadcrumb only exists in group mode; before the resolver the
-      // payee mode landed here by accident with Payee still highlighted.
-      expect(screen.getByText('All Groups')).toBeInTheDocument()
-      expect(
-        screen.getByText('Click a group to drill down into its categories.')
-      ).toBeInTheDocument()
-    } finally {
-      useReportStore.getState().setFilters({ groupBy: 'category' })
-    }
+    setQuery({
+      data: {
+        ...data,
+        payees: [{ payee_id: 'p1', payee_name: 'Corner Market', total: 250 }],
+        total: 250,
+        payee_count: 1,
+        payees_to_80pct: 1,
+      },
+    })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Treemap' })).toBeDisabled()
+    expect(useReportStore.getState().whereItWentView).toBe('treemap')
+  })
+
+  it('exports under one id', () => {
+    setQuery({ data })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(screen.getAllByRole('button', { name: /Export/ })).toHaveLength(1)
   })
 })
 
@@ -1687,87 +1829,38 @@ describe('AnomaliesReport list', () => {
   })
 })
 
-describe('ParetoReport insight', () => {
-  it('computes the 80% concentration from the spending groups', () => {
-    setQuery({
-      data: {
-        groups: [
-          {
-            id: 'c1',
-            name: 'Rent',
-            total: 500,
-            count: 1,
-            pct: 50,
-            parent_id: 'g1',
-            parent_name: 'Home',
-          },
-          {
-            id: 'c2',
-            name: 'Groceries',
-            total: 300,
-            count: 5,
-            pct: 30,
-            parent_id: 'g2',
-            parent_name: 'Everyday',
-          },
-          {
-            id: 'c3',
-            name: 'Gas',
-            total: 150,
-            count: 3,
-            pct: 15,
-            parent_id: 'g2',
-            parent_name: 'Everyday',
-          },
-          {
-            id: 'c4',
-            name: 'Fun',
-            total: 50,
-            count: 2,
-            pct: 5,
-            parent_id: 'g2',
-            parent_name: 'Everyday',
-          },
-        ],
-        total: 1000,
-      },
-    })
-    renderReport(<ParetoReport budgetId="b1" />)
-
-    // total spending card (the drill table's total row shows it too)
-    expect(screen.getAllByText('$1,000.00').length).toBeGreaterThan(0)
-    // Rent + Groceries reach 80%: 2 of 4 categories. The card states that and
-    // no more — it used to add a "spread thin, consider consolidating"
-    // verdict in warning colour, advice drawn from a budget's shape.
-    expect(screen.getByText('2 categories')).toBeInTheDocument()
-    expect(card('80% of Spend').sub).toBe('50% of all categories')
-    expect(screen.queryByText(/spread thin|concentrated/)).toBeNull()
+describe('Where it went in payee mode', () => {
+  afterEach(() => {
+    useReportStore.getState().setFilters({ groupBy: 'category' })
   })
 
-  it('draws the payee card from the served count when the top 25 hold under 80%', () => {
-    // 312 payees, the 25 sent holding $4,120 of $9,850. The card looked for
-    // 80% in those 25 and, finding nothing, disappeared.
+  it('states the served 80% count when the top 25 hold under 80%', () => {
+    // 312 payees, the 25 sent holding $4,120 of $9,850. The old Pareto card
+    // looked for 80% in those 25 and, finding nothing, disappeared.
     useReportStore.getState().setFilters({ groupBy: 'payee' })
-    try {
-      setQuery({
-        data: {
-          groups: [],
-          payees: Array.from({ length: 25 }, (_, i) => ({
-            payee_id: `p${i}`,
-            payee_name: `Payee ${i}`,
-            total: 4120 / 25,
-          })),
-          total: 9850,
-          payee_count: 312,
-          payees_to_80pct: 140,
-        },
-      })
-      renderReport(<ParetoReport budgetId="b1" />)
-      expect(screen.getByText('80% of Spend')).toBeInTheDocument()
-      expect(screen.getByText('140 payees')).toBeInTheDocument()
-    } finally {
-      useReportStore.getState().setFilters({ groupBy: 'category' })
-    }
+    setQuery({
+      data: {
+        groups: [],
+        payees: Array.from({ length: 25 }, (_, i) => ({
+          payee_id: `p${i}`,
+          payee_name: `Payee ${i}`,
+          total: 4120 / 25,
+        })),
+        total: 9850,
+        payee_count: 312,
+        payees_to_80pct: 140,
+        counted_classes: ['spending'],
+      },
+    })
+    const { container } = renderReport(<WhereItWentReport budgetId="b1" />)
+    expect(screen.getByText('140 of 312 payees make 80% of spending.')).toBeInTheDocument()
+    // The line is past the 25 listed, so no row is marked.
+    expect(screen.queryByText('80% of spending is above this line')).toBeNull()
+    // The rows' sum is headed as what it is, beside the whole it came from.
+    const foot = container.querySelector('tfoot')!
+    expect(foot.textContent).toContain('Total of the 25 shown')
+    expect(foot.textContent).toContain('of $9,850.00 across 312 payees')
+    expect(card('Spent').value).toBe('$9,850.00')
   })
 })
 
@@ -2666,7 +2759,7 @@ describe('drill tables read spending as a positive figure', () => {
     noMinus('Aug 26', '$300.00')
   })
 
-  it('Pareto', () => {
+  it('Where it went', () => {
     setQuery({
       data: {
         groups: [
@@ -2683,7 +2776,7 @@ describe('drill tables read spending as a positive figure', () => {
         total: 500,
       },
     })
-    renderReport(<ParetoReport budgetId="b1" />)
+    renderReport(<WhereItWentReport budgetId="b1" />)
     noMinus('Rent', '$500.00')
   })
 
@@ -3229,39 +3322,34 @@ describe('spending drills total what the chart totals', () => {
 
   const drill = () => useReportStore.getState().drillDown
 
-  it('Breakdown used to omit the Uncategorized line; it opens by "no category"', () => {
+  it('Where it went opens the Uncategorized group, and its line by "no category"', () => {
+    // The Breakdown used to omit the line altogether.
+    useReportStore.getState().setFilters({ groupBy: 'group' })
     setQuery({ data: grouped })
-    renderReport(<SpendingBreakdownReport budgetId="b1" />)
-    const cell = () => screen.getAllByText('Uncategorized').find((el) => el.tagName === 'TD')!
-    fireEvent.click(cell()) // the group
-    fireEvent.click(cell()) // its one line
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: "Open Uncategorized's categories" }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Uncategorized' })
+    )
     expect(drill()).toMatchObject({ noCategory: true, activityClasses: served })
     expect(drill()?.categoryIds).toBeUndefined()
     expect(drill()?.direction).toBeUndefined()
   })
 
-  it('Breakdown lists a line that netted negative, and leaves it off the ring', () => {
-    setQuery({
-      data: {
-        ...grouped,
-        groups: [
-          ...grouped.groups,
-          {
-            id: 'c9',
-            name: 'Returns',
-            parent_id: 'g9',
-            parent_name: 'Shopping',
-            total: -90,
-            count: 1,
-            pct: 0,
-          },
-        ],
-        total: 200,
-      },
+  it('Where it went opens a category by its id and the served classes', () => {
+    useReportStore.getState().setFilters({ groupBy: 'category' })
+    setQuery({ data: grouped })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show the transactions behind Groceries' }))
+    expect(drill()).toMatchObject({
+      kind: 'category',
+      label: 'Groceries',
+      scope: 'leaf',
+      categoryIds: ['c1'],
+      activityClasses: served,
     })
-    renderReport(<SpendingBreakdownReport budgetId="b1" />)
-    expect(cellsOf('Shopping')).toContain('-$90.00')
-    expect(screen.getByText(/Refunds outweighed spending on 1 line/)).toBeInTheDocument()
+    expect(drill()?.noCategory).toBeUndefined()
+    expect(drill()?.direction).toBeUndefined()
   })
 
   it('Seasonality opens a cell with the served classes, uncategorized by "no category"', () => {
@@ -3336,7 +3424,7 @@ describe('spending drills total what the chart totals', () => {
     ).toBeGreaterThan(0)
   })
 
-  it('Pareto payee mode carries no category scope, which its report never applied', () => {
+  it('Where it went payee mode carries no category scope, which its report never applied', () => {
     useReportStore.getState().setFilters({ groupBy: 'payee', categoryIds: ['c1'] })
     setQuery({
       data: {
@@ -3358,18 +3446,20 @@ describe('spending drills total what the chart totals', () => {
         recurring_min_months: 3,
       },
     })
-    renderReport(<ParetoReport budgetId="b1" />)
-    fireEvent.click(screen.getAllByText('Corner Market').at(-1)!)
-    expect(drill()).toMatchObject({ payeeIds: ['p1'], activityClasses: served })
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show the transactions behind Corner Market' })
+    )
+    expect(drill()).toMatchObject({ kind: 'payee', payeeIds: ['p1'], activityClasses: served })
     expect(drill()?.categoryIds).toBeUndefined()
     expect(drill()?.direction).toBeUndefined()
   })
 
-  it('the Pareto and Seasonality panels name no colours', () => {
+  it('the Where it went panel names no colours', () => {
     // A colour name is wrong in thirty-nine of forty themes.
     setQuery({ data: grouped })
-    renderReport(<ParetoReport budgetId="b1" />)
-    fireEvent.click(screen.getByRole('button', { name: 'About the Pareto Analysis report' }))
+    renderReport(<WhereItWentReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Where it went report' }))
     expect(screen.queryByText(/\b(orange|red|blue|green)\b/)).toBeNull()
   })
 

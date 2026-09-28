@@ -14,8 +14,8 @@ export interface DrillScope {
  * — three controls side by side add up — and wrong for a drill-down, twice
  * over:
  *
- * - A chart drilling into **specific categories** (a treemap tile, a pareto
- *   bar) has already narrowed *within* the scope: its ids are a subset of
+ * - A chart drilling into **specific categories** (a treemap tile, a ranked
+ *   row) has already narrowed *within* the scope: its ids are a subset of
  *   what the report counted. Sending the tag as well would union them back out
  *   to the whole tag, so clicking one $80 tile would open a $2,000 list.
  * - A chart drilling into a **day or a month or a payee** has no category ids

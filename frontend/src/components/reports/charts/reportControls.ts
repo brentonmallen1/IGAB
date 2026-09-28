@@ -24,6 +24,6 @@ export const SENSITIVITY_OPTIONS = [
   { value: 2.0, label: 'Sensitive', description: '2σ or more from usual' },
 ] as const
 
-/** How many payees the server ranks for Payee Analysis and Pareto. One number
+/** How many payees the server ranks for Payee Analysis and Where it went. One number
  *  so the two charts share one query rather than ranking twice. */
 export const PAYEE_RANKED = 25

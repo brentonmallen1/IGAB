@@ -203,27 +203,14 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     leavesOut:
       'Transfers, and savings and debt payments unless you include them — a note says how much.',
   },
-  'spending-breakdown': {
-    scope: 'categories',
-    summary: "Where the period's spending went, by group then category.",
-    counts:
-      'Spending only, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments.',
-    leavesOut: 'Transfers, and savings and debt payments unless you include them.',
-  },
-  pareto: {
+  'where-it-went': {
     scope: 'on-budget-filterable',
-    summary: 'Where spending concentrates — the 80/20 view.',
+    summary:
+      "Where the period's spending went, largest first by group, category or payee, and how few lines make 80% of it.",
     counts:
-      'Spending only by group, category or payee, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments.',
-    leavesOut: 'Transfers, and savings and debt payments unless you include them.',
-  },
-  treemap: {
-    scope: 'on-budget-filterable',
-    summary: 'Spending as rectangles sized by amount.',
-    counts:
-      'Spending only by group or category, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments.',
+      'Spending only, net of refunds, with uncategorized spending as its own line, unless you include savings and debt payments; payee mode counts every payee and lists the 25 largest.',
     leavesOut:
-      'Transfers, savings and debt payments unless you include them, and any line whose refunds outweigh its spending — it has no area to draw.',
+      'Transfers, and savings and debt payments unless you include them; the treemap has no area for a line whose refunds outweighed its spending, which the table still lists.',
   },
   seasonality: {
     scope: 'categories',

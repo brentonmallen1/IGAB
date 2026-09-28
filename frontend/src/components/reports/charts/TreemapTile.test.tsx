@@ -6,20 +6,20 @@
 import { render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
-import { TreemapContent } from './SpendingTreemap'
+import { TreemapTile } from './WhereItWentTreemap'
 
 const inSvg = (node: ReactNode) => render(<svg>{node}</svg>)
 
-describe('TreemapContent', () => {
+describe('TreemapTile', () => {
   it('draws nothing for the root, which used to print "$0.00" mid-chart', () => {
-    const { container } = inSvg(<TreemapContent depth={0} x={0} y={0} width={800} height={440} />)
+    const { container } = inSvg(<TreemapTile depth={0} x={0} y={0} width={800} height={440} />)
     expect(container.querySelector('svg')?.childElementCount).toBe(0)
     expect(container.textContent).not.toContain('$0.00')
   })
 
   it('draws a tile with its name and amount', () => {
     const { container } = inSvg(
-      <TreemapContent depth={1} name="Groceries" size={420} x={0} y={0} width={200} height={120} />
+      <TreemapTile depth={1} name="Groceries" size={420} x={0} y={0} width={200} height={120} />
     )
     expect(container.textContent).toContain('Groceries')
     expect(container.textContent).toContain('$420.00')

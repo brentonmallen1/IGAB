@@ -60,7 +60,7 @@ describe('ReportErrorState', () => {
 
   describe('when a saved view is driving the report', () => {
     beforeEach(() => {
-      useReportStore.getState().setActiveTab('pareto')
+      useReportStore.getState().setActiveTab('where-it-went')
       useReportStore.getState().setFilters({ viewId: 'v1' })
     })
 
