@@ -16,7 +16,8 @@ import { bannerLines, isDismissed } from './bannerLines'
 interface LiabilityRow {
   linked_account_id: string | null
   current_balance: number
-  last_payment_date: string | null
+  recent_payment_dates: string[]
+  payment_window_start: string
   payment_due_kind: 'day_of_month' | 'cycle_days'
   payment_due_day: number | null
   payment_due_cycle_days: number | null
@@ -49,12 +50,15 @@ vi.mock('../../../api/cardDueDismissals', () => ({
 import { CardDueBanner } from './CardDueBanner'
 import { useAppStore } from '../../../stores/appStore'
 
-/** Due on the 17th, owing $412; last paid 10 Aug, so September is unpaid. */
+/** Due on the 17th, owing $412, watched from 1 Jul; July and August were
+ *  paid on the 10th, so September is unpaid. */
+const PAID_JUL_AUG = ['2026-07-10', '2026-08-10']
 function liability(over: Partial<LiabilityRow> = {}): LiabilityRow {
   return {
     linked_account_id: 'visa',
     current_balance: 412,
-    last_payment_date: '2026-08-10',
+    recent_payment_dates: PAID_JUL_AUG,
+    payment_window_start: '2026-07-01',
     payment_due_kind: 'day_of_month',
     payment_due_day: 17,
     payment_due_cycle_days: null,
@@ -110,19 +114,27 @@ describe('the banner', () => {
   })
 
   it('says past due in the negative colour, and what the claim rests on', () => {
-    // Due on the 3rd, nothing paid since 20 Jul: 3 Sep went by unpaid.
-    data.liabilities = [liability({ payment_due_day: 3, last_payment_date: '2026-07-20' })]
+    // Due on the 3rd; one payment, on 1 Jul, paid the 3 Jul bill. August and
+    // September went by unpaid, and the latest of them is the one named.
+    data.liabilities = [liability({ payment_due_day: 3, recent_payment_dates: ['2026-07-01'] })]
     show()
 
     const line = screen.getByRole('listitem')
     expect(line).toHaveClass('card-due-banner__line--past-due')
     expect(line).toHaveTextContent(
-      'Sapphire Visa is past due since Sep 3 · $412.00 owed · No payment seen since Aug 3'
+      'Sapphire Visa is past due since Sep 3 · $412.00 owed · Last payment seen Jul 1'
     )
   })
 
+  it('says since when it has looked, when it has seen no payment at all', () => {
+    data.liabilities = [liability({ payment_due_day: 3, recent_payment_dates: [] })]
+    show()
+
+    expect(screen.getByRole('listitem')).toHaveTextContent('No payment seen since Jul 1')
+  })
+
   it('draws nothing when no bill needs saying', () => {
-    data.liabilities = [liability({ last_payment_date: '2026-09-01' })]
+    data.liabilities = [liability({ recent_payment_dates: [...PAID_JUL_AUG, '2026-09-01'] })]
     const { container } = show()
 
     expect(container).toBeEmptyDOMElement()
@@ -134,7 +146,13 @@ describe('the banner', () => {
 
     expect(data.mutate).toHaveBeenCalledExactlyOnceWith({
       accountId: 'visa',
-      reminder: { state: 'due', dueDate: '2026-09-17', days: 4, paidAfter: '2026-08-17' },
+      reminder: {
+        state: 'due',
+        dueDate: '2026-09-17',
+        days: 4,
+        lastPayment: '2026-08-10',
+        watchedFrom: '2026-07-01',
+      },
     })
   })
 
@@ -162,7 +180,11 @@ describe('bannerLines', () => {
       [
         liability({ linked_account_id: 'a', payment_due_day: 19 }),
         liability({ linked_account_id: 'b', payment_due_day: 15 }),
-        liability({ linked_account_id: 'c', payment_due_day: 3, last_payment_date: '2026-07-20' }),
+        liability({
+          linked_account_id: 'c',
+          payment_due_day: 3,
+          recent_payment_dates: ['2026-07-01'],
+        }),
       ],
       [
         account({ id: 'a', name: 'Thistledown Card' }),
@@ -193,7 +215,8 @@ describe('isDismissed', () => {
     state: 'due',
     dueDate: '2026-09-17',
     days: 4,
-    paidAfter: '2026-08-17',
+    lastPayment: '2026-08-10',
+    watchedFrom: '2026-07-01',
   }
   const on = (d: Partial<CardDueDismissal>) =>
     isDismissed(

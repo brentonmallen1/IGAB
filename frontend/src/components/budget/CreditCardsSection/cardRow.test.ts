@@ -521,13 +521,15 @@ describe('dueHeaderNote', () => {
     state: 'due',
     dueDate: '2026-09-17',
     days,
-    paidAfter: '2026-08-17',
+    lastPayment: '2026-08-10',
+    watchedFrom: '2026-05-01',
   })
   const past: CardDueReminder = {
     state: 'past_due',
     dueDate: '2026-09-03',
     days: -10,
-    paidAfter: '2026-08-03',
+    lastPayment: null,
+    watchedFrom: '2026-05-01',
   }
 
   it('says nothing when no bill is due', () => {
@@ -593,7 +595,8 @@ describe('the dot once the bill is counted', () => {
     state: 'past_due',
     dueDate: '2026-09-03',
     days: -1,
-    paidAfter: '2026-08-03',
+    lastPayment: null,
+    watchedFrom: '2026-05-01',
   }
   const soon: CardDueReminder = { ...past, state: 'due', dueDate: '2026-10-03', days: 3 }
 

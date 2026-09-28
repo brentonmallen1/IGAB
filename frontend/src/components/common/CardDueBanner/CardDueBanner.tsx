@@ -63,8 +63,15 @@ export function CardDueBanner() {
                   {formatMoney(owed)} owed
                   {/* The claim rests on the ledger: a payment whose checking
                     leg never paired as a transfer is invisible here, so say
-                    what was seen rather than that nothing was paid. */}
-                  {past && <> · No payment seen since {formatDayMonth(reminder.paidAfter)}</>}
+                    what was seen rather than that nothing was paid. Not "no
+                    payment since" the bill before: a payment after it may
+                    have been spent on an older bill, and was still seen. */}
+                  {past &&
+                    (reminder.lastPayment ? (
+                      <> · Last payment seen {formatDayMonth(reminder.lastPayment)}</>
+                    ) : (
+                      <> · No payment seen since {formatDayMonth(reminder.watchedFrom)}</>
+                    ))}
                 </span>
               </span>
               <button

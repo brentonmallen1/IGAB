@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -44,7 +44,7 @@ from igab.domain.payment_composition import (
     full_monthly_payment,
     parse_components,
 )
-from igab.domain.payment_due import validate_payment_due
+from igab.domain.payment_due import PAYMENT_WINDOW_DAYS, validate_payment_due
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -178,10 +178,11 @@ async def _liability_out(
     today: date,
 ) -> LiabilityOut:
     """`today` is the caller's: the listing takes it as `?today=`, the way the
-    wishlist does, because "the latest payment so far" is a question about a
+    wishlist does, because "the payments so far" is a question about a
     particular day and the server's is already tomorrow every evening west of
     UTC. Mutation responses fall back to the server's clock — the client
     refetches the listing after every one of them rather than reading these."""
+    window_start = today - timedelta(days=PAYMENT_WINDOW_DAYS)
     status_ = await liability_service.get_status(liability)
     linked_category = await category_repo.get_by_linked_liability(liability.id)
 
@@ -256,7 +257,10 @@ async def _liability_out(
         payment_due_day=liability.payment_due_day,
         payment_due_cycle_days=liability.payment_due_cycle_days,
         payment_due_anchor=liability.payment_due_anchor,
-        last_payment_date=await liability_service.last_payment_date(liability, today),
+        recent_payment_dates=await liability_service.recent_payment_dates(
+            liability, window_start, today
+        ),
+        payment_window_start=window_start,
         credit_limit=liability.credit_limit,
         utilization=utilization_percent(status_.current_balance, liability.credit_limit),
         promo_projection=(
@@ -292,7 +296,7 @@ async def list_liabilities(
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     include_closed: bool = False,
-    #: The browser's own date, for `last_payment_date` (see `_liability_out`).
+    #: The browser's own date, for `recent_payment_dates` (see `_liability_out`).
     today: date | None = Query(None),
 ) -> list[LiabilityOut]:
     """What is still owed. A loan whose account has been closed is out unless

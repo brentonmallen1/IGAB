@@ -72,7 +72,8 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     payment_due_day: null,
     payment_due_cycle_days: null,
     payment_due_anchor: null,
-    last_payment_date: null,
+    recent_payment_dates: [],
+    payment_window_start: '2026-08-01',
     payment_components: [],
     payment_components_total: 0,
     full_monthly_payment: null,
@@ -235,7 +236,7 @@ describe('LiabilityTermsHeader', () => {
     })
 
     it('shows the next date, with the monthly rule under it', () => {
-      renderHeader([liability({ payment_due_day: 17, last_payment_date: '2026-08-10' })])
+      renderHeader([liability({ payment_due_day: 17, recent_payment_dates: ['2026-08-10'] })])
 
       expect(screen.getByText('Sep 17')).toBeInTheDocument()
       expect(screen.getByText('the 17th of each month')).toBeInTheDocument()
@@ -250,7 +251,7 @@ describe('LiabilityTermsHeader', () => {
           payment_due_kind: 'cycle_days',
           payment_due_cycle_days: 31,
           payment_due_anchor: '2026-09-03',
-          last_payment_date: '2026-08-10',
+          recent_payment_dates: ['2026-08-01', '2026-09-01'],
         }),
       ])
 
@@ -261,7 +262,11 @@ describe('LiabilityTermsHeader', () => {
     it('says how far off it is once it is close and the card still owes', () => {
       // Paid 10 Aug, so August's bill was paid and September's is not.
       renderHeader([
-        liability({ payment_due_day: 17, current_balance: 420, last_payment_date: '2026-08-10' }),
+        liability({
+          payment_due_day: 17,
+          current_balance: 420,
+          recent_payment_dates: ['2026-08-10'],
+        }),
       ])
 
       expect(screen.getByText('Bill due in 4 days')).toBeInTheDocument()
@@ -269,7 +274,11 @@ describe('LiabilityTermsHeader', () => {
 
     it('goes quiet once a payment lands after the last due date', () => {
       renderHeader([
-        liability({ payment_due_day: 17, current_balance: 420, last_payment_date: '2026-09-01' }),
+        liability({
+          payment_due_day: 17,
+          current_balance: 420,
+          recent_payment_dates: ['2026-08-10', '2026-09-01'],
+        }),
       ])
 
       expect(screen.getByText('Sep 17')).toBeInTheDocument()
@@ -277,9 +286,13 @@ describe('LiabilityTermsHeader', () => {
     })
 
     it('says past due, in red, on the date that went by unpaid', () => {
-      // Due on the 3rd; nothing paid since 3 Aug, so 3 Sep went by unpaid.
+      // Due on the 3rd; 20 Jul paid the 3 Aug bill, and 3 Sep went by unpaid.
       renderHeader([
-        liability({ payment_due_day: 3, current_balance: 420, last_payment_date: '2026-07-20' }),
+        liability({
+          payment_due_day: 3,
+          current_balance: 420,
+          recent_payment_dates: ['2026-07-20'],
+        }),
       ])
 
       expect(screen.getByText('Bill past due')).toBeInTheDocument()
@@ -296,7 +309,7 @@ describe('LiabilityTermsHeader', () => {
     })
 
     it('does not call a bill missed on a card whose payments it cannot see', () => {
-      // Off budget, no payment reaches `last_payment_date`, so every due
+      // Off budget, no payment reaches `recent_payment_dates`, so every due
       // date would read as missed forever. The date stays; the alarm does not.
       accounts[0] = { ...CARD_ACCOUNT, on_budget: false }
       renderHeader([liability({ payment_due_day: 3, current_balance: 420 })])
@@ -316,7 +329,11 @@ describe('LiabilityTermsHeader', () => {
 
     it('stays a plain label while the bill is still weeks off', () => {
       renderHeader([
-        liability({ payment_due_day: 3, current_balance: 420, last_payment_date: '2026-09-01' }),
+        liability({
+          payment_due_day: 3,
+          current_balance: 420,
+          recent_payment_dates: ['2026-08-01', '2026-09-01'],
+        }),
       ])
 
       expect(screen.getByText('Oct 3')).toBeInTheDocument()

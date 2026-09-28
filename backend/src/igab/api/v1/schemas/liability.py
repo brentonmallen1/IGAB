@@ -211,14 +211,20 @@ class LiabilityOut(ApiModel):
     payment_due_day: int | None
     payment_due_cycle_days: int | None
     payment_due_anchor: datetime.date | None
-    #: The latest payment onto an on-budget card from the budget's cash
-    #: (`CARD_PAYMENT_FROM_CASH`), on or before the caller's today; None for
-    #: a card with none and for every other debt. Served because the client
-    #: cannot see the ledger; the due/past-due rule that reads it stays in
-    #: the client (`utils/paymentDue.ts`) because no backend path decides it.
+    #: Every payment onto an on-budget card from the budget's cash
+    #: (`CARD_PAYMENT_FROM_CASH`) from `payment_window_start` to the caller's
+    #: today, oldest first, one per leg; empty for a card with none and for
+    #: every other debt. Served because the client cannot see the ledger; the
+    #: due/past-due rule that matches them to bills stays in the client
+    #: (`utils/paymentDue.ts`) because no backend path decides it.
     #: Required: a path that forgets to compute it must fail, not report a
     #: paid card as unpaid.
-    last_payment_date: datetime.date | None
+    recent_payment_dates: list[datetime.date]
+    #: Where that window begins (`domain/payment_due.PAYMENT_WINDOW_DAYS`
+    #: before today). The client starts its walk over due dates here, and
+    #: must not guess the width: a payment it cannot see would read as a
+    #: bill nobody paid.
+    payment_window_start: datetime.date
     credit_limit: Decimal | None
     #: balance ÷ credit_limit as a percent (domain/credit.py), to one decimal;
     #: None without a usable limit. Computed here because the server owns

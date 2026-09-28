@@ -57,14 +57,15 @@ import { CreditCardsSection } from './CreditCardsSection'
 import { cardStatus } from '../../../test-utils/cardFixture'
 
 /** Only the fields this row reads — the rest of a Liability is a payoff
- *  projection the strip never touches. Due on the 17th, owing $1,240, last
- *  paid 10 Aug: August's bill was paid, September's is not. */
+ *  projection the strip never touches. Due on the 17th, owing $1,240, watched
+ *  from 1 Aug and paid 10 Aug: August's bill was paid, September's is not. */
 function due(over: Partial<Liability> = {}): Partial<Liability> {
   return {
     id: 'l1',
     linked_account_id: 'a1',
     current_balance: 1240,
-    last_payment_date: '2026-08-10',
+    recent_payment_dates: ['2026-08-10'],
+    payment_window_start: '2026-08-01',
     payment_due_kind: 'day_of_month',
     payment_due_day: 17,
     payment_due_cycle_days: null,
@@ -123,6 +124,9 @@ describe('the bill-due chip', () => {
         payment_due_day: null,
         payment_due_cycle_days: 31,
         payment_due_anchor: '2026-09-03',
+        // 3 Sep itself was paid on the 1st.
+        payment_window_start: '2026-09-01',
+        recent_payment_dates: ['2026-09-01'],
       }),
     ]
     show('2026-10-01')
@@ -130,8 +134,17 @@ describe('the bill-due chip', () => {
     expect(screen.getByText('Due in 3 days')).toBeInTheDocument()
   })
 
+  it('stays on when the only payment since was a late one for the bill before', () => {
+    // 17 Aug was paid on the 20th — late. That payment is spent on August,
+    // so September's bill is still due; it used to read as paid.
+    rows.liabilities = [due({ recent_payment_dates: ['2026-08-20'] })]
+    show()
+
+    expect(screen.getByText('Due in 4 days')).toBeInTheDocument()
+  })
+
   it('goes once a payment lands after the last due date', () => {
-    rows.liabilities = [due({ last_payment_date: '2026-09-05' })]
+    rows.liabilities = [due({ recent_payment_dates: ['2026-08-10', '2026-09-05'] })]
     show()
 
     expect(screen.queryByText(/^Due /)).not.toBeInTheDocument()
@@ -195,9 +208,9 @@ describe('the bill-due chip', () => {
 })
 
 describe('a bill past due', () => {
-  // Due on the 3rd; last paid 20 Jul, so the 3 Sep bill went by unpaid.
+  // Due on the 3rd; 1 Aug paid the 3 Aug bill, and 3 Sep went by unpaid.
   beforeEach(() => {
-    rows.liabilities = [due({ payment_due_day: 3, last_payment_date: '2026-07-20' })]
+    rows.liabilities = [due({ payment_due_day: 3, recent_payment_dates: ['2026-08-01'] })]
   })
 
   it('says so on the chip, in red, and never offers to dismiss it here', () => {
@@ -232,7 +245,9 @@ describe('a bill past due', () => {
   })
 
   it('clears once a late payment lands', () => {
-    rows.liabilities = [due({ payment_due_day: 3, last_payment_date: '2026-09-08' })]
+    rows.liabilities = [
+      due({ payment_due_day: 3, recent_payment_dates: ['2026-08-01', '2026-09-08'] }),
+    ]
     show()
 
     expect(screen.queryByText('Past due')).not.toBeInTheDocument()

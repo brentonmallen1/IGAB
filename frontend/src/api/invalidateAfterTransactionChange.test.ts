@@ -1,8 +1,9 @@
 /**
  * A recorded card payment has to reach the bill reminder.
  *
- * The reminder lets go when the card's served `last_payment_date` moves past
- * the last due date (`utils/paymentDue.ts`). That field rides on the
+ * The reminder lets go when a new date in the card's served
+ * `recent_payment_dates` pays the bill (`utils/paymentDue.ts`). That field
+ * rides on the
  * liabilities listing, which no transaction write used to stale — so a
  * payment typed in the register left "Sapphire Visa is due in 3 days" on
  * every page until the listing happened to refetch.

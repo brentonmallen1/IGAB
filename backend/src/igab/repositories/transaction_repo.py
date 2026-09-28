@@ -900,23 +900,27 @@ class TransactionRepository(BaseRepository[Transaction]):
             out.setdefault(row["account_id"], {})[month] = Decimal(str(row["paid"]))
         return out
 
-    async def latest_card_payment_date(
+    async def card_payment_dates(
         self,
         budget_id: uuid.UUID,
         account_id: uuid.UUID,
+        since: date,
         on_or_before: date,
-    ) -> date | None:
-        """The date of the latest payment onto one card, or None.
+    ) -> list[date]:
+        """The date of every payment onto one card in [since, on_or_before],
+        oldest first, one entry per leg — two payments on one day are two
+        entries.
 
         A payment is what `sum_card_payments_by_month` sums — the same
         `CARD_PAYMENT_FROM_CASH` leg on an on-budget card — so a refund, a
         card→card transfer and money from an off-budget account are not
         payments here either. The card-due reminder (frontend
-        `utils/paymentDue.ts`) asks whether one landed after the last due
-        date.
+        `utils/paymentDue.ts`) matches each one to at most one bill, which is
+        why it needs every date and not just the latest: a late payment for
+        October must not also pay November.
 
         Deliberately NOT `POSTED`: that term keeps pending rows out of money
-        AGGREGATES, and this is a date, not a sum. A payment the bank still
+        AGGREGATES, and these are dates, not a sum. A payment the bank still
         shows as pending has been made; making the household wait for it to
         post before the reminder lets go would ask them to dismiss a bill
         they have paid. If the bank drops the row, the reminder comes back.
@@ -925,17 +929,20 @@ class TransactionRepository(BaseRepository[Transaction]):
         not one that has landed.
         """
         result = await self.session.execute(
-            select(func.max(Transaction.date)).where(
+            select(Transaction.date)
+            .where(
                 Transaction.budget_id == budget_id,
                 Transaction.account_id == account_id,
                 NOT_DELETED,
                 PARENT_ROW,
                 ON_CARD_ACCOUNT,
                 CARD_PAYMENT_FROM_CASH,
+                Transaction.date >= since,
                 Transaction.date <= on_or_before,
             )
+            .order_by(Transaction.date)
         )
-        return result.scalar_one_or_none()
+        return list(result.scalars().all())
 
     async def sum_unclaimed_card_rows(
         self,

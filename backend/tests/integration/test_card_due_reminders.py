@@ -1,14 +1,17 @@
-"""Card-bill reminders: the served payment date, and the shared dismissals.
+"""Card-bill reminders: the served payment dates, and the shared dismissals.
 
 The reminder rule itself is the client's (`frontend/src/utils/paymentDue.ts`,
 `cardDueReminder`). What the server owes it is the two inputs the client
-cannot know: when the card last took a payment, and which reminders somebody
-in the household already dismissed.
+cannot know: which payments the card took, and which reminders somebody in
+the household already dismissed.
 """
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+
+from igab.domain.payment_due import PAYMENT_WINDOW_DAYS
+from igab.utils.clock import today_utc
 
 from .factories import (
     create_account,
@@ -33,39 +36,64 @@ async def _card(db_session, api_client):
     return budget, checking, visa
 
 
-async def _last_payment(api_client, budget, today: date = TODAY):
+async def _listed(api_client, budget, today: date = TODAY) -> dict:
     resp = await api_client.get(
         f"/api/v1/{budget.id}/liabilities", params={"today": today.isoformat()}
     )
     assert resp.status_code == 200, resp.text
     rows = resp.json()
     assert len(rows) == 1
-    return rows[0]["last_payment_date"]
+    return rows[0]
 
 
-class TestLastPaymentDate:
-    async def test_none_without_payments(self, db_session, api_client):
+async def _payments(api_client, budget, today: date = TODAY) -> list[str]:
+    return (await _listed(api_client, budget, today))["recent_payment_dates"]
+
+
+class TestRecentPaymentDates:
+    async def test_empty_without_payments(self, db_session, api_client):
         budget, _, _ = await _card(db_session, api_client)
-        assert await _last_payment(api_client, budget) is None
+        assert await _payments(api_client, budget) == []
 
-    async def test_the_latest_payment_from_cash(self, db_session, api_client):
+    async def test_every_payment_from_cash_oldest_first(self, db_session, api_client):
+        # Every date, not just the latest: the client matches each payment to
+        # one bill, so a late payment for one month cannot pay the next.
         budget, checking, visa = await _card(db_session, api_client)
-        await create_transfer(db_session, budget, checking, visa, "150.00", date(2026, 8, 29))
         await create_transfer(db_session, budget, checking, visa, "100.00", date(2026, 9, 14))
+        await create_transfer(db_session, budget, checking, visa, "150.00", date(2026, 8, 29))
         await db_session.commit()
 
-        assert await _last_payment(api_client, budget) == "2026-09-14"
+        assert await _payments(api_client, budget) == ["2026-08-29", "2026-09-14"]
+
+    async def test_one_entry_per_leg_even_on_one_day(self, db_session, api_client):
+        budget, checking, visa = await _card(db_session, api_client)
+        await create_transfer(db_session, budget, checking, visa, "100.00", date(2026, 9, 14))
+        await create_transfer(db_session, budget, checking, visa, "50.00", date(2026, 9, 14))
+        await db_session.commit()
+
+        assert await _payments(api_client, budget) == ["2026-09-14", "2026-09-14"]
+
+    async def test_bounded_by_the_served_window(self, db_session, api_client):
+        budget, checking, visa = await _card(db_session, api_client)
+        start = TODAY - timedelta(days=PAYMENT_WINDOW_DAYS)
+        await create_transfer(db_session, budget, checking, visa, "80.00", start - timedelta(1))
+        await create_transfer(db_session, budget, checking, visa, "90.00", start)
+        await db_session.commit()
+
+        row = await _listed(api_client, budget)
+        assert row["payment_window_start"] == start.isoformat()
+        assert row["recent_payment_dates"] == [start.isoformat()]
 
     async def test_a_pending_payment_has_been_made(self, db_session, api_client):
-        # Not POSTED, on purpose: this is a date, not a money aggregate, and a
-        # payment the bank still shows as pending has been made.
+        # Not POSTED, on purpose: these are dates, not a money aggregate, and
+        # a payment the bank still shows as pending has been made.
         budget, checking, visa = await _card(db_session, api_client)
         await create_transfer(
             db_session, budget, checking, visa, "150.00", date(2026, 9, 25), cleared="pending"
         )
         await db_session.commit()
 
-        assert await _last_payment(api_client, budget) == "2026-09-25"
+        assert await _payments(api_client, budget) == ["2026-09-25"]
 
     async def test_ignores_refunds(self, db_session, api_client):
         # A refund lowers what is owed, but nobody paid the bill with it.
@@ -74,7 +102,7 @@ class TestLastPaymentDate:
         await create_transaction(db_session, budget, visa, "38.00", date(2026, 9, 20))
         await db_session.commit()
 
-        assert await _last_payment(api_client, budget) == "2026-08-29"
+        assert await _payments(api_client, budget) == ["2026-08-29"]
 
     async def test_ignores_money_from_an_off_budget_account(self, db_session, api_client):
         # The same predicate the card's envelope reads (CARD_PAYMENT_FROM_CASH):
@@ -90,7 +118,7 @@ class TestLastPaymentDate:
         await create_transfer(db_session, budget, brokerage, visa, "200.00", date(2026, 9, 20))
         await db_session.commit()
 
-        assert await _last_payment(api_client, budget) is None
+        assert await _payments(api_client, budget) == []
 
     async def test_a_payment_after_the_callers_today_has_not_landed(self, db_session, api_client):
         budget, checking, visa = await _card(db_session, api_client)
@@ -98,41 +126,47 @@ class TestLastPaymentDate:
         await create_transfer(db_session, budget, checking, visa, "150.00", date(2026, 10, 2))
         await db_session.commit()
 
-        assert await _last_payment(api_client, budget) == "2026-09-14"
-        assert await _last_payment(api_client, budget, date(2026, 10, 2)) == "2026-10-02"
+        assert await _payments(api_client, budget) == ["2026-09-14"]
+        assert await _payments(api_client, budget, date(2026, 10, 2)) == [
+            "2026-09-14",
+            "2026-10-02",
+        ]
 
-    async def test_none_for_a_debt_with_no_ledger(self, db_session, api_client):
+    async def test_empty_for_a_debt_with_no_ledger(self, db_session, api_client):
         budget = await create_budget(db_session, api_client.test_user)
         await create_liability(
             db_session, budget, "Harborstone Loan", manual_balance=Decimal("900")
         )
         await db_session.commit()
 
-        assert await _last_payment(api_client, budget) is None
+        assert await _payments(api_client, budget) == []
 
     async def test_every_mutation_serializes_it(self, db_session, api_client):
         # Required on the response: a path that forgot to compute it would
-        # fail validation here rather than report a paid card as unpaid.
+        # fail validation here rather than report a paid card as unpaid. The
+        # mutations read the server's clock, so the payment is dated from it.
         budget, checking, visa = await _card(db_session, api_client)
-        await create_transfer(db_session, budget, checking, visa, "150.00", date(2026, 8, 29))
+        paid = today_utc() - timedelta(days=10)
+        await create_transfer(db_session, budget, checking, visa, "150.00", paid)
         await db_session.commit()
         listed = (await api_client.get(f"/api/v1/{budget.id}/liabilities")).json()
         url = f"/api/v1/{budget.id}/liabilities/{listed[0]['id']}"
 
         resp = await api_client.patch(url, json={"payment_due_day": 3})
         assert resp.status_code == 200, resp.text
-        assert resp.json()["last_payment_date"] == "2026-08-29"
+        assert resp.json()["recent_payment_dates"] == [paid.isoformat()]
 
         resp = await api_client.put(f"{url}/link-asset", json={"asset_id": None})
         assert resp.status_code == 200, resp.text
-        assert resp.json()["last_payment_date"] == "2026-08-29"
+        assert resp.json()["recent_payment_dates"] == [paid.isoformat()]
 
         resp = await api_client.post(
             f"/api/v1/{budget.id}/liabilities",
             json={"name": "Harborstone Loan", "liability_type": "personal", "manual_balance": "5"},
         )
         assert resp.status_code == 201, resp.text
-        assert resp.json()["last_payment_date"] is None
+        assert resp.json()["recent_payment_dates"] == []
+        assert "payment_window_start" in resp.json()
 
 
 def _url(budget) -> str:
