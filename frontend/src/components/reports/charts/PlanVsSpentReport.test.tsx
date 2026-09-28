@@ -335,6 +335,16 @@ describe('the totals row', () => {
     expect(cells.slice(-3).map((c) => c.textContent)).toEqual(['$4,000.00', '$4,030.27', '−30'])
   })
 
+  it('says why the bottom row and the Total column end apart, only when they do', () => {
+    const { container, unmount } = show()
+    expect(container.querySelector('.plan-spent__grain-note')).toBeNull()
+    unmount()
+    show({ ...DATA, total_variance: -330.27 })
+    expect(
+      screen.getByText(/adds up to -?\$30\.27; the Total column says -?\$330\.27/)
+    ).toBeInTheDocument()
+  })
+
   it('shows the running total on request, with none for the month in progress', () => {
     show()
     expect(screen.queryByText('Running total', { selector: 'th' })).toBeNull()

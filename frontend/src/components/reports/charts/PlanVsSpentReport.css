@@ -11,8 +11,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Text in --color-negative, which contrast.test.ts holds to AA on every
+   surface; --chart-negative is a fill colour and is not. */
 .plan-spent__headline--warn strong {
-  color: var(--chart-negative);
+  color: var(--color-negative);
 }
 
 .plan-spent__scroll {
@@ -193,7 +195,7 @@
 }
 
 .plan-spent__month-total--over {
-  color: var(--chart-negative);
+  color: var(--color-negative);
   font-weight: 600;
 }
 
@@ -206,6 +208,15 @@
 .plan-spent__running-row .plan-spent__foot-label {
   color: var(--text-muted);
   font-weight: 400;
+}
+
+/* Why the bottom row and the Total column can end on different figures —
+   shown only when they do. */
+.plan-spent__grain-note {
+  margin: var(--spacing-sm) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  max-width: 72ch;
 }
 
 /* A phone fits the name column, two or three months and the Over and Total

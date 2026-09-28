@@ -134,6 +134,26 @@ export function planVsSpentHeadline(report: PlanVsSpentReport): PlanVsSpentHeadl
   }
 }
 
+/**
+ * The month totals' running total and the Total column's, when they differ —
+ * null when they agree, or before a month has closed.
+ *
+ * They are both served and both right, at different grains (backend
+ * `services/plan_vs_spent.py`): a month floors each category's plan at zero
+ * for that month alone, so money taken back out of an envelope the month
+ * after it was assigned reads "under plan" there, while the Total column nets
+ * it against the month it was assigned in. On a budget that sweeps envelopes
+ * back to Ready to Assign the gap runs to thousands, and a bottom row that
+ * adds up to one figure beside a corner saying another reads as an error
+ * unless the page says why.
+ */
+export function grainGap(report: PlanVsSpentReport): { byMonth: number; byWindow: number } | null {
+  const last = report.month_totals.filter((m) => !m.partial_month).at(-1)
+  if (!last || last.cumulative_variance === null) return null
+  if (toCents(last.cumulative_variance) === toCents(report.total_variance)) return null
+  return { byMonth: last.cumulative_variance, byWindow: report.total_variance }
+}
+
 /** The export's wide rows: one per category, one variance column per month,
  *  then the Total column's figures. */
 export function exportRows(categories: PlanVsSpentCategory[]): Record<string, unknown>[] {

@@ -12,6 +12,7 @@ import { drillScope, type DrillScope } from '../drillScope'
 import {
   cellLabel,
   exportRows,
+  grainGap,
   monthTotalTone,
   overspendStyle,
   planVsSpentHeadline,
@@ -85,6 +86,7 @@ export function PlanVsSpentReport({ budgetId }: Props) {
   const maxTotalOver = worstTotalOverspend(categories)
   const headline = data ? planVsSpentHeadline(data) : null
   const variance = data ? varianceHeadline(data.total_variance, formatMoney) : null
+  const gap = data ? grainGap(data) : null
   // What the Total column covers: the complete months. Null before the first
   // one closes, when the column is all zeros and opens nothing.
   const totalsWindow =
@@ -411,6 +413,14 @@ export function PlanVsSpentReport({ budgetId }: Props) {
               </tfoot>
             </table>
           </div>
+        )}
+        {gap && categories.length > 0 && (
+          <p className="plan-spent__grain-note">
+            Month by month the bottom row adds up to {formatMoney(gap.byMonth)}; the Total column
+            says {formatMoney(gap.byWindow)}. Money taken back out of an envelope after the month it
+            was assigned counts as nothing in the month it left, but the Total nets it against the
+            month it came from.
+          </p>
         )}
       </div>
     </div>
