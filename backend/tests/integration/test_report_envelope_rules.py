@@ -272,8 +272,9 @@ class TestThePlannedSpendUniverse:
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
         """Out of an UNTAGGED envelope. The class is what excludes it from
-        spent; it lowers the plan instead (money moved out, `plan_effect`), so
-        the 500 plan is 300 and nothing of it was spent. A savings category —
+        spent; it unfunds the envelope instead (money moved out,
+        `plan_effect`), so the 500 assigned funds 300, nothing of it was spent,
+        and 300 is left — the budget page's Available. A savings category —
         tagged Savings or Emergency fund, in either mode — is the one
         exception: the same shape out of one is spent against its plan,
         pinned by `test_kept_here_transfer_to_hysa_counts_against_plan` and
@@ -296,7 +297,7 @@ class TestThePlannedSpendUniverse:
 
         assert variance[-1]["spent"] == D("0")
         assert variance[-1]["moved_out"] == D("200.00")
-        assert variance[-1]["variance"] == D("300.00")
+        assert (variance[-1]["funded"], variance[-1]["left"]) == (D("300.00"), D("300.00"))
         assert bva["total_spent"] == D("0")
         assert _running_spent(pvr) == D("0")
 
@@ -331,7 +332,8 @@ class TestThePlannedSpendUniverse:
         pvr = await reports.plan_vs_spent(budget.id, months=1)
 
         assert variance[-1]["spent"] == D("200.00")
-        assert variance[-1]["variance"] == D("300.00")
+        # 500 funded, 200 spent: 300 left, as the budget page says.
+        assert (variance[-1]["funded"], variance[-1]["left"]) == (D("500.00"), D("300.00"))
         assert bva["total_spent"] == D("200.00")
         assert _running_spent(pvr) == D("200.00")
 
@@ -462,19 +464,22 @@ class TestASinkingFundsBillIsPlannedSpend:
         assert bva["total_assigned"] == D("390.00")
         assert bva["total_spent"] == D("390.00")
 
-    async def test_cumulative_variance_counts_the_payout(self, db_session):
+    async def test_the_month_totals_count_the_payout(self, db_session):
+        """195 put by, then 195 more and the 390 bill: the second month
+        carries in the first's 195 and pays the bill from all of it — empty,
+        not overspent."""
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
-        variance = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
+        totals = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
             "month_totals"
         ]
 
-        # The two complete months, then the running one — drawn, not drifted.
-        assert [(m["assigned"], m["spent"]) for m in variance[:2]] == [
-            (D("195.00"), D("0")),
-            (D("195.00"), D("390.00")),
+        # The two complete months, then the running one — drawn, in no total.
+        assert [(m["carried_in"], m["funded"], m["spent"], m["left"]) for m in totals[:2]] == [
+            (D("0"), D("195.00"), D("0"), D("195.00")),
+            (D("195.00"), D("390.00"), D("390.00"), D("0")),
         ]
-        assert variance[1]["cumulative_variance"] == D("0")
-        assert variance[-1]["partial_month"] is True
+        assert totals[1]["overspent"] == D("0")
+        assert totals[-1]["partial_month"] is True
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
@@ -520,21 +525,21 @@ class TestASavingsTaggedEnvelope:
 
         assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("390.00"))
 
-    async def test_cumulative_variance_stops_compounding_the_underspend(self, db_session):
+    async def test_the_month_totals_stop_compounding_the_underspend(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
-        variance = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
+        totals = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
             "month_totals"
         ]
 
-        # 195 put by and unspent, then 195 put by and 390 taken out: the plan
-        # closes at zero instead of carrying a +390 surplus forever.
-        # The two complete months, then the running one — drawn, not drifted.
-        assert [(m["assigned"], m["spent"]) for m in variance[:2]] == [
-            (D("195.00"), D("0")),
-            (D("195.00"), D("390.00")),
+        # 195 put by and unspent, then 195 put by and 390 taken out: the
+        # envelope ends empty instead of carrying a +390 surplus forever.
+        # The two complete months, then the running one — drawn, in no total.
+        assert [(m["carried_in"], m["funded"], m["spent"], m["left"]) for m in totals[:2]] == [
+            (D("0"), D("195.00"), D("0"), D("195.00")),
+            (D("195.00"), D("390.00"), D("390.00"), D("0")),
         ]
-        assert variance[1]["cumulative_variance"] == D("0")
-        assert variance[-1]["partial_month"] is True
+        assert totals[1]["overspent"] == D("0")
+        assert totals[-1]["partial_month"] is True
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")

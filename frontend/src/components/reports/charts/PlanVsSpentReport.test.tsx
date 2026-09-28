@@ -1,6 +1,6 @@
 /**
- * Plan vs Spent: the matrix, its totals row and its Total column — one report
- * where Budget vs Actual, Cumulative Variance and Plan vs Reality were three.
+ * Plan vs Spent: what each envelope had, spent and left, carryover counted —
+ * the matrix, its totals row and its Total column.
  *
  * Every figure is served; these hold the page to drawing them, and to each
  * drill opening exactly what its figure counts. The pure rules are in
@@ -30,27 +30,42 @@ import { useAppStore } from '../../../stores/appStore'
 import { PRIVACY_MASK } from '../../../utils/money'
 import { PlanVsSpentReport } from './PlanVsSpentReport'
 
-function cell(month: string, plan: number, spent: number, extra: Record<string, unknown> = {}) {
-  const variance = plan - spent
+/** One month of an envelope: carried in, assigned, spent → left (the
+ *  budget page's Available). Over when a dollar short. */
+function cell(
+  month: string,
+  carried: number,
+  assigned: number,
+  spent: number,
+  extra: Record<string, unknown> = {}
+) {
+  const funded = carried + assigned
+  const left = funded - spent
   return {
     month,
-    assigned: plan,
+    carried_in: carried,
+    assigned,
     moved_in: 0,
     moved_out: 0,
-    plan,
+    funded,
     spent,
-    variance,
-    over: variance <= -1,
+    other: 0,
+    left,
+    overspent: Math.max(0, -left),
+    over: left <= -1,
     active: true,
+    estimated: false,
     ...extra,
   }
 }
 
-const QUIET = { assigned: 0, moved_in: 0, moved_out: 0, plan: 0, spent: 0, variance: 0 }
+function quiet(month: string) {
+  return { ...cell(month, 0, 0, 0), active: false }
+}
 
-/** Dining: 40 over in June, 10 under in July, quiet in August (running).
- *  Rent: on plan, 27 cents over in July — on plan by the tolerance. Medical:
- *  a bill paid by 2,000 moved in from savings. */
+/** Dining: 40 short in June (covered), 10 left in July, and the 10 carried
+ *  through a quiet August (running). Rent: 27 cents short in July — within
+ *  the tolerance. Medical: a bill paid by 2,000 moved in from savings. */
 const DATA: Report = {
   months: ['2026-06-01', '2026-07-01', '2026-08-01'],
   running_month: '2026-08-01',
@@ -62,24 +77,26 @@ const DATA: Report = {
       category_name: 'Dining',
       category_group_name: 'Everyday',
       monthly: [
-        cell('2026-06-01', 100, 140),
-        cell('2026-07-01', 100, 90),
-        { month: '2026-08-01', ...QUIET, over: false, active: false },
+        cell('2026-06-01', 0, 100, 140),
+        cell('2026-07-01', 0, 100, 90),
+        cell('2026-08-01', 10, 0, 0),
       ],
       months_over: 1,
       months_active: 2,
       avg_overspend: 40,
       chronic: true,
-      sinking_fund: false,
       total: {
+        carried_in: 0,
         assigned: 200,
         moved_in: 0,
         moved_out: 0,
-        plan: 200,
+        funded: 200,
         spent: 230,
-        variance: -30,
-        variance_pct: -15,
+        other: 0,
+        left: 10,
+        overspent: 40,
         over: true,
+        estimated: false,
       },
     },
     {
@@ -87,24 +104,26 @@ const DATA: Report = {
       category_name: 'Rent',
       category_group_name: 'Home',
       monthly: [
-        cell('2026-06-01', 900, 900),
-        cell('2026-07-01', 900, 900.27, { over: false }),
-        cell('2026-08-01', 900, 900),
+        cell('2026-06-01', 0, 900, 900),
+        cell('2026-07-01', 0, 900, 900.27, { over: false }),
+        cell('2026-08-01', 0, 900, 900),
       ],
       months_over: 0,
       months_active: 2,
       avg_overspend: 0,
       chronic: false,
-      sinking_fund: false,
       total: {
+        carried_in: 0,
         assigned: 1800,
         moved_in: 0,
         moved_out: 0,
-        plan: 1800,
+        funded: 1800,
         spent: 1800.27,
-        variance: -0.27,
-        variance_pct: -0.015,
+        other: 0,
+        left: 0,
+        overspent: 0.27,
         over: false,
+        estimated: false,
       },
     },
     {
@@ -112,24 +131,26 @@ const DATA: Report = {
       category_name: 'Medical',
       category_group_name: 'Health',
       monthly: [
-        cell('2026-06-01', 2000, 2000, { assigned: 0, moved_in: 2000 }),
-        { month: '2026-07-01', ...QUIET, over: false, active: false },
-        { month: '2026-08-01', ...QUIET, over: false, active: false },
+        cell('2026-06-01', 0, 0, 2000, { moved_in: 2000, funded: 2000, left: 0, over: false }),
+        quiet('2026-07-01'),
+        quiet('2026-08-01'),
       ],
       months_over: 0,
       months_active: 1,
       avg_overspend: 0,
       chronic: false,
-      sinking_fund: false,
       total: {
+        carried_in: 0,
         assigned: 0,
         moved_in: 2000,
         moved_out: 0,
-        plan: 2000,
+        funded: 2000,
         spent: 2000,
-        variance: 0,
-        variance_pct: 0,
+        other: 0,
+        left: 0,
+        overspent: 0,
         over: false,
+        estimated: false,
       },
     },
   ],
@@ -137,46 +158,54 @@ const DATA: Report = {
     {
       month: '2026-06-01',
       partial_month: false,
+      carried_in: 0,
       assigned: 1000,
       moved_in: 2000,
       moved_out: 0,
-      plan: 3000,
+      funded: 3000,
       spent: 3040,
-      variance: -40,
-      cumulative_variance: -40,
+      other: 0,
+      left: -40,
+      overspent: 40,
       categories_over: 1,
     },
     {
       month: '2026-07-01',
       partial_month: false,
+      carried_in: 0,
       assigned: 1000,
       moved_in: 0,
       moved_out: 0,
-      plan: 1000,
+      funded: 1000,
       spent: 990.27,
-      variance: 9.73,
-      cumulative_variance: -30.27,
+      other: 0,
+      left: 9.73,
+      overspent: 0.27,
       categories_over: 0,
     },
     {
       month: '2026-08-01',
       partial_month: true,
+      carried_in: 10,
       assigned: 900,
       moved_in: 0,
       moved_out: 0,
-      plan: 900,
+      funded: 910,
       spent: 900,
-      variance: 0,
-      cumulative_variance: null,
+      other: 0,
+      left: 10,
+      overspent: 0,
       categories_over: 0,
     },
   ],
   total_assigned: 2000,
   total_moved_in: 2000,
   total_moved_out: 0,
-  total_plan: 4000,
+  total_funded: 4000,
   total_spent: 4030.27,
-  total_variance: -30.27,
+  total_other: 0,
+  total_left: 10,
+  total_overspent: 40.27,
   chronic_count: 1,
   filter_unavailable: false,
 }
@@ -212,18 +241,29 @@ afterEach(() => {
 })
 
 describe('the matrix', () => {
-  it('draws variance cells, the over count and the chronic badge', () => {
+  it('draws what each envelope had left, the over count and the Total column', () => {
     show()
-    expect(screen.getAllByText('Chronic').length).toBeGreaterThan(0)
     expect(rowCells('Dining').map((c) => c.textContent)).toEqual([
       '−40',
-      '+10',
-      '',
+      '10',
+      // August holds July's 10 with nothing moving: a balance, not a blank.
+      '10',
       '1/2',
       '$200.00',
       '$230.00',
-      '−30',
+      '−40',
     ])
+  })
+
+  it('marks chronic with a dot the legend explains, named for a screen reader', () => {
+    const { container } = show()
+    expect(container.querySelectorAll('[data-testid="chronic-dot"]')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /^Chronic:\s*Dining/ })).toBeInTheDocument()
+    expect(container.querySelector('.plan-spent__legend')?.textContent).toContain(
+      'went negative in 3 of the last 6 months'
+    )
+    // The word no longer rides on every row as a pill.
+    expect(container.querySelector('.plan-spent__badge')).toBeNull()
   })
 
   it('marks the running month "so far"', () => {
@@ -232,7 +272,7 @@ describe('the matrix', () => {
     expect(headers.map((h) => h.textContent?.includes('so far'))).toEqual([false, false, true])
   })
 
-  it('draws a few cents over as on plan: no "−0", no tint', () => {
+  it('draws a few cents short as nothing: no "−0", no tint', () => {
     const { container } = show()
     expect(screen.queryByText('−0')).toBeNull()
     // Dining's June, and Dining's Total: the two served verdicts of "over".
@@ -251,12 +291,16 @@ describe('the matrix', () => {
     }
   })
 
-  it('keeps the category column sticky', () => {
+  it('pins the name column and the four totals columns on every row', () => {
     const { container } = show()
-    // The CSS pins these; the markup must use them on every row, the totals
-    // rows included, or a name scrolls away from its figures.
-    const rows = container.querySelectorAll('tbody tr, tfoot tr')
-    for (const row of rows) expect(row.querySelector('.plan-spent__cat-cell')).not.toBeNull()
+    // The CSS pins these; the markup must use them on every row — header,
+    // body and footer — or a figure scrolls away from its name or its total.
+    const rows = container.querySelectorAll('thead tr, tbody tr, tfoot tr')
+    expect(rows.length).toBe(5)
+    for (const row of rows) {
+      expect(row.querySelector('.plan-spent__name')).not.toBeNull()
+      expect(row.querySelectorAll('.plan-spent__tot')).toHaveLength(4)
+    }
   })
 
   it('filters to chronic categories only', () => {
@@ -266,13 +310,27 @@ describe('the matrix', () => {
     expect(screen.queryByText('Rent')).not.toBeInTheDocument()
   })
 
-  it('ranks the biggest overrun first on request', () => {
+  it('ranks what Ready to Assign covered most first on request', () => {
     const { container } = show()
     fireEvent.click(screen.getByRole('button', { name: 'Sort by overspent' }))
-    const names = [...container.querySelectorAll('tbody .plan-spent__cat-name')].map(
+    const names = [...container.querySelectorAll('tbody .plan-spent__name-cat')].map(
       (n) => n.textContent
     )
     expect(names).toEqual(['Dining', 'Rent', 'Medical'])
+  })
+
+  it('has no Running total toggle', () => {
+    // It drew a cumulative row below the fold and read as doing nothing.
+    show()
+    expect(screen.queryByLabelText('Running total')).toBeNull()
+  })
+
+  it('titles a cell with how it adds up, carryover first', () => {
+    show()
+    expect(rowCells('Dining')[1].getAttribute('title')).toContain(
+      'carried in $0.00 · assigned $100.00 · spent $90.00 · left $10.00'
+    )
+    expect(rowCells('Dining')[0].getAttribute('title')).toContain('$40.00 short')
   })
 })
 
@@ -280,39 +338,41 @@ describe('the headline', () => {
   it('answers in one line: chronic, over last month, most over', () => {
     const { container } = show()
     const line = container.querySelector('.plan-spent__headline')?.textContent
-    // June: July is the last complete month and nothing was over in it...
+    // July is the last complete month and nothing went over in it.
     expect(line).toContain('1 chronic')
     expect(line).toContain('0 over in')
     expect(line).toContain('most over: Dining')
   })
 
-  it('states the window totals, the variance with its direction in words', () => {
+  it('states funded, spent, what Ready to Assign covered, and what is left', () => {
     show()
-    expect(card('Planned')).toBe('$4,000.00')
+    expect(card('Funded')).toBe('$4,000.00')
     expect(card('Spent')).toBe('$4,030.27')
-    expect(card('Over plan by')).toBe('$30.27')
+    expect(card('Overspent')).toBe('$40.27')
+    expect(card('Left')).toBe('$10.00')
   })
 
-  it('says carryover is ignored, once', () => {
+  it('says carryover is included, once', () => {
     show()
-    expect(screen.getAllByText(/carryover ignored/)).toHaveLength(1)
+    expect(screen.getAllByText(/carryover included/)).toHaveLength(1)
   })
 })
 
 describe('the Total column', () => {
-  it('is the category over the complete months: planned, spent and the verdict', () => {
+  it('is the category over the complete months: funded, spent and what was covered', () => {
     show()
     const cells = rowCells('Dining').map((c) => c.textContent)
-    expect(cells.slice(-4)).toEqual(['1/2', '$200.00', '$230.00', '−30'])
+    expect(cells.slice(-4)).toEqual(['1/2', '$200.00', '$230.00', '−40'])
   })
 
-  it('names what moved the plan, as Budget vs Actual did', () => {
-    // 2,000 moved in from savings paid a 2,000 bill. Against the raw
-    // assignment it read a 2,000 overrun.
+  it('titles the Total with how its sum closes', () => {
+    // 2,000 moved in from savings paid a 2,000 bill: funded, not overspent.
     show()
-    const planned = rowCells('Medical').at(-3)
-    expect(planned?.getAttribute('title')).toBe(
-      'planned $2,000.00 (assigned $0.00 + moved in $2,000.00)'
+    expect(rowCells('Medical').at(-1)?.getAttribute('title')).toContain(
+      'carried in $0.00 · moved in $2,000.00 · spent $2,000.00 · left $0.00'
+    )
+    expect(rowCells('Dining').at(-1)?.getAttribute('title')).toContain(
+      'Ready to Assign covered $40.00 · left $10.00'
     )
   })
 
@@ -325,22 +385,16 @@ describe('the Total column', () => {
 })
 
 describe('the totals row', () => {
-  it('is each month across every category, with the running month drawn apart', () => {
+  it('is what Ready to Assign covered each month, the running month drawn apart', () => {
     show()
-    const cells = rowCells('All categories')
-    expect(cells.slice(0, 3).map((c) => c.textContent)).toEqual(['−40', '+10', '0'])
-    expect(cells[0].className).toContain('plan-spent__month-total--over')
+    const cells = rowCells('Overspent, all categories')
+    expect(cells.slice(0, 3).map((c) => c.textContent)).toEqual(['−40', '0', '—'])
+    expect(cells[0].className).toContain('plan-spent__foot--over')
+    // 27 cents is covered, and no category counts as over for it.
+    expect(cells[1].className).toContain('plan-spent__foot--quiet')
     expect(cells[2].className).toContain('plan-spent__cell--running')
-    // The window's own totals close the row.
-    expect(cells.slice(-3).map((c) => c.textContent)).toEqual(['$4,000.00', '$4,030.27', '−30'])
-  })
-
-  it('shows the running total on request, with none for the month in progress', () => {
-    show()
-    expect(screen.queryByText('Running total', { selector: 'th' })).toBeNull()
-    fireEvent.click(screen.getByLabelText('Running total'))
-    const cells = rowCells('Running total')
-    expect(cells.slice(0, 3).map((c) => c.textContent)).toEqual(['−40', '−30', '—'])
+    // The window's own totals close the row, meeting the Overspent column.
+    expect(cells.slice(-3).map((c) => c.textContent)).toEqual(['$4,000.00', '$4,030.27', '−40'])
   })
 })
 
@@ -372,7 +426,7 @@ describe('each figure opens what it counts', () => {
 
   it('a month total: every category in the report, that month', () => {
     show()
-    fireEvent.click(rowCells('All categories')[0])
+    fireEvent.click(rowCells('Overspent, all categories')[0])
     expect(drill()).toMatchObject({
       planSpent: true,
       startDate: '2026-06-01',
@@ -385,13 +439,13 @@ describe('each figure opens what it counts', () => {
   it("a month total under a scope: the report's scope, not the whole budget", () => {
     useReportStore.getState().setFilters({ tagIds: ['t1'] })
     show()
-    fireEvent.click(rowCells('All categories')[1])
+    fireEvent.click(rowCells('Overspent, all categories')[1])
     expect(drill()).toMatchObject({ tagIds: ['t1'], planSpent: true, startDate: '2026-07-01' })
   })
 
   it("the window's Spent: every category over the complete months", () => {
     show()
-    fireEvent.click(rowCells('All categories').at(-2)!)
+    fireEvent.click(rowCells('Overspent, all categories').at(-2)!)
     expect(drill()).toMatchObject({
       planSpent: true,
       startDate: '2026-06-01',

@@ -168,11 +168,11 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   'plan-vs-spent': {
     scope: 'categories',
     summary:
-      "Each category's plan against what it spent, month by month, with a total for every month and every category — carryover ignored.",
+      'What each envelope had, spent and had left, month by month — carryover included — with what Ready to Assign had to cover.',
     counts:
-      'Plan — assigned plus money moved into the envelope, less money moved out — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes. Over means past the plan by $1 and 1%; over in 3 of the last 6 months is chronic.',
+      "Each month starts with what the month before left, plus what was assigned and moved into the envelope, less money moved out, against spending net of refunds — outflows from Savings and Emergency fund envelopes included. A cell is the budget page's Available; over means it went negative by $1 and 1% of what it had, and negative in 3 of the last 6 months is chronic.",
     leavesOut:
-      'Carryover from earlier months, card payment envelopes, starting balances, and categories with nothing assigned, moved or spent; the totals leave out the month in progress.',
+      'Card payment envelopes, and categories with nothing assigned, moved or spent in the window; the totals leave out the month in progress.',
   },
   'category-history': {
     scope: 'categories',

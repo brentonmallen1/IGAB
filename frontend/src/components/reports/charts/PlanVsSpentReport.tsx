@@ -10,17 +10,18 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { drillScope, type DrillScope } from '../drillScope'
 import {
-  cellLabel,
+  balanceLabel,
+  coveredAnything,
+  envelopeBreakdown,
   exportRows,
-  monthTotalTone,
+  monthOverspent,
   overspendStyle,
+  overspentLabel,
   planVsSpentHeadline,
-  totalShareLabel,
-  varianceHeadline,
   worstOverspend,
   worstTotalOverspend,
 } from './planVsSpentCells'
-import { planLabel } from './planLabel'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
@@ -37,11 +38,12 @@ interface Props {
 }
 
 /**
- * Plan vs Spent: each category's plan against what it spent, month by month,
- * with a total per month (the bottom row) and per category (the right-hand
- * columns). It was three reports — Budget vs Actual, Cumulative Variance and
- * Plan vs Reality — over one dataset, and every figure here is still served
- * (backend `services/plan_vs_spent.py`); nothing is summed on this side.
+ * Plan vs Spent: what each envelope had, spent and had left, month by month,
+ * carryover counted — each cell is the budget page's Available at the month's
+ * end, red only where the envelope went negative. The bottom row is what
+ * Ready to Assign covered each month; the right-hand columns add each
+ * category up across the complete months. Every figure is served (backend
+ * `services/plan_vs_spent.py`); nothing is summed on this side.
  */
 export function PlanVsSpentReport({ budgetId }: Props) {
   const { formatMoney, formatMonthShort, privacyMode } = useFormatters()
@@ -51,7 +53,6 @@ export function PlanVsSpentReport({ budgetId }: Props) {
   const reportScope = useReportScope()
   const [chronicOnly, setChronicOnly] = useState(false)
   const [overFirst, setOverFirst] = useState(false)
-  const [showRunning, setShowRunning] = useState(false)
   const { data, isLoading, isError, error, refetch } = usePlanVsSpentReport(
     budgetId,
     months,
@@ -79,12 +80,11 @@ export function PlanVsSpentReport({ budgetId }: Props) {
   const monthName = (m: string) => reportMonthLabel(m, isRunning(m), formatMonthShort)
   let categories = data?.categories ?? []
   if (chronicOnly) categories = categories.filter((c) => c.chronic)
-  if (overFirst) categories = [...categories].sort((a, b) => a.total.variance - b.total.variance)
+  if (overFirst) categories = [...categories].sort((a, b) => b.total.overspent - a.total.overspent)
 
   const maxOver = worstOverspend(categories)
   const maxTotalOver = worstTotalOverspend(categories)
   const headline = data ? planVsSpentHeadline(data) : null
-  const variance = data ? varianceHeadline(data.total_variance, formatMoney) : null
   // What the Total column covers: the complete months. Null before the first
   // one closes, when the column is all zeros and opens nothing.
   const totalsWindow =
@@ -118,55 +118,54 @@ export function PlanVsSpentReport({ budgetId }: Props) {
         <h2 className="report-section__title">Plan vs Spent</h2>
         <ReportInfoButton title="Plan vs Spent">
           <p>
-            Each cell is one category&apos;s month: its <strong>plan</strong> — what you assigned,
-            plus money moved into the envelope (a transfer from savings), less money moved out of it
-            (a transfer to a brokerage, a loan payment) — against what you <strong>spent</strong>,
-            net of refunds. Red went over plan by at least $1 and 1% of it; the deeper the red, the
-            bigger the overrun.
+            Each cell is what one envelope had <strong>left</strong> at the end of a month — the
+            budget page&apos;s Available. It started the month with what the month before left, then
+            what you assigned and moved in, less what moved out (a transfer to a brokerage, a loan
+            payment), less what you <strong>spent</strong>, net of refunds. Spending down a balance
+            you funded earlier is the plan working, not overspending.
           </p>
           <p>
-            The <strong>bottom row</strong> adds each month up across categories, and{' '}
-            <em>Running total</em> keeps a tally of it month to month. The{' '}
-            <strong>right-hand columns</strong> add each category up across the complete months.
+            Red means the envelope went negative by at least $1 and 1% of what it had — Ready to
+            Assign had to cover it, and the next month starts from zero. The deeper the red, the
+            more it covered. The <strong>bottom row</strong> adds up what was covered each month;
+            the <strong>right-hand columns</strong> add each category up across the complete months.
           </p>
           <p>
-            Over plan in <strong>3 of the last 6 months</strong> is chronic. Sinking funds
-            (Long-term expense) never are — paying the bill they saved for is the plan working.
+            <span className="plan-spent__dot" aria-hidden="true" /> Negative in{' '}
+            <strong>3 of the last 6 months</strong> is chronic.
           </p>
           <p>
             Every total, the chronic flag and the Over column count complete months only. The month
-            in progress is the last month column, marked <em>so far</em>: its plan is in, its
-            spending is still arriving.
+            in progress is the last month column, marked <em>so far</em>: its spending is still
+            arriving.
           </p>
           <ReportScopeNote report="plan-vs-spent" />
         </ReportInfoButton>
-        <p className="report-section__subtitle">Plan vs spent per month — carryover ignored</p>
+        <p className="report-section__subtitle">
+          What each envelope had, spent and left — carryover included
+        </p>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           <ReportRangeSelect />
-          <label className="report-toggle">
-            <input
-              type="checkbox"
-              checked={chronicOnly}
-              onChange={(e) => setChronicOnly(e.target.checked)}
-            />
-            Chronic only
-          </label>
-          <label className="report-toggle">
-            <input
-              type="checkbox"
-              checked={showRunning}
-              onChange={(e) => setShowRunning(e.target.checked)}
-            />
-            Running total
-          </label>
-          <button
-            className={`report-btn ${overFirst ? 'report-btn--active' : ''}`}
-            onClick={() => setOverFirst((v) => !v)}
-            type="button"
-            aria-pressed={overFirst}
-          >
-            Sort by overspent
-          </button>
+          <Tooltip content="Show only envelopes that went negative in 3 of the last 6 months">
+            <label className="report-toggle">
+              <input
+                type="checkbox"
+                checked={chronicOnly}
+                onChange={(e) => setChronicOnly(e.target.checked)}
+              />
+              Chronic only
+            </label>
+          </Tooltip>
+          <Tooltip content="Put the envelopes Ready to Assign covered the most for first">
+            <button
+              className={`report-btn ${overFirst ? 'report-btn--active' : ''}`}
+              onClick={() => setOverFirst((v) => !v)}
+              type="button"
+              aria-pressed={overFirst}
+            >
+              Sort by overspent
+            </button>
+          </Tooltip>
           <ReportExportButton
             reportId="plan-vs-spent"
             getRows={() => exportRows(categories)}
@@ -206,12 +205,32 @@ export function PlanVsSpentReport({ budgetId }: Props) {
             )}
           </p>
         )}
-        {data && variance && (
+        {data && (
           <MetricRow>
-            <MetricCard label="Planned" value={formatMoney(data.total_plan)} sub={windowName} />
+            <MetricCard
+              label="Funded"
+              value={formatMoney(data.total_funded)}
+              sub={windowName ? `carried in + assigned, ${windowName}` : 'carried in + assigned'}
+            />
             <MetricCard label="Spent" value={formatMoney(data.total_spent)} sub="net of refunds" />
-            <MetricCard label={variance.label} value={variance.value} warning={variance.over} />
+            <MetricCard
+              label="Overspent"
+              value={formatMoney(data.total_overspent)}
+              sub="covered by Ready to Assign"
+              warning={coveredAnything(data.total_overspent)}
+            />
+            <MetricCard
+              label="Left"
+              value={formatMoney(data.total_left)}
+              sub="in these envelopes"
+            />
           </MetricRow>
+        )}
+        {categories.length > 0 && (
+          <p className="plan-spent__legend">
+            <span className="plan-spent__dot" aria-hidden="true" /> Chronic: went negative in 3 of
+            the last 6 months
+          </p>
         )}
 
         {categories.length === 0 ? (
@@ -224,11 +243,11 @@ export function PlanVsSpentReport({ budgetId }: Props) {
           <div className="plan-spent__scroll" ref={scrollRef}>
             <table className="plan-spent__table">
               <caption className="sr-only">
-                Plan vs spent by category and month, with totals
+                What each envelope had left by month, with totals
               </caption>
               <thead>
                 <tr>
-                  <th scope="col" className="plan-spent__cat-header">
+                  <th scope="col" className="plan-spent__name">
                     Category
                   </th>
                   {allMonths.map((m) => (
@@ -240,47 +259,45 @@ export function PlanVsSpentReport({ budgetId }: Props) {
                       {monthName(m)}
                     </th>
                   ))}
-                  <th scope="col" className="plan-spent__num-header plan-spent__col--first-total">
+                  <th scope="col" className="plan-spent__tot plan-spent__tot--months">
                     Over
                   </th>
-                  <th scope="col" className="plan-spent__num-header plan-spent__col--wide">
-                    Planned
+                  <th scope="col" className="plan-spent__tot plan-spent__tot--funded">
+                    Funded
                   </th>
-                  <th scope="col" className="plan-spent__num-header plan-spent__col--wide">
+                  <th scope="col" className="plan-spent__tot plan-spent__tot--spent">
                     Spent
                   </th>
-                  <th scope="col" className="plan-spent__num-header">
-                    Total
+                  <th scope="col" className="plan-spent__tot plan-spent__tot--overspent">
+                    Overspent
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {categories.map((cat) => (
                   <tr key={cat.category_id}>
-                    <th scope="row" className="plan-spent__cat-cell">
+                    <th scope="row" className="plan-spent__name">
                       <button
-                        className="plan-spent__cat-btn"
+                        className="plan-spent__name-btn"
                         type="button"
                         title={`${cat.category_name} — ${windowLabel}`}
                         onClick={() => drillCategoryTotal(cat)}
                       >
-                        <span className="plan-spent__cat-name">{cat.category_name}</span>
-                        <span className="plan-spent__cat-group">{cat.category_group_name}</span>
-                      </button>
-                      {cat.chronic && <span className="plan-spent__badge">Chronic</span>}
-                      {cat.sinking_fund && cat.months_over > 0 && (
-                        <span
-                          className="plan-spent__badge plan-spent__badge--quiet"
-                          title="Long-term expense: paying the bill it saved for is never chronic"
-                        >
-                          Sinking fund
+                        {cat.chronic && (
+                          <span className="plan-spent__dot" data-testid="chronic-dot">
+                            <span className="sr-only">Chronic: </span>
+                          </span>
+                        )}
+                        <span className="plan-spent__name-text">
+                          <span className="plan-spent__name-cat">{cat.category_name}</span>
+                          <span className="plan-spent__name-group">{cat.category_group_name}</span>
                         </span>
-                      )}
+                      </button>
                     </th>
                     {cat.monthly.map((cell) => {
                       const running = isRunning(cell.month)
                       const ym = monthName(cell.month)
-                      const planned = `planned ${planLabel(cell, formatMoney)}`
+                      const short = cell.over ? ` — ${formatMoney(cell.overspent)} short` : ''
                       return (
                         <td
                           key={cell.month}
@@ -288,12 +305,14 @@ export function PlanVsSpentReport({ budgetId }: Props) {
                             'plan-spent__cell',
                             cell.active ? 'plan-spent__cell--clickable' : '',
                             cell.active && cell.over ? 'plan-spent__cell--over' : '',
-                            // The running month is neither over nor under yet.
-                            cell.active && !cell.over && !running ? 'plan-spent__cell--under' : '',
                             running ? 'plan-spent__cell--running' : '',
                           ].join(' ')}
                           style={cell.active ? overspendStyle(cell, maxOver) : undefined}
-                          title={`${cat.category_name} · ${ym} — ${planned}, spent ${formatMoney(cell.spent)}`}
+                          title={
+                            cell.active
+                              ? `${cat.category_name} · ${ym}${short} — ${envelopeBreakdown(cell, formatMoney)}${cell.estimated ? ' (estimated: before the budget page can say)' : ''}`
+                              : undefined
+                          }
                           onClick={
                             cell.active
                               ? () =>
@@ -305,45 +324,42 @@ export function PlanVsSpentReport({ budgetId }: Props) {
                               : undefined
                           }
                         >
-                          {cell.active ? cellLabel(cell.variance, privacyMode) : ''}
+                          {cell.active ? balanceLabel(cell.left, privacyMode) : ''}
                         </td>
                       )
                     })}
-                    <td className="plan-spent__num plan-spent__col--first-total">
+                    <td className="plan-spent__tot plan-spent__tot--months">
                       {cat.months_over > 0 ? `${cat.months_over}/${cat.months_active}` : ''}
                     </td>
-                    <td
-                      className="plan-spent__num plan-spent__col--wide"
-                      title={`planned ${planLabel(cat.total, formatMoney)}`}
-                    >
-                      {formatMoney(cat.total.plan)}
+                    <td className="plan-spent__tot plan-spent__tot--funded">
+                      {formatMoney(cat.total.funded)}
                     </td>
                     <td
-                      className="plan-spent__num plan-spent__col--wide plan-spent__cell--clickable"
+                      className="plan-spent__tot plan-spent__tot--spent plan-spent__cell--clickable"
                       onClick={() => drillCategoryTotal(cat)}
                     >
                       {formatMoney(cat.total.spent)}
                     </td>
                     <td
                       className={[
-                        'plan-spent__cell',
-                        'plan-spent__total',
+                        'plan-spent__tot',
+                        'plan-spent__tot--overspent',
                         'plan-spent__cell--clickable',
-                        cat.total.over ? 'plan-spent__cell--over' : 'plan-spent__cell--under',
+                        cat.total.over ? 'plan-spent__cell--over' : '',
                       ].join(' ')}
                       style={overspendStyle(cat.total, maxTotalOver)}
-                      title={`${cat.category_name} · ${windowLabel} — planned ${planLabel(cat.total, formatMoney)}, spent ${formatMoney(cat.total.spent)}, ${totalShareLabel(cat.total)}`}
+                      title={`${cat.category_name} · ${windowLabel} — ${envelopeBreakdown(cat.total, formatMoney, { span: true })}`}
                       onClick={() => drillCategoryTotal(cat)}
                     >
-                      {cellLabel(cat.total.variance, privacyMode)}
+                      {overspentLabel(cat.total.overspent, privacyMode)}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="plan-spent__totals-row">
-                  <th scope="row" className="plan-spent__cat-cell plan-spent__foot-label">
-                    All categories
+                <tr>
+                  <th scope="row" className="plan-spent__name plan-spent__foot-label">
+                    Overspent, all categories
                   </th>
                   {monthTotals.map((t) => (
                     <td
@@ -351,60 +367,34 @@ export function PlanVsSpentReport({ budgetId }: Props) {
                       className={[
                         'plan-spent__cell',
                         'plan-spent__cell--clickable',
-                        `plan-spent__month-total--${t.partial_month ? 'running' : monthTotalTone(t)}`,
+                        monthOverspent(t) ? 'plan-spent__foot--over' : 'plan-spent__foot--quiet',
                         t.partial_month ? 'plan-spent__cell--running' : '',
                       ].join(' ')}
-                      title={`${monthName(t.month)} — planned ${formatMoney(t.plan)}, spent ${formatMoney(t.spent)}${t.partial_month ? '' : `, ${t.categories_over} over`}`}
+                      title={`${monthName(t.month)} — funded ${formatMoney(t.funded)}, spent ${formatMoney(t.spent)}, left ${formatMoney(t.left)}${t.partial_month ? '' : `; ${t.categories_over} went negative, ${formatMoney(t.overspent)} covered by Ready to Assign`}`}
                       onClick={() =>
                         drillMonth(everyCategory, `All categories · ${monthName(t.month)}`, t.month)
                       }
                     >
-                      {cellLabel(t.variance, privacyMode)}
+                      {overspentLabel(t.overspent, privacyMode)}
                     </td>
                   ))}
-                  <td className="plan-spent__num plan-spent__col--first-total" />
-                  <td className="plan-spent__num plan-spent__col--wide">
-                    {data ? formatMoney(data.total_plan) : ''}
+                  <td className="plan-spent__tot plan-spent__tot--months" />
+                  <td className="plan-spent__tot plan-spent__tot--funded">
+                    {data ? formatMoney(data.total_funded) : ''}
                   </td>
                   <td
-                    className="plan-spent__num plan-spent__col--wide plan-spent__cell--clickable"
+                    className="plan-spent__tot plan-spent__tot--spent plan-spent__cell--clickable"
                     onClick={() => drillTotal(everyCategory, `All categories · ${windowLabel}`)}
                   >
                     {data ? formatMoney(data.total_spent) : ''}
                   </td>
                   <td
-                    className={`plan-spent__cell plan-spent__total plan-spent__cell--clickable plan-spent__month-total--${variance?.over ? 'over' : 'under'}`}
+                    className={`plan-spent__tot plan-spent__tot--overspent plan-spent__cell--clickable ${data && coveredAnything(data.total_overspent) ? 'plan-spent__foot--over' : 'plan-spent__foot--quiet'}`}
                     onClick={() => drillTotal(everyCategory, `All categories · ${windowLabel}`)}
                   >
-                    {data ? cellLabel(data.total_variance, privacyMode) : ''}
+                    {data ? overspentLabel(data.total_overspent, privacyMode) : ''}
                   </td>
                 </tr>
-                {showRunning && (
-                  <tr className="plan-spent__running-row">
-                    <th scope="row" className="plan-spent__cat-cell plan-spent__foot-label">
-                      Running total
-                    </th>
-                    {monthTotals.map((t) => (
-                      <td
-                        key={t.month}
-                        className="plan-spent__cell plan-spent__cell--under"
-                        title={
-                          t.cumulative_variance === null
-                            ? 'The month in progress is in no running total'
-                            : `through ${monthName(t.month)}`
-                        }
-                      >
-                        {t.cumulative_variance === null
-                          ? '—'
-                          : cellLabel(t.cumulative_variance, privacyMode)}
-                      </td>
-                    ))}
-                    <td className="plan-spent__num plan-spent__col--first-total" />
-                    <td className="plan-spent__num plan-spent__col--wide" />
-                    <td className="plan-spent__num plan-spent__col--wide" />
-                    <td className="plan-spent__num" />
-                  </tr>
-                )}
               </tfoot>
             </table>
           </div>

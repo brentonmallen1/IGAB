@@ -17,130 +17,189 @@
   color: var(--color-negative);
 }
 
-.plan-spent__scroll {
-  overflow-x: auto;
+/* What the red dot beside a name means, said once above the table rather
+   than as a pill on every row. */
+.plan-spent__legend {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-sm) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
 }
 
+/* Chronic: a mark, not a word. A non-text indicator (3:1), so the fill
+   colour is enough; the row's name says "Chronic" to a screen reader. */
+.plan-spent__dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-negative);
+  vertical-align: middle;
+}
+
+/* ── The table ──────────────────────────────────────────────────────────────
+   One scroll box in both directions, so the header can stick to its top
+   and the name and totals columns to its sides — a header sticks to its
+   nearest scrolling ancestor, and a sideways-only box pinned it to nothing.
+   Height from the app's own viewport (--app-h), never vh — vh ignores the
+   iOS keyboard and the installed PWA's status bar.
+   Positioned so the caption's .sr-only box is clipped here and cannot
+   widen the page on a phone. */
+.plan-spent__scroll {
+  --plan-spent-name-w: 180px;
+  --plan-spent-tot-w: 84px;
+  --plan-spent-months-w: 52px;
+
+  position: relative;
+  overflow: auto;
+  max-height: calc(var(--app-h) * 0.7);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-sunken);
+}
+
+/* Separate borders: collapsed ones belong to the table, not the cell, and
+   scroll away from a sticky cell. Every cell draws its own right and bottom
+   hairline, so the grid is one weight everywhere. */
 .plan-spent__table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   min-width: 100%;
   font-size: var(--font-size-sm);
 }
 
-/* The category column stays put while the months scroll under it: on a phone
-   only two or three months fit, and a column of bare figures with no name
-   beside them is unreadable. It paints the section's own surface so the
-   months slide under it rather than showing through. */
-.plan-spent__cat-header,
-.plan-spent__cat-cell {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--surface-raised);
+.plan-spent__table th,
+.plan-spent__table td {
+  border-right: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
 }
 
-.plan-spent__cat-header {
-  text-align: left;
+.plan-spent__table tr > :last-child {
+  border-right: none;
+}
+
+.plan-spent__table tbody tr:last-child > * {
+  border-bottom: none;
+}
+
+/* Header: chrome, pinned to the top of the box, a stronger rule beneath. */
+.plan-spent__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge-strong);
   padding: 6px var(--spacing-sm);
   color: var(--text-muted);
+  font-size: var(--font-size-2xs);
   font-weight: 600;
-  font-size: var(--font-size-xs);
   white-space: nowrap;
-  min-width: 160px;
-  border-bottom: 1px solid var(--border-color);
+  vertical-align: bottom;
 }
 
 .plan-spent__month-header {
-  vertical-align: bottom;
-  padding: 6px 4px;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: var(--font-size-2xs);
-  text-align: center;
-  white-space: nowrap;
   min-width: 60px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* Explains an over-plan row with no Chronic flag; not a warning. */
-.plan-spent__badge--quiet {
-  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.plan-spent__num-header {
-  vertical-align: bottom;
-  padding: 6px var(--spacing-sm);
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: var(--font-size-2xs);
   text-align: right;
-  white-space: nowrap;
-  border-bottom: 1px solid var(--border-color);
 }
 
-/* A row's header cell: the category's name, not a heading's weight. */
-.plan-spent__cat-cell {
+/* Footer: chrome, pinned to the bottom, a stronger rule above. */
+.plan-spent__table tfoot > tr > * {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface-chrome);
+  border-top: 1px solid var(--edge-strong);
+  border-bottom: none;
+}
+
+/* The name column: pinned left, one fixed width, and its text clipped
+   inside it. A table cell's max-width does not clip, so the name and group
+   ran over the months beside them; the block inside the button does. */
+.plan-spent__name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: var(--plan-spent-name-w);
+  min-width: var(--plan-spent-name-w);
+  max-width: var(--plan-spent-name-w);
   padding: 4px var(--spacing-sm);
-  white-space: nowrap;
-  max-width: 220px;
+  background: var(--surface-chrome);
   text-align: left;
   font-weight: 400;
 }
 
-.plan-spent__cat-btn {
-  background: none;
-  border: none;
+/* A stronger rule where the names stop and the months begin. */
+.plan-spent__table .plan-spent__name {
+  border-right-color: var(--edge-strong);
+}
+
+/* Corners sit over both the header row and the pinned columns. */
+.plan-spent__table thead .plan-spent__name,
+.plan-spent__table tfoot .plan-spent__name,
+.plan-spent__table thead .plan-spent__tot,
+.plan-spent__table tfoot .plan-spent__tot {
+  z-index: 3;
+}
+
+.plan-spent__name-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
   padding: 0;
+  border: none;
+  background: none;
   cursor: pointer;
   text-align: left;
-  display: inline-flex;
-  flex-direction: column;
-  vertical-align: middle;
-  max-width: 170px;
 }
 
-.plan-spent__cat-btn:hover .plan-spent__cat-name {
+.plan-spent__name-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plan-spent__name-cat,
+.plan-spent__name-group {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plan-spent__name-cat {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.plan-spent__name-btn:hover .plan-spent__name-cat {
   color: var(--color-accent);
 }
 
-.plan-spent__cat-name {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.plan-spent__cat-group {
+.plan-spent__name-group {
   color: var(--text-muted);
   font-size: var(--font-size-2xs);
+}
+
+.plan-spent__foot-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.plan-spent__badge {
-  display: inline-block;
-  margin-left: var(--spacing-xs);
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chart-negative) 12%, transparent);
-  color: var(--chart-negative);
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
-  vertical-align: middle;
-}
-
+/* A month cell: what the envelope had left. */
 .plan-spent__cell {
   padding: 4px 6px;
   text-align: right;
   white-space: nowrap;
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-  border: 1px solid var(--bg-primary);
-}
-
-.plan-spent__cell--under {
   color: var(--text-muted);
 }
 
@@ -158,24 +217,6 @@
   outline-offset: -2px;
 }
 
-.plan-spent__num {
-  padding: 4px var(--spacing-sm);
-  text-align: right;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Where the months stop and the totals begin. */
-.plan-spent__col--first-total {
-  border-left: 1px solid var(--edge-strong);
-}
-
-.plan-spent__total {
-  font-weight: 600;
-}
-
 /* The month in progress: month-to-date cells, counted in no verdict. Italic
    rather than faded, so its figures keep their contrast in every theme. */
 .plan-spent__month-header--running,
@@ -183,60 +224,80 @@
   font-style: italic;
 }
 
-/* The totals row: each month across every category. */
-.plan-spent__totals-row > * {
-  border-top: 1px solid var(--edge-strong);
+/* ── The totals columns ────────────────────────────────────────────────────
+   Pinned right while the months scroll under them. Fixed widths, because
+   each one's offset is the widths of the columns right of it. */
+.plan-spent__tot {
+  position: sticky;
+  z-index: 1;
+  width: var(--plan-spent-tot-w);
+  min-width: var(--plan-spent-tot-w);
+  max-width: var(--plan-spent-tot-w);
+  padding: 4px var(--spacing-sm);
+  background: var(--surface-chrome);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
-.plan-spent__foot-label {
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+.plan-spent__table thead .plan-spent__tot {
+  text-align: right;
+}
+
+/* Where the months stop and the totals begin. */
+.plan-spent__tot--months {
+  right: calc(var(--plan-spent-tot-w) * 3);
+  width: var(--plan-spent-months-w);
+  min-width: var(--plan-spent-months-w);
+  max-width: var(--plan-spent-months-w);
+  border-left: 1px solid var(--edge-strong);
+}
+
+.plan-spent__tot--funded {
+  right: calc(var(--plan-spent-tot-w) * 2);
+}
+
+.plan-spent__tot--spent {
+  right: var(--plan-spent-tot-w);
+}
+
+.plan-spent__tot--overspent {
+  right: 0;
   font-weight: 600;
 }
 
-.plan-spent__month-total--over {
+.plan-spent__tot.plan-spent__cell--over {
+  color: var(--text-primary);
+}
+
+/* The footer's overspending: what Ready to Assign covered. */
+.plan-spent__foot--over {
   color: var(--color-negative);
   font-weight: 600;
 }
 
-.plan-spent__month-total--under,
-.plan-spent__month-total--on,
-.plan-spent__month-total--running {
-  color: var(--text-secondary);
-}
-
-.plan-spent__running-row .plan-spent__foot-label {
+.plan-spent__foot--quiet {
   color: var(--text-muted);
-  font-weight: 400;
 }
 
-/* A phone fits the name column, two or three months and the Over and Total
-   columns; Planned and Spent live in the Total cell's title and its drill
-   there. The name column gives up width first, and its long names ellipsize
-   rather than push the months off. */
+/* A phone fits the name column, two or three months and the Over and
+   Overspent columns; Funded and Spent live in the Overspent cell's title
+   and its drill there. */
 @media (max-width: 768px) {
-  .plan-spent__col--wide {
+  .plan-spent__scroll {
+    --plan-spent-name-w: 116px;
+    --plan-spent-tot-w: 72px;
+    --plan-spent-months-w: 44px;
+  }
+
+  .plan-spent__tot--funded,
+  .plan-spent__tot--spent {
     display: none;
   }
 
-  .plan-spent__cat-header {
-    min-width: 112px;
-  }
-
-  .plan-spent__cat-cell {
-    max-width: 128px;
-    overflow: hidden;
-  }
-
-  .plan-spent__cat-btn {
-    max-width: 112px;
-  }
-
-  /* Under the name, not beside it: beside it the badge ran out of the sticky
-     column and over the months scrolling beneath. */
-  .plan-spent__cat-cell .plan-spent__badge {
-    display: block;
-    width: max-content;
-    margin: 2px 0 0;
+  .plan-spent__tot--months {
+    right: var(--plan-spent-tot-w);
   }
 }

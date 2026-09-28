@@ -284,7 +284,19 @@ class TestIncomeVsExpense:
 # The card is money math, so it gets a real database.
 
 
+def page_balances(balances: dict) -> AsyncMock:
+    """Stands in for `ReportService._envelope_balances`: the budget page's
+    Available per category over `[month before, *months]`, stated by hand.
+    The real walk is the budget page's (`BudgetService.envelope_series`) and
+    is held to this report by the differential test in
+    `tests/integration/test_plan_vs_spent_report.py`."""
+    return AsyncMock(return_value=balances)
+
+
 class TestBudgetVsActual:
+    """The Total column over any dates: each month carries in what the one
+    before left, and the verdict is what Ready to Assign had to cover."""
+
     def _assignment(self, cat_id, month, assigned, cat_name="Groceries", group_name="Food"):
         return row(
             category_id=cat_id,
@@ -300,29 +312,37 @@ class TestBudgetVsActual:
         # never assigned to in the window used to be served as "Unknown".
         return ledger_row(cat_id, JAN, amount, name, group)
 
-    async def test_basic_variance(self):
-        assigns = [self._assignment(CAT_A, JAN, D("500.00"))]
-        spends = [self._spend(CAT_A, D("-420.00"))]
-
+    async def _read(self, assigns, spends, balances):
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
+        with patch.object(ReportService, "_envelope_balances", page_balances(balances)):
+            return await svc.budget_vs_actual(BUDGET, JAN, JAN)
+
+    async def test_what_was_left_is_the_budget_pages_available(self):
+        """500 assigned, 420 spent, nothing carried in: 80 left."""
+        result = await self._read(
+            [self._assignment(CAT_A, JAN, D("500.00"))],
+            [self._spend(CAT_A, D("-420.00"))],
+            {CAT_A: [D("0"), D("80.00")]},
+        )
 
         cat = result["categories"][0]
-        assert cat["assigned"] == D("500.00")
-        assert cat["spent"] == D("420.00")
-        assert cat["variance"] == D("80.00")
-        assert cat["variance_pct"] == pytest.approx(16.0)
+        assert (cat["carried_in"], cat["assigned"], cat["funded"]) == (D("0"), D("500"), D("500"))
+        assert (cat["spent"], cat["other"], cat["left"]) == (D("420"), D("0"), D("80"))
+        assert (cat["overspent"], cat["over"]) == (D("0"), False)
 
-    async def test_overspend_shows_negative_variance(self):
-        assigns = [self._assignment(CAT_A, JAN, D("200.00"))]
-        spends = [self._spend(CAT_A, D("-350.00"))]
-
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
+    async def test_overspending_is_what_ready_to_assign_covered(self):
+        """200 assigned, 350 spent: the page ends the month at -150, Ready to
+        Assign covers it, and the next month starts from nothing — so the span
+        leaves 0 and was 150 overspent."""
+        result = await self._read(
+            [self._assignment(CAT_A, JAN, D("200.00"))],
+            [self._spend(CAT_A, D("-350.00"))],
+            {CAT_A: [D("0"), D("-150.00")]},
+        )
 
         cat = result["categories"][0]
-        assert cat["variance"] < 0
-        assert cat["variance"] == D("-150.00")
+        assert (cat["funded"], cat["spent"], cat["left"]) == (D("200"), D("350"), D("0"))
+        assert (cat["overspent"], cat["over"]) == (D("150"), True)
 
     async def test_total_sums(self):
         assigns = [
@@ -333,35 +353,53 @@ class TestBudgetVsActual:
             self._spend(CAT_A, D("-400.00")),
             self._spend(CAT_B, D("-250.00")),
         ]
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
+        result = await self._read(
+            assigns, spends, {CAT_A: [D("0"), D("100.00")], CAT_B: [D("0"), D("50.00")]}
+        )
 
         assert result["total_assigned"] == D("800.00")
+        assert result["total_funded"] == D("800.00")
         assert result["total_spent"] == D("650.00")
-        assert result["total_variance"] == D("150.00")
+        assert result["total_left"] == D("150.00")
+        assert result["total_overspent"] == D("0")
 
-    async def test_the_headline_variance_is_the_rows_not_the_raw_totals(self):
-        """300 drained out of A with nothing spent, B 150 over its 200. Raw
-        `total_assigned - total_spent` is -450; the rows read on plan and
-        150 over, and the headline has to say what the rows say."""
+    async def test_the_headline_is_the_rows_not_the_raw_totals(self):
+        """A carried 300 in and all of it was drained back out with nothing
+        spent; B spent 350 of 200. Raw `total_assigned - total_spent` is -450;
+        the rows read A empty and on plan, B 150 overspent, and the headline
+        has to say what the rows say."""
         assigns = [
             self._assignment(CAT_A, JAN, D("-300.00"), "A"),
             self._assignment(CAT_B, JAN, D("200.00"), "B"),
         ]
         spends = [self._spend(CAT_B, D("-350.00"), name="B")]
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
-
-        # The drained envelope is a row (something was assigned) on plan, and
-        # the totals are the rows'.
-        drained = next(c for c in result["categories"] if c["category_name"] == "A")
-        assert (drained["plan"], drained["variance"], drained["over"]) == (
-            D("0"),
-            D("0"),
-            False,
+        result = await self._read(
+            assigns,
+            spends,
+            {CAT_A: [D("300.00"), D("0")], CAT_B: [D("0"), D("-150.00")]},
         )
-        assert result["total_variance"] == D("-150.00")
-        assert result["total_variance"] == sum(c["variance"] for c in result["categories"])
+
+        # The drained envelope is a row (something was assigned) and on plan.
+        drained = next(c for c in result["categories"] if c["category_name"] == "A")
+        assert (drained["carried_in"], drained["funded"], drained["left"]) == (
+            D("300"),
+            D("0"),
+            D("0"),
+        )
+        assert (drained["overspent"], drained["over"]) == (D("0"), False)
+        # The headline is the rows summed: funded 0 + 200, and 150 covered.
+        assert result["total_funded"] == D("200.00")
+        assert result["total_overspent"] == D("150.00")
+        assert result["total_overspent"] == sum(c["overspent"] for c in result["categories"])
+        # And it keeps the span's identity: funded - spent + other + overspent == left.
+        assert (
+            result["total_funded"]
+            - result["total_spent"]
+            + result["total_other"]
+            + result["total_overspent"]
+            == result["total_left"]
+            == D("0")
+        )
 
     async def test_empty_returns_zeros(self):
         svc = ReportService(make_session(mock_result([]), mock_result([])))
@@ -371,9 +409,11 @@ class TestBudgetVsActual:
             "total_assigned": D("0"),
             "total_moved_in": D("0"),
             "total_moved_out": D("0"),
-            "total_plan": D("0"),
+            "total_funded": D("0"),
             "total_spent": D("0"),
-            "total_variance": D("0"),
+            "total_other": D("0"),
+            "total_left": D("0"),
+            "total_overspent": D("0"),
             "start_date": JAN,
             "end_date": date(2026, 1, 31),
         }
@@ -403,22 +443,21 @@ class TestBudgetVsActual:
         result = await svc.budget_vs_actual(BUDGET, start, end, today=today)
         assert (result["start_date"], result["end_date"]) == read
 
-    async def test_variance_pct_is_none_when_no_assignment(self):
-        """Category with spending but no assignment has no variance_pct.
+    async def test_spending_nobody_funded_is_overspent_by_all_of_it(self):
+        """A category with spending and nothing assigned or carried in.
 
-        A percentage of nothing has no value. It was served as 0.0, which is
-        also what "spent its plan to the cent" serves, so the chart printed
-        "0.0%" for spending nobody planned. `variance` carries the real answer
-        (-100 here).
+        It used to serve a `variance_pct` of 0.0 — "spent its plan to the
+        cent" — for spending nobody planned. Now the page's Available is -100,
+        Ready to Assign covered all of it, and that is the verdict.
         """
-        assigns = []
-        spends = [self._spend(CAT_A, D("-100.00"), name="Cascade Point Dues")]
-        svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
-        result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
+        result = await self._read(
+            [],
+            [self._spend(CAT_A, D("-100.00"), name="Cascade Point Dues")],
+            {CAT_A: [D("0"), D("-100.00")]},
+        )
         cat = result["categories"][0]
-        assert cat["variance_pct"] is None
-        assert cat["variance"] == D("-100.00")
-        assert cat["assigned"] == D("0")
+        assert (cat["assigned"], cat["funded"], cat["spent"]) == (D("0"), D("0"), D("100"))
+        assert (cat["overspent"], cat["over"]) == (D("100"), True)
         # And it is named, not "Unknown" with a blank group.
         assert cat["category_name"] == "Cascade Point Dues"
         assert cat["category_group_name"] == "Everyday"
@@ -428,95 +467,116 @@ class TestBudgetVsActual:
 
 
 class TestPlanVsSpentMonthTotals:
-    """The row of month totals — what Cumulative Variance served."""
+    """The row of month totals: each month's cells summed across categories,
+    each cell carrying in what the month before left."""
 
     @staticmethod
-    def _svc(assigns, spends) -> ReportService:
-        return ReportService(
+    async def _month_totals(assigns, spends, balances, months: int) -> dict:
+        svc = ReportService(
             make_session(earliest_result(None), mock_result(assigns), mock_result(spends))
         )
+        with patch.object(ReportService, "_envelope_balances", page_balances(balances)):
+            return await svc.plan_vs_spent(BUDGET, months=months)
 
-    async def test_cumulative_carries_forward(self):
-        # Use real current dates to avoid patching the date class (which breaks isinstance).
+    @staticmethod
+    def _assigned(month, amount: str):
+        return row(
+            category_id=CAT_A,
+            month=month,
+            assigned=D(amount),
+            category_name="Groceries",
+            group_name="Food",
+            sinking=False,
+        )
+
+    async def test_a_month_carries_in_what_the_month_before_left(self):
+        """500 a month; 400 spent, then 600. The second month started with the
+        100 the first left, so 600 spent of 600 is on plan — judged alone, it
+        read 100 over."""
         first = date.today().replace(day=1)
-        m1 = add_months(first, -2)
-        m2 = add_months(first, -1)
-
-        assigns = [
-            row(
-                category_id=CAT_A,
-                month=m,
-                assigned=D("500.00"),
-                category_name="Groceries",
-                group_name="Food",
-                sinking=False,
-            )
-            for m in (m1, m2)
-        ]
+        m1, m2 = add_months(first, -2), add_months(first, -1)
+        assigns = [self._assigned(m, "500.00") for m in (m1, m2)]
         spends = [
             ledger_row(CAT_A, m1.replace(day=15), D("-400.00")),
             ledger_row(CAT_A, m2.replace(day=10), D("-600.00")),
         ]
-        result = (await self._svc(assigns, spends).plan_vs_spent(BUDGET, months=2))["month_totals"]
+        body = await self._month_totals(
+            assigns, spends, {CAT_A: [D("0"), D("100.00"), D("0"), D("0")]}, months=2
+        )
+        result = body["month_totals"]
 
         assert len(result) == 3
         r0 = next(r for r in result if r["month"] == m1)
         r1 = next(r for r in result if r["month"] == m2)
-        assert r0["variance"] == D("100.00")
-        assert r0["cumulative_variance"] == D("100.00")
-        assert r1["variance"] == D("-100.00")
-        assert r1["cumulative_variance"] == D("0.00")
+        assert (r0["carried_in"], r0["funded"], r0["spent"], r0["left"]) == (
+            D("0"),
+            D("500"),
+            D("400"),
+            D("100"),
+        )
+        assert (r1["carried_in"], r1["funded"], r1["spent"], r1["left"]) == (
+            D("100"),
+            D("600"),
+            D("600"),
+            D("0"),
+        )
+        assert (r1["overspent"], r1["categories_over"]) == (D("0"), 0)
 
-    async def test_the_running_month_is_drawn_but_not_in_the_drift(self):
+    async def test_the_running_month_is_drawn_but_in_no_total(self):
         """Its whole assignment lands on the 1st while its spending arrives
-        over the month: counted, the drift leapt "under budget" every 1st."""
+        over the month: counted, the headline leapt "under budget" every 1st."""
         first = date.today().replace(day=1)
         last = add_months(first, -1)
-        assigns = [
-            row(
-                category_id=CAT_A,
-                month=m,
-                assigned=D(amount),
-                category_name="Groceries",
-                group_name="Food",
-                sinking=False,
-            )
-            for m, amount in ((last, "400.00"), (first, "900.00"))
-        ]
+        assigns = [self._assigned(last, "400.00"), self._assigned(first, "900.00")]
         spends = [ledger_row(CAT_A, first, D("-100.00"))]
-        result = (await self._svc(assigns, spends).plan_vs_spent(BUDGET, months=1))["month_totals"]
+        body = await self._month_totals(
+            assigns, spends, {CAT_A: [D("0"), D("400.00"), D("1200.00")]}, months=1
+        )
 
-        done, running = result
+        done, running = body["month_totals"]
         assert (done["partial_month"], running["partial_month"]) == (False, True)
-        assert done["cumulative_variance"] == D("400.00")
-        # Its own figures so far are served; its drift is not.
-        assert running["assigned"] == D("900.00")
-        assert running["spent"] == D("100.00")
-        assert running["variance"] == D("800.00")
-        assert running["cumulative_variance"] is None
+        assert (done["funded"], done["left"]) == (D("400"), D("400"))
+        # Its own figures so far are served: 400 carried in, 900 assigned.
+        assert (running["carried_in"], running["assigned"], running["funded"]) == (
+            D("400"),
+            D("900"),
+            D("1300"),
+        )
+        assert (running["spent"], running["left"]) == (D("100"), D("1200"))
+        # The headline reads the complete month alone.
+        assert (body["total_funded"], body["total_spent"], body["total_left"]) == (
+            D("400"),
+            D("0"),
+            D("400"),
+        )
 
-    async def test_months_with_no_data_count_as_zero(self):
+    async def test_a_quiet_month_carries_the_balance_through(self):
+        """400 assigned, then a month with nothing in it: the envelope still
+        holds 400, and the quiet month says so rather than zero."""
         first = date.today().replace(day=1)
-        m1 = add_months(first, -2)
-        m2 = add_months(first, -1)
-
-        assigns = [
-            row(
-                category_id=CAT_A,
-                month=m1,
-                assigned=D("400.00"),
-                category_name="Groceries",
-                group_name="Food",
-                sinking=False,
-            )
-        ]
-        result = (await self._svc(assigns, []).plan_vs_spent(BUDGET, months=2))["month_totals"]
+        m1, m2 = add_months(first, -2), add_months(first, -1)
+        body = await self._month_totals(
+            [self._assigned(m1, "400.00")],
+            [],
+            {CAT_A: [D("0"), D("400.00"), D("400.00"), D("400.00")]},
+            months=2,
+        )
+        result = body["month_totals"]
 
         r1 = next(r for r in result if r["month"] == m1)
         r2 = next(r for r in result if r["month"] == m2)
-        assert r1["variance"] == D("400.00")
-        assert r2["variance"] == D("0.00")
-        assert r2["cumulative_variance"] == D("400.00")
+        assert (r1["funded"], r1["left"]) == (D("400"), D("400"))
+        assert (r2["carried_in"], r2["assigned"], r2["funded"], r2["spent"], r2["left"]) == (
+            D("400"),
+            D("0"),
+            D("400"),
+            D("0"),
+            D("400"),
+        )
+        # The Total column: started from nothing, 400 funded, 400 left.
+        (cat,) = body["categories"]
+        assert (cat["total"]["funded"], cat["total"]["left"]) == (D("400"), D("400"))
+        assert cat["months_active"] == 2
 
 
 # ─── spending_grouped ─────────────────────────────────────────────────────────

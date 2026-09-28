@@ -82,8 +82,8 @@ class PlanCategory:
     category_id: uuid.UUID
     name: str
     group: str
-    #: Tagged Long-term expense (`IS_SINKING_FUND`): never chronic, and not
-    #: tested for anomalies — a bill it saved for is its plan working.
+    #: Tagged Long-term expense (`IS_SINKING_FUND`): not tested for
+    #: anomalies — a bill it saved for is its plan working, not a spike.
     sinking_fund: bool
     months: dict[date, PlanMonth] = field(default_factory=dict)
 

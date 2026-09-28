@@ -1,166 +1,197 @@
-"""Did a category's spending fit its plan? One answer for every plan-vs-actual
-report.
+"""Did an envelope's spending fit what it had? One answer for every
+plan-vs-actual report.
 
-**The plan floors at zero.** A NEGATIVE assignment is money moved back OUT of
-the envelope — a plan being reduced, not a household overspending — and
-`spent > assigned` read it as the latter: drain 300 from an envelope that spent
-nothing and `0 > -300` flagged it, so an envelope with no spending at all could
-be reported as a chronic overspender. Do it in three months and Plan vs Reality
-named it the household's worst habit.
+**An envelope is judged by what it held, not by what one month assigned it**
+(owner's call, 2026-09-28). A month's `funded` is what it carried in from the
+month before — the budget page's carryover, floored by `carryover.
+next_carryover` — plus what was assigned and moved in, less what was moved
+out. What it had `left` is the budget page's Available, and the month was
+over only when that went negative: the budget page's red, the overspending
+Ready to Assign had to cover.
 
-Plan vs Reality learned that first and Budget vs Actual did not. Budget vs
-Actual served `assigned - spent` unfloored and its chart decided "overspent"
-for itself from `spent > assigned`, so over one drained envelope the two
-reports gave opposite verdicts: neutral on one screen, a red 300 overrun on
-the other, first under "Sort by overspent" and reported to the AI as -300. The
-verdict lives here now and both reports serve it; the chart reads it.
+This replaced a month's plan judged alone, carryover ignored, which named the
+most careful envelopes the worst habits. An envelope funded 600 in January
+and spending 100 a month read "over" five months running and was flagged
+chronic, unless someone had tagged it Long-term expense; 200 a month saved
+toward a car read 1,200 "under plan"; and 1,000 assigned in February and
+moved to a brokerage in March read 1,000 underspent, because March's plan
+floored the transfer away, while the same transfer in February read 0.
+Every one of those envelopes the budget page showed as fine.
 
-**Money moved INTO an envelope raises its plan** — the mirror of the floor.
-A transfer from savings into a Medical envelope, a bonus deposit filed to a
-Savings envelope: the household funded that envelope as surely as by
-assigning to it, and the budget page's Available says so. Read as nothing,
-the 2,000 of savings that paid a 2,000 bill made the bill a 2,000 overrun,
-every large red Plan vs Reality cell was one, and a Budget vs Actual row
-read twenty times over its plan where the budget page showed the envelope a
-few dollars short. A
-REFUND is different: it is spending coming back, so it lowers spent. Which is
-which is the row's activity class (`plan_effect`).
+**Money moved INTO an envelope funds it; money moved OUT unfunds it** — the
+row's activity class decides which (`plan_effect`). A transfer from savings
+that paid a Medical bill funded it as surely as an assignment; a principal
+transfer out of a Mortgage envelope took money back out of the plan rather
+than being left unspent. A REFUND is spending coming back, so it lowers spent.
 
-**Money moved OUT of an envelope lowers its plan** — the mirror of money
-moved in (owner's call, 2026-09-26). A transfer to a brokerage, a principal
-payment to a tracked loan, filed to an envelope nobody tagged as savings or
-debt: the household took that money back out of the plan as surely as by
-un-assigning it, and the budget page's Available says so. Read as nothing, a
-Mortgage envelope assigned 1,500 and paid by a 1,500 principal transfer read
-1,500 underspent every month, a plan the household had kept to the dollar.
+**`left` is served, not re-walked.** It is `BudgetService.envelope_series`'
+Available — the import anchor, the walk back before it and the card
+corrections already applied — so this report and the budget page cannot
+disagree about a balance. Where the budget page states none (a month before
+an import whose history cannot reproduce it), the month is walked from the
+ledger instead and says so (`estimated`).
 
-**One floor, over the whole plan**: `max(assigned + moved_in - moved_out, 0)`.
-Not a floor per term: money moved out past what the period planned is the
-envelope drawing down a balance it carried in, which a period's plan cannot
-see, exactly as a negative assignment is. Unfloored, that leaves a negative
-plan every dollar of spending overruns, so an envelope drained into a
-brokerage with nothing spent read "over" — the drained-envelope bug above,
-arriving by a transfer instead of an assignment.
-
-**A plan is a month's, and a span of months is its months added up**
-(owner's call, 2026-09-27). `plan_outcome` judges one category-month;
-`summed_outcome` adds months (or categories) together and judges the sum. A
-Plan vs Spent Total, its bottom row, its headline and the AI's
-`budget_vs_actual` all read the months added up, so each total is its cells
-summed. Flooring once over a whole window instead — Budget vs Actual's old
-rule — let 300 assigned in June and swept back in July read "on plan" in a
-Total whose June cell said 300 under, and on a real budget the two tallies
-ended thousands apart.
+**A span of months is its months walked in order** (`across_months`): what
+it started with plus everything funded, less spent, plus what Ready to Assign
+covered, is what it ended with. Its verdict is that coverage.
 
 Pure: takes one month's figures and returns the verdict.
 """
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import NamedTuple
 
 from igab.domain.activity_class import ActivityClass, counted_classes
+from igab.domain.carryover import next_carryover, write_off
 
 ZERO = Decimal("0")
 
-#: How far past its plan a category must go before it is OVER. Both, not
-#: either: a dollar, and a hundredth of the plan. Without it a mortgage paid
-#: from an envelope assigned a few cents short read "over" three months
-#: running and was named a chronic overspender — on a real budget, more than
-#: one chronic flag in five was rounding. The dollar floor is what
-#: keeps a small plan's cents quiet; the percentage is what keeps a large
-#: plan's rounding quiet. A category with no plan is over as soon as it has
-#: spent a dollar (1% of nothing is nothing).
+#: How far negative an envelope must go before it is OVER. Both, not either:
+#: a dollar, and a hundredth of what it was funded with. Without it a
+#: mortgage paid from an envelope assigned a few cents short read "over"
+#: three months running and was named a chronic overspender — on a real
+#: budget, more than one chronic flag in five was rounding. The dollar floor
+#: keeps a small envelope's cents quiet; the percentage keeps a large one's
+#: rounding quiet. An envelope with nothing in it is over as soon as it is a
+#: dollar short (1% of nothing is nothing).
 OVER_BY_AT_LEAST = Decimal("1.00")
 OVER_SHARE_AT_LEAST = Decimal("0.01")
 
-#: "Chronic" is over plan in at least `CHRONIC_MONTHS` of the last
-#: `CHRONIC_WINDOW` months the report reads — a plan habitually wrong rather
-#: than a month unlucky. Plan vs Spent serves the flag and the Guide's
+#: "Chronic" is over in at least `CHRONIC_MONTHS` of the last
+#: `CHRONIC_WINDOW` months the report reads — an envelope habitually run dry
+#: rather than a month unlucky. Plan vs Spent serves the flag and the Guide's
 #: checkup reads it (`guide.service.checkup`); neither decides it again.
 CHRONIC_MONTHS = 3
 CHRONIC_WINDOW = 6
 
 
 @dataclass(frozen=True)
-class PlanOutcome:
-    #: What the category planned to spend: the assignment plus money moved
-    #: in, less money moved out, floored at zero.
-    plan: Decimal
-    #: `plan - spent`, unrounded and untolerated — the arithmetic. Whether it
-    #: is bad news is `over`, never the sign: a few cents past a plan is
-    #: negative here and on plan there.
-    variance: Decimal
-    #: Spending exceeded the plan by at least `OVER_BY_AT_LEAST` and
-    #: `OVER_SHARE_AT_LEAST` of it — the one meaning of "over" the matrix
-    #: tint, the chronic count and the Total column's verdict all read.
+class EnvelopeOutcome:
+    """One envelope over one month, or over a span of them (`across_months`).
+
+    The identities it keeps: a month's `funded - spent + other == left`, the
+    budget page's Available, negative when overspent; a span's
+    `funded - spent + other + overspent == left`, floored — Ready to Assign
+    covered each month's negative, and that is `overspent`.
+    """
+
+    #: What it started with: the month before's Available, floored. None where
+    #: the budget page states no figure for the month before, counted as zero.
+    carried_in: Decimal | None
+    #: `carried_in + assigned + moved_in - moved_out`.
+    funded: Decimal
+    #: Net of refunds; negative only when refunds beat the spending.
+    spent: Decimal
+    #: `left - (funded - spent)`: what the budget page's Available counts and
+    #: the plan ledger does not — a pending row, a starting balance filed to
+    #: the envelope, a card refund repaying uncovered debt. Deliberate, and
+    #: bounded by `test_plan_vs_spent_report`'s differential test: an
+    #: ordinary envelope's is zero.
+    other: Decimal
+    #: The budget page's Available at the end: negative when the envelope was
+    #: overspent. A span's is floored, as the next month would carry it.
+    left: Decimal
+    #: What Ready to Assign covered: the negative `left` a month ended at, as
+    #: a positive amount (`carryover.write_off`); a span's is its months'.
+    overspent: Decimal
+    #: Overspent by at least `OVER_BY_AT_LEAST` and `OVER_SHARE_AT_LEAST` of
+    #: what it was funded with — the one meaning of "over" the matrix tint,
+    #: the chronic count and the Total column's verdict all read.
     over: bool
-
-    @property
-    def variance_pct(self) -> float | None:
-        """Variance as a share of the plan; None where there was no plan to
-        measure against, rather than a division by zero or a sign flip from
-        a negative denominator.
-
-        None, not 0.0: Budget vs Actual printed "0.0%" for spending nobody
-        planned, which is what a category that spent its plan to the cent
-        also prints."""
-        return float(self.variance / self.plan * 100) if self.plan > ZERO else None
+    #: `left` was walked from the ledger because the budget page states no
+    #: figure for this month (before an import it cannot walk back through).
+    estimated: bool = False
 
 
-def _is_over(plan: Decimal, spent: Decimal) -> bool:
-    overrun = spent - plan
-    return overrun >= OVER_BY_AT_LEAST and overrun >= plan * OVER_SHARE_AT_LEAST
+def _is_over(overspent: Decimal, funded: Decimal) -> bool:
+    base = max(funded, ZERO)
+    return overspent >= OVER_BY_AT_LEAST and overspent >= base * OVER_SHARE_AT_LEAST
 
 
-def summed_outcome(outcomes: Iterable[PlanOutcome]) -> PlanOutcome:
-    """Months (or categories) added up: the plans summed, each already floored
-    for its own month, the variances summed, and the sum judged by the same
-    tolerance a month is.
+def envelope_outcome(
+    *,
+    carried_in: Decimal | None,
+    assigned: Decimal,
+    moved_in: Decimal,
+    moved_out: Decimal,
+    spent: Decimal,
+    left: Decimal | None,
+) -> EnvelopeOutcome:
+    """The verdict for one envelope over one month.
 
-    Not `sum(assigned) - sum(spent)`. That headline read beside rows floored
-    per category disagreed with them whenever an envelope was drained: 300
-    moved out of one envelope and 300 overspent in another nets to 0 raw,
-    while the rows say one is on plan and the other 300 over. And not one
-    floor over the summed parts either — see the module docstring.
+    `carried_in` is the month before's Available floored (None: unknown,
+    counted as zero); `assigned`, `moved_in`, `moved_out` and `spent` the
+    plan ledger's; `left` the budget page's Available this month — None where
+    it states none, and then the month is walked from the ledger.
+
+    All four movements are required: a caller that forgot `moved_out` would
+    report a debt-paying envelope as holding its whole payment.
     """
-    plan = variance = ZERO
-    for o in outcomes:
-        plan += o.plan
-        variance += o.variance
-    return PlanOutcome(plan=plan, variance=variance, over=_is_over(plan, plan - variance))
+    funded = (carried_in or ZERO) + assigned + moved_in - moved_out
+    walked = funded - spent
+    estimated = left is None
+    end = walked if left is None else left
+    overspent = write_off(end)
+    return EnvelopeOutcome(
+        carried_in=carried_in,
+        funded=funded,
+        spent=spent,
+        other=end - walked,
+        left=end,
+        overspent=overspent,
+        over=_is_over(overspent, funded),
+        estimated=estimated,
+    )
 
 
-def plan_outcome(
-    assigned: Decimal, spent: Decimal, *, moved_in: Decimal, moved_out: Decimal
-) -> PlanOutcome:
-    """The verdict for one category over one planning period.
+def across_months(outcomes: Sequence[EnvelopeOutcome]) -> EnvelopeOutcome:
+    """One envelope's months, oldest first, as one span: what the first
+    carried in plus every month's funding, the spending and `other` summed,
+    Ready to Assign's coverage summed, and the last month's Available floored
+    as the next month would carry it.
 
-    `assigned` is the budget assignments, `moved_in` and `moved_out` what
-    `plan_effect` counts as money moved into and out of the envelope (both
-    non-negative), and `spent` the net spent — negative only when refunds
-    beat spending, which leaves the plan with room to spare, as the budget
-    page's Available does.
-
-    Both movements are required: a caller that forgot `moved_out` would
-    report a debt-paying envelope as underspent by its whole payment.
+    Not the months' `funded` summed — each already counts the one before's
+    leftover, so a 600 envelope spending 100 a month would read funded 2,100
+    over six months. And not a floor over the span's arithmetic either: a
+    month that went negative was covered that month, which is `overspent`.
     """
-    plan = max(assigned + moved_in - moved_out, ZERO)
-    return PlanOutcome(plan=plan, variance=plan - spent, over=_is_over(plan, spent))
+    if not outcomes:
+        return EnvelopeOutcome(
+            carried_in=ZERO,
+            funded=ZERO,
+            spent=ZERO,
+            other=ZERO,
+            left=ZERO,
+            overspent=ZERO,
+            over=False,
+        )
+    first = outcomes[0]
+    funded = sum((o.funded - (o.carried_in or ZERO) for o in outcomes), first.carried_in or ZERO)
+    overspent = sum((o.overspent for o in outcomes), ZERO)
+    return EnvelopeOutcome(
+        carried_in=first.carried_in,
+        funded=funded,
+        spent=sum((o.spent for o in outcomes), ZERO),
+        other=sum((o.other for o in outcomes), ZERO),
+        left=next_carryover(outcomes[-1].left),
+        overspent=overspent,
+        over=_is_over(overspent, funded),
+        estimated=any(o.estimated for o in outcomes),
+    )
 
 
-def is_chronic(months_over_recently: int, *, sinking_fund: bool) -> bool:
-    """Whether a category is a chronic overspender, given how many of the last
-    `CHRONIC_WINDOW` months it was over.
+def is_chronic(months_over_recently: int) -> bool:
+    """Whether an envelope is chronically overspent, given how many of the
+    last `CHRONIC_WINDOW` months it went negative in.
 
-    **A sinking fund never is.** Its whole design is months of saving and one
-    month of paying the bill: the envelope is "over" its monthly assignment
-    every time the premium lands, which is the plan working. Four of those in
-    six months — quarterly tax, say — named the household's most disciplined
-    envelope its worst habit.
+    No exemption by tag. A sinking fund used to need one — judged by its
+    monthly assignment, the month its bill landed was "over" — but judged by
+    what it held, paying the bill it saved for leaves it at zero, not below.
+    One that does go negative month after month is overspent, tagged or not.
     """
-    return not sinking_fund and months_over_recently >= CHRONIC_MONTHS
+    return months_over_recently >= CHRONIC_MONTHS
 
 
 class PlanEffect(NamedTuple):
@@ -201,11 +232,10 @@ def plan_effect(amount: Decimal, cls: str, *, savings_envelope: bool) -> PlanEff
       here rather than restating it.
     - **A starting balance does nothing.** It is where an account's counting
       begins, not money that moved, in either direction.
-    - **Anything else arriving raises the plan**: a transfer from savings, a
-      deposit filed to the envelope, a loan draw spent through it. It funds
-      the envelope exactly as an assignment does — the mirror of a negative
-      assignment lowering it (`plan_outcome`).
-    - **Anything else leaving lowers the plan**: a transfer to a brokerage
+    - **Anything else arriving funds the envelope**: a transfer from
+      savings, a deposit filed to it, a loan draw spent through it — exactly
+      as an assignment does (`envelope_outcome`'s `funded`).
+    - **Anything else leaving unfunds it**: a transfer to a brokerage
       out of an untagged envelope, a principal payment from an envelope not
       tagged Debt principal. It is not spent — it is saving, or paying down
       a debt, which no spending figure counts — but it was not left unspent
