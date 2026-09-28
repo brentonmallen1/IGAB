@@ -196,6 +196,10 @@ export interface Category {
    *  home is `repositories/category_filters.py CARD_SECTION_CATEGORY`, which the
    *  server's group header and reorder rules read too. */
   in_card_section: boolean
+  /** Kept by the app (Interest & fees): the server refuses to rename, archive,
+   *  delete or move it, so the UI does not offer them. Served, not derived —
+   *  home is `Category.is_protected` and `CategoryService.require_unlocked`. */
+  is_protected: boolean
   tags?: TagSimple[]
   created_at: string
   updated_at: string

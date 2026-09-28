@@ -113,38 +113,46 @@ export function CategoryMobileActions({ budgetId, category, onDone, onMoveUp, on
           </button>
         </>
       )}
-      <button
-        className="cat-mobile-actions__btn"
-        onClick={() => {
-          setRenameValue(category.name)
-          setSubtitleValue(category.subtitle ?? '')
-          setIsRenaming(true)
-        }}
-      >
-        <Pencil size={14} />
-        Rename
-      </button>
+      {/* Kept by the app (Interest & fees): the server refuses all three, so
+          none is offered. */}
+      {!category.is_protected && (
+        <button
+          className="cat-mobile-actions__btn"
+          onClick={() => {
+            setRenameValue(category.name)
+            setSubtitleValue(category.subtitle ?? '')
+            setIsRenaming(true)
+          }}
+        >
+          <Pencil size={14} />
+          Rename
+        </button>
+      )}
       {/* Archive, not a flag flip: the endpoint refuses while the envelope
           still holds money, and says which one and what to do about it. */}
-      <button
-        className="cat-mobile-actions__btn"
-        onClick={() =>
-          (category.is_archived ? unarchiveCategories : archiveCategories).mutate({
-            ids: [category.id],
-            month,
-          })
-        }
-      >
-        {category.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-        {category.is_archived ? 'Restore' : 'Archive'}
-      </button>
-      <button
-        className="cat-mobile-actions__btn cat-mobile-actions__btn--danger"
-        onClick={handleDelete}
-      >
-        <Trash2 size={14} />
-        Delete
-      </button>
+      {!category.is_protected && (
+        <>
+          <button
+            className="cat-mobile-actions__btn"
+            onClick={() =>
+              (category.is_archived ? unarchiveCategories : archiveCategories).mutate({
+                ids: [category.id],
+                month,
+              })
+            }
+          >
+            {category.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+            {category.is_archived ? 'Restore' : 'Archive'}
+          </button>
+          <button
+            className="cat-mobile-actions__btn cat-mobile-actions__btn--danger"
+            onClick={handleDelete}
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
+        </>
+      )}
       {deleteModal}
     </div>
   )

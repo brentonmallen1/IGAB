@@ -147,8 +147,9 @@ async def ensure_interest_envelope(session: AsyncSession, budget_id: uuid.UUID) 
        user's own envelope unfound;
     3. otherwise a new "Interest & fees" at the end of the card group.
 
-    Never un-archives: an envelope the user archived stays archived, and the
-    cards section then draws nothing for it.
+    Un-archives one found archived: it cannot be archived any more (it is
+    kept by the app), so an archived one is a leftover from before that rule,
+    and the cards section draws nothing for it while it stays that way.
 
     Not recorded in the change log, for the reason its group is not: it is
     budget-level plumbing shared by every card, not something the first card
@@ -161,6 +162,9 @@ async def ensure_interest_envelope(session: AsyncSession, budget_id: uuid.UUID) 
 
     existing = await find_interest_envelope(session, budget_id)
     if existing is not None:
+        if existing.is_archived:
+            existing.is_archived = False
+            await session.flush()
         return existing
 
     group = await _ensure_group(session, budget_id)

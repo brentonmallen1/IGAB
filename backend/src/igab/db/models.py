@@ -627,6 +627,19 @@ class Category(Base):
     #: in the grid.
     in_card_section: Mapped[bool] = query_expression()
 
+    @property
+    def is_protected(self) -> bool:
+        """Is this envelope kept by the app — no rename, archive, delete or move?
+
+        Today that is the Interest & fees envelope (`system_key` set). A
+        plain property, not a `query_expression`: it reads a column of this
+        row, so it cannot go stale or be left unpopulated. The refusals live
+        in `CategoryService` (`require_unlocked`, `_blocking_link`, the
+        archive preview); this is only how the client learns which rows they
+        apply to, so it can stop offering the actions.
+        """
+        return self.system_key is not None
+
     #: 'none', 'sent_out' or 'kept_here' — how this category's money counts as
     #: saved. Not a column: it reads the category's tags, which change without
     #: this row being touched, and a stored copy would go stale on every tag

@@ -412,6 +412,14 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+.category-inspector__kept {
+  margin: auto 0 0;
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
 .category-inspector__manage-btn {
   flex: 1;
   display: flex;

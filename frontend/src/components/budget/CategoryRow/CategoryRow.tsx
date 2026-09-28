@@ -169,7 +169,10 @@ export const CategoryRow = memo(function CategoryRow({
     handleCommit()
   }, [handleCommit])
 
+  // Interest & fees is kept by the app: the server refuses a rename, so the
+  // row does not offer one.
   function startRename() {
+    if (category.is_protected) return
     setRenameValue(category.name)
     setSubtitleValue(category.subtitle ?? '')
     setIsRenaming(true)
@@ -370,7 +373,7 @@ export const CategoryRow = memo(function CategoryRow({
               <span
                 className="category-row__name-text"
                 onDoubleClick={startRename}
-                title="Double-click to rename"
+                title={category.is_protected ? undefined : 'Double-click to rename'}
               >
                 {category.name}
               </span>
@@ -428,14 +431,16 @@ export const CategoryRow = memo(function CategoryRow({
                 >
                   <Plus size={13} />
                 </button>
-                <button
-                  className="category-row__action-btn"
-                  onClick={startRename}
-                  title="Rename"
-                  aria-label={`Rename ${category.name}`}
-                >
-                  <Pencil size={13} />
-                </button>
+                {!category.is_protected && (
+                  <button
+                    className="category-row__action-btn"
+                    onClick={startRename}
+                    title="Rename"
+                    aria-label={`Rename ${category.name}`}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
               </div>
             </>
           )}

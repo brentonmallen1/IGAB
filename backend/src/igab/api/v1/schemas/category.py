@@ -426,6 +426,9 @@ class CategoryResponse(ApiModel):
     #: raise, not draw Interest & fees as a stray grid row under a
     #: "Credit Card Payments" header.
     in_card_section: bool
+    #: Kept by the app: may not be renamed, archived, deleted or moved. The
+    #: server refuses each; this lets the client stop offering them.
+    is_protected: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
     tags: list[TagOutSimple] = []
