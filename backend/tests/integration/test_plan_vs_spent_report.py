@@ -376,3 +376,52 @@ class TestScope:
             api_client, budget.id, months=3, filter_id="00000000-0000-0000-0000-000000000000"
         )
         assert body["filter_unavailable"] is True
+
+
+class TestTheAssistantReadsTheSameMonths:
+    """The AI's `budget_vs_actual` is the Total column over dates it is asked
+    for, widened to whole months: a plan is a month's, so half a month's
+    spending against the month's whole assignment would read under plan."""
+
+    async def test_a_range_that_cuts_months_reads_them_whole_and_agrees(
+        self, db_session, api_client
+    ):
+        from igab.ai.tools import handlers
+        from igab.ai.tools.context import build_tool_context
+        from igab.domain.dates import month_end
+
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Goals")
+        gifts = await create_category(db_session, budget, group, "Gifts")
+        await _history_from(db_session, budget, checking, 3)
+        two, one = _months_back(2), _months_back(1)
+        # 300 assigned, then swept back out the next month, and 80 spent late
+        # in the second month — after the day the range names.
+        await create_budget_assignment(db_session, budget, gifts, two, "300.00")
+        await create_budget_assignment(db_session, budget, gifts, one, "-300.00")
+        await create_transaction(
+            db_session, budget, checking, "-80.00", one.replace(day=25), category=gifts
+        )
+        await db_session.commit()
+
+        ctx = await build_tool_context(db_session, budget.id, TODAY)
+        result = await handlers.budget_vs_actual(
+            ctx,
+            {
+                "start_date": two.replace(day=15).isoformat(),
+                "end_date": one.replace(day=10).isoformat(),
+            },
+        )
+        assert (result["start_date"], result["end_date"]) == (
+            two.isoformat(),
+            month_end(one).isoformat(),
+        )
+        # Month by month: 300 under, then no plan and 80 spent — 220 under.
+        (row,) = result["rows"]
+        assert (row["planned"], row["spent"], row["variance"]) == (300.0, 80.0, 220.0)
+
+        body = await _fetch(api_client, budget.id, months=3)
+        total = _cat(body, gifts.id)["total"]
+        assert D(total["variance"]) == D("220.00") == D(str(result["total_variance"]))
+        assert D(body["total_variance"]) == D(body["month_totals"][-2]["cumulative_variance"])

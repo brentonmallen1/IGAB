@@ -155,6 +155,18 @@ def clamped_month_end(month: date, today: date) -> date:
     return min(month_end(month), today)
 
 
+def months_touched(start: date, end: date, today: date) -> tuple[date, date]:
+    """A date range widened to the whole months it touches: the 1st of
+    `start`'s month through the end of `end`'s — never past `today`, so the
+    running month reads month-to-date, as Plan vs Spent draws it.
+
+    A plan is a month's (`domain.plan`), so a range that cuts a month cannot
+    hold part of one to it: the whole month's assignment would stand against
+    half its spending, and prorating an assignment invents a plan nobody made.
+    The AI's `budget_vs_actual` reads this and reports the widened dates."""
+    return month_start(start), clamped_month_end(end, today)
+
+
 def complete_month_window(
     today: date, months: int, history_from: date | None = None
 ) -> tuple[date, date]:

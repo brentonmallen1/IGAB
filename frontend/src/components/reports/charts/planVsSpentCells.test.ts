@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   cellLabel,
   exportRows,
-  grainGap,
   monthTotalTone,
   overspendStyle,
   planVsSpentHeadline,
@@ -297,30 +296,5 @@ describe('exportRows', () => {
       total_variance: -30,
       months_over: 1,
     })
-  })
-})
-
-describe('grainGap', () => {
-  it('names both figures when the bottom row and the Total column end apart', () => {
-    // 300 assigned in July and swept back in August: July reads 300 under,
-    // August's plan floors at nothing, and the Total nets the two.
-    const r = report([])
-    r.month_totals[1] = { ...r.month_totals[1], cumulative_variance: 300 }
-    r.total_variance = 0
-    expect(grainGap(r)).toEqual({ byMonth: 300, byWindow: 0 })
-  })
-
-  it('says nothing when they agree to the cent', () => {
-    const r = report([])
-    r.month_totals[1] = { ...r.month_totals[1], cumulative_variance: -40.004 }
-    r.total_variance = -40
-    expect(grainGap(r)).toBeNull()
-  })
-
-  it('says nothing before a month has closed', () => {
-    const r = report([])
-    r.month_totals = [monthTotal('2026-09-01', 0)]
-    r.total_variance = 12
-    expect(grainGap(r)).toBeNull()
   })
 })

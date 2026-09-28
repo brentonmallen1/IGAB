@@ -63,6 +63,7 @@ from igab.domain.dates import (
     ReportWindow,
     month_starts,
     months_spanned,
+    months_touched,
     previous_window,
     report_window,
     weekday_counts,
@@ -954,14 +955,15 @@ class ReportService:
         start_date: date,
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
+        today: date | None = None,
     ) -> dict:
         """Plan vs Spent's Total column over any dates — the AI's
-        `budget_vs_actual` tool names arbitrary ones. The same fold
-        (`plan_vs_spent.window_total`) over a ledger read for those dates."""
-        ledger = await plan_ledger(
-            self.session, budget_id, start_date, end_date, category_ids=category_ids
-        )
-        return pvs.budget_vs_actual(ledger)
+        `budget_vs_actual` tool names arbitrary ones. Widened to the whole
+        months they touch (`dates.months_touched`), and folded month by month
+        (`plan_vs_spent.months_total`). Serves the dates it read."""
+        start, end = months_touched(start_date, end_date, reader_today(today))
+        ledger = await plan_ledger(self.session, budget_id, start, end, category_ids=category_ids)
+        return {**pvs.budget_vs_actual(ledger), "start_date": start, "end_date": end}
 
     # ─── Category Volatility ─────────────────────────────────────────────────
 

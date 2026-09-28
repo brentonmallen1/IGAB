@@ -2,10 +2,9 @@
 one ledger (`services.plan_vs_spent`).
 
 Budget vs Actual, Cumulative Variance and Plan vs Reality were three reports
-over this dataset. These tests hold the one report to what each of them
-served — the Total column is a Budget vs Actual row, the totals row a
-Cumulative Variance point — and pin the one place the two totals legitimately
-differ: which grain the plan floors at.
+over this dataset. Every total is now its months added up, so the bottom row,
+the Total column and the headline are one figure three ways; these tests hold
+them to it.
 """
 
 import random
@@ -15,7 +14,7 @@ from decimal import Decimal as D
 
 from igab.domain.dates import ReportWindow
 from igab.services.plan_ledger import PlanCategory, PlanMonth
-from igab.services.plan_vs_spent import budget_vs_actual, plan_vs_spent, window_total
+from igab.services.plan_vs_spent import budget_vs_actual, months_total, plan_vs_spent
 
 JUN, JUL, AUG, SEP = date(2026, 6, 1), date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1)
 #: Three complete months and September running.
@@ -38,20 +37,6 @@ def ledger(*cats: PlanCategory) -> dict[uuid.UUID, PlanCategory]:
 
 def row(report: dict, name: str) -> dict:
     return next(c for c in report["categories"] if c["category_name"] == name)
-
-
-def floor_gap_bound(led: dict, months) -> D:
-    """The plan each month's floor threw away, summed: how far the month-grain
-    running total may sit above the window-grain total variance."""
-    return sum(
-        (
-            max(cell.moved_out - cell.assigned - cell.moved_in, D("0"))
-            for c in led.values()
-            for mo, cell in c.months.items()
-            if mo in months
-        ),
-        D("0"),
-    )
 
 
 class TestTheTotalsRow:
@@ -108,15 +93,10 @@ class TestTheTotalColumn:
     """Each category over the complete months — what Budget vs Actual
     served, floored once over the window's sums."""
 
-    def test_it_is_the_budget_vs_actual_row_for_the_complete_months(self):
+    def test_it_is_the_complete_months_added_up(self):
         cells = {JUN: m("500", "420", moved_in="50"), JUL: m("500", "700"), SEP: m("500", "90")}
         report = plan_vs_spent(ledger(cat("Groceries", cells)), WINDOW)
-        complete = {k: v for k, v in cells.items() if k != SEP}
-        bva = budget_vs_actual(ledger(cat("Groceries", complete)))
-        (served,) = bva["categories"]
         total = row(report, "Groceries")["total"]
-        for key in ("assigned", "moved_in", "moved_out", "plan", "spent", "variance", "over"):
-            assert total[key] == served[key], key
         assert total == {
             "assigned": D("1000"),
             "moved_in": D("50"),
@@ -127,6 +107,28 @@ class TestTheTotalColumn:
             "variance_pct": float(D("-70") / D("1050") * 100),
             "over": True,
         }
+        # And it is what the AI's budget_vs_actual reads for those months.
+        complete = {k: v for k, v in cells.items() if k != SEP}
+        (served,) = budget_vs_actual(ledger(cat("Groceries", complete)))["categories"]
+        assert {k: served[k] for k in total} == total
+
+    def test_money_taken_back_the_next_month_stays_under_plan_in_the_total(self):
+        """300 assigned in June and swept back out in July, nothing spent.
+        June is 300 under and July's plan floors at nothing, so the Total is
+        300 under — the cells added up. One floor over the window's sums read
+        it on plan beside a June cell saying 300 under; on a real budget that
+        put the Total thousands away from the running total beside it."""
+        led = ledger(cat("Gifts", {JUN: m("300"), JUL: m("-300")}))
+        report = plan_vs_spent(led, WINDOW)
+        total = row(report, "Gifts")["total"]
+        assert (total["assigned"], total["plan"], total["variance"], total["over"]) == (
+            D("0"),
+            D("300"),
+            D("300"),
+            False,
+        )
+        *_, aug, _running = report["month_totals"]
+        assert aug["cumulative_variance"] == report["total_variance"] == D("300")
 
     def test_the_window_totals_are_the_column_summed(self):
         led = ledger(
@@ -168,35 +170,42 @@ class TestTheTotalColumn:
         assert report["total_variance"] == D("0")
 
 
-class TestTheTwoGrains:
-    """The one place the totals row and the Total column may differ, stated
-    at `services.plan_vs_spent` and bounded here."""
+class TestEveryTotalIsTheCellsAddedUp:
+    """The bottom row's running total, the Total column and the headline are
+    one figure: the complete months' cells added up."""
 
-    def test_they_agree_when_no_month_planned_below_zero(self):
+    @staticmethod
+    def _agree(report: dict) -> None:
+        complete = [t for t in report["month_totals"] if not t["partial_month"]]
+        by_month = sum((t["variance"] for t in complete), D("0"))
+        by_category = sum((c["total"]["variance"] for c in report["categories"]), D("0"))
+        assert by_month == by_category == report["total_variance"]
+        if complete:
+            assert complete[-1]["cumulative_variance"] == report["total_variance"]
+        for key in ("plan", "spent", "assigned", "moved_in", "moved_out"):
+            assert (
+                sum((t[key] for t in complete), D("0"))
+                == sum((c["total"][key] for c in report["categories"]), D("0"))
+                == report[f"total_{key}"]
+            ), key
+        for c in report["categories"]:
+            cells = [x for x in c["monthly"] if x["month"] != report["running_month"]]
+            assert c["total"]["variance"] == sum((x["variance"] for x in cells), D("0"))
+            assert c["total"]["plan"] == sum((x["plan"] for x in cells), D("0"))
+
+    def test_a_worked_example(self):
         led = ledger(
             cat("Groceries", {JUN: m("500", "400"), JUL: m("500", "600"), AUG: m("0", "80")}),
             cat("Medical", {JUL: m("0", "2000", moved_in="2000")}),
             cat("Mortgage", {JUN: m("1500", moved_out="1500")}),
+            cat("Gifts", {JUN: m("300"), JUL: m("-300"), SEP: m("50", "90")}),
         )
         report = plan_vs_spent(led, WINDOW)
-        *_, last, _running = report["month_totals"]
-        assert last["cumulative_variance"] == report["total_variance"]
+        self._agree(report)
+        # 100 under, 100 over, 80 over; on plan; on plan; 300 under.
+        assert report["total_variance"] == D("220")
 
-    def test_money_taken_back_the_next_month_is_under_plan_by_month_and_on_plan_by_window(self):
-        """300 assigned in June and moved back out in July, nothing spent. June
-        alone reads 300 under; July's plan floors at zero, so the month grain
-        never sees the assignment the move undid. The window sees both."""
-        led = ledger(cat("Gifts", {JUN: m("300"), JUL: m("-300")}))
-        report = plan_vs_spent(led, WINDOW)
-        *_, aug, _running = report["month_totals"]
-        assert aug["cumulative_variance"] == D("300")
-        assert report["total_variance"] == D("0")
-        assert row(report, "Gifts")["total"]["plan"] == D("0")
-        assert aug["cumulative_variance"] - report["total_variance"] == floor_gap_bound(
-            led, WINDOW.complete
-        )
-
-    def test_the_gap_is_never_negative_and_never_past_what_the_floors_threw_away(self):
+    def test_over_300_random_ledgers(self):
         rng = random.Random(20260927)
         for _ in range(300):
             cats = []
@@ -212,14 +221,7 @@ class TestTheTwoGrains:
                         moved_out=str(rng.choice([0, 0, 0, 150, 700])),
                     )
                 cats.append(cat(f"c{i}", cells))
-            led = ledger(*cats)
-            report = plan_vs_spent(led, WINDOW)
-            complete = [t for t in report["month_totals"] if not t["partial_month"]]
-            gap = complete[-1]["cumulative_variance"] - report["total_variance"]
-            bound = floor_gap_bound(led, WINDOW.complete)
-            assert D("0") <= gap <= bound
-            if bound == D("0"):
-                assert gap == D("0")
+            self._agree(plan_vs_spent(ledger(*cats), WINDOW))
 
 
 class TestChronic:
@@ -272,11 +274,11 @@ class TestTheWindow:
         assert report["running_month"] == SEP
 
 
-class TestWindowTotal:
+class TestMonthsTotal:
     def test_a_drained_envelope_is_on_plan_not_over(self):
         """A negative assignment with nothing spent: `0 > -300` once read it
         as a 300 overrun."""
-        t = window_total(m("-300"))
+        t = months_total([m("-300")])
         assert (t["plan"], t["variance"], t["over"], t["variance_pct"]) == (
             D("0"),
             D("0"),
@@ -285,9 +287,18 @@ class TestWindowTotal:
         )
 
     def test_spending_with_no_plan_has_no_percentage(self):
-        t = window_total(m("0", "100"))
+        t = months_total([m("0", "100")])
         assert (t["variance"], t["variance_pct"], t["over"]) == (D("-100"), None, True)
 
     def test_refunds_beating_spending_leave_room(self):
-        t = window_total(m("100", "-20"))
+        t = months_total([m("100", "-20")])
         assert (t["variance"], t["over"]) == (D("120"), False)
+
+    def test_no_months_is_nothing(self):
+        t = months_total([])
+        assert (t["plan"], t["spent"], t["variance"], t["over"]) == (D("0"), D("0"), D("0"), False)
+
+    def test_a_month_over_inside_a_span_under_is_not_a_span_over(self):
+        # 40 over in one month, 100 under in another: the span is 60 under.
+        t = months_total([m("100", "140"), m("200", "100")])
+        assert (t["plan"], t["variance"], t["over"]) == (D("300"), D("60"), False)

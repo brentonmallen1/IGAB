@@ -177,7 +177,9 @@ async def spending_by_category(ctx: ToolContext, args: dict) -> dict:
 async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     start = _date(args, "start_date", ctx.today.replace(day=1))
     end = _date(args, "end_date", ctx.today)
-    data = await ctx.reports.budget_vs_actual(ctx.budget_id, start, end)
+    # Whole months: a plan is a month's, so the range is widened to the months
+    # it touches, and the dates reported are the ones read.
+    data = await ctx.reports.budget_vs_actual(ctx.budget_id, start, end, today=ctx.today)
     rows = [
         {
             "category": c["category_name"],
@@ -204,8 +206,8 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
     # The report's headline, so the assistant cannot quote a raw
     # assigned-minus-spent that the rows above disagree with.
     result["total_variance"] = money(data["total_variance"])
-    result["start_date"] = start.isoformat()
-    result["end_date"] = end.isoformat()
+    result["start_date"] = data["start_date"].isoformat()
+    result["end_date"] = data["end_date"].isoformat()
     return result
 
 

@@ -12,7 +12,6 @@ import { drillScope, type DrillScope } from '../drillScope'
 import {
   cellLabel,
   exportRows,
-  grainGap,
   monthTotalTone,
   overspendStyle,
   planVsSpentHeadline,
@@ -86,7 +85,6 @@ export function PlanVsSpentReport({ budgetId }: Props) {
   const maxTotalOver = worstTotalOverspend(categories)
   const headline = data ? planVsSpentHeadline(data) : null
   const variance = data ? varianceHeadline(data.total_variance, formatMoney) : null
-  const gap = data ? grainGap(data) : null
   // What the Total column covers: the complete months. Null before the first
   // one closes, when the column is all zeros and opens nothing.
   const totalsWindow =
@@ -129,10 +127,7 @@ export function PlanVsSpentReport({ budgetId }: Props) {
           <p>
             The <strong>bottom row</strong> adds each month up across categories, and{' '}
             <em>Running total</em> keeps a tally of it month to month. The{' '}
-            <strong>right-hand columns</strong> add each category up across the complete months. The
-            two tallies agree unless an envelope had money moved out beyond its month&apos;s plan: a
-            month counts that plan as zero, while the category total nets it against the other
-            months.
+            <strong>right-hand columns</strong> add each category up across the complete months.
           </p>
           <p>
             Over plan in <strong>3 of the last 6 months</strong> is chronic. Sinking funds
@@ -413,14 +408,6 @@ export function PlanVsSpentReport({ budgetId }: Props) {
               </tfoot>
             </table>
           </div>
-        )}
-        {gap && categories.length > 0 && (
-          <p className="plan-spent__grain-note">
-            Month by month the bottom row adds up to {formatMoney(gap.byMonth)}; the Total column
-            says {formatMoney(gap.byWindow)}. Money taken back out of an envelope after the month it
-            was assigned counts as nothing in the month it left, but the Total nets it against the
-            month it came from.
-          </p>
         )}
       </div>
     </div>

@@ -1163,9 +1163,8 @@ export interface PlanVsSpentCell {
 }
 
 /** A category over the complete months — the Total column, which was a
- *  Budget vs Actual row. Floored once over the window's sums, so it can sit
- *  below its cells summed where a month planned below zero (backend
- *  `services/plan_vs_spent.py` says when, and by how much). */
+ *  Budget vs Actual row: its cells added up, each plan floored for its own
+ *  month (backend `domain/plan.py` `summed_outcome`). */
 export interface PlanVsSpentTotal {
   assigned: number
   moved_in: number
@@ -1237,9 +1236,10 @@ export interface PlanVsSpentReport {
    *  total_variance`. */
   total_plan: number
   total_spent: number
-  /** The headline: the categories' floored variances summed (backend
-   *  `plan.total_variance`). Never `total_assigned - total_spent`, which
-   *  disagrees with the rows wherever an envelope was drained. */
+  /** The headline: the categories' Totals summed — the month totals summed,
+   *  and the last complete month's running total. Never `total_assigned -
+   *  total_spent`, which disagrees with the rows wherever an envelope was
+   *  drained. */
   total_variance: number
   chronic_count: number
   /** A saved filter was named and could not be found — backend

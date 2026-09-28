@@ -11,21 +11,18 @@ one answered "am I keeping to my plan?". So they are one report. The matrix
 is the body; its row of month totals is what Cumulative Variance drew; its
 column of category totals is what Budget vs Actual listed.
 
-Pure: takes `plan_ledger`'s output and the window, returns the served shape.
-The rules are `domain.plan`'s — `plan_outcome` for every verdict,
-`is_chronic` for the flag, `total_variance` for a headline — and
-`PlanMonth.quiet` says which rows exist.
+**Every total is its months added up** (`domain.plan.summed_outcome`): a
+category's Total is its complete-month cells summed, a month total its cells
+across categories, and the window's headline either one summed — the same
+figure both ways, and the bottom row's running total ends on it. Budget vs
+Actual used to floor one plan over the whole window instead, and on a budget
+that sweeps envelopes back to Ready to Assign its Total ended thousands away
+from the running total beside it.
 
-**The two totals floor at different grains, on purpose.** A month total is
-its cells' verdicts summed, each plan floored at zero for its month (what
-Cumulative Variance served); a category total floors once, over the window's
-sums (what Budget vs Actual served). They agree wherever no month's plan went
-below zero. Where one did — 300 moved back out of an envelope the month after
-it was assigned — the month grain cannot see the assignment the move undid and
-reads the envelope 300 under plan, while the window sees both and reads it on
-plan. So the running total at the last complete month is never below the
-window's total variance, and exceeds it by at most the money floored away in
-single months; `tests/unit/services/test_plan_vs_spent.py` pins both.
+Pure: takes `plan_ledger`'s output and the window, returns the served shape.
+The rules are `domain.plan`'s — `plan_outcome` for a month, `summed_outcome`
+for any span or set of them, `is_chronic` for the flag — and `PlanMonth.quiet`
+says which rows exist.
 """
 
 import uuid
@@ -35,77 +32,71 @@ from decimal import Decimal
 
 from igab.domain.dates import ReportWindow
 from igab.domain.money import quantize_cents
-from igab.domain.plan import CHRONIC_WINDOW, is_chronic, plan_outcome, total_variance
+from igab.domain.plan import CHRONIC_WINDOW, is_chronic, plan_outcome, summed_outcome
 from igab.services.plan_ledger import PlanCategory, PlanMonth
 
 ZERO = Decimal("0")
 
 
-def window_total(t: PlanMonth) -> dict:
-    """One category over a window: what it planned, spent, and the verdict at
-    that grain — the Total column, and the AI's `budget_vs_actual` row.
+def months_total(cells: Iterable[PlanMonth]) -> dict:
+    """One category over a set of months, month by month: each month's plan
+    floored for itself, then added up — the Total column, and the AI's
+    `budget_vs_actual` row. The one statement of a category's span.
 
     `over` is the server's, so no reader decides "overspent" from
     `spent > assigned` again (a drained envelope drew as a red overrun that
-    way). `plan` is served so no reader adds the moved money itself."""
-    outcome = plan_outcome(t.assigned, t.spent, moved_in=t.moved_in, moved_out=t.moved_out)
+    way). `plan` is served so no reader adds the moved money itself; it can
+    be more than `assigned + moved_in - moved_out` where a month floored."""
+    cells = list(cells)
+    outcome = summed_outcome(
+        plan_outcome(c.assigned, c.spent, moved_in=c.moved_in, moved_out=c.moved_out) for c in cells
+    )
     return {
-        "assigned": t.assigned,
-        "moved_in": t.moved_in,
-        "moved_out": t.moved_out,
+        "assigned": sum((c.assigned for c in cells), ZERO),
+        "moved_in": sum((c.moved_in for c in cells), ZERO),
+        "moved_out": sum((c.moved_out for c in cells), ZERO),
         "plan": outcome.plan,
-        "spent": t.spent,
+        "spent": sum((c.spent for c in cells), ZERO),
         "variance": outcome.variance,
         "variance_pct": outcome.variance_pct,
         "over": outcome.over,
     }
 
 
-def _window_sums(totals: Iterable[PlanMonth]) -> dict:
-    """Categories' window totals summed — so a headline cannot say what the
-    rows under it do not. `total_variance` is the rows' floored verdicts
-    summed (`plan.total_variance`), never `total_assigned - total_spent`,
-    which disagrees with the rows wherever an envelope was drained."""
+def _window_sums(totals: Iterable[dict]) -> dict:
+    """The categories' totals added up — so a headline cannot say what the
+    rows under it do not. Never `total_assigned - total_spent`, which
+    disagrees with the rows wherever an envelope was drained."""
     totals = list(totals)
-    outcomes = [
-        plan_outcome(t.assigned, t.spent, moved_in=t.moved_in, moved_out=t.moved_out)
-        for t in totals
-    ]
     return {
-        "total_assigned": sum((t.assigned for t in totals), ZERO),
-        "total_moved_in": sum((t.moved_in for t in totals), ZERO),
-        "total_moved_out": sum((t.moved_out for t in totals), ZERO),
-        "total_plan": sum((o.plan for o in outcomes), ZERO),
-        "total_spent": sum((t.spent for t in totals), ZERO),
-        "total_variance": total_variance(outcomes),
+        f"total_{key}": sum((t[key] for t in totals), ZERO)
+        for key in ("assigned", "moved_in", "moved_out", "plan", "spent", "variance")
     }
 
 
 def budget_vs_actual(ledger: Mapping[uuid.UUID, PlanCategory]) -> dict:
-    """Each category's plan for a whole ledger window against what it spent.
+    """Each category over every month the ledger read, month by month.
 
-    The Total column over any window a caller names — the AI's
-    `budget_vs_actual` tool asks it for arbitrary dates. A category with no
+    The Total column over any months a caller names — the AI's
+    `budget_vs_actual` tool asks for arbitrary dates, widened to the whole
+    months they touch (`domain.dates.months_touched`). A category with no
     activity at all (`PlanMonth.quiet`) is not a row; one whose plan floors to
     nothing is — a mortgage paid by a principal transfer is on plan, not
     missing."""
     categories: list[dict] = []
-    totals: list[PlanMonth] = []
     for cat in ledger.values():
-        t = cat.total()
-        if t.quiet:
+        if cat.total().quiet:
             continue
-        totals.append(t)
         categories.append(
             {
                 "category_id": str(cat.category_id),
                 "category_name": cat.name,
                 "category_group_name": cat.group,
-                **window_total(t),
+                **months_total(cat.months.values()),
             }
         )
     categories.sort(key=lambda c: (-c["spent"], c["category_name"]))
-    return {"categories": categories, **_window_sums(totals)}
+    return {"categories": categories, **_window_sums(categories)}
 
 
 @dataclass
@@ -156,14 +147,10 @@ def plan_vs_spent(ledger: Mapping[uuid.UUID, PlanCategory], window: ReportWindow
     """
     per_month = {m: _MonthTotal() for m in window.axis}
     categories: list[dict] = []
-    totals: list[PlanMonth] = []
     for cat in ledger.values():
-        found = _category_row(cat, window, per_month)
-        if found is None:
-            continue
-        row, t = found
-        categories.append(row)
-        totals.append(t)
+        row = _category_row(cat, window, per_month)
+        if row is not None:
+            categories.append(row)
     categories.sort(
         key=lambda c: (
             not c["chronic"],
@@ -183,14 +170,12 @@ def plan_vs_spent(ledger: Mapping[uuid.UUID, PlanCategory], window: ReportWindow
         "totals_end": window.complete_end if window.complete else None,
         "categories": categories,
         "month_totals": _month_rows(per_month, window),
-        **_window_sums(totals),
+        **_window_sums(c["total"] for c in categories),
         "chronic_count": sum(int(c["chronic"]) for c in categories),
     }
 
 
-def _category_row(
-    cat: PlanCategory, window: ReportWindow, per_month: dict
-) -> tuple[dict, PlanMonth] | None:
+def _category_row(cat: PlanCategory, window: ReportWindow, per_month: dict) -> dict | None:
     """One category's row of the matrix and its total over the complete
     months, adding each cell to its month's total on the way. None for a
     category with no active month."""
@@ -199,7 +184,7 @@ def _category_row(
     months_over = months_active = recent_over = 0
     over_total = ZERO
     shown = False
-    t = PlanMonth()
+    complete: list[PlanMonth] = []
     for m in window.axis:
         cell = cat.months.get(m) or PlanMonth()
         # One verdict for the chronic count, the cell's tint, its variance and
@@ -214,10 +199,7 @@ def _category_row(
         shown = shown or active
         per_month[m].add(cell, outcome.plan, outcome.variance, over=active and over)
         if not running:
-            t.assigned += cell.assigned
-            t.moved_in += cell.moved_in
-            t.moved_out += cell.moved_out
-            t.spent += cell.spent
+            complete.append(cell)
             if active:
                 months_active += 1
                 if over:
@@ -249,9 +231,9 @@ def _category_row(
         "avg_overspend": quantize_cents(over_total / months_over) if months_over else ZERO,
         "chronic": is_chronic(recent_over, sinking_fund=cat.sinking_fund),
         "sinking_fund": cat.sinking_fund,
-        "total": window_total(t),
+        "total": months_total(complete),
     }
-    return row, t
+    return row
 
 
 def _month_rows(per_month: dict, window: ReportWindow) -> list[dict]:

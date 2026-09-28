@@ -210,15 +210,6 @@
   font-weight: 400;
 }
 
-/* Why the bottom row and the Total column can end on different figures —
-   shown only when they do. */
-.plan-spent__grain-note {
-  margin: var(--spacing-sm) 0 0;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  max-width: 72ch;
-}
-
 /* A phone fits the name column, two or three months and the Over and Total
    columns; Planned and Spent live in the Total cell's title and its drill
    there. The name column gives up width first, and its long names ellipsize

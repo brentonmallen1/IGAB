@@ -481,8 +481,9 @@ class PlanVsSpentCell(ApiModel):
 
 class PlanVsSpentTotal(ApiModel):
     """A category over the complete months — the Total column, which was a
-    Budget vs Actual row. Floored once over the window's sums, not summed from
-    the cells (see `services.plan_vs_spent`)."""
+    Budget vs Actual row: its cells added up (`plan.summed_outcome`), each plan
+    floored for its own month. So `plan` can exceed `assigned + moved_in -
+    moved_out` where a month floored."""
 
     assigned: Decimal
     moved_in: Decimal
@@ -557,9 +558,10 @@ class PlanVsSpentResponse(ApiModel):
     #: total_variance`.
     total_plan: Decimal
     total_spent: Decimal
-    #: The categories' floored variances summed (`plan.total_variance`) — the
-    #: headline. Not `total_assigned - total_spent`, which disagrees with the
-    #: rows wherever an envelope was drained.
+    #: The headline: the categories' Totals summed, which is the month totals
+    #: summed and the last complete month's running total. Not
+    #: `total_assigned - total_spent`, which disagrees with the rows wherever an
+    #: envelope was drained.
     total_variance: Decimal
     chronic_count: int
     #: A saved filter was named and could not be found (see `CategoryScope`).

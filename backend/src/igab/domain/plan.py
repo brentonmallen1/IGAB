@@ -42,9 +42,17 @@ plan every dollar of spending overruns, so an envelope drained into a
 brokerage with nothing spent read "over" — the drained-envelope bug above,
 arriving by a transfer instead of an assignment.
 
-Pure: takes the figures at whatever grain the report plans in — a month for
-a Plan vs Spent cell, the whole window for its Total column — and returns the
-verdict.
+**A plan is a month's, and a span of months is its months added up**
+(owner's call, 2026-09-27). `plan_outcome` judges one category-month;
+`summed_outcome` adds months (or categories) together and judges the sum. A
+Plan vs Spent Total, its bottom row, its headline and the AI's
+`budget_vs_actual` all read the months added up, so each total is its cells
+summed. Flooring once over a whole window instead — Budget vs Actual's old
+rule — let 300 assigned in June and swept back in July read "on plan" in a
+Total whose June cell said 300 under, and on a real budget the two tallies
+ended thousands apart.
+
+Pure: takes one month's figures and returns the verdict.
 """
 
 from collections.abc import Iterable
@@ -101,16 +109,27 @@ class PlanOutcome:
         return float(self.variance / self.plan * 100) if self.plan > ZERO else None
 
 
-def total_variance(outcomes: Iterable[PlanOutcome]) -> Decimal:
-    """What a set of categories came to against their plans: the sum of each
-    one's floored verdict.
+def _is_over(plan: Decimal, spent: Decimal) -> bool:
+    overrun = spent - plan
+    return overrun >= OVER_BY_AT_LEAST and overrun >= plan * OVER_SHARE_AT_LEAST
+
+
+def summed_outcome(outcomes: Iterable[PlanOutcome]) -> PlanOutcome:
+    """Months (or categories) added up: the plans summed, each already floored
+    for its own month, the variances summed, and the sum judged by the same
+    tolerance a month is.
 
     Not `sum(assigned) - sum(spent)`. That headline read beside rows floored
     per category disagreed with them whenever an envelope was drained: 300
     moved out of one envelope and 300 overspent in another nets to 0 raw,
-    while the rows say one is on plan and the other 300 over.
+    while the rows say one is on plan and the other 300 over. And not one
+    floor over the summed parts either — see the module docstring.
     """
-    return sum((o.variance for o in outcomes), ZERO)
+    plan = variance = ZERO
+    for o in outcomes:
+        plan += o.plan
+        variance += o.variance
+    return PlanOutcome(plan=plan, variance=variance, over=_is_over(plan, plan - variance))
 
 
 def plan_outcome(
@@ -128,9 +147,7 @@ def plan_outcome(
     report a debt-paying envelope as underspent by its whole payment.
     """
     plan = max(assigned + moved_in - moved_out, ZERO)
-    overrun = spent - plan
-    over = overrun >= OVER_BY_AT_LEAST and overrun >= plan * OVER_SHARE_AT_LEAST
-    return PlanOutcome(plan=plan, variance=plan - spent, over=over)
+    return PlanOutcome(plan=plan, variance=plan - spent, over=_is_over(plan, spent))
 
 
 def is_chronic(months_over_recently: int, *, sinking_fund: bool) -> bool:

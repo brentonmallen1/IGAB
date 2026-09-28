@@ -374,7 +374,34 @@ class TestBudgetVsActual:
             "total_plan": D("0"),
             "total_spent": D("0"),
             "total_variance": D("0"),
+            "start_date": JAN,
+            "end_date": date(2026, 1, 31),
         }
+
+    @pytest.mark.parametrize(
+        ("start", "end", "today", "read"),
+        [
+            # A range that cuts a month reads the whole month: a plan is a
+            # month's, and half a month's spending against its whole
+            # assignment would read every envelope under plan.
+            (date(2026, 1, 10), date(2026, 1, 20), date(2026, 5, 1), (JAN, date(2026, 1, 31))),
+            (date(2026, 1, 31), date(2026, 2, 1), date(2026, 5, 1), (JAN, date(2026, 2, 28))),
+            # Never past today: the running month is month-to-date.
+            (
+                date(2026, 4, 3),
+                date(2026, 4, 30),
+                date(2026, 4, 17),
+                (date(2026, 4, 1), date(2026, 4, 17)),
+            ),
+            # Whole months already: unchanged.
+            (JAN, date(2026, 3, 31), date(2026, 5, 1), (JAN, date(2026, 3, 31))),
+        ],
+        ids=["cuts-one-month", "straddles-two", "running-month", "whole-months"],
+    )
+    async def test_it_reads_the_whole_months_a_range_touches(self, start, end, today, read):
+        svc = ReportService(make_session(mock_result([]), mock_result([])))
+        result = await svc.budget_vs_actual(BUDGET, start, end, today=today)
+        assert (result["start_date"], result["end_date"]) == read
 
     async def test_variance_pct_is_none_when_no_assignment(self):
         """Category with spending but no assignment has no variance_pct.
