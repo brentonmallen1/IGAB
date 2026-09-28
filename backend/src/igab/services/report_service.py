@@ -61,6 +61,7 @@ from igab.domain.cash_projection import history_window as projection_history
 from igab.domain.cash_projection import project, zero_filled
 from igab.domain.dates import (
     ReportWindow,
+    add_months,
     month_starts,
     months_spanned,
     months_touched,
@@ -936,8 +937,9 @@ class ReportService:
         today: date | None = None,
         category_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        """Each category's plan against its spending per month, with a total
-        per month and per category (`services.plan_vs_spent`).
+        """What each category had, spent and had left per month, carryover
+        included, with a total per month and per category
+        (`services.plan_vs_spent`).
 
         The window is `budget_window`'s: `months` complete months, and the
         running month drawn beside them as `running_month`. The Guide's
@@ -947,7 +949,8 @@ class ReportService:
         ledger = await plan_ledger(
             self.session, budget_id, window.start, today, category_ids=category_ids
         )
-        return pvs.plan_vs_spent(ledger, window)
+        balances = await self._envelope_balances(budget_id, list(ledger), window.axis)
+        return pvs.plan_vs_spent(ledger, window, balances)
 
     async def budget_vs_actual(
         self,
@@ -959,11 +962,36 @@ class ReportService:
     ) -> dict:
         """Plan vs Spent's Total column over any dates — the AI's
         `budget_vs_actual` tool names arbitrary ones. Widened to the whole
-        months they touch (`dates.months_touched`), and folded month by month
-        (`plan_vs_spent.months_total`). Serves the dates it read."""
+        months they touch (`dates.months_touched`), and walked month by month
+        from what the month before left (`plan_vs_spent.walk`). Serves the
+        dates it read."""
         start, end = months_touched(start_date, end_date, reader_today(today))
         ledger = await plan_ledger(self.session, budget_id, start, end, category_ids=category_ids)
-        return {**pvs.budget_vs_actual(ledger), "start_date": start, "end_date": end}
+        months = month_starts(start, end)
+        balances = await self._envelope_balances(budget_id, list(ledger), months)
+        return {
+            **pvs.budget_vs_actual(ledger, months, balances),
+            "start_date": start,
+            "end_date": end,
+        }
+
+    async def _envelope_balances(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], months: list[date]
+    ) -> dict[uuid.UUID, list[Decimal | None]]:
+        """Each category's Available over `[month before months[0], *months]`,
+        as the budget page states it (`BudgetService.envelope_series`) — what
+        Plan vs Spent carries in and has left. Read from the page's own walk,
+        so the report cannot disagree with the page about a balance."""
+        if not category_ids or not months:
+            return {}
+        # Lazily, as the Savings report does: the budget service's module
+        # graph reaches back into the reports.
+        from igab.guide.detection import budget_service_from
+
+        series = await budget_service_from(self.session).envelope_series(
+            budget_id, category_ids, [add_months(months[0], -1), *months]
+        )
+        return {cid: s.available for cid, s in series.items()}
 
     # ─── Category Volatility ─────────────────────────────────────────────────
 

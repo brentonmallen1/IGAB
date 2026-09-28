@@ -451,52 +451,69 @@ class CashFlowResponse(ApiModel):
 #
 # One report where Budget vs Actual, Cumulative Variance and Plan vs Reality
 # were three (`services.plan_vs_spent`): the matrix is `categories[].monthly`,
-# the Cumulative Variance series is `month_totals`, and each Budget vs Actual
-# row is a category's `total`.
+# the month totals are `month_totals`, and each Budget vs Actual row is a
+# category's `total`. Every figure is `domain.plan.envelope_outcome`'s:
+# carryover counts, and a month is over only when the envelope went negative.
 
 
 class PlanVsSpentCell(ApiModel):
     month: date
+    #: What the month before left, floored as the budget page carries it.
+    #: None where the page states no figure for the month before (before an
+    #: import it cannot walk back through), counted as zero.
+    carried_in: Decimal | None
     assigned: Decimal
     #: Money moved into the envelope — a transfer from savings, a deposit
-    #: filed to it (`domain.plan.plan_effect`). It raises the plan.
+    #: filed to it (`domain.plan.plan_effect`). It funds the envelope.
     moved_in: Decimal
     #: Money moved out and not spent — a transfer to a brokerage, a principal
-    #: payment from an untagged envelope. It lowers the plan. Non-negative.
+    #: payment from an untagged envelope. Non-negative.
     moved_out: Decimal
-    #: `assigned + moved_in - moved_out` floored at zero
-    #: (`domain.plan.plan_outcome`).
-    plan: Decimal
+    #: `carried_in + assigned + moved_in - moved_out`.
+    funded: Decimal
     #: Net of refunds. Negative only when refunds beat the spending.
     spent: Decimal
-    variance: Decimal
-    #: The verdict — past the plan by a dollar and 1% of it. The cell's tint
-    #: reads this, never the variance's sign. Never true in the running month.
+    #: What the budget page's Available counts and the plan ledger does not —
+    #: a pending row, a starting balance, a card refund repaying debt. Zero
+    #: for an ordinary envelope; `funded - spent + other == left`.
+    other: Decimal
+    #: The budget page's Available at the month's end; negative when overspent.
+    left: Decimal
+    #: What Ready to Assign covered: a negative `left`, as a positive amount.
+    overspent: Decimal
+    #: The verdict — negative by a dollar and 1% of `funded`. The cell's tint
+    #: reads this, never `left`'s sign. Never true in the running month.
     over: bool
-    #: Anything assigned, moved in, moved out or spent this month
-    #: (`plan_ledger.PlanMonth.quiet`): the cells the matrix fills and
-    #: `months_active` counts. A plan fully moved out is active, and on plan.
+    #: Anything assigned, moved or spent this month, or money held
+    #: (`carried_in` or `left` non-zero): the cells the matrix fills and
+    #: `months_active` counts.
     active: bool
+    #: `left` walked from the ledger: the budget page states no figure here.
+    estimated: bool
 
 
 class PlanVsSpentTotal(ApiModel):
     """A category over the complete months — the Total column, which was a
-    Budget vs Actual row: its cells added up (`plan.summed_outcome`), each plan
-    floored for its own month. So `plan` can exceed `assigned + moved_in -
-    moved_out` where a month floored."""
+    Budget vs Actual row: its months walked in order (`plan.across_months`).
+    `funded - spent + other + overspent == left`."""
 
+    #: What the first complete month carried in; None where unknown.
+    carried_in: Decimal | None
     assigned: Decimal
     moved_in: Decimal
     moved_out: Decimal
-    #: What `variance` is measured against. Served so the page never adds the
-    #: moved money itself.
-    plan: Decimal
+    #: What it started with plus everything assigned and moved in, less moved
+    #: out — not the months' `funded` summed, which counts carryover twice.
+    funded: Decimal
     spent: Decimal
-    variance: Decimal
-    #: None where there was no plan to take a share of — "no plan", not 0%.
-    variance_pct: float | None
+    other: Decimal
+    #: What the last complete month left, floored as the next month carries it.
+    left: Decimal
+    #: The months' coverage from Ready to Assign, summed.
+    overspent: Decimal
     #: The server's verdict; the page's tint and sort read it.
     over: bool
+    estimated: bool
 
 
 class PlanVsSpentCategory(ApiModel):
@@ -509,15 +526,11 @@ class PlanVsSpentCategory(ApiModel):
     avg_overspend: Decimal
     #: `domain.plan.is_chronic`. The Guide's checkup reads this flag.
     chronic: bool
-    #: Tagged Long-term expense, which is never chronic — said, so the page
-    #: can explain an over-plan month that carries no flag.
-    sinking_fund: bool
     total: PlanVsSpentTotal
 
 
 class PlanVsSpentMonth(ApiModel):
-    """One month over every category — the totals row, which was a Cumulative
-    Variance point: its cells summed, each plan floored for its month."""
+    """One month over every category — the totals row: its cells summed."""
 
     month: date
     #: True on the running month, whose figures are month-to-date
@@ -525,18 +538,16 @@ class PlanVsSpentMonth(ApiModel):
     #: in an average, a total or a headline. Required, not defaulted — a path
     #: that forgot it would present an unfinished month as a closed one.
     partial_month: bool
+    carried_in: Decimal
     assigned: Decimal
     moved_in: Decimal
     moved_out: Decimal
-    #: The month's category plans summed: `plan - spent == variance`.
-    plan: Decimal
+    funded: Decimal
     spent: Decimal
-    variance: Decimal
-    #: The drift of the complete months through this one. None on the running
-    #: month: its whole assignment lands on the 1st and its spending over
-    #: thirty days, so counting it read "under budget" every month's start.
-    cumulative_variance: Decimal | None
-    #: How many categories went over plan this month; 0 on the running month.
+    other: Decimal
+    left: Decimal
+    overspent: Decimal
+    #: How many categories went over this month; 0 on the running month.
     categories_over: int
 
 
@@ -551,18 +562,16 @@ class PlanVsSpentResponse(ApiModel):
     totals_end: date | None
     categories: list[PlanVsSpentCategory]
     month_totals: list[PlanVsSpentMonth]
+    #: The categories' Totals summed — so the headline cannot say what the
+    #: rows under it do not.
     total_assigned: Decimal
     total_moved_in: Decimal
     total_moved_out: Decimal
-    #: The categories' plans summed; `total_plan - total_spent ==
-    #: total_variance`.
-    total_plan: Decimal
+    total_funded: Decimal
     total_spent: Decimal
-    #: The headline: the categories' Totals summed, which is the month totals
-    #: summed and the last complete month's running total. Not
-    #: `total_assigned - total_spent`, which disagrees with the rows wherever an
-    #: envelope was drained.
-    total_variance: Decimal
+    total_other: Decimal
+    total_left: Decimal
+    total_overspent: Decimal
     chronic_count: int
     #: A saved filter was named and could not be found (see `CategoryScope`).
     #: REQUIRED, not defaulted: a report that forgets it would report an empty

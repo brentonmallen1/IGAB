@@ -500,9 +500,9 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
             unit="count",
             # The rule is `domain.plan`'s, and so are its numbers.
             detail=(
-                f"Over plan in {CHRONIC_MONTHS} of the last {CHRONIC_WINDOW} months counts as "
-                "chronic — by at least $1 and 1% of the plan. A sinking fund paying its "
-                "bill never does."
+                f"An envelope that went negative in {CHRONIC_MONTHS} of the last "
+                f"{CHRONIC_WINDOW} months is chronic — short by at least $1 and 1% of what "
+                "it had. Spending down a balance funded earlier never counts."
             ),
             finding_kinds=["chronic_overspend"],
             report="plan-vs-spent",

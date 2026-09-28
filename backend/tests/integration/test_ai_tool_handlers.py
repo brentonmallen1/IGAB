@@ -150,7 +150,11 @@ class TestTheFiguresMatchTheApp:
         result = await handlers.budget_vs_actual(
             ctx, {"start_date": MONTH.isoformat(), "end_date": TODAY.isoformat()}
         )
-        assert result["total_variance"] == float(sum(c["variance"] for c in data["categories"]))
+        # The headline is the rows summed, figure by figure — the assistant can
+        # never quote a total the rows beneath it do not add up to.
+        for key in ("funded", "spent", "left", "overspent"):
+            rows = sum(c[key] for c in data["categories"])
+            assert result[f"total_{key}"] == float(rows), key
 
     async def test_data_range_is_reported_so_the_model_does_not_invent_history(self, ctx):
         result = await handlers.get_data_range(ctx, {})

@@ -9,8 +9,11 @@ mortgage paid a few cents past its assignment three months running was named
 a chronic overspender, which the Guide then repeated.
 
 Each test is one of those divergences, named for what used to go wrong. The
-rule is `domain.plan` (`plan_effect`, `plan_outcome`, `is_chronic`); the rows
-are `services/plan_ledger.py`. Amounts are invented and round.
+rule is `domain.plan` (`plan_effect`, `envelope_outcome`, `is_chronic`); the
+rows are `services/plan_ledger.py`. Since 2026-09-28 carryover counts: a month
+carries in what the one before left, `left` is the budget page's Available,
+and a month is over only when that went negative. Amounts are invented and
+round.
 """
 
 from datetime import date, timedelta
@@ -70,7 +73,9 @@ def _row(body: dict, category) -> dict:
 
 
 class TestMoneyMovedInRaisesThePlan:
-    """2,000 moved in from savings, 2,000 medical bill paid: on plan."""
+    """2,000 moved in from savings, 2,000 medical bill paid: funded 2,000,
+    spent 2,000, nothing left and nothing overspent — as the budget page
+    shows it."""
 
     async def _medical(self, db_session, user):
         budget, checking, hysa, group = await _world(db_session, user)
@@ -84,24 +89,28 @@ class TestMoneyMovedInRaisesThePlan:
         bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
 
         row = _row(bva, medical)
-        assert (row["assigned"], row["moved_in"], row["plan"]) == (D("0"), D("2000"), D("2000"))
-        assert (row["spent"], row["variance"], row["over"]) == (D("2000"), D("0"), False)
-        # It read -2,000 and "no plan" — the percentage of nothing.
-        assert row["variance_pct"] == 0.0
-        assert bva["total_variance"] == D("0")
+        assert (row["assigned"], row["moved_in"], row["funded"]) == (D("0"), D("2000"), D("2000"))
+        # It read 2,000 over a plan of nothing.
+        assert (row["spent"], row["left"], row["overspent"], row["over"]) == (
+            D("2000"),
+            D("0"),
+            D("0"),
+            False,
+        )
+        assert bva["total_overspent"] == D("0")
 
-    async def test_cumulative_variance_reads_it_on_plan(self, db_session, api_client):
+    async def test_the_month_total_reads_it_on_plan(self, db_session, api_client):
         budget, _ = await self._medical(db_session, api_client.test_user)
         (point,) = (await ReportService(db_session).plan_vs_spent(budget.id, months=1))[
             "month_totals"
         ][-1:]
 
-        assert (point["moved_in"], point["plan"], point["spent"]) == (
+        assert (point["moved_in"], point["funded"], point["spent"]) == (
             D("2000"),
             D("2000"),
             D("2000"),
         )
-        assert point["variance"] == D("0")
+        assert (point["left"], point["overspent"]) == (D("0"), D("0"))
         assert point["assigned"] == D("0")
 
     async def test_plan_vs_reality_reads_it_on_plan(self, db_session, api_client):
@@ -109,10 +118,17 @@ class TestMoneyMovedInRaisesThePlan:
         pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
 
         cell = _row(pvr, medical)["monthly"][-1]
-        assert (cell["plan"], cell["spent"], cell["over"]) == (D("2000"), D("2000"), False)
+        assert (cell["funded"], cell["spent"], cell["left"], cell["over"]) == (
+            D("2000"),
+            D("2000"),
+            D("0"),
+            False,
+        )
         assert _row(pvr, medical)["months_over"] == 0
 
     async def test_spending_past_what_moved_in_is_still_over(self, db_session, api_client):
+        """100 assigned and 2,000 moved in fund 2,100; 2,150 spent leaves the
+        page at -50, which Ready to Assign covers."""
         budget, checking, hysa, group = await _world(db_session, api_client.test_user)
         medical = await create_category(db_session, budget, group, "Medical")
         await create_budget_assignment(db_session, budget, medical, THIS_MONTH, "100.00")
@@ -122,9 +138,11 @@ class TestMoneyMovedInRaisesThePlan:
         bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
 
         row = _row(bva, medical)
-        assert (row["plan"], row["variance"], row["over"]) == (D("2100"), D("-50"), True)
+        assert (row["funded"], row["overspent"], row["over"]) == (D("2100"), D("50"), True)
+        # The span leaves what the next month would carry: nothing.
+        assert row["left"] == D("0")
 
-    async def test_a_deposit_into_a_savings_envelope_raises_its_plan(self, db_session, api_client):
+    async def test_a_deposit_into_a_savings_envelope_funds_it(self, db_session, api_client):
         """A bonus filed to a sent-out Savings envelope and then sent on to
         savings: the deposit funds the envelope, the send-out is spent against
         it, and the two meet at zero. Read as nothing, the send-out was a 1,000
@@ -140,15 +158,24 @@ class TestMoneyMovedInRaisesThePlan:
         bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
 
         row = _row(bva, savings)
-        assert (row["moved_in"], row["spent"], row["variance"]) == (D("1000"), D("1000"), D("0"))
-        assert row["over"] is False
+        assert (row["moved_in"], row["funded"], row["spent"], row["left"]) == (
+            D("1000"),
+            D("1000"),
+            D("1000"),
+            D("0"),
+        )
+        assert (row["other"], row["over"]) == (D("0"), False)
 
     async def test_a_starting_balance_filed_to_an_envelope_moves_nothing(
         self, db_session, api_client
     ):
-        """An opening is where counting begins, not money moved in. Were it
-        plan, a hand-filed opening would pad an envelope's plan by the
-        account's whole balance."""
+        """An opening is where counting begins, not money moved in: funded
+        stays 0. Were it funding, a hand-filed opening would pad an envelope's
+        plan by the account's whole balance.
+
+        The budget page's Available does hold it — 5,000 less the 40 spent —
+        and `left` is that figure, so the gap is served as `other` (the
+        deliberate divergence `EnvelopeOutcome.other` names), not hidden."""
         from .factories import create_payee
 
         budget, checking, hysa, group = await _world(db_session, api_client.test_user)
@@ -162,14 +189,15 @@ class TestMoneyMovedInRaisesThePlan:
         bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
 
         row = _row(bva, misc)
-        assert (row["moved_in"], row["plan"], row["spent"]) == (D("0"), D("0"), D("40"))
+        assert (row["moved_in"], row["funded"], row["spent"]) == (D("0"), D("0"), D("40"))
+        assert (row["other"], row["left"], row["overspent"]) == (D("5000"), D("4960"), D("0"))
 
 
 class TestMoneyMovedOutLowersThePlan:
     """The mirror (owner's call, 2026-09-26): money moved out of an envelope
-    and not spent lowers its plan. Read as nothing, a Mortgage envelope paid
-    by a principal transfer read underspent by the whole payment every month,
-    and a brokerage transfer read as money left unspent."""
+    and not spent unfunds it. Read as nothing, a Mortgage envelope paid by a
+    principal transfer read underspent by the whole payment every month, and a
+    brokerage transfer read as money left unspent."""
 
     async def _mortgage(self, db_session, user):
         """1,500 assigned to an envelope nobody tagged Debt principal, paid by
@@ -209,25 +237,25 @@ class TestMoneyMovedOutLowersThePlan:
         pvr = await reports.plan_vs_spent(budget.id, months=3)
 
         # Still a row — the owner would read a missing row as the mortgage
-        # missing — and on plan: assigned 1,500, moved out 1,500. It was a
-        # 1,500 underspend.
+        # missing — and on plan: assigned 1,500, moved out 1,500, nothing
+        # left. It was a 1,500 underspend.
         row = _row(bva, mortgage)
-        assert (row["assigned"], row["moved_out"], row["plan"], row["spent"]) == (
+        assert (row["assigned"], row["moved_out"], row["funded"], row["spent"]) == (
             D("1500"),
             D("1500"),
             D("0"),
             D("0"),
         )
-        assert (row["variance"], row["over"]) == (D("0"), False)
-        assert bva["total_variance"] == D("0")
-        assert (point["moved_out"], point["plan"], point["variance"]) == (
+        assert (row["left"], row["overspent"], row["over"]) == (D("0"), D("0"), False)
+        assert (bva["total_left"], bva["total_overspent"]) == (D("0"), D("0"))
+        assert (point["moved_out"], point["funded"], point["left"]) == (
             D("1500"),
             D("0"),
             D("0"),
         )
         # A Plan vs Reality row too, its month active and on plan.
         cell = _row(pvr, mortgage)["monthly"][-1]
-        assert (cell["assigned"], cell["moved_out"], cell["plan"], cell["variance"]) == (
+        assert (cell["assigned"], cell["moved_out"], cell["funded"], cell["left"]) == (
             D("1500"),
             D("1500"),
             D("0"),
@@ -250,18 +278,20 @@ class TestMoneyMovedOutLowersThePlan:
 
     async def test_a_debt_payment_short_of_its_plan_leaves_the_rest(self, db_session, api_client):
         """Plan vs Reality's cell, where the envelope carries a finding: 1,500
-        assigned, 1,500 moved out, 60 spent on a late fee — 60 over."""
+        assigned, 1,500 moved out, 60 spent on a late fee — the envelope ends
+        60 short. The month is running, so it is not a verdict yet."""
         budget, checking, mortgage = await self._mortgage(db_session, api_client.test_user)
         await create_transaction(db_session, budget, checking, "-60.00", EARLY, category=mortgage)
         pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
 
         cell = _row(pvr, mortgage)["monthly"][-1]
-        assert (cell["assigned"], cell["moved_out"], cell["plan"], cell["variance"]) == (
+        assert (cell["assigned"], cell["moved_out"], cell["funded"], cell["spent"]) == (
             D("1500"),
             D("1500"),
             D("0"),
-            D("-60"),
+            D("60"),
         )
+        assert (cell["left"], cell["overspent"], cell["over"]) == (D("-60"), D("60"), False)
 
     async def test_a_brokerage_transfer_leaves_the_rest_of_the_plan(self, db_session, api_client):
         budget, fun = await self._brokerage(db_session, api_client.test_user)
@@ -271,14 +301,15 @@ class TestMoneyMovedOutLowersThePlan:
         pvr = await reports.plan_vs_spent(budget.id, months=3)
 
         row = _row(bva, fun)
-        assert (row["assigned"], row["moved_out"], row["plan"]) == (D("600"), D("400"), D("200"))
+        assert (row["assigned"], row["moved_out"], row["funded"]) == (D("600"), D("400"), D("200"))
         # Not spent: saving is not spending. 20 left, where it read 420.
-        assert (row["spent"], row["variance"], row["over"]) == (D("180"), D("20"), False)
+        assert (row["spent"], row["left"], row["over"]) == (D("180"), D("20"), False)
         assert bva["total_moved_out"] == D("400")
-        assert (point["moved_out"], point["plan"], point["spent"]) == (
+        assert (point["moved_out"], point["funded"], point["spent"], point["left"]) == (
             D("400"),
             D("200"),
             D("180"),
+            D("20"),
         )
         cat = _row(pvr, fun)
         assert cat["monthly"][-1]["moved_out"] == D("400")
@@ -303,15 +334,18 @@ class TestMoneyMovedOutLowersThePlan:
             D("400"),
         )
 
-    async def test_moving_out_more_than_was_planned_floors_at_no_plan(self, db_session, api_client):
-        """A carried balance drained into a brokerage with nothing assigned
-        this month: no plan — never a negative plan that 30 of spending would
-        overrun by 2,030."""
+    async def test_moving_out_a_carried_balance_leaves_nothing_to_spend(
+        self, db_session, api_client
+    ):
+        """2,000 carried in from last month and all of it drained into a
+        brokerage, then 30 spent: funded 0, and the 30 is overspent — never the
+        2,030 an unfloored plan of -2,000 would read it overrun by."""
         budget, checking, _, group = await _world(db_session, api_client.test_user)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
         )
         rainy = await create_category(db_session, budget, group, "Rainy Day")
+        await create_budget_assignment(db_session, budget, rainy, back(1), "2000.00")
         await create_transfer(
             db_session, budget, checking, brokerage, "2000.00", EARLY, category=rainy
         )
@@ -320,12 +354,13 @@ class TestMoneyMovedOutLowersThePlan:
         bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
 
         row = _row(bva, rainy)
-        assert (row["moved_out"], row["plan"], row["spent"], row["variance"]) == (
+        assert (row["carried_in"], row["moved_out"], row["funded"], row["spent"]) == (
+            D("2000"),
             D("2000"),
             D("0"),
             D("30"),
-            D("-30"),
         )
+        assert (row["left"], row["overspent"], row["over"]) == (D("0"), D("30"), True)
 
     async def test_a_savings_envelope_outflow_is_still_spent_not_moved_out(
         self, db_session, api_client
@@ -341,7 +376,12 @@ class TestMoneyMovedOutLowersThePlan:
         row = _row(
             await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY), savings
         )
-        assert (row["moved_out"], row["plan"], row["spent"]) == (D("0"), D("500"), D("200"))
+        assert (row["moved_out"], row["funded"], row["spent"], row["left"]) == (
+            D("0"),
+            D("500"),
+            D("200"),
+            D("300"),
+        )
 
     async def test_category_history_serves_it(self, db_session, api_client):
         budget, fun = await self._brokerage(db_session, api_client.test_user)
@@ -378,7 +418,8 @@ class TestMoneyMovedOutLowersThePlan:
             ctx, {"start_date": THIS_MONTH.isoformat(), "end_date": TODAY.isoformat()}
         )
         (row,) = result["rows"]
-        assert (row["moved_out"], row["planned"], row["variance"]) == (400.0, 200.0, 20.0)
+        assert (row["moved_out"], row["funded"], row["spent"]) == (400.0, 200.0, 180.0)
+        assert (row["left"], row["overspent"]) == (20.0, 0.0)
         assert result["total_moved_out"] == 400.0
 
 
@@ -404,12 +445,14 @@ class TestACardEnvelopeIsNotAPlan:
         pvr = await reports.plan_vs_spent(budget.id, months=3)
 
         assert bva["categories"] == []
-        assert (point["plan"], point["variance"]) == (D("0"), D("0"))
+        assert (point["funded"], point["left"]) == (D("0"), D("0"))
         assert pvr["categories"] == []
 
 
 class TestOverHasATolerance:
-    """Over by at least $1 AND 1% of the plan."""
+    """Over by at least $1 AND 1% of what the envelope was funded with. Each
+    month is 1,500 assigned and paid past it, so each ends a little negative
+    and the next starts from zero."""
 
     async def _mortgage(self, db_session, user, over_by: str):
         budget, checking, _, group = await _world(db_session, user)
@@ -436,8 +479,8 @@ class TestOverHasATolerance:
         row = _row(pvr, mortgage)
         assert (row["months_over"], row["chronic"], pvr["chronic_count"]) == (0, False, 0)
         # The arithmetic is still there; only the verdict is tolerant.
-        assert row["monthly"][-1]["variance"] == D("-0.27")
-        assert row["monthly"][-1]["over"] is False
+        last = row["monthly"][-2]
+        assert (last["left"], last["overspent"], last["over"]) == (D("-0.27"), D("0.27"), False)
 
     async def test_past_a_dollar_but_under_one_percent_is_not_over(self, db_session, api_client):
         budget, mortgage = await self._mortgage(db_session, api_client.test_user, "14.00")
@@ -460,35 +503,60 @@ class TestOverHasATolerance:
         assert _row(bva, mortgage)["over"] is False
 
 
-class TestASinkingFundIsNeverChronic:
-    """A quarterly premium paid from a Long-term expense envelope is "over"
-    its monthly assignment every time it lands: the plan working."""
+class TestASinkingFundIsJudgedByWhatItHeld:
+    """A quarterly-ish premium paid from a Long-term expense envelope.
 
-    async def _premium(self, db_session, user):
+    Judged by its monthly assignment, the month the bill landed was "over"
+    every time — the plan working — so a sinking fund was exempt from chronic.
+    Judged by what it held (carryover counts), paying the bill it saved for
+    leaves it at zero, not below, and there is nothing to exempt: the tag no
+    longer matters. One that is saving too little does go negative when the
+    bill lands, and that is overspending, tagged or not."""
+
+    async def _premium(self, db_session, user, monthly: str, paid_in: tuple[int, ...]):
+        """`monthly` assigned in each of the last six months and the running
+        one; a 300 premium paid in each month of `paid_in`."""
         budget, checking, _, group = await _world(db_session, user)
         premium = await create_category(db_session, budget, group, "Home Insurance")
         await tag_with_system_tags(db_session, premium, "long_term_expense")
-        for n in (0, 1, 2, 3, 4, 5):
-            await create_budget_assignment(db_session, budget, premium, back(n), "100.00")
-        for n in (1, 3, 5):
+        await create_transaction(db_session, budget, checking, "-1.00", back(6))
+        for n in range(7):
+            await create_budget_assignment(db_session, budget, premium, back(n), monthly)
+        for n in paid_in:
             await create_transaction(
                 db_session, budget, checking, "-300.00", back(n), category=premium
             )
         return budget, premium
 
-    async def test_plan_vs_reality_does_not_flag_it(self, db_session, api_client):
-        budget, premium = await self._premium(db_session, api_client.test_user)
+    async def test_paying_the_bill_it_saved_for_is_never_over(self, db_session, api_client):
+        """150 a month, 300 every other month: 150, 0, 150, 0, 150, 0."""
+        budget, premium = await self._premium(db_session, api_client.test_user, "150.00", (5, 3, 1))
         pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=6)
 
         row = _row(pvr, premium)
-        # Over in the months the premium landed — that is still true — but
-        # never chronic, and the row says why.
-        assert row["months_over"] == 3
-        assert (row["chronic"], row["sinking_fund"], pvr["chronic_count"]) == (False, True, 0)
+        lefts = [c["left"] for c in row["monthly"]]
+        assert lefts == [D(x) for x in ("150", "0", "150", "0", "150", "0", "150")]
+        assert (row["months_over"], row["chronic"], pvr["chronic_count"]) == (0, False, 0)
+
+    async def test_an_underfunded_one_is_chronic_like_any_other(self, db_session, api_client):
+        """100 a month against a 300 bill every other month: each bill lands
+        on the 200 saved since the last one and leaves the envelope 100 short,
+        which Ready to Assign covers. The tag no longer exempts it: over in
+        three of the last six months is chronic."""
+        budget, premium = await self._premium(db_session, api_client.test_user, "100.00", (5, 3, 1))
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=6)
+
+        row = _row(pvr, premium)
+        # back(6) 100; back(5) 200-300 = -100; back(4) 100; back(3) 200-300 =
+        # -100; back(2) 100; back(1) -100; running 100.
+        lefts = [c["left"] for c in row["monthly"]]
+        assert lefts == [D(x) for x in ("100", "-100", "100", "-100", "100", "-100", "100")]
+        assert (row["months_over"], row["chronic"], pvr["chronic_count"]) == (3, True, 1)
+        assert row["avg_overspend"] == D("100.00")
 
     async def test_the_guide_reads_the_same_flag(self, db_session, api_client):
         """One rule: the checkup's chronic count is the report's."""
-        budget, premium = await self._premium(db_session, api_client.test_user)
+        budget, _ = await self._premium(db_session, api_client.test_user, "150.00", (5, 3, 1))
         checking = await create_account(db_session, budget, "Second Checking")
         group = await create_category_group(db_session, budget, "Fun")
         dining = await create_category(db_session, budget, group, "Dining Out")
@@ -591,31 +659,49 @@ class TestPlanVsRealityServesItsRunningMonth:
         assert pvr["months"][-1] == THIS_MONTH
 
 
-class TestVarianceIsThePlanMatrixSummed:
+class TestAMonthTotalIsItsColumnSummed:
     """A month total is its column of cells summed — what Cumulative Variance
     served beside Plan vs Reality's matrix, and now its totals row."""
 
     async def test_every_month_agrees(self, db_session, api_client):
+        """Car Repairs: 300 funded two months ago, all of it drained last
+        month, then 80 moved in and 100 spent this month. Dining Out: 300
+        assigned and 350 spent last month."""
         budget, checking, hysa, group = await _world(db_session, api_client.test_user)
         a = await create_category(db_session, budget, group, "Car Repairs")
         b = await create_category(db_session, budget, group, "Dining Out")
+        await create_transaction(db_session, budget, checking, "-1.00", back(2))
+        await create_budget_assignment(db_session, budget, a, back(2), "300.00")
         await create_budget_assignment(db_session, budget, a, back(1), "-300.00")
         await create_budget_assignment(db_session, budget, b, back(1), "300.00")
         await create_transaction(db_session, budget, checking, "-350.00", back(1), category=b)
         await _moved_in(db_session, budget, hysa, checking, "80.00", EARLY, a)
         await create_transaction(db_session, budget, checking, "-100.00", EARLY, category=a)
 
-        reports = ReportService(db_session)
-        pvr = await reports.plan_vs_spent(budget.id, months=3)
-        variance = pvr["month_totals"]
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
+        totals = pvr["month_totals"]
 
-        for i, point in enumerate(variance):
+        summed = ("carried_in", "assigned", "moved_in", "moved_out", "funded", "spent")
+        summed += ("other", "left", "overspent")
+        for i, point in enumerate(totals):
             column = [c["monthly"][i] for c in pvr["categories"]]
-            assert point["variance"] == sum((c["variance"] for c in column), D("0"))
-            assert point["plan"] == sum((c["plan"] for c in column), D("0"))
-            assert point["plan"] - point["spent"] == point["variance"]
-        # Last month: the drain is no plan (not -300) and Dining is 50 over.
-        assert variance[-2]["variance"] == D("-50")
-        # This month, drawn but not in the drift: 80 moved in, 100 spent.
-        assert variance[-1]["variance"] == D("-20")
-        assert variance[-1]["cumulative_variance"] is None
+            for key in summed:
+                cells = sum((c[key] or D("0") for c in column), D("0"))
+                assert point[key] == cells, (point["month"], key)
+            assert point["funded"] - point["spent"] + point["other"] == point["left"]
+
+        by_month = {p["month"]: p for p in totals}
+        # Two months ago: Car Repairs funded 300 and kept it.
+        two = by_month[back(2)]
+        assert (two["funded"], two["left"], two["categories_over"]) == (D("300"), D("300"), 0)
+        # Last month: the drain empties Car Repairs (300 in, 300 out — on
+        # plan), and Dining ends 50 short.
+        one = by_month[back(1)]
+        assert (one["carried_in"], one["funded"], one["spent"]) == (D("300"), D("300"), D("350"))
+        assert (one["left"], one["overspent"], one["categories_over"]) == (D("-50"), D("50"), 1)
+        # This month, drawn but in no total: 80 moved in, 100 spent.
+        now = by_month[THIS_MONTH]
+        assert (now["funded"], now["spent"], now["left"]) == (D("80"), D("100"), D("-20"))
+        assert now["categories_over"] == 0
+        # The headline reads the complete months: Dining's 50.
+        assert pvr["total_overspent"] == D("50")

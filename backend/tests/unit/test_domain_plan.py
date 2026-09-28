@@ -1,235 +1,235 @@
-"""`plan_outcome`: the one verdict Budget vs Actual and Plan vs Reality serve.
+"""`envelope_outcome` and `across_months`: the one verdict every plan-vs-actual
+report serves — what an envelope had, spent and had left, carryover counted.
 
-Budget vs Actual used to serve `assigned - spent` unfloored while Plan vs
-Reality floored the plan, so a drained envelope was a red 300 overrun on one
-screen and neutral on the other. Each case below is one the two used to
-disagree on, or the baseline both must keep.
+The report used to judge each month's assignment alone, so an envelope funded
+once and spent across several months read "over" in each. Each case below is
+one that verdict got wrong, or the baseline both must keep. Figures are
+written by hand, never derived from the function under test.
 """
 
 from decimal import Decimal
 
 from igab.domain.plan import (
     NO_EFFECT,
+    EnvelopeOutcome,
     PlanEffect,
+    across_months,
+    envelope_outcome,
     is_chronic,
     plan_effect,
-    plan_outcome,
-    summed_outcome,
 )
 
 D = Decimal
 
 
-def test_a_drained_envelope_that_spent_nothing_is_on_plan():
-    # 300 moved OUT of Car Repairs, nothing spent. Unfloored: variance -300,
-    # over — which Budget vs Actual's chart drew red and ranked first.
-    outcome = plan_outcome(D("-300"), D("0"), moved_in=D("0"), moved_out=D("0"))
-    assert outcome.plan == D("0")
-    assert outcome.variance == D("0")
-    assert outcome.over is False
-    # Floored to no plan, so there is no percentage of it.
-    assert outcome.variance_pct is None
+def month(
+    carried_in="0", assigned="0", spent="0", moved_in="0", moved_out="0", left=None
+) -> EnvelopeOutcome:
+    return envelope_outcome(
+        carried_in=None if carried_in is None else D(carried_in),
+        assigned=D(assigned),
+        moved_in=D(moved_in),
+        moved_out=D(moved_out),
+        spent=D(spent),
+        left=None if left is None else D(left),
+    )
 
 
-def test_real_spending_from_a_drained_envelope_is_over_by_what_was_spent():
-    # Over by 120, not 420: the drain is not part of the overrun.
-    outcome = plan_outcome(D("-300"), D("120"), moved_in=D("0"), moved_out=D("0"))
-    assert outcome.variance == D("-120")
-    assert outcome.over is True
+class TestAMonth:
+    def test_spending_a_balance_carried_in_is_not_over(self):
+        # Nothing assigned this month; 400 carried in from January's 600.
+        o = month(carried_in="400", spent="100", left="300")
+        assert (o.funded, o.left, o.overspent, o.over) == (D("400"), D("300"), D("0"), False)
+
+    def test_spending_past_what_it_had_is_over_by_the_shortfall(self):
+        o = month(carried_in="50", assigned="100", spent="200", left="-50")
+        assert (o.funded, o.overspent, o.over) == (D("150"), D("50"), True)
+
+    def test_spending_exactly_what_it_had_is_not_over(self):
+        o = month(carried_in="20", assigned="80", spent="100", left="0")
+        assert (o.overspent, o.over) == (D("0"), False)
+
+    def test_nothing_at_all_is_quiet(self):
+        o = month(left="0")
+        assert (o.funded, o.left, o.overspent, o.over) == (D("0"),) * 3 + (False,)
+
+    def test_money_moved_in_funds_it(self):
+        # A 2,000 bill paid by 2,000 moved in from savings.
+        o = month(moved_in="2000", spent="2000", left="0")
+        assert (o.funded, o.over) == (D("2000"), False)
+
+    def test_money_moved_out_unfunds_it(self):
+        # 1,500 assigned and paid out as a principal transfer: on plan.
+        o = month(assigned="1500", moved_out="1500", left="0")
+        assert (o.funded, o.left, o.over) == (D("0"), D("0"), False)
+
+    def test_moving_out_a_balance_carried_in_is_not_over(self):
+        # case A, one month on: February's 1,000 moved out in March.
+        o = month(carried_in="1000", moved_out="1000", left="0")
+        assert (o.funded, o.over) == (D("0"), False)
+
+    def test_moving_out_more_than_it_had_is_over(self):
+        o = month(carried_in="100", moved_out="300", left="-200")
+        assert (o.funded, o.overspent, o.over) == (D("-200"), D("200"), True)
+
+    def test_refunds_beating_spending_leave_more(self):
+        o = month(assigned="100", spent="-30", left="130")
+        assert (o.left, o.over) == (D("130"), False)
+
+    def test_a_negative_assignment_takes_money_back(self):
+        o = month(carried_in="300", assigned="-300", left="0")
+        assert (o.funded, o.over) == (D("0"), False)
 
 
-def test_an_ordinary_plan_is_unchanged_by_the_floor():
-    under = plan_outcome(D("500"), D("450"), moved_in=D("0"), moved_out=D("0"))
-    assert (under.plan, under.variance, under.over) == (D("500"), D("50"), False)
-    assert under.variance_pct == 10.0
+class TestLeftIsTheBudgetPages:
+    """`left` is served (the budget page's Available); `other` is whatever
+    the page counts that the ledger does not."""
 
-    over = plan_outcome(D("100"), D("160"), moved_in=D("0"), moved_out=D("0"))
-    assert (over.variance, over.over) == (D("-60"), True)
-    assert over.variance_pct == -60.0
+    def test_an_ordinary_envelope_has_no_other(self):
+        o = month(carried_in="100", assigned="50", spent="30", left="120")
+        assert o.other == D("0")
 
+    def test_a_pending_row_the_ledger_skips_is_other(self):
+        # The page's Available nets a pending 40; the ledger reads posted only.
+        o = month(assigned="100", spent="30", left="30")
+        assert (o.other, o.left) == (D("-40"), D("30"))
 
-def test_spending_exactly_the_plan_is_not_over():
-    assert plan_outcome(D("200"), D("200"), moved_in=D("0"), moved_out=D("0")).over is False
+    def test_the_verdict_reads_the_pages_balance_not_the_ledgers(self):
+        # Ledger says 70 left; the page says 5 short — the page wins.
+        o = month(assigned="100", spent="30", left="-5")
+        assert (o.overspent, o.over) == (D("5"), True)
 
+    def test_a_month_with_no_page_figure_is_walked_from_the_ledger(self):
+        o = month(carried_in=None, assigned="100", spent="130", left=None)
+        assert (o.carried_in, o.left, o.other, o.estimated) == (None, D("-30"), D("0"), True)
+        assert o.over is True
 
-def test_no_plan_and_no_spending_is_quiet():
-    outcome = plan_outcome(D("0"), D("0"), moved_in=D("0"), moved_out=D("0"))
-    assert (outcome.variance, outcome.over, outcome.variance_pct) == (D("0"), False, None)
-
-
-def test_spending_with_no_plan_is_over_with_no_percentage():
-    # No denominator to measure against: None, not a division error — and not
-    # 0.0, which Budget vs Actual printed as "0.0%", the figure for spending
-    # a plan to the cent.
-    outcome = plan_outcome(D("0"), D("40"), moved_in=D("0"), moved_out=D("0"))
-    assert (outcome.variance, outcome.over, outcome.variance_pct) == (D("-40"), True, None)
-    assert plan_outcome(D("40"), D("40"), moved_in=D("0"), moved_out=D("0")).variance_pct == 0.0
-
-
-class TestSummedOutcome:
-    """A span of months, or a set of categories: each month's floored verdict,
-    summed — every Plan vs Spent total and the AI's budget_vs_actual."""
-
-    def test_a_drained_envelope_does_not_cancel_an_overspent_one(self):
-        # 300 moved out of Car Repairs (nothing spent) and Dining 300 over its
-        # 200. Raw assigned - spent: (-300 + 200) - 500 = -600; the rows say
-        # on plan and 300 over.
-        outcomes = [
-            plan_outcome(D("-300"), D("0"), moved_in=D("0"), moved_out=D("0")),
-            plan_outcome(D("200"), D("500"), moved_in=D("0"), moved_out=D("0")),
-        ]
-        assert summed_outcome(outcomes).variance == D("-300")
-
-    def test_under_and_over_net(self):
-        outcomes = [
-            plan_outcome(D("500"), D("450"), moved_in=D("0"), moved_out=D("0")),
-            plan_outcome(D("100"), D("160"), moved_in=D("0"), moved_out=D("0")),
-        ]
-        assert summed_outcome(outcomes).variance == D("-10")
-
-    def test_spending_with_no_plan_counts_in_full(self):
-        assert summed_outcome(
-            [plan_outcome(D("0"), D("40"), moved_in=D("0"), moved_out=D("0"))]
-        ).variance == D("-40")
-
-    def test_nothing_is_on_plan(self):
-        assert summed_outcome([]) == plan_outcome(D("0"), D("0"), moved_in=D("0"), moved_out=D("0"))
-
-    def test_months_add_up_each_floored_for_its_own_month(self):
-        # 300 assigned in June, swept back out in July, nothing spent: June is
-        # 300 under, July's plan floors at nothing, so the span is 300 under.
-        # One floor over the summed parts read it on plan beside a June cell
-        # saying 300 under.
-        span = summed_outcome(
-            [
-                plan_outcome(D("300"), D("0"), moved_in=D("0"), moved_out=D("0")),
-                plan_outcome(D("-300"), D("0"), moved_in=D("0"), moved_out=D("0")),
-            ]
-        )
-        assert (span.plan, span.variance, span.over) == (D("300"), D("300"), False)
-
-    def test_the_sum_is_judged_by_the_months_tolerance(self):
-        # 5 over a 1,500 year is short of 1%: on plan, as a month would be.
-        months = [
-            plan_outcome(D("500"), D("505"), moved_in=D("0"), moved_out=D("0")),
-            plan_outcome(D("1000"), D("1000"), moved_in=D("0"), moved_out=D("0")),
-        ]
-        assert summed_outcome(months).over is False
-        months.append(plan_outcome(D("0"), D("40"), moved_in=D("0"), moved_out=D("0")))
-        assert summed_outcome(months).over is True
-        assert summed_outcome(months).variance_pct == float(D("-45") / D("1500") * 100)
-
-
-class TestMoneyMovedIn:
-    """A transfer or deposit into an envelope raises its plan — the mirror of
-    the floor. Read as nothing, a 2,000 medical bill paid by 2,000 moved in
-    from savings was a 2,000 overrun on all three plan reports while the
-    budget page showed the envelope on plan."""
-
-    def test_a_bill_paid_by_money_moved_in_is_on_plan(self):
-        outcome = plan_outcome(D("0"), D("2000"), moved_in=D("2000"), moved_out=D("0"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("2000"), D("0"), False)
-
-    def test_moved_in_money_beside_an_assignment_adds_to_it(self):
-        outcome = plan_outcome(D("100"), D("2150"), moved_in=D("2000"), moved_out=D("0"))
-        assert outcome.plan == D("2100")
-        assert (outcome.variance, outcome.over) == (D("-50"), True)
-
-    def test_it_refills_a_drained_envelope_to_no_more_than_it_brought(self):
-        # 300 drained out, 200 moved back in: still no plan to measure.
-        assert plan_outcome(D("-300"), D("0"), moved_in=D("200"), moved_out=D("0")).plan == D("0")
-        assert plan_outcome(D("-300"), D("0"), moved_in=D("500"), moved_out=D("0")).plan == D("200")
-
-    def test_refunds_beyond_the_spending_leave_room(self):
-        # Net spent -30: the refunds beat the spending. Not over, and the
-        # variance says the plan has more room than it started with.
-        outcome = plan_outcome(D("100"), D("-30"), moved_in=D("0"), moved_out=D("0"))
-        assert (outcome.variance, outcome.over) == (D("130"), False)
-
-
-class TestMoneyMovedOut:
-    """Money moved out of an envelope and not spent lowers its plan — the
-    mirror of money moved in (owner's call, 2026-09-26). One floor at zero,
-    over `assigned + moved_in - moved_out` as a whole."""
-
-    def test_a_debt_payment_from_an_untagged_envelope_is_on_plan_not_underspent(self):
-        """A Mortgage envelope assigned 1,500 and paid by a 1,500 principal
-        transfer: it read 1,500 underspent every month."""
-        outcome = plan_outcome(D("1500"), D("0"), moved_in=D("0"), moved_out=D("1500"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("0"), D("0"), False)
-
-    def test_a_brokerage_transfer_leaves_the_rest_of_the_plan_to_spend(self):
-        # 600 assigned, 400 sent to a brokerage, 180 spent: 20 left of 200.
-        outcome = plan_outcome(D("600"), D("180"), moved_in=D("0"), moved_out=D("400"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("200"), D("20"), False)
-
-    def test_spending_past_what_is_left_after_moving_out_is_over(self):
-        outcome = plan_outcome(D("600"), D("300"), moved_in=D("0"), moved_out=D("400"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("200"), D("-100"), True)
-
-    def test_moving_out_more_than_planned_floors_the_plan_at_zero(self):
-        """A carried balance drawn down into a brokerage with nothing spent
-        and nothing assigned this month: plan 0, on plan — never a negative
-        plan every dollar of spending would overrun."""
-        outcome = plan_outcome(D("0"), D("0"), moved_in=D("0"), moved_out=D("2000"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("0"), D("0"), False)
-
-    def test_the_floor_is_over_the_sum_not_per_term(self):
-        # 300 in, 500 out, 100 assigned: -100 floors to 0 — not 100 + 300.
-        assert plan_outcome(D("100"), D("0"), moved_in=D("300"), moved_out=D("500")).plan == (
-            D("0")
-        )
-        # 300 in, 100 out: 300 left of 100 + 300 - 100.
-        assert plan_outcome(D("100"), D("0"), moved_in=D("300"), moved_out=D("100")).plan == (
-            D("300")
-        )
-
-    def test_spending_beside_a_floored_plan_is_over(self):
-        outcome = plan_outcome(D("0"), D("40"), moved_in=D("0"), moved_out=D("500"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("0"), D("-40"), True)
-
-    def test_a_refund_beside_money_moved_out_leaves_room(self):
-        outcome = plan_outcome(D("500"), D("-30"), moved_in=D("0"), moved_out=D("500"))
-        assert (outcome.plan, outcome.variance, outcome.over) == (D("0"), D("30"), False)
+    def test_a_month_with_a_page_figure_is_not_estimated(self):
+        assert month(assigned="10", left="10").estimated is False
 
 
 class TestTheOverTolerance:
-    """Over by at least $1 AND at least 1% of the plan. A mortgage assigned a
-    few cents short read "over" three months running and was named chronic."""
+    """Negative by a dollar AND 1% of what it had — rounding is not a habit."""
 
-    def test_cents_of_rounding_are_on_plan(self):
-        outcome = plan_outcome(D("1500.00"), D("1500.27"), moved_in=D("0"), moved_out=D("0"))
-        assert outcome.over is False
-        # The arithmetic is still served; only the verdict is tolerant.
-        assert outcome.variance == D("-0.27")
+    def test_cents_of_rounding_are_not_over(self):
+        o = month(assigned="1499.97", spent="1500", left="-0.03")
+        assert (o.overspent, o.over) == (D("0.03"), False)
 
-    def test_a_dollar_under_one_percent_of_a_big_plan_is_on_plan(self):
-        # 5 over a 1,500 plan: past the dollar, short of the 15 that is 1%.
-        assert plan_outcome(D("1500"), D("1505"), moved_in=D("0"), moved_out=D("0")).over is False
+    def test_a_dollar_under_one_percent_of_a_big_envelope_is_not_over(self):
+        assert month(assigned="500", spent="504", left="-4").over is False
 
-    def test_one_percent_under_a_dollar_is_on_plan(self):
-        # 0.60 over a 50 plan: 1.2% of it, but short of the dollar.
-        assert plan_outcome(D("50"), D("50.60"), moved_in=D("0"), moved_out=D("0")).over is False
+    def test_one_percent_under_a_dollar_is_not_over(self):
+        assert month(assigned="50", spent="50.60", left="-0.60").over is False
 
     def test_both_at_once_is_over(self):
-        assert plan_outcome(D("1500"), D("1515"), moved_in=D("0"), moved_out=D("0")).over is True
-        assert plan_outcome(D("50"), D("51"), moved_in=D("0"), moved_out=D("0")).over is True
+        assert month(assigned="100", spent="102", left="-2").over is True
 
-    def test_with_no_plan_a_dollar_is_over(self):
-        assert plan_outcome(D("0"), D("1"), moved_in=D("0"), moved_out=D("0")).over is True
-        assert plan_outcome(D("0"), D("0.99"), moved_in=D("0"), moved_out=D("0")).over is False
+    def test_with_nothing_in_it_a_dollar_is_over(self):
+        assert month(spent="1", left="-1").over is True
+
+    def test_a_negative_funding_is_no_share_to_forgive(self):
+        # Moved out past what it had: the share floor reads zero, not negative.
+        assert month(moved_out="1", left="-1").over is True
+
+
+class TestAcrossMonths:
+    """A span of months walked in order: started with, funded, spent, and
+    what Ready to Assign covered, ending at the last month's floored left."""
+
+    @staticmethod
+    def _identity(o: EnvelopeOutcome) -> None:
+        assert o.funded - o.spent + o.other + o.overspent == o.left
+
+    def test_funded_once_and_spent_down_is_on_plan(self):
+        # case E: 600 in January, 100 a month for six months.
+        months = [month("0", "600", "100", left="500")] + [
+            month(str(600 - 100 * i), "0", "100", left=str(500 - 100 * i)) for i in range(1, 6)
+        ]
+        span = across_months(months)
+        assert (span.funded, span.spent, span.left, span.overspent) == (
+            D("600"),
+            D("600"),
+            D("0"),
+            D("0"),
+        )
+        assert span.over is False
+        self._identity(span)
+
+    def test_funded_is_not_the_months_funded_summed(self):
+        # Summing each month's funded would count January's 600 six times.
+        a = month("0", "600", "100", left="500")
+        b = month("500", "0", "100", left="400")
+        assert across_months([a, b]).funded == D("600")
+
+    def test_it_starts_from_what_the_first_month_carried_in(self):
+        span = across_months([month("250", "100", "300", left="50")])
+        assert (span.carried_in, span.funded, span.left) == (D("250"), D("350"), D("50"))
+
+    def test_a_month_overspent_is_covered_and_the_next_starts_at_zero(self):
+        # June 100 short (Ready to Assign covers it); July starts from zero.
+        june = month("0", "200", "300", left="-100")
+        july = month("0", "200", "150", left="50")
+        span = across_months([june, july])
+        assert (span.funded, span.spent, span.overspent, span.left) == (
+            D("400"),
+            D("450"),
+            D("100"),
+            D("50"),
+        )
+        assert span.over is True
+        self._identity(span)
+
+    def test_a_span_ending_overspent_leaves_nothing_and_counts_the_shortfall(self):
+        span = across_months([month("0", "100", "160", left="-60")])
+        assert (span.left, span.overspent) == (D("0"), D("60"))
+        self._identity(span)
+
+    def test_saving_builds_left_not_under(self):
+        # case D: 200 a month, never drawn.
+        months = [month(str(200 * i), "200", left=str(200 * (i + 1))) for i in range(6)]
+        span = across_months(months)
+        assert (span.funded, span.left, span.overspent, span.over) == (
+            D("1200"),
+            D("1200"),
+            D("0"),
+            False,
+        )
+
+    def test_other_is_summed_and_kept_in_the_identity(self):
+        span = across_months([month("0", "100", "30", left="30"), month("30", "0", "0", left="30")])
+        assert span.other == D("-40")
+        self._identity(span)
+
+    def test_an_unknown_carry_in_counts_as_zero_and_is_said(self):
+        span = across_months([month(None, "100", "40", left="60")])
+        assert (span.carried_in, span.funded) == (None, D("100"))
+
+    def test_any_estimated_month_makes_the_span_estimated(self):
+        span = across_months([month(None, "10", left=None), month("10", left="10")])
+        assert span.estimated is True
+
+    def test_no_months_is_nothing(self):
+        span = across_months([])
+        assert (span.funded, span.spent, span.left, span.overspent, span.over) == (
+            (D("0"),) * 4 + (False,)
+        )
+
+    def test_the_span_is_judged_by_the_months_tolerance(self):
+        # Three months each 40 cents short: 1.20 covered on 300 funded.
+        months = [month("0", "100", "100.40", left="-0.40") for _ in range(3)]
+        span = across_months(months)
+        assert (span.overspent, span.over) == (D("1.20"), False)
 
 
 class TestIsChronic:
     def test_three_recent_months_over_is_chronic(self):
-        assert is_chronic(3, sinking_fund=False) is True
-        assert is_chronic(2, sinking_fund=False) is False
+        assert is_chronic(3) is True
+        assert is_chronic(2) is False
 
-    def test_a_sinking_fund_never_is(self):
-        """Months of saving and one month of paying the bill is the plan
-        working; four quarterly tax payments in six months named the most
-        disciplined envelope the household's worst habit."""
-        assert is_chronic(6, sinking_fund=True) is False
+    def test_no_tag_exempts_it(self):
+        # A sinking fund paying its bill no longer goes negative, so it never
+        # reaches the count; one that does is overspent, tagged or not.
+        assert is_chronic(6) is True
 
 
 class TestPlanEffect:

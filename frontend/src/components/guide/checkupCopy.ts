@@ -108,7 +108,7 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     glossary: ['savings-rate', '401k', 'ira', 'employer-match'],
   },
   chronic_overspend: {
-    what: 'Categories that went over plan — by at least $1 and 1% of it — in at least three of the last six months. Money moved into an envelope counts as plan and money moved out lowers it, a refund lowers what was spent, and a sinking fund paying the bill it saved for is never chronic.',
+    what: 'Envelopes that went negative — by at least $1 and 1% of what they had — in at least three of the last six months. Each month starts with what the month before left, so spending down a balance funded earlier never counts; money moved in funds an envelope and money moved out unfunds it, and a refund lowers what was spent.',
     why: 'Chronic overspending means the budget does not match how you live: money keeps getting pulled from everything else you funded to cover it, and the plan stops being trustworthy.',
     decide: [
       'Whether the assignment is too low for real life, or the spending needs reining in',

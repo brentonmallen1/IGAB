@@ -1,101 +1,120 @@
 /** Pure rules for Plan vs Spent's cells, totals and headline, apart from the
  * component so each branch is a one-line test. Every figure and verdict is
  * served (`over`, `active`, `chronic`, `running_month`, `categories_over`,
- * the totals); this only composes them. */
+ * the totals — backend `domain/plan.py`); this only composes them. */
 import type { CSSProperties } from 'react'
-import type { PlanVsSpentCategory, PlanVsSpentMonth, PlanVsSpentReport } from '../../../types'
+import type {
+  PlanVsSpentCategory,
+  PlanVsSpentFigures,
+  PlanVsSpentMonth,
+  PlanVsSpentReport,
+} from '../../../types'
 import { PRIVACY_MASK, toCents } from '../../../utils/money'
 import { abbreviateValue } from './seasonalityScale'
 
-/** An active cell's text: "−40" over plan, "+10" under, "0" on it.
+/** A balance's text: "500" left, "−80" short, "0" empty.
  *
- * The sign goes on the ROUNDED figure. It went on the raw one, so a few cents
- * over read "−0" and a few under "+0" — a sign on nothing, which read as
- * an overspend too small to show rather than as on plan.
+ * The sign goes on the ROUNDED figure, so a few cents short reads "0", not
+ * "−0" — a sign on nothing, which read as an overspend too small to show.
+ * No "+" on what is left: a balance is not a gain.
  *
- * Masked, every active cell reads the mask alone, zero included. The sign
- * went outside the mask ("−••••" / "+••••") and an on-plan month read a
- * literal "0", so overspending could be read straight off a grid whose title
- * and cards said a sign-less "$••••" — which is what PRIVACY_MASK exists to
- * prevent.
- *
- * The overspend tint and the "over" weight stay in privacy mode, on purpose:
- * like every chart's bar heights and the Budget page's overspent colour, they
- * show state rather than a figure, and privacy mode masks figures. */
-export function cellLabel(variance: number, masked: boolean): string {
+ * Masked, every cell reads the mask alone, zero included, so overspending
+ * cannot be read off a grid whose cards say a sign-less "$••••". The tint
+ * and the "over" weight stay in privacy mode, on purpose: like the Budget
+ * page's overspent colour, they show state rather than a figure. */
+export function balanceLabel(amount: number, masked: boolean): string {
   if (masked) return PRIVACY_MASK
-  const text = abbreviateValue(Math.abs(variance), false)
+  const text = abbreviateValue(Math.abs(amount), false)
   if (text === '0') return '0'
-  return variance < 0 ? `−${text}` : `+${text}`
+  return amount < 0 ? `−${text}` : text
 }
 
-/** Overspend tint, scaled by how bad the figure was relative to the worst
- * overspend on screen — colour only where the server says "over". A few
- * cents past the plan is on plan, and is not tinted however it is signed. */
+/** An Overspent figure's text — what Ready to Assign covered, drawn as the
+ * shortfall it was ("−40"), or "—" where it covered nothing. Masked, it is
+ * the mask whatever it is: a dash beside masks would say which envelopes
+ * went negative, which is what `balanceLabel` keeps zero masked to hide. */
+export function overspentLabel(overspent: number, masked: boolean): string {
+  if (masked) return PRIVACY_MASK
+  return coveredAnything(overspent) ? balanceLabel(-overspent, false) : '—'
+}
+
+/** Overspend tint, scaled by how much Ready to Assign covered relative to
+ * the worst on screen — colour only where the server says "over". Mixed
+ * into the sunken surface rather than transparency, so a sticky totals cell
+ * stays opaque while the months scroll under it. */
 export function overspendStyle(
-  figure: { over: boolean; variance: number },
+  figure: { over: boolean; overspent: number },
   maxOver: number
 ): CSSProperties {
   if (!figure.over) return {}
-  const pct = Math.round(Math.min(1, -figure.variance / maxOver) * 30) + 8
-  return { background: `color-mix(in srgb, var(--chart-negative) ${pct}%, transparent)` }
+  const pct = Math.round(Math.min(1, figure.overspent / maxOver) * 30) + 8
+  return {
+    background: `color-mix(in srgb, var(--chart-negative) ${pct}%, var(--surface-sunken))`,
+  }
 }
 
-/** The worst over-plan month on screen, the cells' tint's full scale. The
- *  Total column scales against its own worst (`worstTotalOverspend`): a
- *  year's overrun beside a month's would wash every cell out. */
+/** The worst over month on screen, the cells' tint's full scale. The Total
+ *  column scales against its own worst (`worstTotalOverspend`): a window's
+ *  coverage beside a month's would wash every cell out. */
 export function worstOverspend(categories: PlanVsSpentCategory[]): number {
   let worst = 1
   for (const c of categories) {
-    for (const m of c.monthly) if (m.over) worst = Math.max(worst, -m.variance)
+    for (const m of c.monthly) if (m.over) worst = Math.max(worst, m.overspent)
   }
   return worst
 }
 
 export function worstTotalOverspend(categories: PlanVsSpentCategory[]): number {
   let worst = 1
-  for (const c of categories) if (c.total.over) worst = Math.max(worst, -c.total.variance)
+  for (const c of categories) if (c.total.over) worst = Math.max(worst, c.total.overspent)
   return worst
 }
 
-/** Which way a month total went, by the cent: every category's verdict
- *  summed, so it carries no tolerance of its own — the categories' did. */
-export function monthTotalTone(total: PlanVsSpentMonth): 'over' | 'under' | 'on' {
-  const cents = toCents(total.variance)
-  if (cents === 0) return 'on'
-  return cents < 0 ? 'over' : 'under'
+/** Whether a totals-row month reads as overspent: any category went over in
+ *  a complete month (served `categories_over`). The running month never
+ *  does — its spending is still arriving. */
+export function monthOverspent(total: PlanVsSpentMonth): boolean {
+  return !total.partial_month && total.categories_over > 0
+}
+
+/** Whether Ready to Assign covered anything at all, by the cent — the
+ *  headline Overspent card's warning. */
+export function coveredAnything(overspent: number): boolean {
+  return toCents(overspent) > 0
 }
 
 /**
- * The headline card for the window's served `total_variance`: which way the
- * window went against its plans, then by how much.
+ * How a cell's or Total's figures add up, in words — the one wording its
+ * tooltip uses, so no one adds the parts on this side:
+ * "carried in $400 · spent $100 · left $300".
  *
- * The card read "Variance" over a signed figure, and the figure was raw
- * `total_assigned - total_spent` — so it disagreed with the rows beneath it
- * wherever an envelope was drained, and a reader had to remember which sign
- * meant over. The figure is the rows' verdicts summed now, and the label says
- * the direction in words.
+ * A term that is zero is left out, carryover and spending always said. A
+ * span (`covered`) adds what Ready to Assign covered, which is what closes
+ * its sum; `other` is named only where the budget page counted something
+ * the plan ledger does not.
  */
-export function varianceHeadline(
-  totalVariance: number,
-  formatMoney: (amount: number) => string
-): { label: string; value: string; over: boolean } {
-  const cents = toCents(totalVariance)
-  if (cents === 0) return { label: 'Against plan', value: 'On plan', over: false }
-  return cents < 0
-    ? { label: 'Over plan by', value: formatMoney(-totalVariance), over: true }
-    : { label: 'Under plan by', value: formatMoney(totalVariance), over: false }
-}
-
-/** What a Total cell's title says of its share: the served percentage, or —
- *  with no plan to take a share of — "on plan" for a plan fully moved out
- *  with nothing spent past it (a mortgage assigned 1,500 and paid by a 1,500
- *  principal transfer), "no plan" for spending against none. Budget vs Actual
- *  printed "0.0%" for both. */
-export function totalShareLabel(total: { variance_pct: number | null; over: boolean }): string {
-  if (total.variance_pct === null) return total.over ? 'no plan' : 'on plan'
-  const pct = Math.abs(total.variance_pct).toFixed(0)
-  return total.variance_pct < 0 ? `${pct}% over` : `${pct}% under`
+export function envelopeBreakdown(
+  figures: PlanVsSpentFigures & { carried_in: number | null },
+  formatMoney: (n: number) => string,
+  { span = false }: { span?: boolean } = {}
+): string {
+  const terms: string[] = [
+    figures.carried_in === null
+      ? 'carryover unknown'
+      : `carried in ${formatMoney(figures.carried_in)}`,
+  ]
+  if (figures.assigned !== 0) terms.push(`assigned ${formatMoney(figures.assigned)}`)
+  if (figures.moved_in !== 0) terms.push(`moved in ${formatMoney(figures.moved_in)}`)
+  if (figures.moved_out !== 0) terms.push(`moved out ${formatMoney(figures.moved_out)}`)
+  terms.push(`spent ${formatMoney(figures.spent)}`)
+  if (toCents(figures.other) !== 0) {
+    terms.push(`other ${formatMoney(figures.other)} (pending, starting balance or card refund)`)
+  }
+  if (span && coveredAnything(figures.overspent)) {
+    terms.push(`Ready to Assign covered ${formatMoney(figures.overspent)}`)
+  }
+  terms.push(`left ${formatMoney(figures.left)}`)
+  return terms.join(' · ')
 }
 
 export interface PlanVsSpentHeadline {
@@ -104,8 +123,7 @@ export interface PlanVsSpentHeadline {
    *  (served, `categories_over`); null when the window holds none. The
    *  running month is never "last month". */
   lastMonth: { month: string; over: number } | null
-  /** The category over plan most often, the larger overrun breaking a tie.
-   *  A sinking fund is never it: paying its bill is the plan working. */
+  /** The category over most often, the larger coverage breaking a tie. */
   mostOver: { name: string; monthsOver: number; monthsActive: number } | null
 }
 
@@ -114,7 +132,7 @@ export interface PlanVsSpentHeadline {
 export function planVsSpentHeadline(report: PlanVsSpentReport): PlanVsSpentHeadline {
   const newest = report.month_totals.filter((m) => !m.partial_month).at(-1)
   const overrun = (c: PlanVsSpentCategory) => c.months_over * c.avg_overspend
-  const candidates = report.categories.filter((c) => c.months_over > 0 && !c.sinking_fund)
+  const candidates = report.categories.filter((c) => c.months_over > 0)
   const top = candidates.reduce<PlanVsSpentCategory | null>(
     (best, c) =>
       best === null ||
@@ -134,21 +152,24 @@ export function planVsSpentHeadline(report: PlanVsSpentReport): PlanVsSpentHeadl
   }
 }
 
-/** The export's wide rows: one per category, one variance column per month,
- *  then the Total column's figures. */
+/** The export's wide rows: one per category, what it had left at the end of
+ *  each month, then the Total column's figures. */
 export function exportRows(categories: PlanVsSpentCategory[]): Record<string, unknown>[] {
   return categories.map((c) => {
     const row: Record<string, unknown> = {
       category: c.category_name,
       group: c.category_group_name,
     }
-    for (const cell of c.monthly) row[cell.month.slice(0, 7)] = cell.variance
+    for (const cell of c.monthly) row[cell.month.slice(0, 7)] = cell.left
+    row.carried_in = c.total.carried_in
     row.total_assigned = c.total.assigned
     row.total_moved_in = c.total.moved_in
     row.total_moved_out = c.total.moved_out
-    row.total_planned = c.total.plan
+    row.total_funded = c.total.funded
     row.total_spent = c.total.spent
-    row.total_variance = c.total.variance
+    row.total_other = c.total.other
+    row.total_overspent = c.total.overspent
+    row.left = c.total.left
     row.months_over = c.months_over
     row.chronic = c.chronic
     return row

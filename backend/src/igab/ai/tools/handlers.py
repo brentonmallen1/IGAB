@@ -184,28 +184,27 @@ async def budget_vs_actual(ctx: ToolContext, args: dict) -> dict:
         {
             "category": c["category_name"],
             "group": c["category_group_name"],
+            # What the envelope started the range with, as the budget page
+            # carries it: an envelope funded before the range and spent in it
+            # is living off its balance, not overspending.
+            "carried_in": money(c["carried_in"]) if c["carried_in"] is not None else None,
             "assigned": money(c["assigned"]),
-            # Money moved into the envelope raises its plan and money moved
-            # out lowers it; `planned` is what `variance` is measured
-            # against, so the assistant never compares a bill paid from a
-            # savings transfer, or a debt payment, with `assigned`.
             "moved_in": money(c["moved_in"]),
             "moved_out": money(c["moved_out"]),
-            "planned": money(c["plan"]),
+            # carried_in + assigned + moved_in - moved_out: what it had to
+            # spend, so the assistant never compares spending with `assigned`.
+            "funded": money(c["funded"]),
             "spent": money(c["spent"]),
-            "variance": money(c["variance"]),
+            # The budget page's Available at the end of the range.
+            "left": money(c["left"]),
+            # What Ready to Assign had to cover: the envelope went negative.
+            "overspent": money(c["overspent"]),
         }
         for c in data["categories"]
     ]
     result = clip(rows)
-    result["total_assigned"] = money(data["total_assigned"])
-    result["total_moved_in"] = money(data["total_moved_in"])
-    result["total_moved_out"] = money(data["total_moved_out"])
-    result["total_planned"] = money(data["total_plan"])
-    result["total_spent"] = money(data["total_spent"])
-    # The report's headline, so the assistant cannot quote a raw
-    # assigned-minus-spent that the rows above disagree with.
-    result["total_variance"] = money(data["total_variance"])
+    for key in ("assigned", "moved_in", "moved_out", "funded", "spent", "left", "overspent"):
+        result[f"total_{key}"] = money(data[f"total_{key}"])
     result["start_date"] = data["start_date"].isoformat()
     result["end_date"] = data["end_date"].isoformat()
     return result

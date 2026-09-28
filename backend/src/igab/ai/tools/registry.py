@@ -177,12 +177,15 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="budget_vs_actual",
         description=(
-            "Plan versus spent per envelope, with the variance — the Plan vs Spent "
-            "report's Total column. Reads whole months: the range is widened to the 1st "
-            "of its first month through the end of its last (never past today), and "
-            "start_date/end_date in the result are the dates read. Each month's plan is "
-            "assigned plus money moved in, less money moved out, never below zero; the "
-            "months are then added up. Use this for 'am I over budget' questions."
+            "What each envelope had, spent and had left — the Plan vs Spent report's "
+            "Total column. Reads whole months: the range is widened to the 1st of its "
+            "first month through the end of its last (never past today), and "
+            "start_date/end_date in the result are the dates read. Carryover counts: "
+            "funded is what the envelope carried in plus assigned and money moved in, "
+            "less money moved out; left is the budget page's Available at the end; "
+            "overspent is what Ready to Assign covered when the envelope went negative. "
+            "An envelope spending a balance it was funded with earlier is not overspent. "
+            "Use this for 'am I over budget' questions."
         ),
         parameters=_obj({"start_date": _START, "end_date": _END}, ("start_date", "end_date")),
         handler=handlers.budget_vs_actual,

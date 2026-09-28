@@ -1,9 +1,12 @@
-"""Plan vs Spent: each category's plan against its spending per month, with a
+"""Plan vs Spent: what each category had, spent and had left per month, with a
 total per month and per category.
 
-The report deliberately ignores envelope carryover — it measures monthly plan
-discipline. A category coasting on January's surplus is still over-plan in
-February if nothing was assigned in February.
+Carryover counts (`domain.plan`, owner's call 2026-09-28): a month carries in
+what the one before left, floored as the budget page carries it, and `left` is
+the budget page's Available. A month is over only when the envelope went
+negative — the budget page's red, which Ready to Assign covered. It used to
+judge each month's assignment alone, so an envelope funded once and spent over
+several months read over plan in every one of them.
 
 "N months" is N complete months and the running month beside them (D5,
 `domain.dates.ReportWindow`): the running month's cells are drawn, and no
@@ -80,36 +83,50 @@ async def test_monthly_matrix_and_totals(api_client, db_session):
 
     cat = _cat(body, groceries.id)
     prev = _cell(cat, m1)
+    assert D(prev["carried_in"]) == D("0")
     assert D(prev["assigned"]) == D("200.00")
+    assert D(prev["funded"]) == D("200.00")
     assert D(prev["spent"]) == D("150.00")
-    assert D(prev["variance"]) == D("50.00")
-    # The running month's cell is drawn, month-to-date...
+    assert D(prev["left"]) == D("50.00")
+    # The running month's cell is drawn, month-to-date, carrying in the 50:
+    # 50 + 100 - 130 leaves 20. Judged alone it read 30 over.
     cur = _cell(cat, m0)
-    assert D(cur["variance"]) == D("-30.00")
+    assert (D(cur["carried_in"]), D(cur["funded"]), D(cur["left"])) == (
+        D("50.00"),
+        D("150.00"),
+        D("20.00"),
+    )
+    assert cur["over"] is False
     # Empty months are zero-filled so the frontend gets a full grid
     empty = _cell(cat, _months_back(4))
-    assert (D(empty["assigned"]), D(empty["spent"])) == (D("0"), D("0"))
+    assert (D(empty["assigned"]), D(empty["spent"]), D(empty["left"])) == (D("0"), D("0"), D("0"))
+    assert empty["active"] is False
 
     # ...and counted in no verdict or total: those are the complete months'.
     assert cat["months_active"] == 1
     assert cat["months_over"] == 0
     assert D(cat["total"]["assigned"]) == D("200.00")
+    assert D(cat["total"]["funded"]) == D("200.00")
     assert D(cat["total"]["spent"]) == D("150.00")
+    assert D(cat["total"]["left"]) == D("50.00")
     assert D(body["total_assigned"]) == D("200.00")
     assert D(body["total_spent"]) == D("150.00")
-    # The totals row: last month is its one cell, the running month is drawn
-    # with no running total.
+    assert D(body["total_left"]) == D("50.00")
+    # The totals row: last month is its one cell; the running month is drawn
+    # with its own figures so far.
     by_month = {t["month"]: t for t in body["month_totals"]}
-    assert D(by_month[m1.isoformat()]["variance"]) == D("50.00")
-    assert D(by_month[m1.isoformat()]["cumulative_variance"]) == D("50.00")
+    assert D(by_month[m1.isoformat()]["funded"]) == D("200.00")
+    assert D(by_month[m1.isoformat()]["left"]) == D("50.00")
     assert by_month[m0.isoformat()]["partial_month"] is True
-    assert by_month[m0.isoformat()]["cumulative_variance"] is None
     assert D(by_month[m0.isoformat()]["spent"]) == D("130.00")
+    assert D(by_month[m0.isoformat()]["left"]) == D("20.00")
 
 
-async def test_carryover_is_ignored_by_design(api_client, db_session):
-    """Assigned once, spent for three months: months without an assignment
-    are over-plan even though the envelope still had money."""
+async def test_carryover_counts(api_client, db_session):
+    """Assigned once, spent for three months. The months without an
+    assignment used to read over plan by what they spent, although the
+    envelope still had money; each now carries in what the month before left
+    and is on plan."""
     budget = await create_budget(db_session, api_client.test_user)
     account = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Everyday")
@@ -123,12 +140,25 @@ async def test_carryover_is_ignored_by_design(api_client, db_session):
 
     body = await _fetch(api_client, budget.id, months=6)
     entry = _cat(body, cat.id)
-    # Last month spent with no assignment; this month did too, but it is
-    # still running and is no verdict yet.
-    assert entry["months_over"] == 1
-    assert D(_cell(entry, _months_back(0))["variance"]) == D("-50.00")
-    assert D(_cell(entry, _months_back(2))["variance"]) == D("250.00")
-    assert D(_cell(entry, _months_back(1))["variance"]) == D("-50.00")
+    assert entry["months_over"] == 0
+    # 300 - 50 = 250; 250 - 50 = 200; 200 - 50 = 150.
+    for n, carried, left in ((2, "0", "250"), (1, "250", "200"), (0, "200", "150")):
+        cell = _cell(entry, _months_back(n))
+        assert (D(cell["carried_in"]), D(cell["spent"]), D(cell["left"])) == (
+            D(carried),
+            D("50"),
+            D(left),
+        ), n
+        assert cell["over"] is False
+    # The Total column over the complete months: nothing carried in, 300
+    # funded, 100 spent, 200 left.
+    total = entry["total"]
+    assert (D(total["carried_in"]), D(total["funded"]), D(total["spent"])) == (
+        D("0"),
+        D("300"),
+        D("100"),
+    )
+    assert (D(total["left"]), D(total["overspent"]), total["over"]) == (D("200"), D("0"), False)
 
 
 async def test_chronic_flag_threshold(api_client, db_session):
@@ -232,20 +262,21 @@ async def test_a_drained_envelope_is_not_a_chronic_overspender(db_session, api_c
     """`spent > assigned` read a NEGATIVE assignment as overspending.
 
     A negative assignment is money moved back OUT of an envelope — a plan being
-    reduced, not a household overspending. Drain 300 from an envelope that
-    spent nothing and `0 > -300` flagged the month; do it in three of the last
-    six and the report named that envelope the household's worst habit, with no
-    spending in it at all.
+    reduced, not a household overspending. Drain 300 a month from an envelope
+    that spent nothing and `0 > -300` flagged every month; do it in three of
+    the last six and the report named that envelope the household's worst
+    habit, with no spending in it at all.
 
-    The plan floors at zero, and the cell's `variance` uses the same floored
-    plan, because the matrix tints a negative variance red — a drained envelope
-    was being coloured as overspent while the chronic flag beside it disagreed.
+    With carryover counting, the drains come out of the 900 funded before
+    them: 600, 300, then 0 left, never negative, never over.
     """
     budget = await create_budget(db_session, api_client.test_user)
-    await create_account(db_session, budget, "Checking")
+    account = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Goals")
     drained = await create_category(db_session, budget, group, "Car Repairs")
 
+    await _history_from(db_session, budget, account, 6)
+    await create_budget_assignment(db_session, budget, drained, _months_back(3), "900.00")
     for n in (0, 1, 2):
         await create_budget_assignment(db_session, budget, drained, _months_back(n), "-300.00")
     await db_session.commit()
@@ -253,30 +284,53 @@ async def test_a_drained_envelope_is_not_a_chronic_overspender(db_session, api_c
     body = await _fetch(api_client, budget.id, months=6)
 
     assert body["chronic_count"] == 0
-    # A row — something was assigned, if negatively (`PlanMonth.quiet`) — but
-    # every cell on plan: no plan, nothing spent, never over. Before the floor
-    # each cell was tinted as a 300 overspend.
-    (row,) = [c for c in body["categories"] if c["category_id"] == str(drained.id)]
+    row = _cat(body, drained.id)
     assert row["months_over"] == 0
     assert not row["chronic"]
-    drained_cells = [m for m in row["monthly"] if m["active"]]
-    assert len(drained_cells) == 3
-    assert all(
-        (D(m["plan"]), D(m["variance"]), m["over"]) == (D("0"), D("0"), False)
-        for m in drained_cells
+    for n, left in ((3, "900"), (2, "600"), (1, "300"), (0, "0")):
+        cell = _cell(row, _months_back(n))
+        assert cell["active"] is True, n
+        assert (D(cell["left"]), D(cell["overspent"]), cell["over"]) == (D(left), D("0"), False)
+
+
+async def test_draining_money_an_envelope_never_had_is_the_budget_pages_red(db_session, api_client):
+    """The other side of the same rule. Taking 300 back out of an envelope
+    that holds nothing leaves the budget page at -300, and Ready to Assign
+    covers it — so this report, which reads the page's Available, calls that
+    month 300 overspent. It used to floor the plan at zero and call it on plan,
+    which is not what the page showed."""
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget, "Checking")
+    group = await create_category_group(db_session, budget, "Goals")
+    drained = await create_category(db_session, budget, group, "Car Repairs")
+    await _history_from(db_session, budget, account, 3)
+    await create_budget_assignment(db_session, budget, drained, _months_back(1), "-300.00")
+    await db_session.commit()
+
+    body = await _fetch(api_client, budget.id, months=3)
+    cell = _cell(_cat(body, drained.id), _months_back(1))
+
+    assert (D(cell["funded"]), D(cell["spent"]), D(cell["left"])) == (
+        D("-300"),
+        D("0"),
+        D("-300"),
     )
+    assert (D(cell["overspent"]), cell["over"]) == (D("300"), True)
 
 
 async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, api_client):
-    """The floor must not hide genuine overspending: with the plan at zero,
-    money actually spent out of the envelope is over by the whole amount.
+    """Draining must not hide genuine overspending: 300 funded, all 300 taken
+    back out, then 120 spent — the envelope ends 120 negative and is over by
+    120, not by the 420 an unfloored `assigned - spent` ranked it by.
     """
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Goals")
     cat_obj = await create_category(db_session, budget, group, "Car Repairs")
 
+    await _history_from(db_session, budget, checking, 6)
     last = _months_back(1)
+    await create_budget_assignment(db_session, budget, cat_obj, _months_back(2), "300.00")
     await create_budget_assignment(db_session, budget, cat_obj, last, "-300.00")
     await create_transaction(
         db_session, budget, checking, "-120.00", last.replace(day=10), category=cat_obj
@@ -287,9 +341,14 @@ async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, 
     cat = _cat(body, cat_obj.id)
 
     assert cat["months_over"] == 1
-    # Over by 120 against a floored plan of 0 — not by 420 against -300.
     assert D(cat["avg_overspend"]) == D("120.00")
-    assert D(_cell(cat, last)["variance"]) == D("-120.00")
+    cell = _cell(cat, last)
+    assert (D(cell["carried_in"]), D(cell["funded"]), D(cell["left"])) == (
+        D("300"),
+        D("0"),
+        D("-120"),
+    )
+    assert D(cell["overspent"]) == D("120.00")
 
 
 class TestTheTotalColumnGivesTheCellsVerdict:
@@ -298,52 +357,61 @@ class TestTheTotalColumnGivesTheCellsVerdict:
     chart decided overspent for itself from `spent > assigned`. Over one
     drained envelope the two reports gave opposite verdicts — neutral on the
     matrix, a red 300 overrun beside it, and quoted to the AI as -300. Both
-    serve `domain.plan.plan_outcome`, and now they are one response."""
+    now walk the same months (`domain.plan.across_months`), and they are one
+    response."""
 
-    async def test_a_drained_envelope_is_on_plan_in_its_cell_and_its_total(
-        self, db_session, api_client
-    ):
-        budget = await create_budget(db_session, api_client.test_user)
-        await create_account(db_session, budget, "Checking")
-        group = await create_category_group(db_session, budget, "Goals")
-        drained = await create_category(db_session, budget, group, "Car Repairs")
-        await create_budget_assignment(db_session, budget, drained, _months_back(1), "-300.00")
-        await db_session.commit()
-
-        body = await _fetch(api_client, budget.id, months=3)
-        row = _cat(body, drained.id)
-        total = row["total"]
-        assert (D(total["plan"]), D(total["variance"]), total["over"]) == (D("0"), D("0"), False)
-        cell = _cell(row, _months_back(1))
-        assert (cell["active"], cell["over"], D(cell["variance"])) == (True, False, D("0"))
-        assert D(body["total_variance"]) == D("0")
-
-    async def test_real_spending_is_over_by_the_same_amount_in_both(self, db_session, api_client):
+    async def _drained(self, db_session, api_client, spent: str | None):
+        """300 funded two months ago, all of it taken back out last month, and
+        optionally `spent` last month on top."""
         budget = await create_budget(db_session, api_client.test_user)
         checking = await create_account(db_session, budget, "Checking")
         group = await create_category_group(db_session, budget, "Goals")
         drained = await create_category(db_session, budget, group, "Car Repairs")
+        await _history_from(db_session, budget, checking, 3)
         last = _months_back(1)
+        await create_budget_assignment(db_session, budget, drained, _months_back(2), "300.00")
         await create_budget_assignment(db_session, budget, drained, last, "-300.00")
-        await create_transaction(
-            db_session, budget, checking, "-120.00", last.replace(day=10), category=drained
-        )
+        if spent is not None:
+            await create_transaction(
+                db_session, budget, checking, spent, last.replace(day=10), category=drained
+            )
         await db_session.commit()
-
         body = await _fetch(api_client, budget.id, months=3)
-        row = _cat(body, drained.id)
+        return body, _cat(body, drained.id), last
+
+    async def test_a_drained_envelope_is_on_plan_in_its_cell_and_its_total(
+        self, db_session, api_client
+    ):
+        body, row, last = await self._drained(db_session, api_client, None)
+        total = row["total"]
+        # 300 funded and 300 taken back: funded 0 over the span, 0 left.
+        assert (D(total["funded"]), D(total["left"]), D(total["overspent"])) == (
+            D("0"),
+            D("0"),
+            D("0"),
+        )
+        assert total["over"] is False
+        cell = _cell(row, last)
+        assert (cell["active"], cell["over"], D(cell["left"])) == (True, False, D("0"))
+        assert (D(body["total_overspent"]), D(body["total_left"])) == (D("0"), D("0"))
+
+    async def test_real_spending_is_over_by_the_same_amount_in_both(self, db_session, api_client):
+        body, row, last = await self._drained(db_session, api_client, "-120.00")
         total = row["total"]
 
         assert total["over"] is True
         # 120, not the 420 the unfloored subtraction ranked it by.
-        assert D(total["variance"]) == D("-120.00")
-        assert D(_cell(row, last)["variance"]) == D("-120.00")
+        assert D(total["overspent"]) == D("120.00")
+        assert D(_cell(row, last)["overspent"]) == D("120.00")
+        # funded 0 - spent 120 + other 0 + overspent 120 == left 0.
+        assert (D(total["funded"]), D(total["spent"]), D(total["left"])) == (
+            D("0"),
+            D("120"),
+            D("0"),
+        )
         # And the headline says the same. It was raw assigned - spent, -420
         # here, above a row reading -120.
-        assert D(body["total_variance"]) == D("-120.00")
-        # No plan to take a share of: null, which the page prints "no plan".
-        # It was 0.0, which printed as "0.0%" — on plan to the cent.
-        assert total["variance_pct"] is None
+        assert D(body["total_overspent"]) == D("120.00")
 
 
 class TestScope:
@@ -380,8 +448,8 @@ class TestScope:
 
 class TestTheAssistantReadsTheSameMonths:
     """The AI's `budget_vs_actual` is the Total column over dates it is asked
-    for, widened to whole months: a plan is a month's, so half a month's
-    spending against the month's whole assignment would read under plan."""
+    for, widened to whole months: an assignment is a month's, so half a
+    month's spending against the month's whole assignment would read under."""
 
     async def test_a_range_that_cuts_months_reads_them_whole_and_agrees(
         self, db_session, api_client
@@ -397,7 +465,8 @@ class TestTheAssistantReadsTheSameMonths:
         await _history_from(db_session, budget, checking, 3)
         two, one = _months_back(2), _months_back(1)
         # 300 assigned, then swept back out the next month, and 80 spent late
-        # in the second month — after the day the range names.
+        # in the second month — after the day the range names, so a range read
+        # as named would miss it.
         await create_budget_assignment(db_session, budget, gifts, two, "300.00")
         await create_budget_assignment(db_session, budget, gifts, one, "-300.00")
         await create_transaction(
@@ -417,11 +486,159 @@ class TestTheAssistantReadsTheSameMonths:
             two.isoformat(),
             month_end(one).isoformat(),
         )
-        # Month by month: 300 under, then no plan and 80 spent — 220 under.
+        # Month by month: 300 left, then 300 carried in, 300 swept out and 80
+        # spent — the envelope ends at -80, which Ready to Assign covered.
         (row,) = result["rows"]
-        assert (row["planned"], row["spent"], row["variance"]) == (300.0, 80.0, 220.0)
+        assert (row["carried_in"], row["funded"], row["spent"]) == (0.0, 0.0, 80.0)
+        assert (row["left"], row["overspent"]) == (0.0, 80.0)
 
         body = await _fetch(api_client, budget.id, months=3)
         total = _cat(body, gifts.id)["total"]
-        assert D(total["variance"]) == D("220.00") == D(str(result["total_variance"]))
-        assert D(body["total_variance"]) == D(body["month_totals"][-2]["cumulative_variance"])
+        assert D(total["overspent"]) == D("80.00") == D(str(result["total_overspent"]))
+        assert D(body["total_overspent"]) == D(body["month_totals"][-2]["overspent"])
+
+
+class TestLeftIsTheBudgetPagesAvailable:
+    """The differential test `domain.plan.EnvelopeOutcome.other` points at.
+
+    Every cell's `left` is served from `BudgetService.envelope_series`, and
+    this holds it to the page's single-category walk,
+    `BudgetService.get_category_balance`, over the situations where a
+    re-derived balance would drift from the page: a month that overspent (the
+    next starts from zero, not from the debt), an envelope funded before the
+    window (it carries in what it held), and an import-anchored envelope (it
+    starts from YNAB's figure, not from a history that never reproduced it).
+
+    Invented figures, over the last three complete months and the running one:
+
+    - Groceries: 200 in, 260 spent (ends -60); 200 in, 150 spent (starts from
+      0, ends 50); 100 in, 120 spent (30); 10 spent this month (20).
+    - Car Fund: 600 assigned the month before the window, 100 spent in the
+      first and third months — 500, 500, 400, 400.
+    - Vacation: anchored at 120 by an import two months before the window;
+      100 in, then 80 spent — 220, 140, 140, 140.
+    """
+
+    async def _world(self, db_session, api_client):
+        from igab.db.models import ImportAnchor
+
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        car = await create_category(db_session, budget, group, "Car Fund")
+        vacation = await create_category(db_session, budget, group, "Vacation")
+
+        anchor_month = _months_back(5)
+        db_session.add(
+            ImportAnchor(
+                budget_id=budget.id,
+                month=anchor_month,
+                kind="available",
+                category_id=vacation.id,
+                amount=D("120.00"),
+            )
+        )
+        # The history starts in the anchor month, with a row no envelope sees.
+        await _history_from(db_session, budget, checking, 5)
+
+        async def spend(cat, n: int, amount: str) -> None:
+            await create_transaction(
+                db_session, budget, checking, amount, _months_back(n), category=cat
+            )
+
+        for n, assigned, spent in ((3, "200.00", "-260.00"), (2, "200.00", "-150.00")):
+            await create_budget_assignment(db_session, budget, groceries, _months_back(n), assigned)
+            await spend(groceries, n, spent)
+        await create_budget_assignment(db_session, budget, groceries, _months_back(1), "100.00")
+        await spend(groceries, 1, "-120.00")
+        await spend(groceries, 0, "-10.00")
+
+        await create_budget_assignment(db_session, budget, car, _months_back(4), "600.00")
+        await spend(car, 3, "-100.00")
+        await spend(car, 1, "-100.00")
+
+        await create_budget_assignment(db_session, budget, vacation, _months_back(3), "100.00")
+        await spend(vacation, 2, "-80.00")
+        await db_session.commit()
+
+        body = await _fetch(api_client, budget.id, months=3)
+        return budget, body, {"Groceries": groceries, "Car Fund": car, "Vacation": vacation}
+
+    async def test_every_cell_left_is_the_budget_pages_available(self, db_session, api_client):
+        from igab.domain.carryover import next_carryover
+        from igab.guide.detection import budget_service_from
+
+        _, body, cats = await self._world(db_session, api_client)
+        page = budget_service_from(db_session)
+
+        checked = 0
+        for cat in cats.values():
+            row = _cat(body, cat.id)
+            before = await page.get_category_balance(cat.id, _months_back(4))
+            assert D(row["monthly"][0]["carried_in"]) == next_carryover(before.available)
+            for cell in row["monthly"]:
+                month = date.fromisoformat(cell["month"])
+                balance = await page.get_category_balance(cat.id, month)
+                assert D(cell["left"]) == balance.available, (cat.name, month)
+                assert cell["estimated"] is False
+                checked += 1
+        assert checked == 12
+
+    async def test_the_figures_the_fixture_was_written_to_reach(self, db_session, api_client):
+        """The same cells against the figures worked on paper above, so the
+        differential cannot pass by both sides being wrong together."""
+        _, body, cats = await self._world(db_session, api_client)
+
+        def lefts(name):
+            return [D(c["left"]) for c in _cat(body, cats[name].id)["monthly"]]
+
+        assert lefts("Groceries") == [D("-60"), D("50"), D("30"), D("20")]
+        assert lefts("Car Fund") == [D("500"), D("500"), D("400"), D("400")]
+        assert lefts("Vacation") == [D("220"), D("140"), D("140"), D("140")]
+
+        groceries = _cat(body, cats["Groceries"].id)
+        overspent, recovered = groceries["monthly"][0], groceries["monthly"][1]
+        assert (D(overspent["overspent"]), overspent["over"]) == (D("60"), True)
+        # Ready to Assign covered the 60: the next month starts from nothing.
+        assert D(recovered["carried_in"]) == D("0")
+        # Total: 0 carried in, 500 funded, 530 spent, 60 covered, 30 left.
+        total = groceries["total"]
+        assert [D(total[k]) for k in ("carried_in", "funded", "spent", "overspent", "left")] == [
+            D("0"),
+            D("500"),
+            D("530"),
+            D("60"),
+            D("30"),
+        ]
+
+        car = _cat(body, cats["Car Fund"].id)
+        # Funded before the window, it carries in the 600 and is never over.
+        assert D(car["monthly"][0]["carried_in"]) == D("600")
+        assert car["months_over"] == 0
+        assert [D(car["total"][k]) for k in ("carried_in", "funded", "spent", "left")] == [
+            D("600"),
+            D("600"),
+            D("200"),
+            D("400"),
+        ]
+
+        vacation = _cat(body, cats["Vacation"].id)
+        # The import's 120 is what it carried into the window.
+        assert D(vacation["monthly"][0]["carried_in"]) == D("120")
+        assert D(vacation["monthly"][0]["funded"]) == D("220")
+
+    async def test_an_ordinary_envelope_has_nothing_other(self, db_session, api_client):
+        """`other` is what the page's Available counts and the plan ledger does
+        not — a pending row, a starting balance, a card refund repaying debt.
+        None of those is here, so every cell and every total holds
+        `funded - spent == left` exactly."""
+        _, body, cats = await self._world(db_session, api_client)
+
+        for cat in cats.values():
+            row = _cat(body, cat.id)
+            for cell in row["monthly"]:
+                assert D(cell["other"]) == D("0"), (cat.name, cell["month"])
+                assert D(cell["funded"]) - D(cell["spent"]) == D(cell["left"])
+            assert D(row["total"]["other"]) == D("0"), cat.name
+        assert D(body["total_other"]) == D("0")
