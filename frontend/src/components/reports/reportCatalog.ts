@@ -165,13 +165,14 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
       'Your recent cash in and out — paychecks included — replayed a few weeks at a time, plus scheduled transactions and subscriptions, on cash accounts. The If income stopped line spends the money you pick, cards paid first, at the spending you pick.',
     leavesOut: 'Credit cards and off-budget accounts from the likely paths, and starting balances.',
   },
-  'budget-actual': {
+  'plan-vs-spent': {
     scope: 'categories',
-    summary: "Each category's plan against what it spent.",
+    summary:
+      "Each category's plan against what it spent, month by month, with a total for every month and every category — carryover ignored.",
     counts:
-      'Plan — assigned plus money moved into the envelope, less money moved out — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes.',
+      'Plan — assigned plus money moved into the envelope, less money moved out — vs spent net of refunds, where spent includes outflows from Savings and Emergency fund envelopes. Over means past the plan by $1 and 1%; over in 3 of the last 6 months is chronic.',
     leavesOut:
-      'Card payment envelopes, starting balances, and categories with nothing assigned, moved or spent.',
+      'Carryover from earlier months, card payment envelopes, starting balances, and categories with nothing assigned, moved or spent; the totals leave out the month in progress.',
   },
   'category-history': {
     scope: 'categories',
@@ -180,13 +181,6 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
       "The budget page's assigned, activity and available; Spent is net of refunds, as the plan reports count it.",
     leavesOut:
       'Money moved into or out of the envelope is not spending; the average leaves out the month in progress.',
-  },
-  variance: {
-    scope: 'categories',
-    summary: 'The running total of plan minus spent.',
-    counts:
-      "Each month's category plans — assigned plus money moved in, less money moved out — vs spent net of refunds.",
-    leavesOut: 'Card payment envelopes and starting balances.',
   },
   volatility: {
     scope: 'categories',
@@ -238,13 +232,6 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     counts:
       'Charges less refunds in Subscription-tagged categories over the last 12 complete months, per category and per service.',
     leavesOut: 'Untagged categories, and services with no charge for one and a half cycles.',
-  },
-  'plan-reality': {
-    scope: 'categories',
-    summary: "Each month's plan against that month's spending, ignoring carryover.",
-    counts:
-      'Plan — assigned plus money moved in, less money moved out — vs spent net of refunds, per category-month. Over means past the plan by $1 and 1%.',
-    leavesOut: 'Carryover from earlier months, and card payment envelopes.',
   },
   anomalies: {
     scope: 'categories',

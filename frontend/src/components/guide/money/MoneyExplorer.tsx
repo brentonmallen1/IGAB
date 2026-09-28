@@ -263,7 +263,7 @@ function Answer({
             </p>
             {leg.planned_spend_by_tag && (
               <p className="money-explorer__counted">
-                Budget vs Actual still counts it as spent from the category.
+                Plan vs Spent still counts it as spent from the category.
               </p>
             )}
           </li>

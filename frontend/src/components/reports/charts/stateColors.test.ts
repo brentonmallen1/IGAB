@@ -1,53 +1,7 @@
 /** Colours by state, not by series: red only where the figure is bad news. */
 import { describe, expect, it } from 'vitest'
 import { historySpentColor } from './categoryHistoryView'
-import { CHART_COLORS, COLOR_NEGATIVE, COLOR_POSITIVE } from './chartColors'
-import { varianceBarColor, varianceTooltipRows } from './varianceView'
-
-describe('Cumulative Variance', () => {
-  it('colours a month red only when it went over plan', () => {
-    // Spent was red in every month, so an on-plan year drew as a wall of
-    // overspending beside a line saying the opposite.
-    expect(varianceBarColor(-50)).toBe(COLOR_NEGATIVE)
-    expect(varianceBarColor(0)).toBe(COLOR_POSITIVE)
-    expect(varianceBarColor(120)).toBe(COLOR_POSITIVE)
-  })
-
-  it('lists plan, spent, the month and the running total in its tooltip', () => {
-    const rows = varianceTooltipRows({
-      month: '2026-08-01',
-      partial_month: false,
-      budget_assigned: 900,
-      moved_in: 100,
-      moved_out: 0,
-      planned: 1000,
-      actual_spent: 1150,
-      monthly_variance: -150,
-      cumulative_variance: -400,
-    })
-    expect(rows.map((r) => [r.name, r.value])).toEqual([
-      ['Planned', 1000],
-      ['Spent', 1150],
-      ['Over plan', 150],
-      ['Running total', -400],
-    ])
-  })
-
-  it('has no running total for the running month, which is not in the drift', () => {
-    const rows = varianceTooltipRows({
-      month: '2026-09-01',
-      partial_month: true,
-      budget_assigned: 900,
-      moved_in: 0,
-      moved_out: 0,
-      planned: 900,
-      actual_spent: 300,
-      monthly_variance: 600,
-      cumulative_variance: null,
-    })
-    expect(rows.map((r) => r.name)).toEqual(['Planned', 'Spent', 'Under plan'])
-  })
-})
+import { CHART_COLORS, COLOR_NEGATIVE } from './chartColors'
 
 describe('Category History historySpentColor', () => {
   it('is red only in a month the envelope ended overspent', () => {

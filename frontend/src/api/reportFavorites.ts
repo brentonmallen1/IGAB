@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
 import type { ReportTab } from '../stores/reportStore'
-import { REPORT_TABS } from '../stores/reportStore'
+import { currentFavorites } from '../stores/reportStore'
 
 interface FavoritesResponse {
   tabs: string[]
@@ -14,16 +14,16 @@ interface FavoritesResponse {
  * The server stores the list and does not interpret it — which reports exist
  * is a client fact (see `services/report_favorites.py`), so the filter here is
  * the other half of that bargain: a star on a report that has since been
- * renamed or removed drops out of the row rather than drawing a tab that
- * cannot be rendered.
+ * merged into another is a star on that one (`retiredReportTabs`), and one on
+ * a report that was removed drops out of the row rather than drawing a tab
+ * that cannot be rendered. The next star written stores the mapped list.
  */
 export function useReportFavorites(budgetId: string | null) {
   return useQuery({
     queryKey: [ROOT.reportFavorites, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<FavoritesResponse>(`/${budgetId}/reports/favorites`)
-      const known = new Set<string>(REPORT_TABS.map((t) => t.id))
-      return data.tabs.filter((t): t is ReportTab => known.has(t))
+      return currentFavorites(data.tabs)
     },
     enabled: !!budgetId,
     staleTime: 60_000,

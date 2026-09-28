@@ -50,7 +50,10 @@ export function VolatilityReport({ budgetId }: Props) {
   function drillTo(categoryId: string, name: string) {
     if (!data) return
     setDrillDown(
-      planSpentDrill(categoryId, name, { startDate: data.window_start, endDate: data.window_end })
+      planSpentDrill({ categoryIds: [categoryId] }, name, {
+        startDate: data.window_start,
+        endDate: data.window_end,
+      })
     )
   }
 

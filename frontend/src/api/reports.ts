@@ -6,7 +6,6 @@ import type {
   WishlistDisciplineReport,
   AccountCompositionReport,
   AnomalyReport,
-  BudgetActualReport,
   BurnRateReport,
   CashFlowReport,
   CashProjectionReport,
@@ -17,7 +16,7 @@ import type {
   NetWorthReport,
   PaydayEffectReport,
   PayeeAnalysisReport,
-  PlanRealityReport,
+  PlanVsSpentReport,
   SavingsReport,
   SeasonalityReport,
   EmergencyCoverageReport,
@@ -25,7 +24,6 @@ import type {
   SpendingGroupedReport,
   SubscriptionsReport,
   TimelineReport,
-  VarianceReport,
   VolatilityReport,
   SpendingTrendsReport,
   IncomeBySourceReport,
@@ -225,47 +223,19 @@ export function useCashFlowReport(
   })
 }
 
-// ─── Budget vs Actual ──────────────────────────────────────────────────────
+// ─── Plan vs Spent ─────────────────────────────────────────────────────────
 
-export function useBudgetActualReport(
-  budgetId: string | null,
-  startDate?: string,
-  endDate?: string,
-  scope?: ReportScope
-) {
-  // The whole scope, not the category ids alone: the filter bar offers tags
-  // and saved filters on this tab too, and the report ignored both.
+/** The matrix, its month totals and its category totals, in one response
+ *  (backend `services/plan_vs_spent.py`) — where Budget vs Actual,
+ *  Cumulative Variance and Plan vs Reality were three. */
+export function usePlanVsSpentReport(budgetId: string | null, months = 12, scope?: ReportScope) {
+  // The whole scope: the filter bar offers categories, tags and saved filters
+  // on this tab, as it did on Budget vs Actual.
   const scopeQuery = scopeParams(scope)
   return useQuery({
-    queryKey: [ROOT.reports, 'budget-actual', budgetId, startDate, endDate, scopeQuery],
+    queryKey: [ROOT.reports, 'plan-vs-spent', budgetId, months, scopeQuery],
     queryFn: () =>
-      fetchReport<BudgetActualReport>(budgetId, 'budget-actual', {
-        start_date: startDate,
-        end_date: endDate,
-        ...scopeQuery,
-      }),
-    enabled: !!budgetId,
-    staleTime: STALE,
-  })
-}
-
-// ─── Plan vs Reality ───────────────────────────────────────────────────────
-
-export function usePlanVsRealityReport(budgetId: string | null, months = 12) {
-  return useQuery({
-    queryKey: [ROOT.reports, 'plan-vs-reality', budgetId, months],
-    queryFn: () => fetchReport<PlanRealityReport>(budgetId, 'plan-vs-reality', { months }),
-    enabled: !!budgetId,
-    staleTime: STALE,
-  })
-}
-
-// ─── Variance ──────────────────────────────────────────────────────────────
-
-export function useVarianceReport(budgetId: string | null, months = 12) {
-  return useQuery({
-    queryKey: [ROOT.reports, 'variance', budgetId, months],
-    queryFn: () => fetchReport<VarianceReport>(budgetId, 'variance', { months }),
+      fetchReport<PlanVsSpentReport>(budgetId, 'plan-vs-spent', { months, ...scopeQuery }),
     enabled: !!budgetId,
     staleTime: STALE,
   })
