@@ -295,8 +295,12 @@ export function CategoryGroupRow({
               named categories that were nowhere on the page, which reads as the
               app having lost track of a move. The count is the server's
               (`archived_category_count`); saying it here is what stops the
-              dialog being the first place anyone finds out. */}
-          {group.archived_category_count > 0 && (
+              dialog being the first place anyone finds out.
+
+              Only there. A group that draws any envelope is plainly not empty,
+              and the same chip on every such header was noise; "See archived"
+              in the table header still reaches its archived envelopes. */}
+          {group.archived_category_count > 0 && categories.length === 0 && (
             <button
               type="button"
               className="category-group-row__archived"
@@ -305,11 +309,7 @@ export function CategoryGroupRow({
               aria-label={`${group.archived_category_count} archived ${
                 group.archived_category_count === 1 ? 'category' : 'categories'
               } in ${group.name}`}
-              title={
-                categories.length === 0
-                  ? 'This group is not empty — its envelopes are archived, so the grid does not draw them'
-                  : 'Archived envelopes in this group, which the grid does not draw'
-              }
+              title="This group is not empty — its envelopes are archived, so the grid does not draw them"
             >
               <Archive size={10} aria-hidden />
               {group.archived_category_count} archived

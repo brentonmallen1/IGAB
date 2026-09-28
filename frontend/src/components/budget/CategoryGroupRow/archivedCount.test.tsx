@@ -10,7 +10,9 @@
  *
  * The count is the server's (`archived_category_count`). What is asserted here
  * is that the header shows it, and that it leads somewhere — a number with no
- * way to reach the envelopes it counts is a riddle, not an answer.
+ * way to reach the envelopes it counts is a riddle, not an answer. It shows
+ * only on a header that draws nothing: on every group holding an archived
+ * envelope it was noise.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
@@ -64,10 +66,22 @@ describe('a group holding archived envelopes', () => {
     screen.getByRole('button', { name: '1 archived category in Fitness' })
   })
 
-  it('says it even when the group also draws rows', () => {
-    // The delete dialog will name all six; the page should not imply four.
-    renderGroup({ archived: 2, drawn: 4 })
-    screen.getByRole('button', { name: '2 archived categories in Fitness' })
+  it('is hidden when the group draws any envelope', () => {
+    // A header over drawn rows is plainly not empty. The chip used to show on
+    // every group holding an archived envelope, which put it on most headers
+    // and taught nothing; "See archived" in the table header reaches them.
+    renderGroup({ archived: 2, drawn: 1 })
+    expect(screen.queryByText(/archived/)).toBeNull()
+  })
+
+  it('says why the empty-looking group is not empty', () => {
+    renderGroup({ archived: 2, drawn: 0 })
+    expect(
+      screen.getByRole('button', { name: '2 archived categories in Fitness' })
+    ).toHaveAttribute(
+      'title',
+      'This group is not empty — its envelopes are archived, so the grid does not draw them'
+    )
   })
 
   it('stays quiet on an ordinary group', () => {

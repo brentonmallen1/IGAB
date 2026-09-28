@@ -548,9 +548,17 @@ class CategoryService:
     async def preview_delete_group(
         self, budget_id: uuid.UUID, group_id: uuid.UUID, month: date
     ) -> CategoryDeletePreview:
+        # The archived count is the group's served field
+        # (`GROUP_ARCHIVED_CATEGORY_COUNT`, loaded by `group_repo.get`) — the
+        # same number the grid's header states. It was recounted here in Python,
+        # a second statement of that rule. `cats` is the group's live
+        # categories, which is what the rule counts among.
+        group = await self.group_repo.get(group_id)
+        if group is None or group.budget_id != budget_id:
+            raise NotFoundError("Category group", str(group_id))
         cats = await self.category_repo.get_by_group(group_id)
         preview = await self.preview_delete(budget_id, [c.id for c in cats], month)
-        preview.archived_count = sum(1 for c in cats if c.is_archived)
+        preview.archived_count = group.archived_category_count
         preview.all_archived = bool(cats) and preview.archived_count == len(cats)
         return preview
 
