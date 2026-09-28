@@ -191,6 +191,11 @@ export interface Category {
    *  `repositories/category_filters.py SAVINGS_ROLE`: it reads the Savings and
    *  Emergency fund tags and the default each implies. */
   savings_role: SavingsRole
+  /** Drawn in the Credit cards section rather than the grid: a card's own
+   *  envelope, or the budget's Interest & fees envelope. Served, not derived —
+   *  home is `repositories/category_filters.py CARD_SECTION_CATEGORY`, which the
+   *  server's group header and reorder rules read too. */
+  in_card_section: boolean
   tags?: TagSimple[]
   created_at: string
   updated_at: string

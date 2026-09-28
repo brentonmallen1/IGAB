@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  cardSectionEnvelope,
+  inCardSection,
+  isCardEnvelope,
   renderableCategories,
   renderableCategoryIds,
   drawnGroups,
@@ -37,16 +40,46 @@ describe('renderableGroups', () => {
     expect([...renderableCategoryIds(groups, cats)]).toEqual(['rent'])
   })
 
-  it("a card's envelope is not a grid row", () => {
-    // The cards section owns it: Balance / Set aside / Uncovered, not
-    // assigned/activity/available — and its negative is not overspending.
+  it("the card section's envelopes are not grid rows", () => {
+    // The cards section owns them: each card's Balance / Set aside /
+    // Uncovered, and Interest & fees under the cards. The served flag decides.
     const groups = [group('cards'), group('bills')]
     const cats = [
-      { id: 'visa', category_group_id: 'cards', linked_account_id: 'acct-1' },
-      { id: 'rent', category_group_id: 'bills', linked_account_id: null },
+      { id: 'visa', category_group_id: 'cards', in_card_section: true },
+      { id: 'interest', category_group_id: 'cards', in_card_section: true },
+      { id: 'rent', category_group_id: 'bills', in_card_section: false },
     ]
     expect(renderableCategories(cats).map((c) => c.id)).toEqual(['rent'])
     expect([...renderableCategoryIds(groups, cats)]).toEqual(['rent'])
+  })
+
+  it('Interest & fees is placed by the served flag, not by a link', () => {
+    // The old rule read `linked_account_id`, and Interest & fees is linked to
+    // nothing — it would have drawn as a grid row under a bare card group.
+    const interest = {
+      id: 'interest',
+      category_group_id: 'cards',
+      linked_account_id: null,
+      in_card_section: true,
+    }
+    expect(inCardSection(interest)).toBe(true)
+    expect(isCardEnvelope(interest)).toBe(false)
+    expect(renderableCategories([interest])).toEqual([])
+  })
+
+  it("the section's own envelope is the one that is in it and not a card's", () => {
+    const cats = [
+      { id: 'visa', linked_account_id: 'acct-1', in_card_section: true },
+      { id: 'rent', linked_account_id: null, in_card_section: false },
+      { id: 'interest', linked_account_id: null, in_card_section: true },
+    ]
+    expect(cardSectionEnvelope(cats)?.id).toBe('interest')
+    expect(cardSectionEnvelope(cats.slice(0, 2))).toBeNull()
+  })
+
+  it('a row without the field stays in the grid', () => {
+    const rent: { id: string; in_card_section?: boolean } = { id: 'rent' }
+    expect(renderableCategories([rent]).map((c) => c.id)).toEqual(['rent'])
   })
 })
 
@@ -137,15 +170,39 @@ describe("no surface offers a card's envelope", () => {
   const readsTheHelper = [
     'BudgetFilterModal/BudgetFilterModal.tsx',
     'BudgetViewModal/BudgetViewModal.tsx',
-    '../reports/ReportFilters/categoryOptions.ts',
   ]
   for (const file of readsTheHelper) {
     it(`${file} filters through renderableCategories`, () => {
       const source = readFileSync(resolve(__dirname, file), 'utf8')
       expect(source).toMatch(/renderableCategories\(/)
       expect(source).not.toMatch(/linked_account_id\s*[=!]==?\s*null/)
+      expect(source).not.toMatch(/in_card_section/)
     })
   }
+
+  it('the report picker leaves out card envelopes and keeps Interest & fees', () => {
+    // It asks where money was spent, not what the grid draws — so the card's
+    // own envelope (never spent from) is out, and Interest & fees is in.
+    const source = readFileSync(
+      resolve(__dirname, '../reports/ReportFilters/categoryOptions.ts'),
+      'utf8'
+    )
+    expect(source).toMatch(/isCardEnvelope\(/)
+    expect(source).not.toMatch(/renderableCategories\(/)
+    expect(source).not.toMatch(/linked_account_id\s*[=!]==?\s*null/)
+  })
+
+  it('no budget surface spells the placement rule itself', () => {
+    // The served flag is read in one module; everything else asks it.
+    for (const file of [
+      'BudgetTable/BudgetTable.tsx',
+      'CreditCardsSection/CreditCardsSection.tsx',
+    ]) {
+      const source = readFileSync(resolve(__dirname, file), 'utf8')
+      expect(source).not.toMatch(/\.in_card_section/)
+      expect(source).not.toMatch(/system_key/)
+    }
+  })
 })
 
 describe('every budget surface draws groups through the one helper', () => {

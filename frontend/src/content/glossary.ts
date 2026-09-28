@@ -606,7 +606,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Card debt rolled from month to month instead of paid in full.',
     body: "A balance you carry accrues interest at the card's APR, which is what makes card debt expensive. In envelope terms it is spending that was never backed by budgeted cash, so it shows on the card as debt not covered rather than inside any category. Paying it down is a budget line like any other: assign what you can afford to the card each month.",
     inIgab:
-      "Shows as the card's debt not covered — including the balance a newly linked card arrives with. Set the card's APR and minimum payment on its liability page and the payoff planner includes it. If the card's minimum is a percentage of the balance, enter it that way rather than as this month's figure; see Minimum payment.",
+      "Shows as the card's debt not covered — including the balance a newly linked card arrives with. The interest it costs, and any card fee, goes in Interest & fees, the envelope under the cards on the budget page: a synced interest charge is filed there for you, and you fund it like any bill. Set the card's APR and minimum payment on its liability page and the payoff planner includes it. If the card's minimum is a percentage of the balance, enter it that way rather than as this month's figure; see Minimum payment.",
     related: ['uncovered', 'high-interest-debt', 'minimum-payment', 'apr'],
   },
   {
