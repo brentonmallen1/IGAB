@@ -53,6 +53,15 @@ PAYMENT_DUE_KINDS: tuple[PaymentDueKind, ...] = (DAY_OF_MONTH, CYCLE_DAYS)
 MIN_CYCLE_DAYS = 7
 MAX_CYCLE_DAYS = 120
 
+#: How far back the card-due reminder sees payments
+#: (``LiabilityOut.recent_payment_dates``). The client matches each payment
+#: to one bill, walking the due dates forward from the start of this window,
+#: so it has to span several cycles of the longest one allowed: 150 days is
+#: five monthly bills, and one full cycle beyond ``MAX_CYCLE_DAYS``. Served
+#: as ``payment_window_start`` rather than repeated in TypeScript, so the two
+#: sides cannot disagree about where the walk begins.
+PAYMENT_WINDOW_DAYS = 150
+
 
 def validate_payment_due(
     *,

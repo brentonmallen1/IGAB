@@ -106,6 +106,18 @@ export interface Liability {
   payment_due_cycle_days: number | null
   /** The last due date actually seen — where a cycle is counted from. */
   payment_due_anchor: string | null
+  /** Every payment an on-budget card took from the budget's cash, from
+   *  `payment_window_start` to the `today` this listing was asked for, oldest
+   *  first, one per leg; empty with none, and for every other debt. Served
+   *  (backend `CARD_PAYMENT_FROM_CASH`, via
+   *  `TransactionRepository.card_payment_dates`) because the client cannot
+   *  see the ledger. Read only by `utils/paymentDue.ts` `reminderForCard`,
+   *  which matches each payment to one bill — the rule is the client's. */
+  recent_payment_dates: string[]
+  /** Where that window begins (backend `domain/payment_due.PAYMENT_WINDOW_DAYS`
+   *  before today) — served, so the walk over due dates starts where the
+   *  payments do. */
+  payment_window_start: string
   /** Cards: the issuer's limit, for utilization. Optional for older fixtures. */
   credit_limit?: number | null
   /** balance ÷ credit_limit as a percent (server: domain/credit.py). */
@@ -248,7 +260,12 @@ export interface AmortizationResponse {
 export function useLiabilities(budgetId: string | null) {
   return useQuery({
     queryKey: [ROOT.liabilities, budgetId],
-    queryFn: () => apiClient.get<Liability[]>(`/${budgetId}/liabilities`).then((r) => r.data),
+    // `today` because `recent_payment_dates` are "the payments so far",
+    // and the server's today is tomorrow every evening west of UTC.
+    queryFn: () =>
+      apiClient
+        .get<Liability[]>(`/${budgetId}/liabilities`, { params: { today: today() } })
+        .then((r) => r.data),
     enabled: !!budgetId,
     staleTime: 30_000,
   })

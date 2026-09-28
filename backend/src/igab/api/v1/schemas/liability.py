@@ -204,13 +204,27 @@ class LiabilityOut(ApiModel):
     promo_deferred_interest: bool
     term_months: int | None
     #: The due-date rule, served whole so the client can compute the next due
-    #: date itself — it is the side that knows what day it is, and a GET
-    #: carries no `client_today` for the server to use instead. Metadata: no
-    #: projection here reads any of it. Home: domain/payment_due.py.
+    #: date itself — it is the side that knows what day it is, and no backend
+    #: path decides anything from a due date. Metadata: no projection here
+    #: reads any of it. Home: domain/payment_due.py.
     payment_due_kind: str
     payment_due_day: int | None
     payment_due_cycle_days: int | None
     payment_due_anchor: datetime.date | None
+    #: Every payment onto an on-budget card from the budget's cash
+    #: (`CARD_PAYMENT_FROM_CASH`) from `payment_window_start` to the caller's
+    #: today, oldest first, one per leg; empty for a card with none and for
+    #: every other debt. Served because the client cannot see the ledger; the
+    #: due/past-due rule that matches them to bills stays in the client
+    #: (`utils/paymentDue.ts`) because no backend path decides it.
+    #: Required: a path that forgets to compute it must fail, not report a
+    #: paid card as unpaid.
+    recent_payment_dates: list[datetime.date]
+    #: Where that window begins (`domain/payment_due.PAYMENT_WINDOW_DAYS`
+    #: before today). The client starts its walk over due dates here, and
+    #: must not guess the width: a payment it cannot see would read as a
+    #: bill nobody paid.
+    payment_window_start: datetime.date
     credit_limit: Decimal | None
     #: balance ÷ credit_limit as a percent (domain/credit.py), to one decimal;
     #: None without a usable limit. Computed here because the server owns
@@ -332,3 +346,20 @@ class AmortizationResponse(ApiModel):
     live_months: int | None = None
     # Actual balance points before today; populated when from=origination
     history: list[BalancePointOut] = []
+
+
+class CardDueDismissalOut(ApiModel):
+    """One dismissed card-bill reminder (`services/card_due_dismissals.py`):
+    a due date on a card, in the state it was dismissed in."""
+
+    account_id: uuid.UUID
+    due_date: datetime.date
+    state: Literal["due", "past_due"]
+
+
+class CardDueDismissalIn(ClientDated):
+    account_id: uuid.UUID
+    #: The reminder's own date — the next due date for "due", the one that
+    #: went by for "past_due" (`CardDueReminder.dueDate` in the client).
+    due_date: datetime.date
+    state: Literal["due", "past_due"]

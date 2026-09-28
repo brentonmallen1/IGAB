@@ -17,15 +17,52 @@
  * carries no `client_today`, so a served answer would be computed against UTC
  * and read a day early every evening west of Greenwich.
  *
- * One module because two surfaces ask: the liability page's terms header and
- * the budget page's credit-card strip. They must not answer differently.
+ * One module because three surfaces ask: the app-wide banner
+ * (`CardDueBanner`), the budget page's credit-card strip and the liability
+ * page's terms header. They must not answer differently, so all three read
+ * `reminderForCard` → `cardDueReminder`.
  *
- * Nothing here knows about balances beyond the one number it is handed, and
- * nothing here claims a bill was *missed*: the app cannot see whether a
- * statement was paid, so the next due date is always today or later and the
- * copy never says "overdue".
+ * **The reminder rule** (`cardDueReminder`), only while the card owes money:
+ *
+ *  - *Each payment pays at most one bill*: the earliest bill still unpaid,
+ *    provided the payment is dated after that bill's previous due date.
+ *    Payments are taken in date order. So a bill due on the 3rd and paid on
+ *    the 29th of the month before is paid (early); a bill paid a week late is
+ *    paid too, and that late payment is then spent — it does not also pay
+ *    the next month's bill. A payment ON a due date is after the previous
+ *    one, so it pays that day's bill.
+ *  - *Due*: the next due date is within `DUE_SOON_DAYS` and unpaid.
+ *  - *Past due*: the latest due date before today is unpaid. It stays until
+ *    a payment lands (or the banner is dismissed), and it wins over *due*.
+ *
+ * The walk over due dates starts at the later of the served payment window
+ * (`payment_window_start`) and the day the account joined the budget
+ * (`dueWatchStart`), so a bill before either is never claimed as missed — a
+ * card configured today is not overdue today.
+ *
+ * Two ways this errs, both chosen:
+ *
+ *  - One payment that covers two bills — the whole balance paid off at once
+ *    — still pays only one, so the next bill may be reminded about anyway and
+ *    has to be dismissed. Nagging once too often is the right side to be on;
+ *    a reminder that stays quiet about a real bill is the failure this rule
+ *    exists to prevent.
+ *  - At the start of the walk, a late payment for the bill just before it is
+ *    read as paying the first bill in the walk. That errs quiet, but only for
+ *    that one bill unless every bill since was also paid late: the first
+ *    payment made on time is spent on nothing earlier and realigns the rest.
+ *
+ * *A payment* is what the server serves in `recent_payment_dates`: each
+ * transfer leg onto the card from one of the budget's cash accounts
+ * (`CARD_PAYMENT_FROM_CASH`), dated in the window and today or earlier.
+ * Refunds and money from off-budget accounts are not payments, and neither is
+ * a payment whose checking leg never paired as a transfer — which is why the
+ * banner can be dismissed and says what it has seen rather than "unpaid".
+ * The dates are served because only the server can see the ledger; the rule
+ * stays here because no backend path decides it.
  */
 
+import { isCardAccount, type AccountKindFields } from './accountKinds'
 import { addDaysISO, daysBetween } from './dateWindow'
 import { ordinalDay, toISODate } from './dates'
 
@@ -93,6 +130,32 @@ export function nextDueDate(rule: PaymentDueRule, today: string): string | null 
 }
 
 /**
+ * The most recent due date strictly BEFORE `date` — one step back from
+ * `nextDueDate` in either shape. Null exactly when `nextDueDate` is.
+ *
+ * Strictly before, so on a due date itself the answer is the one before it:
+ * that is what lets the reminder ask "the due date before this one" by
+ * passing a due date in.
+ */
+export function previousDueDate(rule: PaymentDueRule, date: string): string | null {
+  if (rule.payment_due_kind === 'cycle_days') {
+    const next = nextDueDate(rule, date)
+    const cycle = rule.payment_due_cycle_days
+    // nextDueDate is on or after `date` and is the FIRST such occurrence, so
+    // one cycle earlier is before it.
+    return next === null || cycle === null ? null : addDaysISO(next, -cycle)
+  }
+
+  const day = rule.payment_due_day
+  if (day === null || day < 1 || day > 31) return null
+  const [year, month] = date.split('-').map(Number)
+  const thisMonth = dayInMonth(year, month - 1, day)
+  // Anchored to the stored day, like the step forward: a bill on the 31st is
+  // the 28th in February and the 31st again in January.
+  return thisMonth < date ? thisMonth : dayInMonth(year, month - 2, day)
+}
+
+/**
  * The rule in words, for the field that shows when the bill comes round —
  * "the 17th of each month", "every 31 days". Null when nothing is on file.
  *
@@ -118,37 +181,179 @@ export function dueInPhrase(days: number): string {
   return `in ${days} days`
 }
 
-export interface DueNotice {
-  /** The next due date, today or later. */
-  date: string
-  /** Whole days from today; 0 means today. Never negative. */
+export type CardDueState = 'due' | 'past_due'
+
+/** A bill worth interrupting someone about. */
+export interface CardDueReminder {
+  state: CardDueState
+  /** `due`: the next due date, today or later. `past_due`: the latest due
+   *  date before today, unpaid — the date the reminder is about, and the one
+   *  its dismissal is keyed on. */
+  dueDate: string
+  /** Whole days from today to `dueDate`: 0..DUE_SOON_DAYS when due, negative
+   *  when past due. */
   days: number
-  /** "today" / "tomorrow" / "in 4 days". */
-  phrase: string
+  /** The latest payment seen, or null when none is in the walk's window. */
+  lastPayment: string | null
+  /** Where the walk over due dates began: the only honest limit on "no
+   *  payment seen". */
+  watchedFrom: string
+}
+
+export interface CardDueInputs {
+  today: string
+  /** POSITIVE when money is owed — a liability's `current_balance`. */
+  owed: number
+  /** Every payment onto the card (served as `recent_payment_dates`), in any
+   *  order, one per leg. Each pays at most one bill. */
+  paymentDates: readonly string[]
+  /** The first day a bill can fall due in the walk: the later of the served
+   *  `payment_window_start` and the account's start (`dueWatchStart`). */
+  watchFrom: string
+}
+
+/** A guard, not a rule: the walk spans at most the served window, which at
+ *  the shortest cycle the server accepts is a couple of dozen bills. */
+const MAX_BILLS = 400
+
+/** Every due date from `from` through `next`, in order — or null when there
+ *  is none to walk: the account joins the budget after the next bill, or the
+ *  guard tripped short of it. Neither is a bill worth claiming. */
+function billsThrough(rule: PaymentDueRule, from: string, next: string): string[] | null {
+  const bills: string[] = []
+  for (
+    let d = nextDueDate(rule, from);
+    d !== null && d <= next && bills.length < MAX_BILLS;
+    d = nextDueDate(rule, addDaysISO(d, 1))
+  ) {
+    bills.push(d)
+  }
+  return bills[bills.length - 1] === next ? bills : null
 }
 
 /**
- * The indicator: what to say when a bill is close AND the card still owes
- * something, or null when there is nothing worth interrupting anyone about.
+ * How many of `bills`, from the first, the payments pay.
  *
- * Both halves are required. A due date on a card carrying no balance is a
- * calendar fact nobody needs surfaced, and a balance with no due date on file
- * has nothing to be close to — the row already says what is owed.
- *
- * `owed` is POSITIVE when money is owed. The two callers hold that number in
- * opposite signs — a liability's `current_balance` is owed-positive, a card
- * row's `balance` is owed-negative — which is precisely why the conversion is
- * made at each call site against this one documented convention rather than
- * guessed at here.
+ * Each payment, oldest first, pays the earliest bill still unpaid if it is
+ * dated after that bill's previous due date, and otherwise pays nothing. A
+ * payment that could pay a later bill could pay the earliest unpaid one too,
+ * so the paid bills are always the first few of the walk and one counter is
+ * the whole match.
  */
-export function dueSoonNotice(
+function billsPaid(rule: PaymentDueRule, bills: string[], sortedPayments: string[]): number {
+  const first = previousDueDate(rule, bills[0])
+  if (first === null) return 0
+  const opensAfter = [first, ...bills.slice(0, -1)]
+  let paid = 0
+  for (const p of sortedPayments) {
+    if (paid < bills.length && p > opensAfter[paid]) paid++
+  }
+  return paid
+}
+
+/**
+ * Whether a card's bill is due, past due, or not worth mentioning — the one
+ * rule every surface reads (see the header of this file for it in words).
+ *
+ * Both halves are required for anything to be said: a due date on a card
+ * carrying no balance is a calendar fact nobody needs surfaced, and a balance
+ * with no due date on file has nothing to be due.
+ */
+export function cardDueReminder(
   rule: PaymentDueRule,
-  { today, owed }: { today: string; owed: number }
-): DueNotice | null {
+  { today, owed, paymentDates, watchFrom }: CardDueInputs
+): CardDueReminder | null {
   if (owed <= 0) return null
-  const date = nextDueDate(rule, today)
-  if (date === null) return null
-  const days = daysBetween(today, date)
-  if (days > DUE_SOON_DAYS) return null
-  return { date, days, phrase: dueInPhrase(days) }
+  const next = nextDueDate(rule, today)
+  if (next === null) return null
+  const bills = billsThrough(rule, watchFrom, next)
+  if (bills === null) return null
+
+  const payments = paymentDates.filter((p) => p <= today).sort()
+  const paid = billsPaid(rule, bills, payments)
+  const found = {
+    lastPayment: payments.length > 0 ? payments[payments.length - 1] : null,
+    watchedFrom: watchFrom,
+  }
+
+  // ISO dates compare as strings.
+  const latestGone = bills.filter((b) => b < today).length - 1
+  if (latestGone >= 0 && latestGone >= paid) {
+    const dueDate = bills[latestGone]
+    return { state: 'past_due', dueDate, days: daysBetween(today, dueDate), ...found }
+  }
+  const days = daysBetween(today, next)
+  if (bills.length - 1 >= paid && days <= DUE_SOON_DAYS) {
+    return { state: 'due', dueDate: next, days, ...found }
+  }
+  return null
+}
+
+/**
+ * The first day a card's missed bill can be claimed: the day the account
+ * joined the budget, or — for the many accounts nobody has asked that — the
+ * day it was added to the app, as a local date. A card added today is not
+ * overdue today, whatever its due day says. Null without the account.
+ */
+export function dueWatchStart(
+  account: { budget_start_date: string | null; created_at: string } | undefined
+): string | null {
+  if (!account) return null
+  return account.budget_start_date ?? toISODate(new Date(account.created_at))
+}
+
+/** The served fields `reminderForCard` reads off a liability. */
+export type CardDueLiability = PaymentDueRule & {
+  current_balance: number
+  recent_payment_dates: readonly string[]
+  payment_window_start: string
+}
+
+/** The served fields `reminderForCard` reads off the liability's account. */
+export type CardDueAccount = AccountKindFields & {
+  budget_start_date: string | null
+  created_at: string
+}
+
+/**
+ * The reminder for one card, from its liability and its account — the one
+ * wiring of `cardDueReminder`'s inputs, so the banner, the strip and the
+ * terms header hand it the same balance, payments and start.
+ *
+ * Only for an on-budget card (`isCardAccount`), and null without the
+ * account. Those are the accounts whose payments the server can see
+ * (`recent_payment_dates` is served from `CARD_PAYMENT_FROM_CASH`, which
+ * lands only on them); anywhere else no payment would ever count, and every
+ * due date would read as missed forever.
+ *
+ * `current_balance`, not the budget month's card row: the row is the ledger
+ * through the month being VIEWED, and a reminder is about now.
+ */
+export function reminderForCard(
+  liability: CardDueLiability,
+  account: CardDueAccount | undefined,
+  today: string
+): CardDueReminder | null {
+  if (!account || !isCardAccount(account)) return null
+  const joined = dueWatchStart(account) as string
+  const window = liability.payment_window_start
+  return cardDueReminder(liability, {
+    today,
+    owed: liability.current_balance,
+    paymentDates: liability.recent_payment_dates,
+    watchFrom: joined > window ? joined : window,
+  })
+}
+
+/** "due in 4 days" / "due today" / "past due since Oct 3" — the reminder as
+ *  the tail of a sentence that starts with the card's name. */
+export function reminderWords(r: CardDueReminder, formatDay: (iso: string) => string): string {
+  return r.state === 'past_due'
+    ? `past due since ${formatDay(r.dueDate)}`
+    : `due ${dueInPhrase(r.days)}`
+}
+
+/** The strip's chip: short, because it shares a line with the card's name. */
+export function reminderChip(r: CardDueReminder): string {
+  return r.state === 'past_due' ? 'Past due' : `Due ${dueInPhrase(r.days)}`
 }

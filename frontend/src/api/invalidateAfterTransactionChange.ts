@@ -42,6 +42,11 @@ export function invalidateAfterTransactionChange(
     // Money. A row's amount, date or category moves all of these.
     [ROOT.budgetMonth, budgetId],
     [ROOT.accounts, budgetId],
+    // A debt's balance is its account's rows, and a card's served
+    // `recent_payment_dates` are what let the bill reminder go once a payment
+    // is recorded. Without this the banner outlived the payment by up to the
+    // listing's staleTime, and the balance beside it was the pre-payment one.
+    [ROOT.liabilities, budgetId],
     // The register creates payees by typing a name into one, so a payee list
     // can be stale after any write. `useMergeTransactions` was the only copy
     // that knew this.

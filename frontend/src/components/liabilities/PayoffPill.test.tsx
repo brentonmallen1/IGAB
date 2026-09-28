@@ -50,6 +50,8 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     payment_due_day: null,
     payment_due_cycle_days: null,
     payment_due_anchor: null,
+    recent_payment_dates: [],
+    payment_window_start: '2026-08-01',
     payment_components: [],
     payment_components_total: 0,
     full_monthly_payment: null,

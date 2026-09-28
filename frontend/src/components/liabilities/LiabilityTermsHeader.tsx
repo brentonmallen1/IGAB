@@ -5,7 +5,8 @@ import { useAssets } from '../../api/assets'
 import { useFormatters } from '../../hooks/useFormatters'
 import { today } from '../../utils/dates'
 import { formatRate } from '../../utils/rate'
-import { describeDueRule, dueSoonNotice, nextDueDate } from '../../utils/paymentDue'
+import { useAccounts } from '../../api/accounts'
+import { describeDueRule, dueInPhrase, nextDueDate, reminderForCard } from '../../utils/paymentDue'
 import { useUIStore } from '../../stores/uiStore'
 import './LiabilityTermsHeader.css'
 import { describeMinimumRule } from './minimumPaymentCopy'
@@ -35,6 +36,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   const { formatMoney, formatMonth, formatDayMonth } = useFormatters()
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: assets = [] } = useAssets(budgetId)
+  const { data: accounts = [] } = useAccounts(budgetId)
   const openModal = useUIStore((s) => s.openModal)
 
   const liability = liabilities.find((l) => l.linked_account_id === accountId)
@@ -56,12 +58,18 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   // both, because a card on a cycle has a date that will not be that date
   // next month. Computed here rather than served: this is the side that knows
   // what day it is (utils/paymentDue.ts).
-  const billDue = nextDueDate(liability, today())
   const billRule = describeDueRule(liability)
-  // The indicator. `current_balance` is owed-POSITIVE, which is the sign
-  // dueSoonNotice documents; the budget strip holds the same number the other
-  // way round and converts at its own call site.
-  const dueSoon = dueSoonNotice(liability, { today: today(), owed: liability.current_balance })
+  // The reminder, through the same wiring the banner and the budget strip
+  // read, so this page cannot call a bill paid that they call past due.
+  const reminder = reminderForCard(
+    liability,
+    accounts.find((a) => a.id === accountId),
+    today()
+  )
+  // Past due, the date that matters is the one that went by; otherwise the
+  // next one.
+  const billDue =
+    reminder?.state === 'past_due' ? reminder.dueDate : nextDueDate(liability, today())
 
   return (
     <div className={`liability-terms ${termsSet ? '' : 'liability-terms--empty'}`}>
@@ -129,19 +137,28 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
             the date is the only one of the two a person can act on, and the
             rule is the only one of the two that stays true next month.
 
-            Coloured only when the bill is close AND the card still owes
-            something, which is the one moment this field is news. */}
+            Coloured only while the reminder speaks (utils/paymentDue.ts):
+            amber when the bill is close and unpaid, red once one went by
+            unpaid — the moments this field is news. */}
         {!isLoan && billDue !== null && (
           <div className="liability-terms__item">
             <span
               className={`liability-terms__value ${
-                dueSoon ? 'liability-terms__value--warning' : ''
+                reminder?.state === 'past_due'
+                  ? 'liability-terms__value--negative'
+                  : reminder
+                    ? 'liability-terms__value--warning'
+                    : ''
               }`}
             >
               {formatDayMonth(billDue)}
             </span>
             <span className="liability-terms__label">
-              {dueSoon ? `Bill due ${dueSoon.phrase}` : 'Bill due'}
+              {reminder?.state === 'past_due'
+                ? 'Bill past due'
+                : reminder
+                  ? `Bill due ${dueInPhrase(reminder.days)}`
+                  : 'Bill due'}
             </span>
             {billRule && <span className="liability-terms__sub">{billRule}</span>}
           </div>

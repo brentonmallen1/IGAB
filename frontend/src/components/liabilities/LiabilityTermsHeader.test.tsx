@@ -17,6 +17,18 @@ const liabilities: Liability[] = []
 vi.mock('../../api/liabilities', () => ({
   useLiabilities: () => ({ data: liabilities }),
 }))
+/** The card's account: on budget, in the budget since January. */
+const CARD_ACCOUNT = {
+  id: 'acct-1',
+  on_budget: true,
+  classification: 'liability' as const,
+  budget_start_date: null as string | null,
+  created_at: '2026-01-05T15:00:00Z',
+}
+const accounts = [CARD_ACCOUNT]
+vi.mock('../../api/accounts', () => ({
+  useAccounts: () => ({ data: accounts }),
+}))
 
 function liability(overrides: Partial<Liability> = {}): Liability {
   return {
@@ -60,6 +72,8 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     payment_due_day: null,
     payment_due_cycle_days: null,
     payment_due_anchor: null,
+    recent_payment_dates: [],
+    payment_window_start: '2026-08-01',
     payment_components: [],
     payment_components_total: 0,
     full_monthly_payment: null,
@@ -222,7 +236,7 @@ describe('LiabilityTermsHeader', () => {
     })
 
     it('shows the next date, with the monthly rule under it', () => {
-      renderHeader([liability({ payment_due_day: 17 })])
+      renderHeader([liability({ payment_due_day: 17, recent_payment_dates: ['2026-08-10'] })])
 
       expect(screen.getByText('Sep 17')).toBeInTheDocument()
       expect(screen.getByText('the 17th of each month')).toBeInTheDocument()
@@ -237,6 +251,7 @@ describe('LiabilityTermsHeader', () => {
           payment_due_kind: 'cycle_days',
           payment_due_cycle_days: 31,
           payment_due_anchor: '2026-09-03',
+          recent_payment_dates: ['2026-08-01', '2026-09-01'],
         }),
       ])
 
@@ -245,9 +260,63 @@ describe('LiabilityTermsHeader', () => {
     })
 
     it('says how far off it is once it is close and the card still owes', () => {
-      renderHeader([liability({ payment_due_day: 17, current_balance: 420 })])
+      // Paid 10 Aug, so August's bill was paid and September's is not.
+      renderHeader([
+        liability({
+          payment_due_day: 17,
+          current_balance: 420,
+          recent_payment_dates: ['2026-08-10'],
+        }),
+      ])
 
       expect(screen.getByText('Bill due in 4 days')).toBeInTheDocument()
+    })
+
+    it('goes quiet once a payment lands after the last due date', () => {
+      renderHeader([
+        liability({
+          payment_due_day: 17,
+          current_balance: 420,
+          recent_payment_dates: ['2026-08-10', '2026-09-01'],
+        }),
+      ])
+
+      expect(screen.getByText('Sep 17')).toBeInTheDocument()
+      expect(screen.getByText('Bill due')).toBeInTheDocument()
+    })
+
+    it('says past due, in red, on the date that went by unpaid', () => {
+      // Due on the 3rd; 20 Jul paid the 3 Aug bill, and 3 Sep went by unpaid.
+      renderHeader([
+        liability({
+          payment_due_day: 3,
+          current_balance: 420,
+          recent_payment_dates: ['2026-07-20'],
+        }),
+      ])
+
+      expect(screen.getByText('Bill past due')).toBeInTheDocument()
+      expect(screen.getByText('Sep 3')).toHaveClass('liability-terms__value--negative')
+    })
+
+    it('does not call a bill missed from before the card joined the budget', () => {
+      accounts[0] = { ...CARD_ACCOUNT, budget_start_date: '2026-09-10' }
+      renderHeader([liability({ payment_due_day: 3, current_balance: 420 })])
+      accounts[0] = CARD_ACCOUNT
+
+      expect(screen.getByText('Oct 3')).toBeInTheDocument()
+      expect(screen.queryByText('Bill past due')).not.toBeInTheDocument()
+    })
+
+    it('does not call a bill missed on a card whose payments it cannot see', () => {
+      // Off budget, no payment reaches `recent_payment_dates`, so every due
+      // date would read as missed forever. The date stays; the alarm does not.
+      accounts[0] = { ...CARD_ACCOUNT, on_budget: false }
+      renderHeader([liability({ payment_due_day: 3, current_balance: 420 })])
+      accounts[0] = CARD_ACCOUNT
+
+      expect(screen.getByText('Oct 3')).toBeInTheDocument()
+      expect(screen.getByText('Bill due')).toBeInTheDocument()
     })
 
     it('stays a plain label on a card that owes nothing', () => {
@@ -259,7 +328,13 @@ describe('LiabilityTermsHeader', () => {
     })
 
     it('stays a plain label while the bill is still weeks off', () => {
-      renderHeader([liability({ payment_due_day: 3, current_balance: 420 })])
+      renderHeader([
+        liability({
+          payment_due_day: 3,
+          current_balance: 420,
+          recent_payment_dates: ['2026-08-01', '2026-09-01'],
+        }),
+      ])
 
       expect(screen.getByText('Oct 3')).toBeInTheDocument()
       expect(screen.getByText('Bill due')).toBeInTheDocument()

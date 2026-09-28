@@ -53,6 +53,28 @@ describe('summarizeChange', () => {
     expect(flip(null)).toBe('Spread yearly bills over 12 months: on')
   })
 
+  it('names a dismissed card-bill reminder and its date', () => {
+    const dismissed = (key: string, value: unknown) =>
+      summarizeChange(
+        change({
+          entity_type: 'guide_state',
+          action: 'update',
+          after: { _key: key, _value: value },
+        }),
+        names
+      )
+    const card = '7d3f6c1e-2b4a-4e8f-9a01-5c6d7e8f9a0b'
+    expect(dismissed(`due:${card}:2026-10-03`, { dismissed_on: '2026-09-30' })).toBe(
+      'Dismissed the reminder for a card bill due 2026-10-03'
+    )
+    expect(dismissed(`due:${card}:2026-10-03:past`, { dismissed_on: '2026-10-05' })).toBe(
+      'Dismissed the reminder for a card bill past due since 2026-10-03'
+    )
+    expect(dismissed(`due:${card}:2026-07-03`, null)).toBe(
+      'Cleared the dismissal for a card bill due 2026-07-03'
+    )
+  })
+
   it('leaves a guide setting it cannot name without a summary', () => {
     const row = change({
       entity_type: 'guide_state',

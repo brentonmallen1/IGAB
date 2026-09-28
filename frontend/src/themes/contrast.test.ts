@@ -438,6 +438,16 @@ function checksFor(theme: string): Check[] {
   const cardList = chrome && accent ? tint(accent, chrome, CARDS_BODY_TINT) : null
   for (const fg of ['color-warning', 'color-negative']) {
     add(`${fg} on the credit-card list`, token(theme, fg), cardList, AA_TEXT)
+    // The bill chip on a card's line prints "Due in 4 days" amber and "Past
+    // due" red, 10px, on its own --surface-raised fill — a ground SURFACES
+    // does not list. The app-wide banner uses the same two on
+    // --surface-chrome, which SURFACES covers.
+    add(
+      `${fg} bill chip on surface-raised`,
+      token(theme, fg),
+      token(theme, 'surface-raised'),
+      AA_TEXT
+    )
   }
 
   add(

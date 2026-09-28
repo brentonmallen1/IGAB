@@ -4,6 +4,7 @@ import { useBudgets } from '../../../api/budgets'
 import { Sidebar } from '../Sidebar/Sidebar'
 import { Header } from '../Header/Header'
 import { OfflineBanner } from '../../pwa/OfflineBanner'
+import { CardDueBanner } from '../../common/CardDueBanner/CardDueBanner'
 import { BottomNav } from '../BottomNav/BottomNav'
 import { MoreSheet } from '../MoreSheet/MoreSheet'
 import { QuickAddSheet } from '../../transactions/QuickAddSheet/QuickAddSheet'
@@ -53,6 +54,10 @@ export function MainLayout() {
       <div className="main-layout__content" {...edgeBack}>
         <OfflineBanner />
         <Header />
+        {/* Every page, once: a card bill that is due or past due. In flow
+            between the header and the page, like the offline banner above,
+            so it pushes the page scroller down rather than covering it. */}
+        <CardDueBanner />
         <main id="main-content" className="main-layout__main">
           <Outlet />
         </main>
