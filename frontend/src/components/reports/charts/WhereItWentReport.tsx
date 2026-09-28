@@ -30,6 +30,7 @@ import {
   type RankedLine,
 } from './whereItWent'
 import './WhereItWentReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -181,7 +182,7 @@ export function WhereItWentReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header wiw__header">
+      <ReportHeader className="wiw__header">
         <h2 className="report-section__title">Where it went</h2>
         <ReportInfoButton title="Where it went">
           <p>
@@ -234,7 +235,7 @@ export function WhereItWentReport({ budgetId }: Props) {
             window={{ start: filters.startDate, end: filters.endDate }}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {/* Payee mode reads Payee Analysis, which no view filters. */}
       {groupBy !== 'payee' && (

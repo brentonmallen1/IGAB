@@ -1,3 +1,3 @@
 export { Surface } from './Surface'
 export type { SurfaceProps, SurfaceVariant } from './Surface'
-export { useStuck } from './useStuck'
+export { scrollParent, useStuck } from './useStuck'

@@ -24,6 +24,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { PAYEE_RANKED } from './reportControls'
 import { payeeSubName, recurringRule } from './payeeView'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -107,7 +108,7 @@ export function PayeeReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Payee Analysis</h2>
         <ReportInfoButton title="Payee Analysis">
           <p>
@@ -165,7 +166,7 @@ export function PayeeReport({ budgetId }: Props) {
             window={{ start: filters.startDate, end: filters.endDate }}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       <div ref={captureRef} className="report-capture">
         {payees.length > 0 && (

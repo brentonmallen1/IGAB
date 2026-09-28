@@ -26,6 +26,7 @@ import {
   tiersAreEqual,
 } from './necessityView'
 import { averagedOver } from './averagedOver'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -133,7 +134,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Cost of Living</h2>
         <ReportInfoButton title="Cost of Living">
           <p>
@@ -173,7 +174,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {!data.tagged && (
         <p className="reports-note">

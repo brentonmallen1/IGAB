@@ -27,6 +27,7 @@ import { likeForLikeLine } from '../../utils/trackingStart'
 import { today } from '../../utils/dates'
 import { monthRange } from '../../utils/reportMonths'
 import './OverviewReport.css'
+import { ReportHeader } from './ReportHeader'
 
 interface Props {
   budgetId: string
@@ -79,7 +80,7 @@ export function OverviewReport({ budgetId }: Props) {
   return (
     <div className="overview-report">
       <div className="overview-report__metrics-section surface">
-        <div className="report-section__header">
+        <ReportHeader>
           <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
             <p>
@@ -193,7 +194,7 @@ export function OverviewReport({ budgetId }: Props) {
               window={{ start: filters.startDate, end: filters.endDate }}
             />
           </div>
-        </div>
+        </ReportHeader>
         <div ref={captureRef}>
           <h3 className="overview-report__section-heading">
             This period <span className="overview-report__period">· {period}</span>

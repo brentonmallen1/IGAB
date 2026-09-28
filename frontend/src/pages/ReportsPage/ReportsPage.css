@@ -228,16 +228,28 @@
 /* ─── Content area ────────────────────────────────────────────────────────── */
 
 .reports-content {
+  /* Named because a pinned report header offsets by it: sticky stops at the
+     scroll box's padding edge, and a header pinned there showed rows
+     sliding past above it. */
+  --reports-pane-pad: var(--spacing-xl);
+  /* The summary line under a pinned report header: its height, and the
+     room a strip pinned beneath that header leaves for it. */
+  --report-summary-h: 30px;
+
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--spacing-xl);
+  padding: var(--reports-pane-pad);
 }
 
 /* ─── Shared report section card ─────────────────────────────────────────── */
 
 .report-section {
-  padding: var(--spacing-lg);
+  /* Named because the pinned header reaches over it edge to edge, and a
+     report's own scroll box subtracts it to fit the pane. */
+  --report-section-pad: var(--spacing-lg);
+
+  padding: var(--report-section-pad);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
@@ -255,11 +267,65 @@
   color: var(--text-muted);
 }
 
+/* A report's header row (`ReportHeader`): pinned to the top of the reports
+   pane while the report scrolls under it, so the range, toggles and export
+   are in reach at the bottom of a long table. It lets go where its report
+   ends, because sticky confines itself to the section.
+
+   Painted the section's own raised surface edge to edge — the negative
+   inline margin reaches over the section's padding — so nothing shows
+   beside it as rows slide under. The block padding is taken back out of the
+   margins, so the header sits exactly where it did before it could pin.
+
+   It pins flush with the pane's top edge — minus the pane's padding, which
+   sticky otherwise stops at — and, where it stacks, minus the rows above
+   its controls (`--report-header-lead`, measured by ReportHeader), which
+   scroll away. */
 .report-section__header {
+  position: sticky;
+  top: calc(-1 * (var(--reports-pane-pad, 0px) + var(--report-header-lead, 0px)));
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
+  margin: calc(-1 * var(--spacing-sm)) calc(-1 * var(--report-section-pad))
+    calc(var(--spacing-md) - var(--spacing-sm));
+  padding: var(--spacing-sm) var(--report-section-pad);
+  background-color: var(--surface-raised);
+}
+
+/* Pinned, with the report passing underneath: the app's stuck shadow. */
+.report-section__header--stuck {
+  box-shadow: var(--elevation-stuck);
+}
+
+/* Too tall to pin (ReportHeader's `mayPin`): it scrolls away with its
+   report, as every header did before. */
+.report-section__header[data-pinned="no"] {
+  position: static;
+  box-shadow: none;
+}
+
+/* The summary slot: a one-line copy of the report's value boxes once they
+   have scrolled up under the header (`MetricRow`). It hangs below the
+   header, out of flow, so showing it never changes the page's height — a
+   header that grew would move the boxes and hide itself again. */
+.report-section__summary {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  height: var(--report-summary-h);
+  padding: 0 var(--report-section-pad);
+  background-color: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge);
+  box-shadow: var(--elevation-stuck);
+}
+
+.report-section__summary:empty {
+  display: none;
 }
 
 .report-section__header .report-section__title {
@@ -830,7 +896,7 @@
   }
 
   .reports-content {
-    padding: var(--spacing-md);
+    --reports-pane-pad: var(--spacing-md);
   }
 
   .anomaly-card {
@@ -846,7 +912,7 @@
 
   /* Phone real estate: tighter cards, smaller headings */
   .report-section {
-    padding: var(--spacing-md);
+    --report-section-pad: var(--spacing-md);
   }
 
   .report-section__title {

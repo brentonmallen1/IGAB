@@ -17,6 +17,7 @@ import { stackedValueAxis } from '../../../utils/axisScale'
 import { incomeSourceCount, incomeSourceRows } from './incomeSourcesView'
 import { MIXED_SIGN_STACK } from './mixedSignStack'
 import { stackTrends } from './spendingTrends'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -68,7 +69,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Income by Source</h2>
         <ReportInfoButton title="Income by Source">
           <p>
@@ -99,7 +100,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {data.sources.length === 0 ? (
         <div className="reports-empty">

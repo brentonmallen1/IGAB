@@ -1,8 +1,12 @@
 /* One series (magnitude per category): one hue from the chart ramp, thin
    marks, text in text tokens. The table IS the accessible view. */
 
+/* A report section of its own for the pinned header (ReportHeader), which
+   reaches over this padding edge to edge. */
 .essentials-report__section {
-  padding: var(--spacing-md);
+  --report-section-pad: var(--spacing-md);
+
+  padding: var(--report-section-pad);
 }
 
 .essentials-report__empty {

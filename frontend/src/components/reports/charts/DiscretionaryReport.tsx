@@ -35,6 +35,7 @@ import {
 } from './discretionaryView'
 import { ReportRangeSelect } from './rangeSelect'
 import './DiscretionaryReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -91,7 +92,7 @@ export function DiscretionaryReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Discretionary</h2>
         <ReportInfoButton title="Discretionary">
           <p>
@@ -129,7 +130,7 @@ export function DiscretionaryReport({ budgetId }: Props) {
             window={{ start: report.window_start, end: report.window_end }}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {!report.tagged ? (
         <div className="discretionary-report__empty">

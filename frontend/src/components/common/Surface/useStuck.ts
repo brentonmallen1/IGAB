@@ -37,8 +37,9 @@ export function useStuck<T extends HTMLElement>(enabled: boolean) {
   return { ref, stuck }
 }
 
-/** Nearest ancestor that scrolls vertically, or null for the viewport. */
-function scrollParent(el: HTMLElement): Element | null {
+/** Nearest ancestor that scrolls vertically, or null for the viewport — the
+ *  root an IntersectionObserver must watch against for a sticky element. */
+export function scrollParent(el: HTMLElement): Element | null {
   let node: HTMLElement | null = el.parentElement
   while (node) {
     const { overflowY } = getComputedStyle(node)

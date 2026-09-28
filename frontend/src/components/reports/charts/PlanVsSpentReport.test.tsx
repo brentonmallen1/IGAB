@@ -6,7 +6,9 @@
  * drill opening exactly what its figure counts. The pure rules are in
  * planVsSpentCells.test.ts; the arithmetic is the backend's.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PlanVsSpentReport as Report } from '../../../types'
@@ -268,7 +270,9 @@ describe('the matrix', () => {
 
   it('marks the running month "so far"', () => {
     const { container } = show()
-    const headers = [...container.querySelectorAll('th.plan-spent__month-header')]
+    const headers = [
+      ...container.querySelectorAll('.plan-spent__head-strip th.plan-spent__month-header'),
+    ]
     expect(headers.map((h) => h.textContent?.includes('so far'))).toEqual([false, false, true])
   })
 
@@ -293,14 +297,61 @@ describe('the matrix', () => {
 
   it('pins the name column and the four totals columns on every row', () => {
     const { container } = show()
-    // The CSS pins these; the markup must use them on every row — header,
-    // body and footer — or a figure scrolls away from its name or its total.
+    // The CSS pins these; the markup must use them on every row — the header
+    // strip, the table's own header, body and footer — or a figure scrolls
+    // away from its name or its total, or the strip's columns from the table's.
     const rows = container.querySelectorAll('thead tr, tbody tr, tfoot tr')
-    expect(rows.length).toBe(5)
+    expect(rows.length).toBe(6)
     for (const row of rows) {
       expect(row.querySelector('.plan-spent__name')).not.toBeNull()
       expect(row.querySelectorAll('.plan-spent__tot')).toHaveLength(4)
     }
+  })
+
+  it("draws its column header as a strip hidden from assistive tech, and keeps the table's own", () => {
+    // The table scrolls sideways only, so it cannot pin its header to the
+    // page; a strip above it does. The table keeps real column headers.
+    const { container } = show()
+    expect(container.querySelector('.plan-spent__head-strip')?.getAttribute('aria-hidden')).toBe(
+      'true'
+    )
+    const table = container.querySelector('.plan-spent__scroll table') as HTMLElement
+    const names = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+    expect(names).toEqual([
+      'Category',
+      'Jun 26',
+      'Jul 26',
+      'Aug 26 so far',
+      'Over',
+      'Funded',
+      'Spent',
+      'Overspent',
+    ])
+  })
+
+  it("keeps the header strip at the table's sideways position, whichever is swiped", () => {
+    const { container } = show()
+    const strip = container.querySelector('.plan-spent__head-strip') as HTMLElement
+    const box = container.querySelector('.plan-spent__scroll') as HTMLElement
+    box.scrollLeft = 120
+    fireEvent.scroll(box)
+    expect(strip.scrollLeft).toBe(120)
+    strip.scrollLeft = 40
+    fireEvent.scroll(strip)
+    expect(box.scrollLeft).toBe(40)
+  })
+
+  it('gives the table no height of its own, so the page is the only thing scrolled up and down', () => {
+    // It had one, so its header row could pin inside it; on a phone a drag
+    // that began on it scrolled the table and stranded the page.
+    const css = readFileSync(join(__dirname, 'PlanVsSpentReport.css'), 'utf8')
+    const rule = css.slice(
+      css.indexOf('.plan-spent__scroll {'),
+      css.indexOf('}', css.indexOf('.plan-spent__scroll {'))
+    )
+    expect(rule).not.toMatch(/max-height|overflow:\s*auto|overflow-y/)
   })
 
   it('filters to chronic categories only', () => {

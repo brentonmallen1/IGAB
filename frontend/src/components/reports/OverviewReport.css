@@ -14,8 +14,12 @@
   }
 }
 
+/* A report section of its own for the pinned header (ReportHeader), which
+   reaches over this padding edge to edge. */
 .overview-report__metrics-section {
-  padding: var(--spacing-lg);
+  --report-section-pad: var(--spacing-lg);
+
+  padding: var(--report-section-pad);
 }
 
 .overview-report__section-heading {

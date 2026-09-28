@@ -15,6 +15,7 @@ import { drillScope } from '../drillScope'
 import { activityClassTone } from '../../../utils/activityClassTone'
 import { dotSize, largestMagnitude, newestFirst, timelineChip } from './timelineView'
 import { TIMELINE_LIMITS } from './reportControls'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -68,7 +69,7 @@ export function TimelineReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Largest transactions</h2>
         <ReportInfoButton title="Largest transactions">
           <p>
@@ -128,7 +129,7 @@ export function TimelineReport({ budgetId }: Props) {
             window={{ start: filters.startDate, end: filters.endDate }}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {/* The response declares `filter_unavailable`, and declaring it put
           nothing on screen: a deleted saved filter read as an empty period.

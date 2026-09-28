@@ -38,6 +38,7 @@ import {
 } from '../../../utils/reportMonths'
 import { DEBT_PAYMENTS, SAVED, SAVED_WITH_DEBT, savingsRateLabel } from '../../../utils/flowLabels'
 import { GuideTabLink } from '../../guide/GuideTabLink'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -110,7 +111,7 @@ export function SavingsRateReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Savings Rate</h2>
         <ReportInfoButton title="Savings Rate">
           <p>How much of what came in you kept, month by month.</p>
@@ -190,7 +191,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       <div ref={captureRef} className="report-capture">
         {summary && (

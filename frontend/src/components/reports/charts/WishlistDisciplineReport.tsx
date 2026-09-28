@@ -14,6 +14,7 @@ import {
   wishes,
   wishlistOutcomes,
 } from './wishlistOutcomes'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -42,7 +43,7 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Wishlist</h2>
         <ReportInfoButton title="Wishlist">
           <p>
@@ -83,7 +84,7 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {empty ? (
         <div className="reports-empty">

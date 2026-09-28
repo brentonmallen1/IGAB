@@ -28,6 +28,7 @@ import { arrivalMarks } from '../../../utils/trackingStart'
 import { arrivalLines } from './arrivalLines'
 import { TrackingStartNote } from './TrackingStartNote'
 import { setAsideStartNote } from './savingsView'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -79,7 +80,7 @@ export function SavingsReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Savings</h2>
         <ReportInfoButton title="Savings">
           <p>The report has three parts, each with its own total. They are never added together.</p>
@@ -163,7 +164,7 @@ export function SavingsReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {data && (
         <div ref={captureRef} className="report-capture">

@@ -29,6 +29,7 @@ import { arrivalMarks } from '../../../utils/trackingStart'
 import { arrivalLines } from './arrivalLines'
 import { TrackingStartNote } from './TrackingStartNote'
 import { bandLabel, compositionBands, plotted } from './compositionView'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -58,7 +59,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Account Composition</h2>
         <ReportInfoButton title="Account Composition">
           <p>
@@ -93,7 +94,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
       <p className="report-section__subtitle">Assets stack above zero, debts below.</p>
 
       <div ref={captureRef} className="report-capture">

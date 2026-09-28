@@ -28,6 +28,7 @@ import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
 import { reportMonthLabel } from '../../../utils/reportMonths'
 import { averagedOver } from './averagedOver'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -91,7 +92,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Spending Trends</h2>
         <ReportInfoButton title="Spending Trends">
           <p>
@@ -141,7 +142,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {/* `ReportNotes`, not a fourth inline copy of the same sentence. This
           chart had its own wording for the class-excluded note and its own

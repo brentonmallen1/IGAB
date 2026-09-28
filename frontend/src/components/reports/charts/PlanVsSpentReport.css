@@ -41,24 +41,57 @@
 }
 
 /* ── The table ──────────────────────────────────────────────────────────────
-   One scroll box in both directions, so the header can stick to its top
-   and the name and totals columns to its sides — a header sticks to its
-   nearest scrolling ancestor, and a sideways-only box pinned it to nothing.
-   Height from the app's own viewport (--app-h), never vh — vh ignores the
-   iOS keyboard and the installed PWA's status bar.
-   Positioned so the caption's .sr-only box is clipped here and cannot
-   widen the page on a phone. */
-.plan-spent__scroll {
+   The page is the only thing that scrolls up and down. The table scrolls
+   sideways alone: it had a height of its own so its header row could pin
+   inside it, and on a phone — where it filled most of the screen — a drag
+   that began on it scrolled the table and stranded the page half-way.
+
+   A box that scrolls sideways cannot pin a row to the page, so the visible
+   column header is a strip of its own above it (PlanVsSpentHead.tsx),
+   pinned under the report header and its summary line, and kept at the
+   table's sideways position. Both read one set of column widths, here, so
+   they cannot drift apart. */
+.plan-spent__scroll,
+.plan-spent__head-strip {
   --plan-spent-name-w: 180px;
+  --plan-spent-month-w: 64px;
   --plan-spent-tot-w: 84px;
   --plan-spent-months-w: 52px;
 
-  position: relative;
-  overflow: auto;
-  max-height: calc(var(--app-h) * 0.7);
   border: 1px solid var(--edge);
-  border-radius: var(--border-radius-sm);
+}
+
+/* Positioned so the caption's and the collapsed header's .sr-only boxes
+   are clipped here and cannot widen the page on a phone. */
+.plan-spent__scroll {
+  position: relative;
+  overflow-x: auto;
+  border-top: none;
+  border-radius: 0 0 var(--border-radius-sm) var(--border-radius-sm);
   background: var(--surface-sunken);
+}
+
+/* Pinned where the report header and its summary line end — both published
+   by ReportHeader, the summary's room only while that header pins — less
+   the pane's padding, which sticky otherwise stops at. Above the table's
+   own pinned columns, below the report header. Swiping it scrolls the
+   table (and the other way round), with no scrollbar of its own. */
+.plan-spent__head-strip {
+  position: sticky;
+  top: calc(
+    var(--report-header-pinned, 0px) + var(--report-summary-room, 0px) -
+      var(--reports-pane-pad, 0px)
+  );
+  z-index: 4;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius-sm) var(--border-radius-sm) 0 0;
+  background: var(--surface-chrome);
+}
+
+.plan-spent__head-strip::-webkit-scrollbar {
+  display: none;
 }
 
 /* Separate borders: collapsed ones belong to the table, not the cell, and
@@ -85,13 +118,10 @@
   border-bottom: none;
 }
 
-/* Header: chrome, pinned to the top of the box, a stronger rule beneath. */
+/* The header row's cells, as the strip draws them. */
 .plan-spent__table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   background: var(--surface-chrome);
-  border-bottom: 1px solid var(--edge-strong);
+  border-bottom: none;
   padding: 6px var(--spacing-sm);
   color: var(--text-muted);
   font-size: var(--font-size-2xs);
@@ -100,16 +130,29 @@
   vertical-align: bottom;
 }
 
+/* The table's own header row: every label for assistive tech (the strip
+   is hidden from it), and no height at all. */
+.plan-spent__table .plan-spent__head--collapsed th {
+  height: 0;
+  padding-block: 0;
+  border: none;
+  line-height: 0;
+}
+
+/* One width for every month column, header strip and table alike. */
+.plan-spent__month-header,
+.plan-spent__cell {
+  width: var(--plan-spent-month-w);
+  min-width: var(--plan-spent-month-w);
+  max-width: var(--plan-spent-month-w);
+}
+
 .plan-spent__month-header {
-  min-width: 60px;
   text-align: right;
 }
 
-/* Footer: chrome, pinned to the bottom, a stronger rule above. */
+/* Footer: chrome, a stronger rule above. */
 .plan-spent__table tfoot > tr > * {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
   background: var(--surface-chrome);
   border-top: 1px solid var(--edge-strong);
   border-bottom: none;
@@ -134,14 +177,6 @@
 /* A stronger rule where the names stop and the months begin. */
 .plan-spent__table .plan-spent__name {
   border-right-color: var(--edge-strong);
-}
-
-/* Corners sit over both the header row and the pinned columns. */
-.plan-spent__table thead .plan-spent__name,
-.plan-spent__table tfoot .plan-spent__name,
-.plan-spent__table thead .plan-spent__tot,
-.plan-spent__table tfoot .plan-spent__tot {
-  z-index: 3;
 }
 
 .plan-spent__name-btn {
@@ -286,7 +321,8 @@
    Overspent columns; Funded and Spent live in the Overspent cell's title
    and its drill there. */
 @media (max-width: 768px) {
-  .plan-spent__scroll {
+  .plan-spent__scroll,
+  .plan-spent__head-strip {
     --plan-spent-name-w: 116px;
     --plan-spent-tot-w: 72px;
     --plan-spent-months-w: 44px;
