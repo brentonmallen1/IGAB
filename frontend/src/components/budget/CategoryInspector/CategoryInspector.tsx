@@ -60,6 +60,9 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const isSingle = count === 1
   const singleCategory = isSingle ? selectedCategories[0] : null
 
+  // The server refuses to archive or delete these; the buttons are not offered.
+  const hasProtected = selectedCategories.some((c) => c.is_protected)
+
   const allArchived =
     count > 0 &&
     selectedCategories.length === count &&
@@ -187,7 +190,14 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
                 )}
 
                 {/* Mobile sheet gets these from CategoryMobileActions instead */}
-                {!forceOpen && (
+                {!forceOpen && hasProtected && (
+                  <p className="category-inspector__kept">
+                    {isSingle
+                      ? `${singleCategory?.name} is kept by the app: it can't be renamed, archived or deleted.`
+                      : "A selected category is kept by the app and can't be archived or deleted. Deselect it to manage the rest."}
+                  </p>
+                )}
+                {!forceOpen && !hasProtected && (
                   <div className="category-inspector__manage">
                     <button
                       className="inspector-btn category-inspector__manage-btn"

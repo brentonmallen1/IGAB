@@ -688,8 +688,9 @@ class TestEveryCategoryResponseCarriesInCardSection:
             f"/api/v1/{budget.id}/categories", params={"include_archived": True}
         )
         interest = next(c for c in listed.json() if c["name"] == "Interest & fees")
+        # A note, not a rename: renaming Interest & fees is refused.
         renamed = await api_client.patch(
-            f"/api/v1/categories/{interest['id']}", json={"name": "Card interest"}
+            f"/api/v1/categories/{interest['id']}", json={"note": "Interest and late fees"}
         )
         unlinked = await api_client.put(
             f"/api/v1/{budget.id}/categories/{created.json()['id']}/link-liability",
@@ -700,10 +701,16 @@ class TestEveryCategoryResponseCarriesInCardSection:
             ("create", created.json()),
             *[("list", row) for row in listed.json()],
             *[("list archived", row) for row in archived_too.json()],
-            ("rename", renamed.json()),
+            ("update", renamed.json()),
             ("link-liability", unlinked.json()),
         ]:
             assert isinstance(body.get("in_card_section"), bool), f"{label}: {body}"
+            assert isinstance(body.get("is_protected"), bool), f"{label}: {body}"
         by_name = {c["name"]: c["in_card_section"] for c in listed.json()}
         assert by_name == {"Sapphire Visa": True, "Interest & fees": True, "Rent": False}
         assert renamed.json()["in_card_section"] is True
+        assert {c["name"]: c["is_protected"] for c in listed.json()} == {
+            "Sapphire Visa": False,
+            "Interest & fees": True,
+            "Rent": False,
+        }

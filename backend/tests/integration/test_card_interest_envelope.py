@@ -9,6 +9,7 @@ cards section draws it (`category_filters.CARD_SECTION_CATEGORY`).
 
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -155,7 +156,9 @@ class TestMadeWithTheFirstCard:
         await db_session.refresh(theirs)
         assert theirs.system_key is None
 
-    async def test_an_archived_one_stays_archived(self, db_session):
+    async def test_an_archived_leftover_is_restored_by_the_next_card(self, db_session):
+        """Archiving is refused now, so an archived one predates that rule and
+        would otherwise stay hidden with no way to archive-and-forget it."""
         _, budget = await _budget(db_session)
         await _card(db_session, budget)
         [envelope] = await _keyed(db_session, budget.id)
@@ -165,7 +168,7 @@ class TestMadeWithTheFirstCard:
         await _card(db_session, budget, "Harborstone Card")
 
         [again] = await _keyed(db_session, budget.id)
-        assert again.id == envelope.id and again.is_archived is True
+        assert again.id == envelope.id and again.is_archived is False
 
 
 class TestItLivesInTheCardSection:
@@ -249,7 +252,9 @@ class TestItLivesInTheCardSection:
         assert pairing.passed, pairing.details
 
 
-class TestKeptWhileACardNeedsIt:
+class TestKeptByTheApp:
+    KEPT = "'Interest & fees' is where card interest is filed and is kept by the app."
+
     async def test_delete_is_refused_while_a_card_exists(self, db_session):
         services, budget = await _budget(db_session)
         await _card(db_session, budget)
@@ -257,15 +262,11 @@ class TestKeptWhileACardNeedsIt:
         service = _category_service(db_session, services)
 
         preview = await service.preview_delete(budget.id, [interest.id], MONTH)
-        assert preview.blocked_by == [
-            "'Interest & fees' is where card interest is filed; archive it instead."
-        ]
-        with pytest.raises(InvariantViolation, match="archive it instead"):
+        assert preview.blocked_by == [self.KEPT]
+        with pytest.raises(InvariantViolation, match="kept by the app"):
             await service.delete_categories(budget.id, [interest.id], month=MONTH)
 
     async def test_delete_is_refused_even_with_no_card_left(self, db_session):
-        """It used to go once the last card did, which left the next card to
-        adopt or remake it; the app owns it, so it is never deleted."""
         services, budget = await _budget(db_session)
         card = await _card(db_session, budget)
         [interest] = await _keyed(db_session, budget.id)
@@ -274,10 +275,8 @@ class TestKeptWhileACardNeedsIt:
         service = _category_service(db_session, services)
 
         preview = await service.preview_delete(budget.id, [interest.id], MONTH)
-        assert preview.blocked_by == [
-            "'Interest & fees' is where card interest is filed; archive it instead."
-        ]
-        with pytest.raises(InvariantViolation, match="archive it instead"):
+        assert preview.blocked_by == [self.KEPT]
+        with pytest.raises(InvariantViolation, match="kept by the app"):
             await service.delete_categories(budget.id, [interest.id], month=MONTH)
 
         assert await find_interest_envelope(db_session, budget.id) is not None
@@ -287,24 +286,56 @@ class TestKeptWhileACardNeedsIt:
         await _card(db_session, budget)
         [interest] = await _keyed(db_session, budget.id)
 
-        with pytest.raises(InvariantViolation, match="archive it instead"):
+        with pytest.raises(InvariantViolation, match="kept by the app"):
             await _category_service(db_session, services).delete_group(
                 budget.id, interest.category_group_id, month=MONTH
             )
 
         assert await find_interest_envelope(db_session, budget.id) is not None
 
-    async def test_it_may_be_archived(self, db_session):
+    async def test_archive_is_refused(self, db_session):
+        services, budget = await _budget(db_session)
+        await _card(db_session, budget)
+        [interest] = await _keyed(db_session, budget.id)
+        service = _category_service(db_session, services)
+
+        preview = await service.preview_archive(budget.id, [interest.id], MONTH)
+        assert preview.blocked_by_link == ["Interest & fees"]
+        assert preview.may_archive is False
+        with pytest.raises(InvariantViolation, match="kept by the app"):
+            await service.archive_categories(budget.id, [interest.id], month=MONTH)
+
+        await db_session.refresh(interest)
+        assert interest.is_archived is False
+
+    async def test_archiving_its_group_is_refused_too(self, db_session):
         services, budget = await _budget(db_session)
         await _card(db_session, budget)
         [interest] = await _keyed(db_session, budget.id)
 
-        await _category_service(db_session, services).archive_categories(
-            budget.id, [interest.id], month=MONTH
-        )
+        with pytest.raises(InvariantViolation, match="kept by the app"):
+            await _category_service(db_session, services).archive_group(
+                budget.id, interest.category_group_id, month=MONTH
+            )
 
-        await db_session.refresh(interest)
-        assert interest.is_archived is True
+    async def test_a_rename_is_refused_but_the_same_name_is_not(self, db_session):
+        _, budget = await _budget(db_session)
+        await _card(db_session, budget)
+        [interest] = await _keyed(db_session, budget.id)
+
+        with pytest.raises(InvariantViolation, match="cannot be renamed"):
+            CategoryService.require_unlocked(interest, {"name": "Card costs"})
+        # A note, a subtitle, an unchanged name and a reorder are not renames.
+        CategoryService.require_unlocked(interest, {"name": interest.name})
+        CategoryService.require_unlocked(interest, {"note": "Paid in full"})
+        CategoryService.require_unlocked(interest, {"sort_order": 3})
+
+    async def test_an_ordinary_envelope_may_be_renamed_and_moved(self, db_session):
+        _, budget = await _budget(db_session)
+        group = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, group, "Rent")
+
+        CategoryService.require_unlocked(rent, {"name": "Housing", "category_group_id": uuid4()})
 
     async def test_a_move_to_another_group_is_refused(self, db_session):
         _, budget = await _budget(db_session)
@@ -313,11 +344,15 @@ class TestKeptWhileACardNeedsIt:
         bills = await create_category_group(db_session, budget, "Bills")
 
         with pytest.raises(InvariantViolation, match="cannot be moved"):
-            CategoryService.require_movable(interest, bills.id)
+            CategoryService.require_unlocked(interest, {"category_group_id": bills.id})
         # Staying put is not a move.
-        CategoryService.require_movable(interest, interest.category_group_id)
+        CategoryService.require_unlocked(
+            interest, {"category_group_id": interest.category_group_id}
+        )
 
-    async def test_the_api_refuses_the_move_and_allows_the_rename(self, api_client, db_session):
+    async def test_the_api_refuses_rename_move_and_archive_but_allows_a_note(
+        self, api_client, db_session
+    ):
         budget = await create_budget(db_session, api_client.test_user)
         await db_session.commit()
         created = await api_client.post(
@@ -339,12 +374,26 @@ class TestKeptWhileACardNeedsIt:
         renamed = await api_client.patch(
             f"/api/v1/categories/{interest['id']}", json={"name": "Card interest"}
         )
+        noted = await api_client.patch(
+            f"/api/v1/categories/{interest['id']}", json={"note": "Paid in full each month"}
+        )
+        archived = await api_client.post(
+            f"/api/v1/{budget.id}/categories/archive", json={"category_ids": [interest["id"]]}
+        )
 
         assert moved.status_code == 400, moved.text
         assert "cannot be moved" in moved.json()["detail"]
-        assert renamed.status_code == 200, renamed.text
-        assert renamed.json()["name"] == "Card interest"
-        assert renamed.json()["in_card_section"] is True
+        assert renamed.status_code == 400, renamed.text
+        assert "cannot be renamed" in renamed.json()["detail"]
+        assert archived.status_code >= 400, archived.text
+        assert "kept by the app" in archived.json()["detail"]
+        assert noted.status_code == 200, noted.text
+        assert noted.json()["name"] == CARD_INTEREST_NAME
+        assert noted.json()["in_card_section"] is True
+        assert noted.json()["is_protected"] is True
+        assert interest["is_protected"] is True
+        ordinary = next(c for c in listed if c["name"] != CARD_INTEREST_NAME)
+        assert ordinary["is_protected"] is False
 
 
 class TestInterestFilesItself:
