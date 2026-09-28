@@ -470,6 +470,38 @@ class TestTheScenariosReadOnTheEnvelope:
         assert row.available == D("-15")
         assert row.credit_overspent == D("15"), "spent on a card, so it rides rather than charges"
 
+    async def test_a_red_interest_and_fees_is_covered_by_cover_overspent(self, db_session):
+        """The server half of the Overspent chip's promise
+        (`BudgetTable.overspent.test.tsx` is the client half): a red Interest &
+        fees is in the served count and total, in Cover Overspent's list, and
+        covering it clears it."""
+        services, budget, _ = await _budget_with(db_session, INTEREST_UNFUNDED)
+        [interest] = await _keyed(db_session, budget.id)
+
+        summary = await services.budgets.get_budget_summary(budget.id, MONTH)
+        red = [b.category_id for b in summary.category_balances if b.available < 0]
+        assert red == [interest.id]
+        assert summary.overspent_count == 1
+        assert summary.total_overspent == D("15")
+
+        preview = await services.budgets.cover_overspent_preview(budget.id, MONTH)
+        assert [(i.category_id, i.proposed_addition) for i in preview.items] == [
+            (interest.id, D("15"))
+        ]
+        await services.budgets.cover_overspent_apply(
+            budget.id, MONTH, [(i.category_id, i.proposed_addition) for i in preview.items]
+        )
+
+        after = await services.budgets.get_budget_summary(budget.id, MONTH)
+        row = next(b for b in after.category_balances if b.category_id == interest.id)
+        assert row.available == D("0")
+        assert after.total_overspent == D("0")
+        assert after.overspent_count == 0
+        # Funding it in the month it ended short retires the ride: the card
+        # now has the 15 set aside against the 15 it owes.
+        card = next(c for c in after.cards if c.name == INTEREST_UNFUNDED.card)
+        assert (card.set_aside, card.uncovered) == (D("15"), D("0"))
+
     async def test_funded_interest_reads_spent(self, db_session):
         services, budget, _ = await _budget_with(db_session, INTEREST_FUNDED)
         [interest] = await _keyed(db_session, budget.id)

@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  budgetPageRowIds,
   cardSectionEnvelope,
+  drawnCardSectionEnvelope,
   inCardSection,
   isCardEnvelope,
   renderableCategories,
@@ -75,6 +77,12 @@ describe('renderableGroups', () => {
     ]
     expect(cardSectionEnvelope(cats)?.id).toBe('interest')
     expect(cardSectionEnvelope(cats.slice(0, 2))).toBeNull()
+  })
+
+  it('the section envelope is drawn only while there is a card to draw the section', () => {
+    const cats = [{ id: 'interest', linked_account_id: null, in_card_section: true }]
+    expect(drawnCardSectionEnvelope(cats, 1)?.id).toBe('interest')
+    expect(drawnCardSectionEnvelope(cats, 0)).toBeNull()
   })
 
   it('a row without the field stays in the grid', () => {
@@ -218,4 +226,32 @@ describe('every budget surface draws groups through the one helper', () => {
       expect(source).not.toMatch(/!\s*g\.is_system/)
     })
   }
+})
+
+describe('budgetPageRowIds — what the filter bar chips count', () => {
+  // The Overspent chip counted grid rows only, so a red Interest & fees was in
+  // the served overspent total and Cover Overspent but not in "Overspent N".
+  const grid = new Set(['rent', 'groceries'])
+
+  it('counts the section envelope beside the grid rows', () => {
+    expect([
+      ...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionEnvelopeId: 'interest' }),
+    ]).toEqual(['rent', 'groceries', 'interest'])
+  })
+
+  it('a view narrows the grid rows and leaves the section envelope counted', () => {
+    // A view arranges the grid; the section is drawn whatever view is active.
+    const ids = budgetPageRowIds({
+      gridIds: grid,
+      viewIds: new Set(['rent']),
+      sectionEnvelopeId: 'interest',
+    })
+    expect([...ids]).toEqual(['rent', 'interest'])
+  })
+
+  it('with no section envelope drawn, only the grid', () => {
+    expect([
+      ...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionEnvelopeId: null }),
+    ]).toEqual(['rent', 'groceries'])
+  })
 })

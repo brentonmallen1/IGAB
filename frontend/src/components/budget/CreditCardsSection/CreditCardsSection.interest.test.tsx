@@ -66,7 +66,10 @@ const visaEnvelope = makeCategory({
 const interest = makeCategory({ id: 'interest', name: 'Interest & fees', in_card_section: true })
 const rent = makeCategory({ id: 'rent', name: 'Rent' })
 
-function show({ toCategorize = 0 }: { toCategorize?: number } = {}) {
+function show({
+  toCategorize = 0,
+  envelopeMatch = null,
+}: { toCategorize?: number; envelopeMatch?: boolean | null } = {}) {
   month.current = {
     cards: [
       cardStatus({ account_id: 'acct-visa', category_id: 'visa-env', name: 'Sapphire Visa' }),
@@ -74,7 +77,7 @@ function show({ toCategorize = 0 }: { toCategorize?: number } = {}) {
     category_balances: [{ category_id: 'interest', available: -15, assigned: 0, activity: -15 }],
   } as unknown as BudgetMonth
   state.accounts = [{ id: 'acct-visa', uncategorized_count: toCategorize }]
-  render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+  render(<CreditCardsSection budgetId="b1" month="2026-08-01" envelopeMatch={envelopeMatch} />)
 }
 
 beforeEach(() => {
@@ -108,6 +111,21 @@ describe('Interest & fees in the Credit cards section', () => {
     state.collapsed = true
     show()
     expect(screen.queryByTestId('section-row')).toBeNull()
+  })
+
+  it('under an active filter it matches, it is drawn even on a folded band', () => {
+    // The Overspent chip counted it; the fold must not hide the row it counted.
+    state.collapsed = true
+    show({ envelopeMatch: true })
+    expect(screen.getByTestId('section-row')).toHaveTextContent('Interest & fees')
+    // The card lines stay folded: a filter does not reach them.
+    expect(screen.queryByRole('list', { name: 'Credit cards' })).toBeNull()
+  })
+
+  it('under an active filter it does not match, it is hidden and the card lines stay', () => {
+    show({ envelopeMatch: false })
+    expect(screen.queryByTestId('section-row')).toBeNull()
+    expect(screen.getByRole('button', { name: /Sapphire Visa/ })).toBeInTheDocument()
   })
 
   it('names it where a card has rows to categorize', async () => {

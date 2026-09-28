@@ -13,6 +13,8 @@ import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
 import {
+  budgetPageRowIds,
+  drawnCardSectionEnvelope,
   renderableCategories,
   renderableCategoryIds,
   renderableGroups,
@@ -165,14 +167,31 @@ export function BudgetTable() {
   // These spanned every balance the month returned — including system and
   // hidden categories the table never renders — so the chip promised rows it
   // could not show.
-  const renderableIds = renderableCategoryIds(groups ?? [], categories ?? [])
-  const chipBalances = (budgetMonth?.category_balances ?? []).filter(
-    (b) =>
-      renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
+  //
+  // Interest & fees is one of those rows: drawn in the Credit cards section
+  // rather than the grid, but an envelope all the same — red, it is in the
+  // served overspent total and in Cover Overspent, so the chip counts it too.
+  const sectionEnvelope = drawnCardSectionEnvelope(
+    categories ?? [],
+    budgetMonth?.cards?.length ?? 0
+  )
+  const pageRowIds = budgetPageRowIds({
+    gridIds: renderableCategoryIds(groups ?? [], categories ?? []),
+    viewIds: viewVisibleIds,
+    sectionEnvelopeId: sectionEnvelope?.id ?? null,
+  })
+  const chipBalances = (budgetMonth?.category_balances ?? []).filter((b) =>
+    pageRowIds.has(b.category_id)
   )
 
   const isFiltered =
     filterCategoryIds != null || activeQuickFilter != null || isBudgetSearchActive(search)
+  // The same predicates the grid's rows are held to, so the section's row and
+  // a grid row cannot answer the same filter differently.
+  const sectionEnvelopeMatch =
+    sectionEnvelope && isFiltered
+      ? categoryMatchesFilter(sectionEnvelope.id) && categoryMatchesSearch(sectionEnvelope)
+      : null
   // "Credit Card Payments" never renders as a bare header, even with hidden
   // groups shown. The server decides it (`is_card_only`) and the server's
   // reorder rule reads the same expression, so the grid and the write cannot
@@ -239,7 +258,7 @@ export function BudgetTable() {
       <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} barRef={filterBarRef} />
       {/* Above the category headers so the cards read as part of the month,
           not an afterthought below the fold; folds shut and stays folded. */}
-      <CreditCardsSection budgetId={budgetId} month={month} />
+      <CreditCardsSection budgetId={budgetId} month={month} envelopeMatch={sectionEnvelopeMatch} />
       <div className="budget-table__header budget-grid">
         {/* The master fold sits in the CHEVRON column, directly above every
             group's own chevron, so it reads as their master control. It

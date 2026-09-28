@@ -84,6 +84,44 @@ export function cardSectionEnvelope<T extends CategoryPlacement & CategoryLink>(
 }
 
 /**
+ * The section envelope the budget page actually DRAWS: `cardSectionEnvelope`,
+ * but only while the Credit cards section is drawn at all — which is while the
+ * month has a card. The section and the filter bar's counts both ask this, so
+ * a chip cannot count a row the section is not there to show.
+ */
+export function drawnCardSectionEnvelope<T extends CategoryPlacement & CategoryLink>(
+  categories: readonly T[],
+  cardCount: number
+): T | null {
+  return cardCount > 0 ? cardSectionEnvelope(categories) : null
+}
+
+/**
+ * Every envelope row the budget page draws — the grid's rows, narrowed by an
+ * active view, plus the Credit cards section's own envelope (Interest & fees).
+ *
+ * What the filter bar's chips count ("Overspent 3", "Underfunded 2"). A chip's
+ * count and the rows clicking it shows must be one set, and Interest & fees is
+ * a row like any other: red, it is in the served `total_overspent` and in
+ * Cover Overspent, so a chip that left it out would say 2 over three red rows.
+ * A view does not reach it — a view arranges the grid, and the section is not
+ * the grid — so it is counted whatever view is active.
+ */
+export function budgetPageRowIds({
+  gridIds,
+  viewIds,
+  sectionEnvelopeId,
+}: {
+  gridIds: ReadonlySet<string>
+  viewIds: ReadonlySet<string> | null
+  sectionEnvelopeId: string | null
+}): Set<string> {
+  const ids = new Set([...gridIds].filter((id) => !viewIds || viewIds.has(id)))
+  if (sectionEnvelopeId) ids.add(sectionEnvelopeId)
+  return ids
+}
+
+/**
  * Groups the grid draws — everything but the ones holding nothing except card
  * card envelopes, so "Credit Card Payments" never appears as a bare
  * header, even on the surfaces that deliberately show hidden groups.

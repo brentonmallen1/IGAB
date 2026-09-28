@@ -30,6 +30,7 @@ import {
   rideMonths,
   otherCredits,
   cardLine,
+  envelopeRowShown,
   notCoveredWarns,
   sectionMark,
 } from './cardRow'
@@ -44,7 +45,7 @@ import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import type { PeekScope } from '../TransactionsPeekModal/TransactionsPeekModal'
 import { overspending } from '../budgetTotals'
-import { cardSectionEnvelope } from '../budgetGroups'
+import { drawnCardSectionEnvelope } from '../budgetGroups'
 import { CategoryRow } from '../CategoryRow/CategoryRow'
 import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
@@ -834,7 +835,17 @@ function CardDetail({
   )
 }
 
-export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
+export function CreditCardsSection({
+  budgetId,
+  month,
+  envelopeMatch = null,
+}: {
+  budgetId: string
+  month: string
+  /** Whether Interest & fees matches the budget page's active filter, quick
+   *  filter or search — null when none is active. See `envelopeRowShown`. */
+  envelopeMatch?: boolean | null
+}) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
   const { formatMoney, formatMonth } = useFormatters()
@@ -865,7 +876,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // Interest & fees: an ordinary envelope drawn under the cards that charge
   // it, not in the grid. Absent when archived — the category list leaves
   // archived envelopes out — and then nothing is drawn for it.
-  const interest = cardSectionEnvelope(categories)
+  const interest = drawnCardSectionEnvelope(categories, cards.length)
+  const showInterest =
+    interest !== null && envelopeRowShown({ collapsed, filterMatch: envelopeMatch })
   // The server computes a card's envelope target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
@@ -1109,8 +1122,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       )}
       {/* Full-bleed, outside the padded body, so its Assigned / Activity /
           Available land in the grid's own columns below. The ordinary row,
-          not a card line: it is an ordinary envelope. */}
-      {!collapsed && interest && (
+          not a card line: it is an ordinary envelope. Outside the fold's
+          body too, so an active filter it matches draws it on a folded band. */}
+      {showInterest && interest && (
         <div className="credit-cards__envelope">
           <CategoryRow
             category={interest}
