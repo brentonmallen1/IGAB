@@ -1,6 +1,6 @@
 """A plan-family figure opens the rows it totals.
 
-Budget vs Actual, Plan vs Reality, Volatility and Anomalies read the plan
+Plan vs Spent, Volatility and Anomalies read the plan
 ledger's spent — net of refunds, a Savings envelope's transfer out counted,
 money moved into or out of an ordinary envelope not. Their drills asked for the
 category's `direction=outflow` rows instead, so a month with a refund opened a
@@ -96,16 +96,17 @@ async def _world(db_session, user):
 
 
 async def _drilled(api_client, budget, category_id, start: date, end: date, **extra) -> Decimal:
-    """What the drill panel totals: the listing the plan-family drills open."""
+    """What the drill panel totals: the listing the plan-family drills open.
+    `category_id` None is a drill over every category — a month total's."""
     params = {
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "scope": "leaf",
         "posted_only": "true",
         "cash_flow_only": "true",
-        "category_ids": str(category_id),
         "plan_spent": "true",
         "limit": 500,
+        **({"category_ids": str(category_id)} if category_id else {}),
         **extra,
     }
     r = await api_client.get(f"/api/v1/{budget.id}/transactions", params=params)
@@ -144,9 +145,9 @@ class TestTheDrillTotalsTheFigure:
         )
         assert old == D("-950")
 
-    async def test_plan_vs_reality_every_cell(self, db_session, api_client):
+    async def test_plan_vs_spent_every_cell(self, db_session, api_client):
         budget, *_ = await _world(db_session, api_client.test_user)
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=12)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=12)
 
         checked = 0
         for cat in pvr["categories"]:
@@ -160,6 +161,41 @@ class TestTheDrillTotalsTheFigure:
                 assert -drilled == cell["spent"], (cat["category_name"], m)
                 checked += 1
         assert checked >= 8
+
+    async def test_plan_vs_spent_every_total(self, db_session, api_client):
+        """The Total column, the totals row and the window's Spent each open
+        the rows they count: a category over the complete months, a month over
+        every category, and the complete months over every category."""
+        budget, groceries, vacation = await _world(db_session, api_client.test_user)
+        report = await ReportService(db_session).plan_vs_spent(budget.id, months=12)
+        start, end = report["totals_start"], report["totals_end"]
+
+        for cat in report["categories"]:
+            drilled = await _drilled(api_client, budget, cat["category_id"], start, end)
+            assert -drilled == cat["total"]["spent"], cat["category_name"]
+        assert _row(report, groceries)["total"]["spent"] == D("1200")
+        assert _row(report, vacation)["total"]["spent"] == D("350")
+
+        for point in report["month_totals"]:
+            m = point["month"]
+            drilled = await _drilled(api_client, budget, None, m, min(month_end(m), TODAY))
+            assert -drilled == point["spent"], m
+
+        assert -(await _drilled(api_client, budget, None, start, end)) == report["total_spent"]
+        assert report["total_spent"] == D("1550")
+
+    async def test_a_scoped_total_opens_the_scope(self, db_session, api_client):
+        """Scoped to Groceries, the month total counts Groceries alone, and so
+        does a drill carrying the same scope."""
+        budget, groceries, _ = await _world(db_session, api_client.test_user)
+        report = await ReportService(db_session).plan_vs_spent(
+            budget.id, months=12, category_ids=[groceries.id]
+        )
+        (last,) = [p for p in report["month_totals"] if p["month"] == LAST_MONTH]
+        drilled = await _drilled(
+            api_client, budget, groceries.id, LAST_MONTH, month_end(LAST_MONTH)
+        )
+        assert last["spent"] == -drilled == D("600")
 
     async def test_volatility(self, db_session, api_client):
         budget, groceries, _ = await _world(db_session, api_client.test_user)
@@ -187,6 +223,10 @@ class TestTheDrillTotalsTheFigure:
         )
         assert spike["actual"] == D("600")
         assert -drilled == spike["actual"]
+
+
+def _row(report: dict, category) -> dict:
+    return next(c for c in report["categories"] if c["category_id"] == str(category.id))
 
 
 def test_the_filter_asks_for_the_class_joins():

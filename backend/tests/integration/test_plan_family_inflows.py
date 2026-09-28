@@ -85,26 +85,28 @@ class TestMoneyMovedInRaisesThePlan:
 
         row = _row(bva, medical)
         assert (row["assigned"], row["moved_in"], row["plan"]) == (D("0"), D("2000"), D("2000"))
-        assert (row["spent"], row["variance"], row["overspent"]) == (D("2000"), D("0"), False)
+        assert (row["spent"], row["variance"], row["over"]) == (D("2000"), D("0"), False)
         # It read -2,000 and "no plan" — the percentage of nothing.
         assert row["variance_pct"] == 0.0
         assert bva["total_variance"] == D("0")
 
     async def test_cumulative_variance_reads_it_on_plan(self, db_session, api_client):
         budget, _ = await self._medical(db_session, api_client.test_user)
-        (point,) = await ReportService(db_session).cumulative_variance(budget.id, months=1)
+        (point,) = (await ReportService(db_session).plan_vs_spent(budget.id, months=1))[
+            "month_totals"
+        ][-1:]
 
-        assert (point["moved_in"], point["planned"], point["actual_spent"]) == (
+        assert (point["moved_in"], point["plan"], point["spent"]) == (
             D("2000"),
             D("2000"),
             D("2000"),
         )
-        assert point["monthly_variance"] == D("0")
-        assert point["budget_assigned"] == D("0")
+        assert point["variance"] == D("0")
+        assert point["assigned"] == D("0")
 
     async def test_plan_vs_reality_reads_it_on_plan(self, db_session, api_client):
         budget, medical = await self._medical(db_session, api_client.test_user)
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
 
         cell = _row(pvr, medical)["monthly"][-1]
         assert (cell["plan"], cell["spent"], cell["over"]) == (D("2000"), D("2000"), False)
@@ -120,7 +122,7 @@ class TestMoneyMovedInRaisesThePlan:
         bva = await ReportService(db_session).budget_vs_actual(budget.id, THIS_MONTH, TODAY)
 
         row = _row(bva, medical)
-        assert (row["plan"], row["variance"], row["overspent"]) == (D("2100"), D("-50"), True)
+        assert (row["plan"], row["variance"], row["over"]) == (D("2100"), D("-50"), True)
 
     async def test_a_deposit_into_a_savings_envelope_raises_its_plan(self, db_session, api_client):
         """A bonus filed to a sent-out Savings envelope and then sent on to
@@ -139,7 +141,7 @@ class TestMoneyMovedInRaisesThePlan:
 
         row = _row(bva, savings)
         assert (row["moved_in"], row["spent"], row["variance"]) == (D("1000"), D("1000"), D("0"))
-        assert row["overspent"] is False
+        assert row["over"] is False
 
     async def test_a_starting_balance_filed_to_an_envelope_moves_nothing(
         self, db_session, api_client
@@ -203,8 +205,8 @@ class TestMoneyMovedOutLowersThePlan:
         budget, _, mortgage = await self._mortgage(db_session, api_client.test_user)
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
-        (point,) = await reports.cumulative_variance(budget.id, months=1)
-        pvr = await reports.plan_vs_reality(budget.id, months=3)
+        (point,) = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"][-1:]
+        pvr = await reports.plan_vs_spent(budget.id, months=3)
 
         # Still a row — the owner would read a missing row as the mortgage
         # missing — and on plan: assigned 1,500, moved out 1,500. It was a
@@ -216,9 +218,9 @@ class TestMoneyMovedOutLowersThePlan:
             D("0"),
             D("0"),
         )
-        assert (row["variance"], row["overspent"]) == (D("0"), False)
+        assert (row["variance"], row["over"]) == (D("0"), False)
         assert bva["total_variance"] == D("0")
-        assert (point["moved_out"], point["planned"], point["monthly_variance"]) == (
+        assert (point["moved_out"], point["plan"], point["variance"]) == (
             D("1500"),
             D("0"),
             D("0"),
@@ -242,7 +244,7 @@ class TestMoneyMovedOutLowersThePlan:
         await create_transaction(db_session, budget, checking, "-10.00", EARLY)
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=3)
+        pvr = await reports.plan_vs_spent(budget.id, months=3)
         for body in (bva, pvr):
             assert str(idle.id) not in {c["category_id"] for c in body["categories"]}
 
@@ -251,7 +253,7 @@ class TestMoneyMovedOutLowersThePlan:
         assigned, 1,500 moved out, 60 spent on a late fee — 60 over."""
         budget, checking, mortgage = await self._mortgage(db_session, api_client.test_user)
         await create_transaction(db_session, budget, checking, "-60.00", EARLY, category=mortgage)
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
 
         cell = _row(pvr, mortgage)["monthly"][-1]
         assert (cell["assigned"], cell["moved_out"], cell["plan"], cell["variance"]) == (
@@ -265,15 +267,15 @@ class TestMoneyMovedOutLowersThePlan:
         budget, fun = await self._brokerage(db_session, api_client.test_user)
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
-        (point,) = await reports.cumulative_variance(budget.id, months=1)
-        pvr = await reports.plan_vs_reality(budget.id, months=3)
+        (point,) = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"][-1:]
+        pvr = await reports.plan_vs_spent(budget.id, months=3)
 
         row = _row(bva, fun)
         assert (row["assigned"], row["moved_out"], row["plan"]) == (D("600"), D("400"), D("200"))
         # Not spent: saving is not spending. 20 left, where it read 420.
-        assert (row["spent"], row["variance"], row["overspent"]) == (D("180"), D("20"), False)
+        assert (row["spent"], row["variance"], row["over"]) == (D("180"), D("20"), False)
         assert bva["total_moved_out"] == D("400")
-        assert (point["moved_out"], point["planned"], point["actual_spent"]) == (
+        assert (point["moved_out"], point["plan"], point["spent"]) == (
             D("400"),
             D("200"),
             D("180"),
@@ -281,7 +283,7 @@ class TestMoneyMovedOutLowersThePlan:
         cat = _row(pvr, fun)
         assert cat["monthly"][-1]["moved_out"] == D("400")
         # The running month is in no total.
-        assert (cat["total_moved_out"], pvr["total_moved_out"]) == (D("0"), D("0"))
+        assert (cat["total"]["moved_out"], pvr["total_moved_out"]) == (D("0"), D("0"))
 
     async def test_plan_vs_reality_totals_carry_it_over_complete_months(
         self, db_session, api_client
@@ -295,8 +297,8 @@ class TestMoneyMovedOutLowersThePlan:
         await create_transfer(
             db_session, budget, checking, brokerage, "400.00", back(1), category=fun
         )
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
-        assert (_row(pvr, fun)["total_moved_out"], pvr["total_moved_out"]) == (
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
+        assert (_row(pvr, fun)["total"]["moved_out"], pvr["total_moved_out"]) == (
             D("400"),
             D("400"),
         )
@@ -356,19 +358,15 @@ class TestMoneyMovedOutLowersThePlan:
         budget, _ = await self._brokerage(db_session, api_client.test_user)
         await db_session.commit()
         base = f"/api/v1/{budget.id}/reports"
-        bva = await api_client.get(
-            f"{base}/budget-actual",
-            params={"start_date": THIS_MONTH.isoformat(), "end_date": TODAY.isoformat()},
-        )
-        variance = await api_client.get(f"{base}/variance", params={"months": 3})
-        pvr = await api_client.get(f"{base}/plan-vs-reality", params={"months": 3})
-        for r in (bva, variance, pvr):
-            assert r.status_code == 200, r.text
-        assert money(bva.json()["categories"][0]["moved_out"]) == D("400")
-        assert money(bva.json()["total_moved_out"]) == D("400")
-        assert money(variance.json()["points"][-1]["moved_out"]) == D("400")
-        assert money(pvr.json()["categories"][0]["monthly"][-1]["moved_out"]) == D("400")
-        assert "total_moved_out" in pvr.json()
+        r = await api_client.get(f"{base}/plan-vs-spent", params={"months": 3})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # In the running month, so in its cell and its month total, and in no
+        # window total (those are the complete months').
+        assert money(body["categories"][0]["monthly"][-1]["moved_out"]) == D("400")
+        assert money(body["month_totals"][-1]["moved_out"]) == D("400")
+        assert money(body["categories"][0]["total"]["moved_out"]) == D("0")
+        assert money(body["total_moved_out"]) == D("0")
 
     async def test_the_assistant_is_told_it(self, db_session, api_client):
         from igab.ai.tools import handlers
@@ -402,11 +400,11 @@ class TestACardEnvelopeIsNotAPlan:
 
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, THIS_MONTH, TODAY)
-        (point,) = await reports.cumulative_variance(budget.id, months=1)
-        pvr = await reports.plan_vs_reality(budget.id, months=3)
+        (point,) = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"][-1:]
+        pvr = await reports.plan_vs_spent(budget.id, months=3)
 
         assert bva["categories"] == []
-        assert (point["planned"], point["monthly_variance"]) == (D("0"), D("0"))
+        assert (point["plan"], point["variance"]) == (D("0"), D("0"))
         assert pvr["categories"] == []
 
 
@@ -433,7 +431,7 @@ class TestOverHasATolerance:
 
     async def test_cents_over_three_months_are_not_chronic(self, db_session, api_client):
         budget, mortgage = await self._mortgage(db_session, api_client.test_user, "0.27")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=6)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=6)
 
         row = _row(pvr, mortgage)
         assert (row["months_over"], row["chronic"], pvr["chronic_count"]) == (0, False, 0)
@@ -443,13 +441,13 @@ class TestOverHasATolerance:
 
     async def test_past_a_dollar_but_under_one_percent_is_not_over(self, db_session, api_client):
         budget, mortgage = await self._mortgage(db_session, api_client.test_user, "14.00")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=6)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=6)
 
         assert _row(pvr, mortgage)["months_over"] == 0
 
     async def test_one_percent_and_a_dollar_three_times_is_chronic(self, db_session, api_client):
         budget, mortgage = await self._mortgage(db_session, api_client.test_user, "15.00")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=6)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=6)
 
         row = _row(pvr, mortgage)
         assert (row["months_over"], row["chronic"]) == (3, True)
@@ -459,7 +457,7 @@ class TestOverHasATolerance:
         budget, mortgage = await self._mortgage(db_session, api_client.test_user, "0.27")
         bva = await ReportService(db_session).budget_vs_actual(budget.id, back(2), TODAY)
 
-        assert _row(bva, mortgage)["overspent"] is False
+        assert _row(bva, mortgage)["over"] is False
 
 
 class TestASinkingFundIsNeverChronic:
@@ -480,7 +478,7 @@ class TestASinkingFundIsNeverChronic:
 
     async def test_plan_vs_reality_does_not_flag_it(self, db_session, api_client):
         budget, premium = await self._premium(db_session, api_client.test_user)
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=6)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=6)
 
         row = _row(pvr, premium)
         # Over in the months the premium landed — that is still true — but
@@ -501,7 +499,7 @@ class TestASinkingFundIsNeverChronic:
         await db_session.commit()
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
-        pvr = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality")).json()
+        pvr = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-spent")).json()
 
         metric = next(m for m in body["metrics"] if m["key"] == "chronic_overspend")
         assert money(metric["value"]) == D(pvr["chronic_count"]) == D("1")
@@ -530,7 +528,7 @@ class TestOneSpentAcrossTheFamily:
         )
         assert r.status_code == 200, r.text
         months = r.json()["months"]
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
         cells = _row(pvr, medical)["monthly"]
 
         assert [money(m["spent"]) for m in months] == [c["spent"] for c in cells]
@@ -588,14 +586,14 @@ class TestOneSpentAcrossTheFamily:
 class TestPlanVsRealityServesItsRunningMonth:
     async def test_the_newest_column_is_marked(self, db_session, api_client):
         budget, *_ = await _world(db_session, api_client.test_user)
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=3)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=3)
         assert pvr["running_month"] == THIS_MONTH
         assert pvr["months"][-1] == THIS_MONTH
 
 
 class TestVarianceIsThePlanMatrixSummed:
-    """Cumulative Variance's month is Plan vs Reality's column, summed — the
-    identity the "Plan vs Spent" merge will draw as a totals row."""
+    """A month total is its column of cells summed — what Cumulative Variance
+    served beside Plan vs Reality's matrix, and now its totals row."""
 
     async def test_every_month_agrees(self, db_session, api_client):
         budget, checking, hysa, group = await _world(db_session, api_client.test_user)
@@ -608,16 +606,16 @@ class TestVarianceIsThePlanMatrixSummed:
         await create_transaction(db_session, budget, checking, "-100.00", EARLY, category=a)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=3)
-        pvr = await reports.plan_vs_reality(budget.id, months=3)
+        pvr = await reports.plan_vs_spent(budget.id, months=3)
+        variance = pvr["month_totals"]
 
         for i, point in enumerate(variance):
             column = [c["monthly"][i] for c in pvr["categories"]]
-            assert point["monthly_variance"] == sum((c["variance"] for c in column), D("0"))
-            assert point["planned"] == sum((c["plan"] for c in column), D("0"))
-            assert point["planned"] - point["actual_spent"] == point["monthly_variance"]
+            assert point["variance"] == sum((c["variance"] for c in column), D("0"))
+            assert point["plan"] == sum((c["plan"] for c in column), D("0"))
+            assert point["plan"] - point["spent"] == point["variance"]
         # Last month: the drain is no plan (not -300) and Dining is 50 over.
-        assert variance[-2]["monthly_variance"] == D("-50")
+        assert variance[-2]["variance"] == D("-50")
         # This month, drawn but not in the drift: 80 moved in, 100 spent.
-        assert variance[-1]["monthly_variance"] == D("-20")
+        assert variance[-1]["variance"] == D("-20")
         assert variance[-1]["cumulative_variance"] is None
