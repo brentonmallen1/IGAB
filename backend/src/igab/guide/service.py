@@ -408,7 +408,7 @@ class GuideService:
         signals = await self.signals(budget_id, today)
         by_key = {c["key"]: c for c in signals["concepts"]}
 
-        plan = await self.reports.plan_vs_reality(budget_id, today=today)
+        plan = await self.reports.plan_vs_spent(budget_id, today=today)
         chronic_names = [c["category_name"] for c in plan["categories"] if c["chronic"]]
 
         # Same composition as the budget month endpoint, so "funded" here is

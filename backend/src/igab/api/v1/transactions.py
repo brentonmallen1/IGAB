@@ -183,7 +183,7 @@ async def list_budget_transactions(
     #: totals rather than every row of its categories.
     discretionary: bool = False,
     #: Only the rows a plan report counts as spent (`plan_rows.PLAN_SPENT_ROW`),
-    #: so a Budget vs Actual, Plan vs Reality, Volatility or Anomalies figure
+    #: so a Plan vs Spent, Volatility or Anomalies figure
     #: opens the rows it totals — refunds included, as the figure nets them.
     plan_spent: bool = False,
     direction: Literal["inflow", "outflow"] | None = None,

@@ -43,7 +43,7 @@ brokerage with nothing spent read "over" — the drained-envelope bug above,
 arriving by a transfer instead of an assignment.
 
 Pure: takes the figures at whatever grain the report plans in — a month for
-Plan vs Reality, the whole window for Budget vs Actual — and returns the
+a Plan vs Spent cell, the whole window for its Total column — and returns the
 verdict.
 """
 
@@ -69,7 +69,7 @@ OVER_SHARE_AT_LEAST = Decimal("0.01")
 
 #: "Chronic" is over plan in at least `CHRONIC_MONTHS` of the last
 #: `CHRONIC_WINDOW` months the report reads — a plan habitually wrong rather
-#: than a month unlucky. Plan vs Reality serves the flag and the Guide's
+#: than a month unlucky. Plan vs Spent serves the flag and the Guide's
 #: checkup reads it (`guide.service.checkup`); neither decides it again.
 CHRONIC_MONTHS = 3
 CHRONIC_WINDOW = 6
@@ -86,7 +86,7 @@ class PlanOutcome:
     variance: Decimal
     #: Spending exceeded the plan by at least `OVER_BY_AT_LEAST` and
     #: `OVER_SHARE_AT_LEAST` of it — the one meaning of "over" the matrix
-    #: tint, the chronic count and Budget vs Actual's red bar all read.
+    #: tint, the chronic count and the Total column's verdict all read.
     over: bool
 
     @property
@@ -164,8 +164,8 @@ NO_EFFECT = PlanEffect(ZERO, ZERO, ZERO)
 def plan_effect(amount: Decimal, cls: str, *, savings_envelope: bool) -> PlanEffect:
     """What a row filed to a planned envelope (`txn_filters.PLAN_LEDGER_ROW`)
     does to that envelope's plan report — the one statement of it. Every
-    plan report (Budget vs Actual, Cumulative Variance, Plan vs Reality),
-    Category History's Spent, Volatility and Anomalies read it.
+    Plan vs Spent figure, Category History's Spent, Volatility and
+    Anomalies read it.
 
     `amount` is signed (outflow negative); `cls` the row's `ACTIVITY_CLASS`;
     `savings_envelope` whether its category is a savings category

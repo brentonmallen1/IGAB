@@ -6,7 +6,7 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
 from statistics import median
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple
 
 import polars as pl
 from sqlalchemy import Row, Select, func, literal_column, select
@@ -70,7 +70,6 @@ from igab.domain.dates import (
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.money_moves import Figures, figures, flows
-from igab.domain.plan import CHRONIC_WINDOW, is_chronic, plan_outcome, total_variance
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.spending import UNCATEGORIZED, spent
 from igab.domain.tracking_start import (
@@ -109,8 +108,9 @@ from igab.repositories.txn_filters import (
     reapplied_by_schedule,
     reapplied_by_subscriptions,
 )
+from igab.services import plan_vs_spent as pvs
 from igab.services.essentials import reported_essentials
-from igab.services.plan_ledger import PlanMonth, ledger_rows, plan_ledger
+from igab.services.plan_ledger import ledger_rows, plan_ledger
 from igab.services.report_basics import (
     budget_window,
     class_excluded_note,
@@ -131,47 +131,6 @@ from igab.services.report_stats import (
 from igab.services.runway import runway_read
 from igab.services.savings_held import held_between, held_by_month
 from igab.services.tracking_start import entries_by_point, last_moved, stated_values
-
-# Report payload shapes.
-#
-# These rows are built as plain dicts and then sorted and summed by key. Left
-# untyped, each one infers as dict[str, <union of every value type>], so
-# `-row["months_over"]`, `sum(r["total_inflow"] for ...)` and
-# `abs(row["z_score"])` all resolve against that whole union and fail: `str`
-# has no `__abs__`, `Decimal` has no unary minus in the union, and so on. The
-# values are correct at runtime — the type just could not be narrowed.
-#
-# TypedDict pins each key to its own type, so indexing narrows and the
-# arithmetic checks. total=True throughout: every key is always written.
-
-
-class ChronicMonth(TypedDict):
-    month: date
-    assigned: Decimal
-    moved_in: Decimal
-    moved_out: Decimal
-    plan: Decimal
-    spent: Decimal
-    variance: Decimal
-    over: bool
-    active: bool
-
-
-class ChronicCategory(TypedDict):
-    category_id: str
-    category_name: str
-    category_group_name: str
-    monthly: list[ChronicMonth]
-    months_over: int
-    months_active: int
-    total_assigned: Decimal
-    total_moved_in: Decimal
-    total_moved_out: Decimal
-    total_spent: Decimal
-    avg_overspend: Decimal
-    chronic: bool
-    sinking_fund: bool
-
 
 #: The smallest inflow that counts as a payday.
 #:
@@ -967,7 +926,27 @@ class ReportService:
             found.classes,
         )
 
-    # ─── Budget vs Actual ─────────────────────────────────────────────────────
+    # ─── Plan vs Spent ───────────────────────────────────────────────────────
+
+    async def plan_vs_spent(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+        today: date | None = None,
+        category_ids: list[uuid.UUID] | None = None,
+    ) -> dict:
+        """Each category's plan against its spending per month, with a total
+        per month and per category (`services.plan_vs_spent`).
+
+        The window is `budget_window`'s: `months` complete months, and the
+        running month drawn beside them as `running_month`. The Guide's
+        checkup reads the chronic flag from here, unscoped."""
+        today = reader_today(today)
+        window = await budget_window(self.session, budget_id, months, today)
+        ledger = await plan_ledger(
+            self.session, budget_id, window.start, today, category_ids=category_ids
+        )
+        return pvs.plan_vs_spent(ledger, window)
 
     async def budget_vs_actual(
         self,
@@ -976,270 +955,13 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        """Each category's plan for the window against what it spent.
-
-        The plan is the window's assignments plus money moved into the
-        envelope less money moved out, and spent is net of refunds —
-        `plan_ledger` reads both and `domain.plan` says why. A category with
-        no activity at all (`PlanMonth.quiet`: nothing assigned, moved or
-        spent) is not a row. One whose plan floors to nothing is: a mortgage
-        paid by a principal transfer is on plan, not missing.
-
-        The totals are the served rows summed, so the headline cannot say
-        something the rows under it do not (`plan.total_variance`).
-        """
+        """Plan vs Spent's Total column over any dates — the AI's
+        `budget_vs_actual` tool names arbitrary ones. The same fold
+        (`plan_vs_spent.window_total`) over a ledger read for those dates."""
         ledger = await plan_ledger(
             self.session, budget_id, start_date, end_date, category_ids=category_ids
         )
-        zero = Decimal("0")
-        categories: list[dict] = []
-        outcomes = []
-        totals = {
-            "assigned": zero,
-            "moved_in": zero,
-            "moved_out": zero,
-            "plan": zero,
-            "spent": zero,
-        }
-        for cat in ledger.values():
-            t = cat.total()
-            outcome = plan_outcome(t.assigned, t.spent, moved_in=t.moved_in, moved_out=t.moved_out)
-            if t.quiet:
-                continue
-            # `overspent` is served so the chart stops deciding it from the
-            # raw assignment; `plan` so it never adds moved-in money itself.
-            outcomes.append(outcome)
-            categories.append(
-                {
-                    "category_id": str(cat.category_id),
-                    "category_name": cat.name,
-                    "category_group_name": cat.group,
-                    "assigned": t.assigned,
-                    "moved_in": t.moved_in,
-                    "moved_out": t.moved_out,
-                    "plan": outcome.plan,
-                    "spent": t.spent,
-                    "variance": outcome.variance,
-                    "variance_pct": outcome.variance_pct,
-                    "overspent": outcome.over,
-                }
-            )
-            totals["assigned"] += t.assigned
-            totals["moved_in"] += t.moved_in
-            totals["moved_out"] += t.moved_out
-            totals["plan"] += outcome.plan
-            totals["spent"] += t.spent
-        categories.sort(key=lambda c: (-c["spent"], c["category_name"]))
-        return {
-            "categories": categories,
-            "total_assigned": totals["assigned"],
-            "total_moved_in": totals["moved_in"],
-            "total_moved_out": totals["moved_out"],
-            "total_plan": totals["plan"],
-            "total_spent": totals["spent"],
-            "total_variance": total_variance(outcomes),
-        }
-
-    # ─── Cumulative Variance ──────────────────────────────────────────────────
-
-    async def cumulative_variance(
-        self,
-        budget_id: uuid.UUID,
-        months: int = 12,
-        today: date | None = None,
-    ) -> list[dict]:
-        """Each month's plan against its spending, and the running drift of
-        the complete months (`budget_window`).
-
-        A month's variance is its categories' verdicts summed — the column
-        totals of Plan vs Reality's matrix — not `assigned - spent` over the
-        whole budget. That raw difference read money moved out of one
-        envelope and spent from another as an overrun (the second's plan came
-        from the first's carryover, which a monthly plan cannot see), and it
-        read a transfer from savings into an envelope as spending with no plan
-        behind it. `planned - actual_spent` is `monthly_variance` by
-        construction.
-
-        The running month is served with its figures so far and NO cumulative
-        figure: its whole assignment is in on the 1st while its spending
-        arrives over thirty days, so adding it made the drift leap "under
-        budget" at the start of every month and drift back by its end.
-        """
-        today = reader_today(today)
-        window = await budget_window(self.session, budget_id, months, today)
-        ledger = await plan_ledger(self.session, budget_id, window.start, today)
-        zero = Decimal("0")
-        results = []
-        cumulative = zero
-        for month in window.axis:
-            assigned = moved_in = moved_out = planned = spent = variance = zero
-            for cat in ledger.values():
-                cell = cat.months.get(month)
-                if cell is None:
-                    continue
-                outcome = plan_outcome(
-                    cell.assigned, cell.spent, moved_in=cell.moved_in, moved_out=cell.moved_out
-                )
-                assigned += cell.assigned
-                moved_in += cell.moved_in
-                moved_out += cell.moved_out
-                planned += outcome.plan
-                spent += cell.spent
-                variance += outcome.variance
-            running = window.is_running(month)
-            if not running:
-                cumulative += variance
-            results.append(
-                {
-                    "month": month,
-                    "partial_month": running,
-                    "budget_assigned": assigned,
-                    "moved_in": moved_in,
-                    "moved_out": moved_out,
-                    "planned": planned,
-                    "actual_spent": spent,
-                    "monthly_variance": variance,
-                    "cumulative_variance": None if running else cumulative,
-                }
-            )
-        return results
-
-    # ─── Plan vs Reality ─────────────────────────────────────────────────────
-
-    async def plan_vs_reality(
-        self,
-        budget_id: uuid.UUID,
-        months: int = 12,
-        today: date | None = None,
-    ) -> dict:
-        """Each category's plan against its spending, per month.
-
-        Deliberately ignores carryover: this report measures monthly plan
-        discipline (did the month's spending fit the month's plan?), not
-        envelope health — a category living off January's surplus still
-        reads as over-plan in February if nothing was assigned or moved in.
-
-        The plan and spent are `plan_ledger`'s, the universe Budget vs Actual
-        and Cumulative Variance count. A month counts as "over" when
-        `plan_outcome` says so — past the plan by a dollar and 1% of it —
-        and a category is chronic by `plan.is_chronic`, over the window's
-        last `CHRONIC_WINDOW` complete months. The Guide's chronic-overspend
-        check reads the served flag, so saving, a transfer into an envelope, a
-        few cents of rounding or a sinking fund paying its bill can never be
-        reported as a bad habit.
-
-        The window is `budget_window`'s: `months` complete months, and the
-        running month drawn beside them as `running_month`. Every verdict and
-        total — a cell's `over`, chronic, months over, the headline sums —
-        reads the complete months alone: a month whose assignment is all in
-        and whose spending is a week old is neither over nor under yet.
-
-        A category with no active month — nothing assigned, moved or spent
-        anywhere in the window, the running month included (`PlanMonth.quiet`)
-        — is not a row.
-        """
-        today = reader_today(today)
-        window = await budget_window(self.session, budget_id, months, today)
-        months_list = window.axis
-        ledger = await plan_ledger(self.session, budget_id, window.start, today)
-
-        zero = Decimal("0")
-        recent = set(window.complete[-CHRONIC_WINDOW:])
-        categories: list[ChronicCategory] = []
-        total_assigned = total_moved_in = total_moved_out = total_spent = zero
-        chronic_count = 0
-        for cat in ledger.values():
-            monthly: list[ChronicMonth] = []
-            months_over = 0
-            months_active = 0
-            recent_over = 0
-            over_total = zero
-            shown = False
-            t = PlanMonth()
-            for m in months_list:
-                cell = cat.months.get(m) or PlanMonth()
-                # One verdict for the chronic count, the cell's tint AND its
-                # variance: a drained envelope was once coloured as overspent
-                # while the chronic flag beside it disagreed.
-                outcome = plan_outcome(
-                    cell.assigned, cell.spent, moved_in=cell.moved_in, moved_out=cell.moved_out
-                )
-                active = not cell.quiet
-                running = window.is_running(m)
-                shown = shown or active
-                if not running:
-                    t.assigned += cell.assigned
-                    t.moved_in += cell.moved_in
-                    t.moved_out += cell.moved_out
-                    t.spent += cell.spent
-                    if active:
-                        months_active += 1
-                        if outcome.over:
-                            months_over += 1
-                            over_total += -outcome.variance
-                            if m in recent:
-                                recent_over += 1
-                monthly.append(
-                    {
-                        "month": m,
-                        "assigned": cell.assigned,
-                        "moved_in": cell.moved_in,
-                        "moved_out": cell.moved_out,
-                        "plan": outcome.plan,
-                        "spent": cell.spent,
-                        "variance": outcome.variance,
-                        "over": outcome.over and not running,
-                        "active": active,
-                    }
-                )
-            if not shown:
-                continue
-            chronic = is_chronic(recent_over, sinking_fund=cat.sinking_fund)
-            if chronic:
-                chronic_count += 1
-            avg_overspend = quantize_cents(over_total / months_over) if months_over else zero
-            categories.append(
-                {
-                    "category_id": str(cat.category_id),
-                    "category_name": cat.name,
-                    "category_group_name": cat.group,
-                    "monthly": monthly,
-                    "months_over": months_over,
-                    "months_active": months_active,
-                    "total_assigned": t.assigned,
-                    "total_moved_in": t.moved_in,
-                    "total_moved_out": t.moved_out,
-                    "total_spent": t.spent,
-                    "avg_overspend": avg_overspend,
-                    "chronic": chronic,
-                    "sinking_fund": cat.sinking_fund,
-                }
-            )
-            total_assigned += t.assigned
-            total_moved_in += t.moved_in
-            total_moved_out += t.moved_out
-            total_spent += t.spent
-
-        categories.sort(
-            key=lambda c: (
-                not c["chronic"],
-                -c["months_over"],
-                -c["total_spent"],
-                c["category_name"],
-            )
-        )
-        return {
-            "months": months_list,
-            # Which column is still being written: the page marks it "so far"
-            # rather than guessing.
-            "running_month": window.running,
-            "categories": categories,
-            "total_assigned": total_assigned,
-            "total_moved_in": total_moved_in,
-            "total_moved_out": total_moved_out,
-            "total_spent": total_spent,
-            "chronic_count": chronic_count,
-        }
+        return pvs.budget_vs_actual(ledger)
 
     # ─── Category Volatility ─────────────────────────────────────────────────
 

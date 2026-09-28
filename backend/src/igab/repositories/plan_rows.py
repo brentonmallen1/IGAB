@@ -1,7 +1,7 @@
 """The rows a plan report counts as spent, as a WHERE clause — for the drill
 that opens one of its figures.
 
-Budget vs Actual, Plan vs Reality, Volatility and Anomalies all read
+Plan vs Spent, Volatility and Anomalies all read
 `services.plan_ledger`, whose "spent" is `domain.plan.plan_effect` over
 `PLAN_LEDGER_ROW`: spending either way (a refund lowers it) and anything
 leaving a Savings envelope. Their drills listed `direction=outflow` rows of

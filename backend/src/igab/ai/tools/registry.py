@@ -177,8 +177,10 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="budget_vs_actual",
         description=(
-            "Assigned versus spent per envelope over a date range, with the variance. "
-            "Use this for 'am I over budget' questions."
+            "Plan versus spent per envelope over a date range, with the variance — the "
+            "Plan vs Spent report's Total column for those dates. The plan is assigned "
+            "plus money moved in, less money moved out. Use this for 'am I over budget' "
+            "questions."
         ),
         parameters=_obj({"start_date": _START, "end_date": _END}, ("start_date", "end_date")),
         handler=handlers.budget_vs_actual,
