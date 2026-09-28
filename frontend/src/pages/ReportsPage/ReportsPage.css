@@ -232,8 +232,8 @@
      scroll box's padding edge, and a header pinned there showed rows
      sliding past above it. */
   --reports-pane-pad: var(--spacing-xl);
-  /* The summary line under a pinned report header: its height, and what a
-     report's own scroll box leaves room for. */
+  /* The summary line under a pinned report header: its height, and the
+     room a strip pinned beneath that header leaves for it. */
   --report-summary-h: 30px;
 
   flex: 1;

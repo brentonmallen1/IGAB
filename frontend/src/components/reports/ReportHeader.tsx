@@ -39,9 +39,12 @@ export function ReportHeader({ children, className }: { children: ReactNode; cla
       // A data attribute, not a class: React owns className and rewrites it
       // whenever the stuck shadow toggles.
       el.dataset.pinned = pins ? 'yes' : 'no'
-      // What stays pinned, on the section, where a report's own scroll box
-      // reads it to fit the room below.
-      el.parentElement?.style.setProperty('--report-header-pinned', `${pins ? pinned : 0}px`)
+      // What stays pinned, and the summary line's room beneath it — on the
+      // section, where a strip that pins under the header (Plan vs Spent's
+      // column header) reads where to stop. Nothing, when it does not pin.
+      const section = el.parentElement
+      section?.style.setProperty('--report-header-pinned', `${pins ? pinned : 0}px`)
+      section?.style.setProperty('--report-summary-room', pins ? 'var(--report-summary-h)' : '0px')
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return

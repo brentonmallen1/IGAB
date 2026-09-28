@@ -22,6 +22,7 @@ import {
   worstTotalOverspend,
 } from './planVsSpentCells'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
+import { PlanVsSpentHeadRow } from './PlanVsSpentHead'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
@@ -61,13 +62,16 @@ export function PlanVsSpentReport({ budgetId }: Props) {
   )
   const captureRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const stripRef = useRef<HTMLDivElement>(null)
 
   // Open on the newest month. The matrix runs oldest to newest, and on a
   // phone only two or three months fit, so it opened on last year and the
   // month a reader came to check was a long sideways scroll away.
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollLeft = el.scrollWidth
+    if (!el) return
+    el.scrollLeft = el.scrollWidth
+    alignScroll(el, stripRef.current)
   }, [data, chronicOnly])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
@@ -241,166 +245,184 @@ export function PlanVsSpentReport({ budgetId }: Props) {
               : 'No budget or spending data for this period.'}
           </div>
         ) : (
-          <div className="plan-spent__scroll" ref={scrollRef}>
-            <table className="plan-spent__table">
-              <caption className="sr-only">
-                What each envelope had left by month, with totals
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col" className="plan-spent__name">
-                    Category
-                  </th>
-                  {allMonths.map((m) => (
-                    <th
-                      scope="col"
-                      key={m}
-                      className={`plan-spent__month-header${isRunning(m) ? ' plan-spent__month-header--running' : ''}`}
-                    >
-                      {monthName(m)}
-                    </th>
-                  ))}
-                  <th scope="col" className="plan-spent__tot plan-spent__tot--months">
-                    Over
-                  </th>
-                  <th scope="col" className="plan-spent__tot plan-spent__tot--funded">
-                    Funded
-                  </th>
-                  <th scope="col" className="plan-spent__tot plan-spent__tot--spent">
-                    Spent
-                  </th>
-                  <th scope="col" className="plan-spent__tot plan-spent__tot--overspent">
-                    Overspent
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((cat) => (
-                  <tr key={cat.category_id}>
-                    <th scope="row" className="plan-spent__name">
-                      <button
-                        className="plan-spent__name-btn"
-                        type="button"
-                        title={`${cat.category_name} — ${windowLabel}`}
+          <>
+            {/* The visible column header: pins under the report header while
+              the page scrolls, and follows the table sideways. A copy of the
+              table's own header row, so hidden from assistive tech. */}
+            <div
+              className="plan-spent__head-strip"
+              ref={stripRef}
+              aria-hidden="true"
+              onScroll={() => alignScroll(stripRef.current, scrollRef.current)}
+            >
+              <table className="plan-spent__table">
+                <thead>
+                  <PlanVsSpentHeadRow
+                    months={allMonths}
+                    monthName={monthName}
+                    isRunning={isRunning}
+                  />
+                </thead>
+              </table>
+            </div>
+            <div
+              className="plan-spent__scroll"
+              ref={scrollRef}
+              onScroll={() => alignScroll(scrollRef.current, stripRef.current)}
+            >
+              <table className="plan-spent__table">
+                <caption className="sr-only">
+                  What each envelope had left by month, with totals
+                </caption>
+                <thead className="plan-spent__head--collapsed">
+                  <PlanVsSpentHeadRow
+                    months={allMonths}
+                    monthName={monthName}
+                    isRunning={isRunning}
+                    collapsed
+                  />
+                </thead>
+                <tbody>
+                  {categories.map((cat) => (
+                    <tr key={cat.category_id}>
+                      <th scope="row" className="plan-spent__name">
+                        <button
+                          className="plan-spent__name-btn"
+                          type="button"
+                          title={`${cat.category_name} — ${windowLabel}`}
+                          onClick={() => drillCategoryTotal(cat)}
+                        >
+                          {cat.chronic && (
+                            <span className="plan-spent__dot" data-testid="chronic-dot">
+                              <span className="sr-only">Chronic: </span>
+                            </span>
+                          )}
+                          <span className="plan-spent__name-text">
+                            <span className="plan-spent__name-cat">{cat.category_name}</span>
+                            <span className="plan-spent__name-group">
+                              {cat.category_group_name}
+                            </span>
+                          </span>
+                        </button>
+                      </th>
+                      {cat.monthly.map((cell) => {
+                        const running = isRunning(cell.month)
+                        const ym = monthName(cell.month)
+                        const short = cell.over ? ` — ${formatMoney(cell.overspent)} short` : ''
+                        return (
+                          <td
+                            key={cell.month}
+                            className={[
+                              'plan-spent__cell',
+                              cell.active ? 'plan-spent__cell--clickable' : '',
+                              cell.active && cell.over ? 'plan-spent__cell--over' : '',
+                              running ? 'plan-spent__cell--running' : '',
+                            ].join(' ')}
+                            style={cell.active ? overspendStyle(cell, maxOver) : undefined}
+                            title={
+                              cell.active
+                                ? `${cat.category_name} · ${ym}${short} — ${envelopeBreakdown(cell, formatMoney)}${cell.estimated ? ' (estimated: before the budget page can say)' : ''}`
+                                : undefined
+                            }
+                            onClick={
+                              cell.active
+                                ? () =>
+                                    drillMonth(
+                                      { categoryIds: [cat.category_id] },
+                                      `${cat.category_name} · ${ym}`,
+                                      cell.month
+                                    )
+                                : undefined
+                            }
+                          >
+                            {cell.active ? balanceLabel(cell.left, privacyMode) : ''}
+                          </td>
+                        )
+                      })}
+                      <td className="plan-spent__tot plan-spent__tot--months">
+                        {cat.months_over > 0 ? `${cat.months_over}/${cat.months_active}` : ''}
+                      </td>
+                      <td className="plan-spent__tot plan-spent__tot--funded">
+                        {formatMoney(cat.total.funded)}
+                      </td>
+                      <td
+                        className="plan-spent__tot plan-spent__tot--spent plan-spent__cell--clickable"
                         onClick={() => drillCategoryTotal(cat)}
                       >
-                        {cat.chronic && (
-                          <span className="plan-spent__dot" data-testid="chronic-dot">
-                            <span className="sr-only">Chronic: </span>
-                          </span>
-                        )}
-                        <span className="plan-spent__name-text">
-                          <span className="plan-spent__name-cat">{cat.category_name}</span>
-                          <span className="plan-spent__name-group">{cat.category_group_name}</span>
-                        </span>
-                      </button>
+                        {formatMoney(cat.total.spent)}
+                      </td>
+                      <td
+                        className={[
+                          'plan-spent__tot',
+                          'plan-spent__tot--overspent',
+                          'plan-spent__cell--clickable',
+                          cat.total.over ? 'plan-spent__cell--over' : '',
+                        ].join(' ')}
+                        style={overspendStyle(cat.total, maxTotalOver)}
+                        title={`${cat.category_name} · ${windowLabel} — ${envelopeBreakdown(cat.total, formatMoney, { span: true })}`}
+                        onClick={() => drillCategoryTotal(cat)}
+                      >
+                        {overspentLabel(cat.total.overspent, privacyMode)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row" className="plan-spent__name plan-spent__foot-label">
+                      Overspent, all categories
                     </th>
-                    {cat.monthly.map((cell) => {
-                      const running = isRunning(cell.month)
-                      const ym = monthName(cell.month)
-                      const short = cell.over ? ` — ${formatMoney(cell.overspent)} short` : ''
-                      return (
-                        <td
-                          key={cell.month}
-                          className={[
-                            'plan-spent__cell',
-                            cell.active ? 'plan-spent__cell--clickable' : '',
-                            cell.active && cell.over ? 'plan-spent__cell--over' : '',
-                            running ? 'plan-spent__cell--running' : '',
-                          ].join(' ')}
-                          style={cell.active ? overspendStyle(cell, maxOver) : undefined}
-                          title={
-                            cell.active
-                              ? `${cat.category_name} · ${ym}${short} — ${envelopeBreakdown(cell, formatMoney)}${cell.estimated ? ' (estimated: before the budget page can say)' : ''}`
-                              : undefined
-                          }
-                          onClick={
-                            cell.active
-                              ? () =>
-                                  drillMonth(
-                                    { categoryIds: [cat.category_id] },
-                                    `${cat.category_name} · ${ym}`,
-                                    cell.month
-                                  )
-                              : undefined
-                          }
-                        >
-                          {cell.active ? balanceLabel(cell.left, privacyMode) : ''}
-                        </td>
-                      )
-                    })}
-                    <td className="plan-spent__tot plan-spent__tot--months">
-                      {cat.months_over > 0 ? `${cat.months_over}/${cat.months_active}` : ''}
-                    </td>
+                    {monthTotals.map((t) => (
+                      <td
+                        key={t.month}
+                        className={[
+                          'plan-spent__cell',
+                          'plan-spent__cell--clickable',
+                          monthOverspent(t) ? 'plan-spent__foot--over' : 'plan-spent__foot--quiet',
+                          t.partial_month ? 'plan-spent__cell--running' : '',
+                        ].join(' ')}
+                        title={`${monthName(t.month)} — funded ${formatMoney(t.funded)}, spent ${formatMoney(t.spent)}, left ${formatMoney(t.left)}${t.partial_month ? '' : `; ${t.categories_over} went negative, ${formatMoney(t.overspent)} covered by Ready to Assign`}`}
+                        onClick={() =>
+                          drillMonth(
+                            everyCategory,
+                            `All categories · ${monthName(t.month)}`,
+                            t.month
+                          )
+                        }
+                      >
+                        {overspentLabel(t.overspent, privacyMode)}
+                      </td>
+                    ))}
+                    <td className="plan-spent__tot plan-spent__tot--months" />
                     <td className="plan-spent__tot plan-spent__tot--funded">
-                      {formatMoney(cat.total.funded)}
+                      {data ? formatMoney(data.total_funded) : ''}
                     </td>
                     <td
                       className="plan-spent__tot plan-spent__tot--spent plan-spent__cell--clickable"
-                      onClick={() => drillCategoryTotal(cat)}
+                      onClick={() => drillTotal(everyCategory, `All categories · ${windowLabel}`)}
                     >
-                      {formatMoney(cat.total.spent)}
+                      {data ? formatMoney(data.total_spent) : ''}
                     </td>
                     <td
-                      className={[
-                        'plan-spent__tot',
-                        'plan-spent__tot--overspent',
-                        'plan-spent__cell--clickable',
-                        cat.total.over ? 'plan-spent__cell--over' : '',
-                      ].join(' ')}
-                      style={overspendStyle(cat.total, maxTotalOver)}
-                      title={`${cat.category_name} · ${windowLabel} — ${envelopeBreakdown(cat.total, formatMoney, { span: true })}`}
-                      onClick={() => drillCategoryTotal(cat)}
+                      className={`plan-spent__tot plan-spent__tot--overspent plan-spent__cell--clickable ${data && coveredAnything(data.total_overspent) ? 'plan-spent__foot--over' : 'plan-spent__foot--quiet'}`}
+                      onClick={() => drillTotal(everyCategory, `All categories · ${windowLabel}`)}
                     >
-                      {overspentLabel(cat.total.overspent, privacyMode)}
+                      {data ? overspentLabel(data.total_overspent, privacyMode) : ''}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row" className="plan-spent__name plan-spent__foot-label">
-                    Overspent, all categories
-                  </th>
-                  {monthTotals.map((t) => (
-                    <td
-                      key={t.month}
-                      className={[
-                        'plan-spent__cell',
-                        'plan-spent__cell--clickable',
-                        monthOverspent(t) ? 'plan-spent__foot--over' : 'plan-spent__foot--quiet',
-                        t.partial_month ? 'plan-spent__cell--running' : '',
-                      ].join(' ')}
-                      title={`${monthName(t.month)} — funded ${formatMoney(t.funded)}, spent ${formatMoney(t.spent)}, left ${formatMoney(t.left)}${t.partial_month ? '' : `; ${t.categories_over} went negative, ${formatMoney(t.overspent)} covered by Ready to Assign`}`}
-                      onClick={() =>
-                        drillMonth(everyCategory, `All categories · ${monthName(t.month)}`, t.month)
-                      }
-                    >
-                      {overspentLabel(t.overspent, privacyMode)}
-                    </td>
-                  ))}
-                  <td className="plan-spent__tot plan-spent__tot--months" />
-                  <td className="plan-spent__tot plan-spent__tot--funded">
-                    {data ? formatMoney(data.total_funded) : ''}
-                  </td>
-                  <td
-                    className="plan-spent__tot plan-spent__tot--spent plan-spent__cell--clickable"
-                    onClick={() => drillTotal(everyCategory, `All categories · ${windowLabel}`)}
-                  >
-                    {data ? formatMoney(data.total_spent) : ''}
-                  </td>
-                  <td
-                    className={`plan-spent__tot plan-spent__tot--overspent plan-spent__cell--clickable ${data && coveredAnything(data.total_overspent) ? 'plan-spent__foot--over' : 'plan-spent__foot--quiet'}`}
-                    onClick={() => drillTotal(everyCategory, `All categories · ${windowLabel}`)}
-                  >
-                    {data ? overspentLabel(data.total_overspent, privacyMode) : ''}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                </tfoot>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
   )
+}
+
+/** Keep the pinned header strip and the table scrolled to the same column,
+ *  whichever of the two was swiped. Only when they differ, so the echo from
+ *  the other side's scroll event settles instead of looping. */
+function alignScroll(from: HTMLElement | null, to: HTMLElement | null) {
+  if (from && to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft
 }
