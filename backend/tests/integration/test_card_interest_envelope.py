@@ -263,18 +263,36 @@ class TestKeptWhileACardNeedsIt:
         with pytest.raises(InvariantViolation, match="archive it instead"):
             await service.delete_categories(budget.id, [interest.id], month=MONTH)
 
-    async def test_delete_is_allowed_once_no_card_is_left(self, db_session):
+    async def test_delete_is_refused_even_with_no_card_left(self, db_session):
+        """It used to go once the last card did, which left the next card to
+        adopt or remake it; the app owns it, so it is never deleted."""
         services, budget = await _budget(db_session)
         card = await _card(db_session, budget)
         [interest] = await _keyed(db_session, budget.id)
         card.is_deleted = True
         await db_session.flush()
+        service = _category_service(db_session, services)
 
-        await _category_service(db_session, services).delete_categories(
-            budget.id, [interest.id], month=MONTH
-        )
+        preview = await service.preview_delete(budget.id, [interest.id], MONTH)
+        assert preview.blocked_by == [
+            "'Interest & fees' is where card interest is filed; archive it instead."
+        ]
+        with pytest.raises(InvariantViolation, match="archive it instead"):
+            await service.delete_categories(budget.id, [interest.id], month=MONTH)
 
-        assert await find_interest_envelope(db_session, budget.id) is None
+        assert await find_interest_envelope(db_session, budget.id) is not None
+
+    async def test_deleting_its_group_is_refused_too(self, db_session):
+        services, budget = await _budget(db_session)
+        await _card(db_session, budget)
+        [interest] = await _keyed(db_session, budget.id)
+
+        with pytest.raises(InvariantViolation, match="archive it instead"):
+            await _category_service(db_session, services).delete_group(
+                budget.id, interest.category_group_id, month=MONTH
+            )
+
+        assert await find_interest_envelope(db_session, budget.id) is not None
 
     async def test_it_may_be_archived(self, db_session):
         services, budget = await _budget(db_session)

@@ -56,7 +56,6 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.repositories.txn_filters import CARD_ACCOUNT
 from igab.services.budget_service import BudgetService
 from igab.services.card_payment import CARD_INTEREST_KEY
 from igab.services.change_log import ChangeRecorder, snapshot
@@ -1407,18 +1406,12 @@ class CategoryService:
 
         if cat.system_key == CARD_INTEREST_KEY:
             # Every card's interest is filed here, and a synced interest row
-            # is filed here automatically, so while a card exists deleting it
-            # would only send that money back to "needs a category". Archive
-            # hides it and keeps its history; with no card left it may go.
-            live_card = (
-                await self.session.execute(
-                    select(Account.id)
-                    .where(Account.budget_id == cat.budget_id, CARD_ACCOUNT)
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if live_card is not None:
-                return f"'{cat.name}' is where card interest is filed; archive it instead."
+            # is filed here automatically, so deleting it would only send that
+            # money back to "needs a category". It is kept even with no card
+            # left: the app owns it, `ensure_interest_envelope` would adopt or
+            # remake it with the next card, and an archived one keeps its
+            # history without drawing anywhere.
+            return f"'{cat.name}' is where card interest is filed; archive it instead."
         if cat.linked_account_id is not None:
             account = await self.session.get(Account, cat.linked_account_id)
             if account is not None and not account.is_deleted:
