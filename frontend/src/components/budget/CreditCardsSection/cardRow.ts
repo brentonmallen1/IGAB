@@ -1,5 +1,5 @@
 import type { CardStatus } from '../../../types'
-import type { DueNotice } from '../../../utils/paymentDue'
+import { dueInPhrase, reminderWords, type CardDueReminder } from '../../../utils/paymentDue'
 
 /**
  * What a card's row says about itself, decided once and away from the DOM.
@@ -20,17 +20,40 @@ type Money = (n: number) => string
 export type PillTone = 'negative' | 'positive' | 'zero'
 
 /** Why a card's line carries a dot: it needs you. */
-export type LineMark = 'overspent' | 'to-file' | 'not-covered'
+export type LineMark = 'overspent' | 'past-due' | 'to-file' | 'not-covered'
 
-/** Most urgent first: the order `cardLine` checks them in, and the order the
- *  section header picks its one dot from. */
-const MARK_SEVERITY: readonly LineMark[] = ['overspent', 'to-file', 'not-covered']
+/** Most urgent first: the order `cardLine` checks them in (with `past-due`
+ *  laid over it by `lineMark`), and the order the section header picks its
+ *  one dot from. A bill gone by unpaid ranks under overspent — that one
+ *  reaches Ready to Assign on the 1st whatever else happens — and over rows
+ *  to file, which can wait a day where a late fee cannot. */
+const MARK_SEVERITY: readonly LineMark[] = ['overspent', 'past-due', 'to-file', 'not-covered']
 
 /** What the header's dot says to a screen reader, which cannot see its colour. */
 const MARK_LABEL: Record<LineMark, string> = {
   overspent: 'A card is overspent',
+  'past-due': 'A card bill is past due',
   'to-file': 'A card has transactions to categorize',
   'not-covered': 'A card owes more than is set aside',
+}
+
+/**
+ * The dot a card's line carries once its bill is taken into account: past
+ * due outranks everything `cardLine` decides except overspent.
+ *
+ * Separate from `cardLine` because the two answer different questions. The
+ * line's WORD is where the card's money stands, and it keeps its own colour
+ * ("3 to categorize" stays amber); the bill says itself in the chip beside
+ * it. Only the dot — the one thing that has to pick — takes the most urgent
+ * of the two.
+ */
+export function lineMark(
+  line: Pick<CardLine, 'mark'>,
+  reminder: CardDueReminder | null
+): LineMark | null {
+  if (line.mark === 'overspent') return line.mark
+  if (reminder?.state === 'past_due') return 'past-due'
+  return line.mark
 }
 
 /**
@@ -449,12 +472,12 @@ export function pendingNote(card: CardStatus, money: Money): string | null {
 
 export interface CardDue {
   name: string
-  notice: DueNotice
+  reminder: CardDueReminder
 }
 
 /**
- * What the section's header says about bills falling due, or null when none
- * are close.
+ * What the section's header says about bills due or past due, or null when
+ * none is.
  *
  * The header is the only thing on screen when the strip is collapsed, and a
  * bill you cannot see coming is the one that catches you. It already carries
@@ -464,13 +487,16 @@ export interface CardDue {
  * Names the card when there is exactly one, because "which card" is the
  * question a strip with several of them raises, and a header with no answer
  * to it sends the reader to open the section to find out. With more than one
- * the count leads and the soonest sets the urgency; the rows carry the rest.
+ * the count leads: how many are past due when any is, else the soonest sets
+ * the urgency; the rows carry the rest.
  */
-export function dueHeaderNote(due: CardDue[]): string | null {
+export function dueHeaderNote(due: CardDue[], formatDay: (iso: string) => string): string | null {
   if (due.length === 0) return null
-  const soonest = due.reduce((a, b) => (b.notice.days < a.notice.days ? b : a))
-  if (due.length === 1) return `${soonest.name} due ${soonest.notice.phrase}`
-  return `${due.length} bills due, soonest ${soonest.notice.phrase}`
+  if (due.length === 1) return `${due[0].name} ${reminderWords(due[0].reminder, formatDay)}`
+  const past = due.filter((d) => d.reminder.state === 'past_due').length
+  if (past > 0) return `${due.length} bills due, ${past} past due`
+  const soonest = due.reduce((a, b) => (b.reminder.days < a.reminder.days ? b : a))
+  return `${due.length} bills due, soonest ${dueInPhrase(soonest.reminder.days)}`
 }
 
 /**

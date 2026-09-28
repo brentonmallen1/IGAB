@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dueInPhrase } from '../../../utils/paymentDue'
+import type { CardDueReminder } from '../../../utils/paymentDue'
 import {
   reserveLegs,
   debtMovementWord,
@@ -11,6 +11,7 @@ import {
   pendingNote,
   cardLine,
   cardCallout,
+  lineMark,
   sectionMark,
   type LineMark,
   envelopeRowShown,
@@ -515,39 +516,108 @@ describe('the opening leg', () => {
 })
 
 describe('dueHeaderNote', () => {
-  // The real phrasing, not a stand-in: `dueInPhrase` says "tomorrow" at one
-  // day, and a helper that invented "in 1 days" would pin the wrong words.
-  const at = (days: number) => ({ date: '2026-09-17', days, phrase: dueInPhrase(days) })
+  const fmt = (iso: string) => `<${iso}>`
+  const due = (days: number): CardDueReminder => ({
+    state: 'due',
+    dueDate: '2026-09-17',
+    days,
+    paidAfter: '2026-08-17',
+  })
+  const past: CardDueReminder = {
+    state: 'past_due',
+    dueDate: '2026-09-03',
+    days: -10,
+    paidAfter: '2026-08-03',
+  }
 
-  it('says nothing when no bill is close', () => {
-    expect(dueHeaderNote([])).toBeNull()
+  it('says nothing when no bill is due', () => {
+    expect(dueHeaderNote([], fmt)).toBeNull()
   })
 
   it('names the card when exactly one is', () => {
     // "Which card" is the question a strip with several raises, and a header
     // with no answer sends the reader to open the section to find out.
-    expect(dueHeaderNote([{ name: 'Sapphire Visa', notice: at(4) }])).toBe(
+    expect(dueHeaderNote([{ name: 'Sapphire Visa', reminder: due(4) }], fmt)).toBe(
       'Sapphire Visa due in 4 days'
+    )
+  })
+
+  it('names the date a lone past-due bill fell due', () => {
+    expect(dueHeaderNote([{ name: 'Sapphire Visa', reminder: past }], fmt)).toBe(
+      'Sapphire Visa past due since <2026-09-03>'
     )
   })
 
   it('counts them and leads with the soonest when several are', () => {
     expect(
-      dueHeaderNote([
-        { name: 'Sapphire Visa', notice: at(4) },
-        { name: 'Thistledown Card', notice: at(2) },
-        { name: 'Harborstone Card', notice: at(6) },
-      ])
+      dueHeaderNote(
+        [
+          { name: 'Sapphire Visa', reminder: due(4) },
+          { name: 'Thistledown Card', reminder: due(2) },
+          { name: 'Harborstone Card', reminder: due(6) },
+        ],
+        fmt
+      )
     ).toBe('3 bills due, soonest in 2 days')
   })
 
   it('takes the soonest whatever order they arrive in', () => {
     expect(
-      dueHeaderNote([
-        { name: 'A', notice: at(1) },
-        { name: 'B', notice: at(5) },
-      ])
+      dueHeaderNote(
+        [
+          { name: 'A', reminder: due(1) },
+          { name: 'B', reminder: due(5) },
+        ],
+        fmt
+      )
     ).toBe('2 bills due, soonest tomorrow')
+  })
+
+  it('leads with how many are past due when any is', () => {
+    expect(
+      dueHeaderNote(
+        [
+          { name: 'Sapphire Visa', reminder: due(1) },
+          { name: 'Thistledown Card', reminder: past },
+        ],
+        fmt
+      )
+    ).toBe('2 bills due, 1 past due')
+  })
+})
+
+describe('the dot once the bill is counted', () => {
+  // The word keeps saying where the money stands; only the dot has to pick
+  // the most urgent thing on the line.
+  const past: CardDueReminder = {
+    state: 'past_due',
+    dueDate: '2026-09-03',
+    days: -1,
+    paidAfter: '2026-08-03',
+  }
+  const soon: CardDueReminder = { ...past, state: 'due', dueDate: '2026-10-03', days: 3 }
+
+  it('takes past due over rows to file and debt not covered', () => {
+    expect(lineMark({ mark: 'to-file' }, past)).toBe('past-due')
+    expect(lineMark({ mark: 'not-covered' }, past)).toBe('past-due')
+    expect(lineMark({ mark: null }, past)).toBe('past-due')
+  })
+
+  it('leaves overspent on top', () => {
+    expect(lineMark({ mark: 'overspent' }, past)).toBe('overspent')
+  })
+
+  it('adds no dot for a bill merely due — the chip says that', () => {
+    expect(lineMark({ mark: null }, soon)).toBeNull()
+    expect(lineMark({ mark: 'to-file' }, soon)).toBe('to-file')
+    expect(lineMark({ mark: 'to-file' }, null)).toBe('to-file')
+  })
+
+  it('ranks between overspent and to-file on the section header', () => {
+    const marks = (...ms: (LineMark | null)[]) => sectionMark(ms.map((mark) => ({ mark })))
+    expect(marks('to-file', 'past-due', 'not-covered')?.mark).toBe('past-due')
+    expect(marks('past-due', 'overspent')?.mark).toBe('overspent')
+    expect(marks('past-due')?.label).toBe('A card bill is past due')
   })
 })
 

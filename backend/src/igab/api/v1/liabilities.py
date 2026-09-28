@@ -12,6 +12,8 @@ from igab.api.v1.schemas.liability import (
     AmortizationMonthOut,
     AmortizationResponse,
     BalancePointOut,
+    CardDueDismissalIn,
+    CardDueDismissalOut,
     LiabilityBalanceSnapshotCreate,
     LiabilityBalanceSnapshotOut,
     LiabilityCreate,
@@ -52,6 +54,7 @@ from igab.services.amortization import (
     paydown_gain,
     payoff_verdict,
 )
+from igab.services.card_due_dismissals import Dismissal, dismiss, list_dismissals
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.liability_service import (
     LIABILITY_CLASSIFICATION,
@@ -171,7 +174,14 @@ async def _liability_out(
     liability: Liability,
     liability_service: LiabilityService,
     category_repo: CategoryRepository,
+    *,
+    today: date,
 ) -> LiabilityOut:
+    """`today` is the caller's: the listing takes it as `?today=`, the way the
+    wishlist does, because "the latest payment so far" is a question about a
+    particular day and the server's is already tomorrow every evening west of
+    UTC. Mutation responses fall back to the server's clock — the client
+    refetches the listing after every one of them rather than reading these."""
     status_ = await liability_service.get_status(liability)
     linked_category = await category_repo.get_by_linked_liability(liability.id)
 
@@ -246,6 +256,7 @@ async def _liability_out(
         payment_due_day=liability.payment_due_day,
         payment_due_cycle_days=liability.payment_due_cycle_days,
         payment_due_anchor=liability.payment_due_anchor,
+        last_payment_date=await liability_service.last_payment_date(liability, today),
         credit_limit=liability.credit_limit,
         utilization=utilization_percent(status_.current_balance, liability.credit_limit),
         promo_projection=(
@@ -281,12 +292,18 @@ async def list_liabilities(
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     include_closed: bool = False,
+    #: The browser's own date, for `last_payment_date` (see `_liability_out`).
+    today: date | None = Query(None),
 ) -> list[LiabilityOut]:
     """What is still owed. A loan whose account has been closed is out unless
     asked for — the Liabilities overview offers that as a toggle, the way the
     Accounts overview does."""
     liabilities = await liability_repo.get_all(budget_id, include_closed=include_closed)
-    return [await _liability_out(item, liability_service, category_repo) for item in liabilities]
+    as_of = today or today_utc()
+    return [
+        await _liability_out(item, liability_service, category_repo, today=as_of)
+        for item in liabilities
+    ]
 
 
 @router.post(
@@ -370,7 +387,9 @@ async def create_liability(
             action="create",
             after=snapshot("liability", liability),
         )
-    return await _liability_out(liability, liability_service, category_repo)
+    return await _liability_out(
+        liability, liability_service, category_repo, today=recorded_on(None, body.client_today)
+    )
 
 
 @router.patch("/{budget_id}/liabilities/{liability_id}", response_model=LiabilityOut)
@@ -454,7 +473,7 @@ async def update_liability(
             before=before,
             after=after,
         )
-    return await _liability_out(liability, liability_service, category_repo)
+    return await _liability_out(liability, liability_service, category_repo, today=today_utc())
 
 
 @router.delete("/{budget_id}/liabilities/{liability_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -641,7 +660,7 @@ async def link_asset(
     # updated_at is onupdate=func.now(): the flush expires it, and letting
     # serialization lazy-load it lands in sync context (MissingGreenlet).
     await session.refresh(liability)
-    return await _liability_out(liability, liability_service, category_repo)
+    return await _liability_out(liability, liability_service, category_repo, today=today_utc())
 
 
 @router.get(
@@ -784,3 +803,49 @@ async def link_category_to_liability(
 
     with_tags = await category_repo.get_with_tags(category.id)
     return CategoryResponse.model_validate(with_tags)
+
+
+# ─── Card-bill reminders ─────────────────────────────────────────────────────
+#
+# The reminder is the client's (utils/paymentDue.ts); these keep only who has
+# dismissed which one, shared across the household's devices. See
+# services/card_due_dismissals.py for the key shape and the pruning.
+
+
+def _dismissals_out(rows: list[Dismissal]) -> list[CardDueDismissalOut]:
+    return [
+        CardDueDismissalOut(account_id=d.account_id, due_date=d.due_date, state=d.state)
+        for d in rows
+    ]
+
+
+@router.get("/{budget_id}/card-due-dismissals", response_model=list[CardDueDismissalOut])
+async def list_card_due_dismissals(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> list[CardDueDismissalOut]:
+    return _dismissals_out(await list_dismissals(session, budget_id))
+
+
+@router.put("/{budget_id}/card-due-dismissals", response_model=list[CardDueDismissalOut])
+async def dismiss_card_due(
+    budget_id: BudgetAccess,
+    body: CardDueDismissalIn,
+    current_user: CurrentUser,
+    session: SessionDep,
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    recorder: Recorder,
+) -> list[CardDueDismissalOut]:
+    """Dismiss one reminder; returns every dismissal still on file."""
+    account = await account_repo.get(body.account_id)
+    if account is None or account.budget_id != budget_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    rows = await dismiss(
+        session,
+        recorder,
+        budget_id,
+        Dismissal(body.account_id, body.due_date, body.state),
+        recorded_on(None, body.client_today),
+    )
+    return _dismissals_out(rows)

@@ -89,6 +89,7 @@ function companion(overrides: Partial<Liability> = {}): Liability {
     payment_due_day: null,
     payment_due_cycle_days: null,
     payment_due_anchor: null,
+    last_payment_date: null,
     payment_components: [],
     payment_components_total: 0,
     full_monthly_payment: null,

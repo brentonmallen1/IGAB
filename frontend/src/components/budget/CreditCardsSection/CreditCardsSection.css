@@ -493,7 +493,8 @@
   flex-shrink: 0;
 }
 
-.credit-cards__mark--overspent {
+.credit-cards__mark--overspent,
+.credit-cards__mark--past-due {
   background: var(--color-negative);
 }
 
@@ -787,10 +788,11 @@
   padding: var(--spacing-md);
 }
 
-/* The bill is close and the card still owes something. The second place on
-   this row where colour is earned (the first is __drift): every other state
-   here is normal and deliberately un-alarmed, and a due date that is weeks
-   away never draws this at all — it is not rendered.
+/* The bill is close, or went by unpaid, and the card still owes something
+   (utils/paymentDue.ts `cardDueReminder`). The second place on this row where
+   colour is earned (the first is __drift): every other state here is normal
+   and deliberately un-alarmed, and a due date that is weeks away never draws
+   this at all — it is not rendered. Amber while due, red once past due.
 
    A chip rather than a caption under a figure, because it belongs to the
    CARD, not to any one column's number. */
@@ -807,6 +809,10 @@
   border: 1px solid var(--edge);
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.credit-cards__due--past-due {
+  color: var(--color-negative);
 }
 
 /* The chip's own icon keeps the chip's colour, not the line's muted svg. */

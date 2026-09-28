@@ -56,6 +56,7 @@ export const ROOT = {
   budgetMonth: 'budgetMonth',
   cardEndings: 'card-endings',
   cardTimeline: 'card-timeline',
+  cardDueDismissals: 'card-due-dismissals',
   budgetMoves: 'budgetMoves',
   budgetSnapshots: 'budget-snapshots',
   budgetTransactions: 'budget-transactions',

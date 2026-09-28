@@ -438,6 +438,19 @@ class LiabilityService:
         reported = account.simplefin_balance if account is not None else None
         return reported is not None and reported < ZERO
 
+    async def last_payment_date(self, liability: Liability, on_or_before: date) -> date | None:
+        """When the card last took a payment from the budget's cash, or None.
+
+        None for anything that is not an on-budget card — an unmanaged debt
+        has no ledger, and a loan's payments are not what the card-due
+        reminder asks about (`ON_CARD_ACCOUNT` inside the query decides).
+        """
+        if liability.linked_account_id is None:
+            return None
+        return await self.transaction_repo.latest_card_payment_date(
+            liability.budget_id, liability.linked_account_id, on_or_before
+        )
+
     async def get_recent_monthly_payments(
         self,
         liability: Liability,

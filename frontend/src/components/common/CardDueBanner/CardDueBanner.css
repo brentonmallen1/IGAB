@@ -1,0 +1,107 @@
+/* A chrome bar in the shell's content column, under the header: full-bleed
+   with a bottom hairline, from the `.surface--chrome` rule. It stays in flow
+   and shrinks to its content — no height of its own, no fixed position — so
+   the page scroller below simply starts lower.
+
+   Every colour here is a token already held to AA on --surface-chrome by
+   themes/contrast.test.ts (text-primary, text-secondary, color-warning,
+   color-negative): no wash, no new pair. */
+.card-due-banner {
+  flex-shrink: 0;
+  padding: var(--spacing-xs) var(--spacing-md);
+}
+
+.card-due-banner__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card-due-banner__line {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 28px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.card-due-banner__icon {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}
+
+.card-due-banner__line--past-due .card-due-banner__icon {
+  color: var(--color-negative);
+}
+
+/* The one part of the line that wraps rather than clipping: on a phone the
+   sentence is the whole point, and an ellipsis would cut off the date. */
+.card-due-banner__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.card-due-banner__card {
+  color: inherit;
+  font-weight: var(--font-weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.card-due-banner__state {
+  color: var(--color-warning);
+  font-weight: var(--font-weight-medium);
+}
+
+.card-due-banner__line--past-due .card-due-banner__state {
+  color: var(--color-negative);
+}
+
+.card-due-banner__detail {
+  color: var(--text-secondary);
+}
+
+.card-due-banner__dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.card-due-banner__dismiss:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--edge);
+}
+
+.card-due-banner__dismiss:focus-visible,
+.card-due-banner__card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.card-due-banner__dismiss:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+  .card-due-banner {
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  /* A thumb, not a pointer: the whole target, not the 14px glyph. */
+  .card-due-banner__dismiss {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+}

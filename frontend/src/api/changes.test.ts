@@ -30,6 +30,13 @@ describe('performUndo', () => {
     expect(calls).toContainEqual([{ queryKey: [ROOT.changes, 'b1'] }])
     expect(calls).toContainEqual([{ queryKey: [ROOT.transactions] }])
   })
+
+  it('brings back a card-bill reminder whose dismissal was undone', async () => {
+    await performUndo(qc, 'b1', 'latest')
+    const calls = (qc as { invalidateQueries: ReturnType<typeof vi.fn> }).invalidateQueries.mock
+      .calls
+    expect(calls).toContainEqual([{ queryKey: [ROOT.cardDueDismissals, 'b1'] }])
+  })
 })
 
 describe('conflictMessage', () => {

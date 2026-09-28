@@ -1,14 +1,12 @@
 /**
- * The bill-due indicator on the card strip.
+ * The bill reminder on the card strip.
  *
- * It fires on two facts together — the bill is close, and the card still owes
- * something — and on nothing else. A due date on a settled card is a calendar
- * fact nobody needs interrupting them, and a balance with no due date on file
- * has nothing to be close to.
- *
- * What it must never do is imply a bill was missed. The app cannot see whether
- * a statement was paid, so the date it shows is always today or later and the
- * copy never says "late" or "overdue".
+ * It reads `reminderForCard` (utils/paymentDue.ts) — the same wiring as the
+ * app-wide banner — so the two cannot disagree about a bill. It speaks while
+ * the card owes something and a bill is close and unpaid ("Due in 4 days"),
+ * or went by unpaid ("Past due", in red, with a red dot on the line and the
+ * section header). It goes once a payment lands after the last due date.
+ * The strip is not dismissible: dismissing only quiets the banner.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -20,9 +18,28 @@ import { useUIStore } from '../../../stores/uiStore'
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 const rows = vi.hoisted(() => ({ liabilities: [] as Partial<Liability>[] }))
 
-const accounts = vi.hoisted(() => ({
-  current: [] as { id: string; uncategorized_count: number }[],
-}))
+interface AccountRow {
+  id: string
+  uncategorized_count: number
+  on_budget: boolean
+  classification: 'liability'
+  budget_start_date: string | null
+  created_at: string
+}
+const accounts = vi.hoisted(() => ({ current: [] as AccountRow[] }))
+
+/** An on-budget card, in the budget since January. */
+function account(id: string, over: Partial<AccountRow> = {}): AccountRow {
+  return {
+    id,
+    uncategorized_count: 0,
+    on_budget: true,
+    classification: 'liability',
+    budget_start_date: null,
+    created_at: '2026-01-05T15:00:00Z',
+    ...over,
+  }
+}
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: month.current }),
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
@@ -40,11 +57,14 @@ import { CreditCardsSection } from './CreditCardsSection'
 import { cardStatus } from '../../../test-utils/cardFixture'
 
 /** Only the fields this row reads — the rest of a Liability is a payoff
- *  projection the strip never touches. */
+ *  projection the strip never touches. Due on the 17th, owing $1,240, last
+ *  paid 10 Aug: August's bill was paid, September's is not. */
 function due(over: Partial<Liability> = {}): Partial<Liability> {
   return {
     id: 'l1',
     linked_account_id: 'a1',
+    current_balance: 1240,
+    last_payment_date: '2026-08-10',
     payment_due_kind: 'day_of_month',
     payment_due_day: 17,
     payment_due_cycle_days: null,
@@ -71,6 +91,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 8, 13, 12, 0, 0)) // Sunday 13 Sep 2026
   month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
   rows.liabilities = [due()]
+  accounts.current = [account('a1'), account('a2')]
 })
 
 afterEach(() => {
@@ -84,12 +105,11 @@ describe('the bill-due chip', () => {
     expect(screen.getByText('Due in 4 days')).toBeInTheDocument()
   })
 
-  it('says today on the due date itself, and never that it is late', () => {
+  it('says today on the due date itself', () => {
     vi.setSystemTime(new Date(2026, 8, 17, 12, 0, 0))
     show()
 
     expect(screen.getByText('Due today')).toBeInTheDocument()
-    expect(screen.queryByText(/overdue|late/i)).not.toBeInTheDocument()
   })
 
   it('counts a cycle from its anchor rather than from a day of the month', () => {
@@ -110,6 +130,13 @@ describe('the bill-due chip', () => {
     expect(screen.getByText('Due in 3 days')).toBeInTheDocument()
   })
 
+  it('goes once a payment lands after the last due date', () => {
+    rows.liabilities = [due({ last_payment_date: '2026-09-05' })]
+    show()
+
+    expect(screen.queryByText(/^Due /)).not.toBeInTheDocument()
+  })
+
   it('stays quiet while the bill is still far off', () => {
     vi.setSystemTime(new Date(2026, 8, 1, 12, 0, 0))
     show()
@@ -118,6 +145,7 @@ describe('the bill-due chip', () => {
   })
 
   it('stays quiet on a card that owes nothing', () => {
+    rows.liabilities = [due({ current_balance: 0 })]
     month.current = {
       cards: [card({ balance: 0, set_aside: 0, reserved: 0 })],
       category_balances: [],
@@ -128,9 +156,9 @@ describe('the bill-due chip', () => {
   })
 
   it('stays quiet on a card holding a credit balance', () => {
-    // `balance` is owed-negative, so a positive one is the card holding money.
-    // Converting the sign the wrong way round at the call site would light
-    // this chip up on exactly the cards with nothing to pay.
+    // The liability's `current_balance` is owed-POSITIVE, so a credit is
+    // negative there — the sign the reminder reads.
+    rows.liabilities = [due({ current_balance: -75 })]
     month.current = {
       cards: [
         card({ balance: 75, set_aside: 0, card_credit: 75, set_aside_state: 'card_holds_it' }),
@@ -157,12 +185,65 @@ describe('the bill-due chip', () => {
   })
 
   it('stays out of a month in the past', () => {
-    // The due date is a fact about NOW and `balance` is the ledger through
-    // the month being viewed. Pairing them on a past month would put a live
-    // "due in 4 days" beside a balance from a year ago.
+    // A reminder is a fact about NOW and the strip is the ledger through the
+    // month being viewed. Pairing them on a past month would put a live
+    // "due in 4 days" beside figures from a year ago.
     show('2025-11-01')
 
     expect(screen.queryByText(/^Due /)).not.toBeInTheDocument()
+  })
+})
+
+describe('a bill past due', () => {
+  // Due on the 3rd; last paid 20 Jul, so the 3 Sep bill went by unpaid.
+  beforeEach(() => {
+    rows.liabilities = [due({ payment_due_day: 3, last_payment_date: '2026-07-20' })]
+  })
+
+  it('says so on the chip, in red, and never offers to dismiss it here', () => {
+    show()
+
+    const chip = screen.getByText('Past due')
+    expect(chip).toHaveClass('credit-cards__due--past-due')
+    expect(screen.queryByRole('button', { name: /dismiss/i })).not.toBeInTheDocument()
+  })
+
+  it('puts the red dot on the line and the section header', () => {
+    show()
+
+    expect(screen.getByRole('img', { name: 'A card bill is past due' })).toBeInTheDocument()
+    expect(
+      document.querySelector('.credit-cards__line .credit-cards__mark--past-due')
+    ).not.toBeNull()
+  })
+
+  it('names the date in the header, which is all a collapsed strip has', () => {
+    useUIStore.setState({ creditCardsCollapsed: true })
+    show()
+
+    expect(screen.getByText('Sapphire Visa past due since Sep 3')).toBeInTheDocument()
+  })
+
+  it('keeps the line word on where the money stands', () => {
+    // The chip carries the bill; the word is still the card's position.
+    show()
+
+    expect(screen.getByText('covered')).toBeInTheDocument()
+  })
+
+  it('clears once a late payment lands', () => {
+    rows.liabilities = [due({ payment_due_day: 3, last_payment_date: '2026-09-08' })]
+    show()
+
+    expect(screen.queryByText('Past due')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'A card bill is past due' })).not.toBeInTheDocument()
+  })
+
+  it('is not claimed for a due date before the card joined the budget', () => {
+    accounts.current = [account('a1', { budget_start_date: '2026-09-10' })]
+    show()
+
+    expect(screen.queryByText('Past due')).not.toBeInTheDocument()
   })
 })
 
@@ -202,10 +283,7 @@ describe('the header, which is all a collapsed strip has', () => {
   })
 
   it('says nothing about a card that owes nothing', () => {
-    month.current = {
-      cards: [card({ balance: 0, set_aside: 0, reserved: 0 })],
-      category_balances: [],
-    } as unknown as BudgetMonth
+    rows.liabilities = [due({ current_balance: 0 })]
     show()
 
     expect(screen.queryByText(/due in/)).not.toBeInTheDocument()

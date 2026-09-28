@@ -1388,6 +1388,10 @@ class GuideState(Base):
     Keys in use:
       ``prefs``               {"personalization": bool, "checkup": bool}
       ``step:<stage_id>``     {"state": "done" | "skipped"}
+      ``due:<account_id>:<YYYY-MM-DD>[:past]``
+                              {"dismissed_on": "YYYY-MM-DD"} — a dismissed
+                              card-bill reminder; pruned 60 days after its
+                              due date (services/card_due_dismissals.py)
     """
 
     __tablename__ = "guide_state"

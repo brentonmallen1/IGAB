@@ -12,7 +12,7 @@ import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { useAccounts } from '../../../api/accounts'
 import { currentMonthStart, today } from '../../../utils/dates'
-import { dueSoonNotice, type DueNotice } from '../../../utils/paymentDue'
+import { reminderChip, reminderForCard, type CardDueReminder } from '../../../utils/paymentDue'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -31,6 +31,7 @@ import {
   otherCredits,
   cardLine,
   envelopeRowShown,
+  lineMark,
   notCoveredWarns,
   sectionMark,
 } from './cardRow'
@@ -848,7 +849,7 @@ export function CreditCardsSection({
 }) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMonth, formatDayMonth } = useFormatters()
   const collapsed = useUIStore((s) => s.creditCardsCollapsed)
   const toggleCollapsed = useUIStore((s) => s.toggleCreditCardsCollapsed)
   const [editing, setEditing] = useState<string | null>(null)
@@ -895,35 +896,43 @@ export function CreditCardsSection({
   const liabilityByAccount = new Map(
     liabilities.filter((l) => l.linked_account_id).map((l) => [l.linked_account_id as string, l])
   )
-  // A due date is a fact about NOW, and `card.balance` is the ledger through
-  // the month being VIEWED. Pairing the two on a month in the past would put
-  // a live "due in 4 days" beside a balance from 2024, so the indicator is
-  // only offered from the current month on.
-  const dueNoticesApply = month >= currentMonthStart()
-  // Once, for every card: the header's line is an aggregate over the same
-  // notices the rows draw, so the two cannot disagree about which bills are
-  // close or how close the nearest one is.
+  // A reminder is a fact about NOW, and the rest of this strip is the ledger
+  // through the month being VIEWED. Pairing the two on a month in the past
+  // would put a live "due in 4 days" beside figures from 2024, so reminders
+  // are only drawn from the current month on.
+  const remindersApply = month >= currentMonthStart()
+  // Once, for every card, through the same `reminderForCard` the app-wide
+  // banner reads — same balance, same payment date, same start — so the
+  // strip and the banner cannot disagree about a bill. The header's line is
+  // an aggregate over the reminders the rows draw. Not dismissible here:
+  // dismissing only quiets the banner.
   const asOf = today()
-  const dueByAccount = new Map<string, DueNotice>()
-  if (dueNoticesApply) {
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
+  const reminderByAccount = new Map<string, CardDueReminder>()
+  if (remindersApply) {
     for (const c of cards) {
       const liability = liabilityByAccount.get(c.account_id)
-      // `balance` is owed-NEGATIVE; dueSoonNotice takes owed as a positive.
-      const notice = liability ? dueSoonNotice(liability, { today: asOf, owed: -c.balance }) : null
-      if (notice) dueByAccount.set(c.account_id, notice)
+      const reminder = liability
+        ? reminderForCard(liability, accountById.get(c.account_id), asOf)
+        : null
+      if (reminder) reminderByAccount.set(c.account_id, reminder)
     }
   }
   const headerDue = dueHeaderNote(
-    cards
-      .filter((c) => dueByAccount.has(c.account_id))
-      .map((c) => ({ name: c.name, notice: dueByAccount.get(c.account_id) as DueNotice }))
+    cards.flatMap((c) => {
+      const reminder = reminderByAccount.get(c.account_id)
+      return reminder ? [{ name: c.name, reminder }] : []
+    }),
+    formatDayMonth
   )
+  const anyPastDue = [...reminderByAccount.values()].some((r) => r.state === 'past_due')
 
   const toCategorize = new Map(accounts.map((a) => [a.id, a.uncategorized_count ?? 0]))
   // Once per card, and the header reads the same lines the list draws, so
   // the folded band's dot and the dots inside it cannot disagree.
   const lines = cards.map((c) => cardLine(c, toCategorize.get(c.account_id) ?? 0, formatMoney))
-  const headerMark = sectionMark(lines)
+  const marks = cards.map((c, i) => lineMark(lines[i], reminderByAccount.get(c.account_id) ?? null))
+  const headerMark = sectionMark(marks.map((mark) => ({ mark })))
 
   function commit(categoryId: string) {
     // The same rule the grid's cell uses: the box is the whole equation,
@@ -989,7 +998,11 @@ export function CreditCardsSection({
             is collapsed this header is all there is, and a bill you cannot
             see coming is the one that catches you. */}
           {headerDue && (
-            <span className="credit-cards__due credit-cards__due--header">
+            <span
+              className={`credit-cards__due credit-cards__due--header ${
+                anyPastDue ? 'credit-cards__due--past-due' : ''
+              }`}
+            >
               <CalendarClock size={11} aria-hidden />
               {headerDue}
             </span>
@@ -1004,7 +1017,8 @@ export function CreditCardsSection({
               const open = openFor === card.account_id
               const line = lines[i]
               const detailId = `credit-card-detail-${card.account_id}`
-              const due = dueByAccount.get(card.account_id) ?? null
+              const mark = marks[i]
+              const due = reminderByAccount.get(card.account_id) ?? null
               return (
                 <li className="credit-cards__card" key={card.account_id}>
                   {/* The whole line is the door: a word, a bar and the Set
@@ -1024,9 +1038,9 @@ export function CreditCardsSection({
                       ) : (
                         <ChevronRight size={12} aria-hidden />
                       )}
-                      {line.mark && (
+                      {mark && (
                         <span
-                          className={`credit-cards__mark credit-cards__mark--${line.mark}`}
+                          className={`credit-cards__mark credit-cards__mark--${mark}`}
                           aria-hidden
                         />
                       )}
@@ -1037,14 +1051,16 @@ export function CreditCardsSection({
                         {line.word}
                       </span>
                       {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
-                      {/* The bill is close and this card still owes something
-                        — the one moment a due date is news rather than a
-                        calendar fact. Never "overdue": the app cannot see
-                        whether a statement was paid. */}
+                      {/* The bill is due or went by unpaid, and this card
+                        still owes something — the moments a due date is news
+                        rather than a calendar fact (utils/paymentDue.ts). It
+                        goes once a payment lands. */}
                       {due && (
-                        <span className="credit-cards__due">
+                        <span
+                          className={`credit-cards__due ${due.state === 'past_due' ? 'credit-cards__due--past-due' : ''}`}
+                        >
                           <CalendarClock size={11} aria-hidden />
-                          Due {due.phrase}
+                          {reminderChip(due)}
                         </span>
                       )}
                     </span>

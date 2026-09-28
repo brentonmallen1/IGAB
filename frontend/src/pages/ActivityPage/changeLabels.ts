@@ -77,5 +77,13 @@ export function guideStateSummary(after: Record<string, unknown> | null): string
     const on = !(value && value.on === false)
     return `Spread yearly bills over 12 months: ${on ? 'on' : 'off'}`
   }
+  // A dismissed card-bill reminder: `due:<account>:<date>[:past]`
+  // (backend services/card_due_dismissals.py). `_value` null is the row
+  // gone — an undo, or a dismissal old enough to be pruned.
+  const due = typeof key === 'string' ? /^due:[^:]+:(\d{4}-\d{2}-\d{2})(:past)?$/.exec(key) : null
+  if (due) {
+    const bill = due[2] ? `a card bill past due since ${due[1]}` : `a card bill due ${due[1]}`
+    return value ? `Dismissed the reminder for ${bill}` : `Cleared the dismissal for ${bill}`
+  }
   return null
 }

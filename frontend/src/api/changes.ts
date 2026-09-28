@@ -361,6 +361,8 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.guideSignals] })
   // A report setting is guide state too, and it moves the essentials figure.
   invalidateAfterReportSettings(qc, budgetId)
+  // So is a dismissed card-bill reminder: undoing one brings the banner back.
+  qc.invalidateQueries({ queryKey: [ROOT.cardDueDismissals, budgetId] })
   qc.invalidateQueries({ queryKey: [ROOT.budgets] })
   qc.invalidateQueries({ queryKey: [ROOT.budgetMembers] })
   qc.invalidateQueries({ queryKey: [ROOT.importSummary] })

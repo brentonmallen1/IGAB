@@ -106,6 +106,13 @@ export interface Liability {
   payment_due_cycle_days: number | null
   /** The last due date actually seen — where a cycle is counted from. */
   payment_due_anchor: string | null
+  /** When an on-budget card last took a payment from the budget's cash, on or
+   *  before the `today` this listing was asked for; null with none, and for
+   *  every other debt. Served (backend `CARD_PAYMENT_FROM_CASH`, via
+   *  `TransactionRepository.latest_card_payment_date`) because the client
+   *  cannot see the ledger. Read only by `utils/paymentDue.ts`
+   *  `reminderForCard` — the due/past-due rule is the client's. */
+  last_payment_date: string | null
   /** Cards: the issuer's limit, for utilization. Optional for older fixtures. */
   credit_limit?: number | null
   /** balance ÷ credit_limit as a percent (server: domain/credit.py). */
@@ -248,7 +255,12 @@ export interface AmortizationResponse {
 export function useLiabilities(budgetId: string | null) {
   return useQuery({
     queryKey: [ROOT.liabilities, budgetId],
-    queryFn: () => apiClient.get<Liability[]>(`/${budgetId}/liabilities`).then((r) => r.data),
+    // `today` because `last_payment_date` is "the latest payment so far",
+    // and the server's today is tomorrow every evening west of UTC.
+    queryFn: () =>
+      apiClient
+        .get<Liability[]>(`/${budgetId}/liabilities`, { params: { today: today() } })
+        .then((r) => r.data),
     enabled: !!budgetId,
     staleTime: 30_000,
   })

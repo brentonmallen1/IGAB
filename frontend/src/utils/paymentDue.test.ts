@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   DUE_SOON_DAYS,
+  cardDueReminder,
   describeDueRule,
   dueInPhrase,
-  dueSoonNotice,
+  dueWatchStart,
   nextDueDate,
+  previousDueDate,
+  reminderChip,
+  reminderForCard,
+  reminderWords,
   type PaymentDueRule,
 } from './paymentDue'
 
@@ -136,53 +141,275 @@ describe('how far away it reads', () => {
   })
 
   it('never reads as a past date', () => {
-    // nextDueDate is always today or later, so a negative can only arrive
-    // from a caller that computed its own date. Say "today" rather than
-    // "in -2 days"; the app cannot see whether a statement was paid and must
-    // not imply it was missed.
+    // A bill that has gone by is `past_due`, which has its own words
+    // (`reminderWords`); this phrase is only ever asked about a date ahead.
+    // Say "today" rather than "in -2 days" if a caller gets that wrong.
     expect(dueInPhrase(-2)).toBe('today')
   })
 })
 
-describe('the indicator', () => {
-  const owing = { today: '2026-09-13', owed: 1240 }
-
-  it('speaks up when the bill is close and the card owes something', () => {
-    const notice = dueSoonNotice(dayRule(17), owing)
-    expect(notice).toEqual({ date: '2026-09-17', days: 4, phrase: 'in 4 days' })
+describe('the due date before today', () => {
+  it('is earlier this month once the day has gone by', () => {
+    expect(previousDueDate(dayRule(17), '2026-09-20')).toBe('2026-09-17')
   })
 
-  it('stays quiet on a card that owes nothing', () => {
-    // A due date on a settled card is a calendar fact nobody needs surfaced.
-    expect(dueSoonNotice(dayRule(17), { today: '2026-09-13', owed: 0 })).toBeNull()
+  it('is last month on the due date itself: today has not gone by yet', () => {
+    expect(previousDueDate(dayRule(17), '2026-09-17')).toBe('2026-08-17')
   })
 
-  it('stays quiet on a card holding a credit balance', () => {
-    expect(dueSoonNotice(dayRule(17), { today: '2026-09-13', owed: -50 })).toBeNull()
+  it("is last month while this month's is still ahead", () => {
+    expect(previousDueDate(dayRule(17), '2026-09-10')).toBe('2026-08-17')
   })
 
-  it('stays quiet while the bill is still far off', () => {
-    expect(dueSoonNotice(dayRule(17), { today: '2026-09-01', owed: 1240 })).toBeNull()
+  it('crosses the year end backwards', () => {
+    expect(previousDueDate(dayRule(3), '2027-01-02')).toBe('2026-12-03')
   })
 
-  it('speaks up on the last day of the window and not the day before it', () => {
-    const rule = dayRule(17)
-    const onTheEdge = dueSoonNotice(rule, { today: '2026-09-10', owed: 1240 })
-    expect(onTheEdge?.days).toBe(DUE_SOON_DAYS)
-    expect(dueSoonNotice(rule, { today: '2026-09-09', owed: 1240 })).toBeNull()
+  it('clamps a short month on the way back, as it does going forward', () => {
+    expect(previousDueDate(dayRule(31), '2026-03-15')).toBe('2026-02-28')
+    // One step back from the clamped date is January's full 31st, not the
+    // 28th: stepping is anchored to the stored day, never the clamped date.
+    expect(previousDueDate(dayRule(31), '2026-02-28')).toBe('2026-01-31')
   })
 
-  it('says today on the due date itself', () => {
-    const notice = dueSoonNotice(dayRule(17), { today: '2026-09-17', owed: 1240 })
-    expect(notice).toEqual({ date: '2026-09-17', days: 0, phrase: 'today' })
+  it('is one cycle back from the next one on a cycle bill', () => {
+    // Next is 4 Oct (3 Sep + 31), so the one before it is the anchor.
+    expect(previousDueDate(cycleRule(31, '2026-09-03'), '2026-09-20')).toBe('2026-09-03')
+    // On the anchor itself the anchor is due today, so the one before is a
+    // whole cycle earlier.
+    expect(previousDueDate(cycleRule(31, '2026-09-03'), '2026-09-03')).toBe('2026-08-03')
+  })
+
+  it('has no answer when no usable rule is on file', () => {
+    expect(previousDueDate(dayRule(null), '2026-09-10')).toBeNull()
+    expect(previousDueDate(cycleRule(31, null), '2026-09-10')).toBeNull()
+    expect(previousDueDate(cycleRule(0, '2026-09-03'), '2026-09-10')).toBeNull()
+  })
+})
+
+describe('cardDueReminder', () => {
+  // Sapphire Visa: due on the 3rd, owing $412.
+  const at = (
+    today: string,
+    over: { owed?: number; lastPaymentDate?: string | null; budgetStart?: string | null } = {}
+  ) =>
+    cardDueReminder(dayRule(3), {
+      today,
+      owed: 412,
+      lastPaymentDate: null,
+      budgetStart: null,
+      ...over,
+    })
+
+  it('no balance: says nothing about a card that owes nothing, even with a bill gone by', () => {
+    expect(at('2026-09-30', { owed: 0 })).toBeNull()
+    expect(at('2026-10-05', { owed: 0 })).toBeNull()
+    // A credit balance owes less than nothing.
+    expect(at('2026-09-30', { owed: -50 })).toBeNull()
+  })
+
+  it('paid before the window: a payment since the last due date quiets the next one', () => {
+    // Paid 20 Sep, after the 3 Sep due date; on 30 Sep the 3 Oct bill is
+    // three days out and already paid.
+    expect(at('2026-09-30', { lastPaymentDate: '2026-09-20' })).toBeNull()
+  })
+
+  it('paid on the 29th for the 3rd: a payment the month before counts', () => {
+    // "Paid in that month", made right at the month edge: the 29th of
+    // September is after the last due date (3 Sep), so the 3 Oct bill is paid
+    // — before it, on it, and the day after it.
+    expect(at('2026-10-01', { lastPaymentDate: '2026-09-29' })).toBeNull()
+    expect(at('2026-10-03', { lastPaymentDate: '2026-09-29' })).toBeNull()
+    expect(at('2026-10-04', { lastPaymentDate: '2026-09-29' })).toBeNull()
+  })
+
+  it('a payment ON a due date paid that bill, not the next one', () => {
+    expect(at('2026-09-30', { lastPaymentDate: '2026-09-03' })).toEqual({
+      state: 'due',
+      dueDate: '2026-10-03',
+      days: 3,
+      paidAfter: '2026-09-03',
+    })
+  })
+
+  it('due in 7 vs 8 days: speaks up on the last day of the window, not the day before', () => {
+    // Last paid 20 Aug — September's bill is paid, October's is not.
+    const paidAug = { lastPaymentDate: '2026-08-20' }
+    expect(at('2026-09-25', paidAug)).toBeNull()
+    expect(at('2026-09-26', paidAug)).toEqual({
+      state: 'due',
+      dueDate: '2026-10-03',
+      days: DUE_SOON_DAYS,
+      paidAfter: '2026-09-03',
+    })
+  })
+
+  it('says due today on the due date itself, not past due', () => {
+    expect(at('2026-10-03', { lastPaymentDate: '2026-08-20' })).toMatchObject({
+      state: 'due',
+      dueDate: '2026-10-03',
+      days: 0,
+    })
+  })
+
+  it('past due by one day: the day after a due date with no payment since the one before', () => {
+    expect(at('2026-10-04', { lastPaymentDate: '2026-08-20' })).toEqual({
+      state: 'past_due',
+      dueDate: '2026-10-03',
+      days: -1,
+      paidAfter: '2026-09-03',
+    })
+  })
+
+  it('stays past due until something is paid', () => {
+    expect(at('2026-10-20', { lastPaymentDate: '2026-08-20' })).toMatchObject({
+      state: 'past_due',
+      dueDate: '2026-10-03',
+    })
+  })
+
+  it('past due, then paid late: the late payment clears it', () => {
+    // 3 Oct went by unpaid; a payment on 6 Oct is after 3 Sep, so it counts.
+    expect(at('2026-10-06', { lastPaymentDate: '2026-10-06' })).toBeNull()
+    expect(at('2026-10-20', { lastPaymentDate: '2026-10-06' })).toBeNull()
+  })
+
+  it('past due wins over due when the next bill is also close', () => {
+    // Every 5 days from 1 Sep: 21, 26 Sep, 1 Oct. On 27 Sep the 26th went by
+    // with nothing since the 21st, and 1 Oct is four days out.
+    const reminder = cardDueReminder(cycleRule(5, '2026-09-01'), {
+      today: '2026-09-27',
+      owed: 412,
+      lastPaymentDate: '2026-09-20',
+      budgetStart: null,
+    })
+    expect(reminder).toMatchObject({ state: 'past_due', dueDate: '2026-09-26' })
+  })
+
+  it('cycle-based due: counts payment_due_cycle_days from the anchor', () => {
+    const rule = cycleRule(31, '2026-09-03')
+    const on = (today: string, lastPaymentDate: string) =>
+      cardDueReminder(rule, { today, owed: 412, lastPaymentDate, budgetStart: null })
+    // 3 Sep + 31 = 4 Oct; on 1 Oct that is three days out, and nothing has
+    // been paid since 3 Sep.
+    expect(on('2026-10-01', '2026-08-30')).toEqual({
+      state: 'due',
+      dueDate: '2026-10-04',
+      days: 3,
+      paidAfter: '2026-09-03',
+    })
+    // Paid 10 Sep, after the 3 Sep due date: the 4 Oct bill is quiet.
+    expect(on('2026-10-01', '2026-09-10')).toBeNull()
+    // 4 Oct went by with nothing since 3 Sep.
+    expect(on('2026-10-05', '2026-08-30')).toMatchObject({
+      state: 'past_due',
+      dueDate: '2026-10-04',
+      paidAfter: '2026-09-03',
+    })
+  })
+
+  it('due date before budget start: a newly configured card is not overdue on day one', () => {
+    // The card joined the budget on 20 Sep with no payments in the ledger.
+    // 3 Sep is before that, so the app has no business calling it missed.
+    expect(at('2026-09-20', { budgetStart: '2026-09-20' })).toBeNull()
+    // The next bill still speaks up as it comes close…
+    expect(at('2026-09-28', { budgetStart: '2026-09-20' })).toMatchObject({
+      state: 'due',
+      dueDate: '2026-10-03',
+    })
+    // …and is past due once it goes by unpaid.
+    expect(at('2026-10-04', { budgetStart: '2026-09-20' })).toMatchObject({
+      state: 'past_due',
+      dueDate: '2026-10-03',
+    })
+    // A due date ON the budget start is inside the budget.
+    expect(at('2026-09-04', { budgetStart: '2026-09-03' })).toMatchObject({
+      state: 'past_due',
+      dueDate: '2026-09-03',
+    })
   })
 
   it('says nothing for a card with no due date on file', () => {
-    expect(dueSoonNotice(dayRule(null), owing)).toBeNull()
+    expect(
+      cardDueReminder(dayRule(null), {
+        today: '2026-10-04',
+        owed: 412,
+        lastPaymentDate: null,
+        budgetStart: null,
+      })
+    ).toBeNull()
+  })
+})
+
+describe('where watching for a missed bill starts', () => {
+  it('is the day the account joined the budget, when someone said so', () => {
+    expect(
+      dueWatchStart({ budget_start_date: '2026-09-20', created_at: '2026-01-05T15:00:00Z' })
+    ).toBe('2026-09-20')
   })
 
-  it('works the same way for a cycle bill', () => {
-    const notice = dueSoonNotice(cycleRule(31, '2026-09-03'), { today: '2026-10-01', owed: 1240 })
-    expect(notice).toEqual({ date: '2026-10-04', days: 3, phrase: 'in 3 days' })
+  it('is the day the account was added, as a local date, when nobody did', () => {
+    const created = new Date(2026, 8, 20, 9, 30).toISOString()
+    expect(dueWatchStart({ budget_start_date: null, created_at: created })).toBe('2026-09-20')
+  })
+
+  it('is unknown without the account', () => {
+    expect(dueWatchStart(undefined)).toBeNull()
+  })
+})
+
+describe('reminderForCard', () => {
+  const liability = {
+    ...dayRule(3),
+    current_balance: 412,
+    last_payment_date: '2026-08-20',
+  }
+  const card = {
+    on_budget: true,
+    classification: 'liability' as const,
+    budget_start_date: null,
+    created_at: '2026-01-05T15:00:00Z',
+  }
+
+  it("reads the liability's owed-positive balance and served payment date", () => {
+    expect(reminderForCard(liability, card, '2026-10-04')).toMatchObject({
+      state: 'past_due',
+      dueDate: '2026-10-03',
+    })
+    expect(reminderForCard({ ...liability, current_balance: 0 }, card, '2026-10-04')).toBeNull()
+  })
+
+  it('takes the start from the account, so a card added today is not overdue today', () => {
+    const added = { ...card, created_at: new Date(2026, 9, 4, 8, 0).toISOString() }
+    expect(reminderForCard(liability, added, '2026-10-04')).toBeNull()
+  })
+
+  it('says nothing where no payment could ever be seen', () => {
+    // An off-budget card's payments are not CARD_PAYMENT_FROM_CASH, so
+    // `last_payment_date` stays null there and every bill would read missed.
+    expect(reminderForCard(liability, { ...card, on_budget: false }, '2026-10-04')).toBeNull()
+    expect(reminderForCard(liability, undefined, '2026-10-04')).toBeNull()
+  })
+})
+
+describe('the words for a reminder', () => {
+  const fmt = (iso: string) => `<${iso}>`
+
+  it('says how far off a due bill is', () => {
+    const due = { state: 'due', dueDate: '2026-10-03', days: 4, paidAfter: '2026-09-03' } as const
+    expect(reminderWords(due, fmt)).toBe('due in 4 days')
+    expect(reminderChip(due)).toBe('Due in 4 days')
+    expect(reminderWords({ ...due, days: 0 }, fmt)).toBe('due today')
+  })
+
+  it('names the date a past-due bill fell due', () => {
+    const past = {
+      state: 'past_due',
+      dueDate: '2026-10-03',
+      days: -2,
+      paidAfter: '2026-09-03',
+    } as const
+    expect(reminderWords(past, fmt)).toBe('past due since <2026-10-03>')
+    expect(reminderChip(past)).toBe('Past due')
   })
 })
