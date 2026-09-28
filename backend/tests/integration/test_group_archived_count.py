@@ -180,6 +180,23 @@ class TestTheEmptyGroupTheGridDrew:
         # does, instead of drawing a heading over nothing.
         assert (await _listed(api_client, budget))["Fitness"]["archived_category_count"] == 2
 
+    async def test_a_part_archived_group_counts_the_same_in_both(
+        self, api_client, budget_with_two_groups
+    ):
+        # The dialog recounted archived rows in Python while the header read
+        # the served expression. Now the preview reads the served field too, so
+        # the two numbers are one number — pinned on a group where it is
+        # neither zero nor everything.
+        budget, _keep, tidy, coaching, _equipment = budget_with_two_groups
+        await _archive(api_client, budget, coaching)
+
+        preview = (await api_client.get(f"/api/v1/category-groups/{tidy.id}/delete-preview")).json()
+        assert sorted(preview["category_names"]) == ["Coaching", "Equipment"]
+        assert preview["archived_count"] == 1
+        assert preview["all_archived"] is False
+        listed = await _listed(api_client, budget)
+        assert listed["Fitness"]["archived_category_count"] == preview["archived_count"]
+
     async def test_a_group_that_really_is_empty_says_zero(self, api_client, budget_with_two_groups):
         budget, keep, tidy, coaching, equipment = budget_with_two_groups
         for category in (coaching, equipment):
@@ -192,6 +209,8 @@ class TestTheEmptyGroupTheGridDrew:
         assert (await _listed(api_client, budget))["Fitness"]["archived_category_count"] == 0
         preview = (await api_client.get(f"/api/v1/category-groups/{tidy.id}/delete-preview")).json()
         assert preview["category_names"] == []
+        assert preview["archived_count"] == 0
+        assert preview["all_archived"] is False
 
 
 class TestMovingACategoryReallyMovesIt:
