@@ -12,6 +12,7 @@ import { IncludeSavingsToggle } from '../ReportNotes'
 import { categoryKey, categoryTarget } from '../drillScope'
 import './SeasonalityHeatmap.css'
 import { truncateLabel } from '../../../utils/truncateLabel'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -78,7 +79,7 @@ export function SeasonalityReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Seasonality Heatmap</h2>
         <ReportInfoButton title="Seasonality Heatmap">
           <p>
@@ -113,7 +114,7 @@ export function SeasonalityReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {categories.length === 0 ? (
         <div className="reports-empty">No spending data for this period.</div>

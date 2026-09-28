@@ -34,6 +34,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { SAVED_DEFINITION } from '../savingsRateBreakdown'
 import './IncomeExpenseChart.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -121,7 +122,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
           <p>
@@ -167,7 +168,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
       {chartData.length === 0 ? (
         <div className="reports-empty">No data for this period.</div>
       ) : (

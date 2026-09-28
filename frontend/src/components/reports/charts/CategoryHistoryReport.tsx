@@ -36,6 +36,7 @@ import {
   RUNNING_MONTH_OPACITY,
 } from '../../../utils/reportMonths'
 import { fromCents, sumToCents } from '../../../utils/money'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -97,7 +98,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Category History</h2>
         <ReportInfoButton title="Category History">
           <p>
@@ -146,7 +147,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {!categoryId ? (
         <div className="reports-empty">

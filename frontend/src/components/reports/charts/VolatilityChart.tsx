@@ -26,6 +26,7 @@ import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -77,7 +78,7 @@ export function VolatilityReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Category Volatility</h2>
         <ReportInfoButton title="Category Volatility">
           <p>
@@ -117,7 +118,7 @@ export function VolatilityReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {chartData.length === 0 ? (
         <div className="reports-empty">

@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Surface, type SurfaceVariant } from '../common/Surface'
 import { deltaTone, type GoodDirection } from './metricDelta'
+import { MetricCompactContext } from './metricCompact'
 import './MetricCard.css'
 
 interface Props {
@@ -48,7 +49,19 @@ export function MetricCard({
   variant = 'sunken',
   details,
 }: Props) {
+  const compact = useContext(MetricCompactContext)
   const tone = delta ? deltaTone(delta.value, delta.good) : 'neutral'
+
+  // In a pinned header's summary: the label and the figure, and the warning
+  // tone, which is the one piece of state a reader scrolling needs.
+  if (compact) {
+    return (
+      <span className={`metric-summary__item${warning ? ' metric-summary__item--warning' : ''}`}>
+        <span className="metric-summary__label">{label}</span>
+        <span className="metric-summary__value">{value}</span>
+      </span>
+    )
+  }
 
   const classes = ['metric-card']
   if (accent) classes.push('metric-card--accent')

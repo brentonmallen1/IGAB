@@ -44,6 +44,7 @@ import {
 } from '../../../utils/runway'
 import { monthRange } from '../../../utils/reportMonths'
 import './CashProjectionReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -90,7 +91,7 @@ export function CashProjectionReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Cash Projection</h2>
         <ReportInfoButton title="Cash Projection">
           <p>
@@ -134,7 +135,7 @@ export function CashProjectionReport({ budgetId }: Props) {
             </button>
           ))}
         </div>
-      </div>
+      </ReportHeader>
 
       {warning && (
         <div

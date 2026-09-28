@@ -39,6 +39,7 @@ import { GuideTabLink } from '../../guide/GuideTabLink'
 import { monthRange, throughMonth } from '../../../utils/reportMonths'
 import { runwayStatement } from '../../../utils/runway'
 import './EmergencyCoverageReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -101,7 +102,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
   return (
     <div className="coverage-report">
       <div className="coverage-report__section surface">
-        <div className="report-section__header">
+        <ReportHeader>
           <h2 className="report-section__title">Emergency Fund</h2>
           <ReportInfoButton title="Emergency Fund">
             <p>
@@ -152,7 +153,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               captureRef={captureRef}
             />
           </div>
-        </div>
+        </ReportHeader>
 
         {data.tagged && (
           <SpreadSinkingFundsToggle

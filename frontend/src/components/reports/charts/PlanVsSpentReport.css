@@ -44,8 +44,12 @@
    One scroll box in both directions, so the header can stick to its top
    and the name and totals columns to its sides — a header sticks to its
    nearest scrolling ancestor, and a sideways-only box pinned it to nothing.
-   Height from the app's own viewport (--app-h), never vh — vh ignores the
-   iOS keyboard and the installed PWA's status bar.
+   Tall enough to fill the reports pane below a pinned report header and its
+   summary line (--reports-pane-h, --report-header-pinned,
+   --report-summary-h), less the section's and the pane's bottom padding —
+   any taller, and scrolling the page to the table's end tucks this header
+   row beneath that one. Before the pane has measured, a share of the app's
+   own viewport (--app-h), never vh.
    Positioned so the caption's .sr-only box is clipped here and cannot
    widen the page on a phone. */
 .plan-spent__scroll {
@@ -55,7 +59,12 @@
 
   position: relative;
   overflow: auto;
-  max-height: calc(var(--app-h) * 0.7);
+  min-height: 200px;
+  max-height: calc(
+    var(--reports-pane-h, calc(var(--app-h) * 0.7)) - var(--report-header-pinned, 0px) -
+      var(--report-summary-h, 0px) - var(--report-section-pad, 0px) - var(--reports-pane-pad, 0px) -
+      2px
+  );
   border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   background: var(--surface-sunken);

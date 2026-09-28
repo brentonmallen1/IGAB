@@ -26,6 +26,7 @@ import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
 import { PAYDAY_WINDOW_OPTIONS } from './reportControls'
 import { busiestAndQuietest, paydayBars, paydayPeak, shortDay } from './dayPatternsView'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -102,7 +103,7 @@ export function DayPatternsReport({ budgetId }: Props) {
   return (
     <>
       <div className="report-section surface">
-        <div className="report-section__header">
+        <ReportHeader>
           <h2 className="report-section__title">Day-of-Week Spending Patterns</h2>
           <ReportInfoButton title="Day-of-Week Patterns">
             <p>
@@ -134,7 +135,7 @@ export function DayPatternsReport({ budgetId }: Props) {
               window={{ start: filters.startDate, end: filters.endDate }}
             />
           </div>
-        </div>
+        </ReportHeader>
         <p className="report-section__subtitle">
           An average day of each weekday, by the bank&apos;s posting date.
           {data && ` ${formatDate(data.window_start)} – ${formatDate(data.window_end)}`}

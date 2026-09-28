@@ -32,6 +32,7 @@ import { completeMonths } from './averagedOver'
 import { GuideTabLink } from '../../guide/GuideTabLink'
 import './EssentialsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -82,7 +83,7 @@ export function EssentialsReport({ budgetId }: Props) {
   return (
     <div className="essentials-report">
       <div className="essentials-report__section surface">
-        <div className="report-section__header">
+        <ReportHeader>
           <h2 className="report-section__title">Essentials</h2>
           <ReportInfoButton title="Essentials">
             <p>
@@ -132,7 +133,7 @@ export function EssentialsReport({ budgetId }: Props) {
               window={{ start: data.window_start, end: data.window_end }}
             />
           </div>
-        </div>
+        </ReportHeader>
 
         {data.tagged && (
           <SpreadSinkingFundsToggle

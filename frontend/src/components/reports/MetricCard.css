@@ -140,3 +140,47 @@
     font-size: clamp(0.95rem, 13.5cqw, 1.25rem);
   }
 }
+
+/* The same cards, compact, in a pinned report header's summary: one line of
+   "LABEL value" pairs. Scrolls sideways rather than wrapping, so the strip
+   is one line tall on every screen. */
+.metric-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-lg);
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.metric-summary::-webkit-scrollbar {
+  display: none;
+}
+
+.metric-summary__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+}
+
+.metric-summary__label {
+  font-size: var(--font-size-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-summary__value {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The warning card's tone, as text: --color-warning is held to AA as text
+   on every surface by contrast.test.ts. */
+.metric-summary__item--warning .metric-summary__value {
+  color: var(--color-warning);
+}

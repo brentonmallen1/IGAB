@@ -3,8 +3,12 @@
    target line under the fund is moving, and that only reads against the
    coverage line directly above it. */
 
+/* A report section of its own for the pinned header (ReportHeader), which
+   reaches over this padding edge to edge. */
 .coverage-report__section {
-  padding: var(--spacing-md);
+  --report-section-pad: var(--spacing-md);
+
+  padding: var(--report-section-pad);
 }
 
 /* The Covered card's second line: which way coverage moved over the window. */

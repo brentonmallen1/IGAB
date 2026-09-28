@@ -23,6 +23,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { burnChangeLine, PRIOR_SERIES } from './burnRateView'
 import { useReportMonths } from '../../../stores/reportStore'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -50,7 +51,7 @@ export function BurnRateReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Rolling Burn Rate</h2>
         <ReportInfoButton title="Rolling Burn Rate">
           <p>
@@ -83,7 +84,7 @@ export function BurnRateReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       <div ref={captureRef} className="report-capture">
         {latest && (

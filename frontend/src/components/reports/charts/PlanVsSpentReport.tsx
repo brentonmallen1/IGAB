@@ -32,6 +32,7 @@ import { monthRange, reportMonthLabel } from '../../../utils/reportMonths'
 import { monthWindow } from '../../../utils/dateWindow'
 import type { PlanVsSpentCategory } from '../../../types'
 import './PlanVsSpentReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -114,7 +115,7 @@ export function PlanVsSpentReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Plan vs Spent</h2>
         <ReportInfoButton title="Plan vs Spent">
           <p>
@@ -172,7 +173,7 @@ export function PlanVsSpentReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {/* A deleted saved filter drops its share of the scope; say so rather
           than let the report read as a quiet period. */}

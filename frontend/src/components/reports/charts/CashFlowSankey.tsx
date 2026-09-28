@@ -29,6 +29,7 @@ import {
 import './CashFlowSankey.css'
 import { truncateLabel } from '../../../utils/truncateLabel'
 import { DEBT_PAYMENTS } from '../../../utils/flowLabels'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -377,7 +378,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Where the money went</h2>
         <ReportInfoButton title="Cash Flow — where the money went">
           <p>
@@ -452,7 +453,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             </>
           )}
         </div>
-      </div>
+      </ReportHeader>
       <p className="report-section__subtitle">
         {selectedCategoryName
           ? `Showing payees for ${selectedCategoryName}.`

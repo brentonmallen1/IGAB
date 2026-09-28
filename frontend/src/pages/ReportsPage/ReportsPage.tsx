@@ -47,6 +47,19 @@ import { Surface } from '../../components/common/Surface'
 import { useReportFavorites, useSetReportFavorites } from '../../api/reportFavorites'
 import { FAVORITES_LABEL, reportNav, toggleFavorite } from './reportNav'
 
+/** Publishes the reports pane's height as `--reports-pane-h`: a report's
+ *  own scroll box (Plan vs Spent's table) sizes itself to the room left
+ *  under a pinned report header, so its own sticky header row is never
+ *  tucked beneath that one. */
+function publishPaneHeight(el: HTMLElement | null) {
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const publish = () => el.style.setProperty('--reports-pane-h', `${el.clientHeight}px`)
+  publish()
+  const observer = new ResizeObserver(publish)
+  observer.observe(el)
+  return () => observer.disconnect()
+}
+
 export function ReportsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { activeTab, setActiveTab, openTab } = useReportStore()
@@ -197,7 +210,7 @@ export function ReportsPage() {
           onToggleStar={handleToggleStar}
           starPending={setFavorites.isPending}
         />
-        <main className="reports-content">
+        <main className="reports-content" ref={publishPaneHeight}>
           {renderReport()}
           <DrillDownPanel budgetId={budgetId} />
         </main>
@@ -289,7 +302,7 @@ export function ReportsPage() {
 
       <ReportFiltersBar budgetId={budgetId} />
 
-      <main className="reports-content">
+      <main className="reports-content" ref={publishPaneHeight}>
         {renderReport()}
         <DrillDownPanel budgetId={budgetId} />
       </main>

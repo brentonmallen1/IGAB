@@ -24,6 +24,7 @@ import {
   subscriptionTrendRows,
 } from './subscriptionsView'
 import './SubscriptionsReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -63,7 +64,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Subscriptions</h2>
         <ReportInfoButton title="Subscriptions">
           <p>
@@ -123,7 +124,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       {!hasData || !data || !summary || !active ? (
         <div className="reports-empty">

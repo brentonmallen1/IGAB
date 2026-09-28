@@ -12,6 +12,7 @@ import { monthWindow } from '../../../utils/dateWindow'
 import { SENSITIVITY_OPTIONS } from './reportControls'
 import { groupByMonthNewestFirst, percentChange, testedLine } from './anomaliesView'
 import type { AnomalyItem } from '../../../types'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -59,7 +60,7 @@ export function AnomaliesReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Spending Anomalies</h2>
         <ReportInfoButton title="Spending Anomalies">
           <p>
@@ -91,7 +92,7 @@ export function AnomaliesReport({ budgetId }: Props) {
             </button>
           ))}
         </div>
-      </div>
+      </ReportHeader>
 
       {anomalies.length === 0 ? (
         <div className="anomalies-empty">

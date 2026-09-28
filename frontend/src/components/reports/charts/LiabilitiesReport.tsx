@@ -46,6 +46,7 @@ import { arrivalMarks } from '../../../utils/trackingStart'
 import { arrivalLines } from './arrivalLines'
 import { TrackingStartNote } from './TrackingStartNote'
 import './LiabilitiesReport.css'
+import { ReportHeader } from '../ReportHeader'
 
 interface Props {
   budgetId: string
@@ -151,7 +152,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
 
   return (
     <div className="report-section surface">
-      <div className="report-section__header">
+      <ReportHeader>
         <h2 className="report-section__title">Liabilities</h2>
         <ReportInfoButton title="Liabilities">
           <p>
@@ -221,7 +222,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-      </div>
+      </ReportHeader>
 
       <div ref={captureRef} className="report-capture">
         {(data?.items.length ?? 0) === 0 ? (
