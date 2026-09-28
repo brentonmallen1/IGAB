@@ -569,7 +569,7 @@ class TestCheckup:
         assert Decimal(metric["value"]) == sum(1 for s in statuses if s != "underfunded") == 1
         assert Decimal(metric["target"]) == len(statuses) == 2
 
-    async def test_chronic_count_matches_the_plan_vs_reality_report(self, db_session, api_client):
+    async def test_chronic_count_matches_the_plan_vs_spent_report(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         account = await create_account(db_session, budget, account_type="checking")
         group = await create_category_group(db_session, budget, "Fun")
@@ -580,7 +580,7 @@ class TestCheckup:
             await create_budget_assignment(db_session, budget, dining, month, "100.00")
             await create_transaction(db_session, budget, account, "-150.00", month, category=dining)
 
-        report = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality")).json()
+        report = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-spent")).json()
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
 
         metric = next(m for m in body["metrics"] if m["key"] == "chronic_overspend")

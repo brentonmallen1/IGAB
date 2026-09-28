@@ -199,7 +199,8 @@ def _routes_taking_filter_id() -> list[str]:
     "path", [p for p in _routes_taking_filter_id() if p not in FILTER_FLAG_EXEMPT]
 )
 async def test_every_route_taking_a_filter_says_when_it_is_gone(db_session, api_client, path):
-    """/reports/spending and /reports/budget-actual resolved `filter_id` like
+    """/reports/spending and /reports/budget-actual (now /reports/plan-vs-spent)
+    resolved `filter_id` like
     the other four and had no field to say it was missing, so a deleted filter
     came back as `total: 0` with nothing to tell it from an empty budget
     (PR188-7). Enumerated from the app, so a new route that takes a filter and
@@ -217,7 +218,7 @@ def test_the_filter_route_enumeration_is_not_vacuous():
     assert set(FILTER_FLAG_EXEMPT) <= routes, "an exemption names a route that no longer exists"
     assert {
         "/api/v1/{budget_id}/reports/spending",
-        "/api/v1/{budget_id}/reports/budget-actual",
+        "/api/v1/{budget_id}/reports/plan-vs-spent",
     } <= routes
 
 

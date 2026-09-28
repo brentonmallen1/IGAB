@@ -1135,62 +1135,26 @@ export interface CashFlowReport {
   category_returns: Record<string, CategoryPayee>
 }
 
-export interface BudgetActualItem {
-  category_id: string
-  category_name: string
-  category_group_name: string
+/** One category-month of Plan vs Spent (backend `services/plan_vs_spent.py`). */
+export interface PlanVsSpentCell {
+  month: string
   assigned: number
   /** Money moved into the envelope — a transfer from savings, a deposit filed
    *  to it. It raises the plan (backend `domain/plan.py` `plan_effect`). */
   moved_in: number
-  /** Money moved out of the envelope and not spent — a transfer to a
+  /** Non-negative: money moved out and not spent — a transfer to a
    *  brokerage, a principal payment from an untagged envelope. It lowers the
-   *  plan. Non-negative (backend `plan_effect`). */
+   *  plan (backend `plan_effect`). */
   moved_out: number
-  /** `assigned + moved_in - moved_out` floored at zero: what `variance` is
-   *  measured against. Served — never add them here. */
+  /** `assigned + moved_in - moved_out`, floored at zero — backend
+   *  `plan_outcome`. Served — never add the parts here. */
   plan: number
   /** Net of refunds; negative only when refunds beat the spending. */
   spent: number
-  /** Against the plan floored at zero — backend `domain/plan.py`. */
-  variance: number
-  /** Null where there was no plan to take a share of: "no plan", not 0%. */
-  variance_pct: number | null
-  /** The server's verdict, same rule as Plan vs Reality. Never re-derive it
-   * from `spent > assigned`: a drained envelope has a negative assignment. */
-  overspent: boolean
-}
-
-export interface BudgetActualReport {
-  categories: BudgetActualItem[]
-  total_assigned: number
-  total_moved_in: number
-  total_moved_out: number
-  /** The rows' plans summed: `total_plan - total_spent === total_variance`. */
-  total_plan: number
-  total_spent: number
-  /** The headline: the rows' floored variances summed (backend
-   *  `plan.total_variance`). Never `total_assigned - total_spent`, which
-   *  disagrees with the rows wherever an envelope was drained. */
-  total_variance: number
-  /** A saved filter was named and could not be found — backend
-   *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
-  filter_unavailable: boolean
-}
-
-export interface PlanRealityCell {
-  month: string
-  assigned: number
-  moved_in: number
-  /** Non-negative: money moved out and not spent (backend `plan_effect`). */
-  moved_out: number
-  /** `assigned + moved_in - moved_out`, floored at zero — backend
-   *  `plan_outcome`. */
-  plan: number
-  spent: number
   variance: number
   /** The verdict: past the plan by at least $1 and 1% of it. Tint by this,
-   *  never by the variance's sign — a few cents over is on plan. */
+   *  never by the variance's sign — a few cents over is on plan. Never true
+   *  in the running month. */
   over: boolean
   /** Anything assigned, moved in, moved out or spent (backend
    *  `PlanMonth.quiet`): the cells the matrix fills. Served, as the count
@@ -1198,61 +1162,89 @@ export interface PlanRealityCell {
   active: boolean
 }
 
-export interface PlanRealityCategory {
+/** A category over the complete months — the Total column, which was a
+ *  Budget vs Actual row: its cells added up, each plan floored for its own
+ *  month (backend `domain/plan.py` `summed_outcome`). */
+export interface PlanVsSpentTotal {
+  assigned: number
+  moved_in: number
+  moved_out: number
+  plan: number
+  spent: number
+  variance: number
+  /** Null where there was no plan to take a share of: "no plan", not 0%. */
+  variance_pct: number | null
+  /** The server's verdict. Never re-derive it from `spent > assigned`: a
+   *  drained envelope has a negative assignment. */
+  over: boolean
+}
+
+export interface PlanVsSpentCategory {
   category_id: string
   category_name: string
   category_group_name: string
-  monthly: PlanRealityCell[]
+  monthly: PlanVsSpentCell[]
   months_over: number
   months_active: number
-  total_assigned: number
-  total_moved_in: number
-  total_moved_out: number
-  total_spent: number
   avg_overspend: number
   /** Backend `domain/plan.py` `is_chronic`; the Guide reads the same flag. */
   chronic: boolean
   /** Tagged Long-term expense, which is never chronic. */
   sinking_fund: boolean
+  total: PlanVsSpentTotal
 }
 
-export interface PlanRealityReport {
-  months: string[]
-  /** The newest of `months`, still running: its cells are month-to-date and
-   *  labelled "so far"; no verdict or total reads it (backend
-   *  `ReportWindow`). */
-  running_month: string
-  categories: PlanRealityCategory[]
-  total_assigned: number
-  total_moved_in: number
-  total_moved_out: number
-  total_spent: number
-  chronic_count: number
-}
-
-export interface VariancePoint {
+/** One month over every category — the totals row, which was a Cumulative
+ *  Variance point: its cells summed, each plan floored for its month. */
+export interface PlanVsSpentMonth {
   month: string
   /** The running month: its figures are month-to-date. Drawn apart and
    *  labelled "so far" (`utils/reportMonths.ts`), never in an average, total
    *  or headline. Home: backend `domain.dates.ReportWindow`. */
   partial_month: boolean
-  budget_assigned: number
+  assigned: number
   moved_in: number
   moved_out: number
-  /** The month's category plans summed, each floored at zero:
-   *  `planned - actual_spent === monthly_variance`. */
-  planned: number
-  /** Net of refunds. */
-  actual_spent: number
-  monthly_variance: number
+  /** The month's category plans summed: `plan - spent === variance`. */
+  plan: number
+  spent: number
+  variance: number
   /** The complete months' drift through this one; null on the running month,
    *  whose whole assignment lands on the 1st and its spending over thirty
    *  days. */
   cumulative_variance: number | null
+  /** Categories over plan this month; 0 on the running month. */
+  categories_over: number
 }
 
-export interface VarianceReport {
-  points: VariancePoint[]
+export interface PlanVsSpentReport {
+  months: string[]
+  /** The newest of `months`, still running: its cells are month-to-date and
+   *  labelled "so far"; no verdict or total reads it (backend
+   *  `ReportWindow`). */
+  running_month: string
+  /** The dates the Total column and the window totals cover — the complete
+   *  months — for the drills that open them. Null when there are none yet. */
+  totals_start: string | null
+  totals_end: string | null
+  categories: PlanVsSpentCategory[]
+  month_totals: PlanVsSpentMonth[]
+  total_assigned: number
+  total_moved_in: number
+  total_moved_out: number
+  /** The categories' plans summed: `total_plan - total_spent ===
+   *  total_variance`. */
+  total_plan: number
+  total_spent: number
+  /** The headline: the categories' Totals summed — the month totals summed,
+   *  and the last complete month's running total. Never `total_assigned -
+   *  total_spent`, which disagrees with the rows wherever an envelope was
+   *  drained. */
+  total_variance: number
+  chronic_count: number
+  /** A saved filter was named and could not be found — backend
+   *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
+  filter_unavailable: boolean
 }
 
 export interface VolatilityItem {

@@ -84,7 +84,7 @@ function checkup(findings: CheckupFinding[]): Checkup {
         unit: 'count',
         detail: '',
         finding_kinds: ['chronic_overspend'],
-        report: 'plan-reality',
+        report: 'plan-vs-spent',
         names: [],
         money_value: null,
         money_target: null,

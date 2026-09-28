@@ -505,7 +505,7 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
                 "bill never does."
             ),
             finding_kinds=["chronic_overspend"],
-            report="plan-reality",
+            report="plan-vs-spent",
             names=list(inputs.chronic_names),
         )
     )

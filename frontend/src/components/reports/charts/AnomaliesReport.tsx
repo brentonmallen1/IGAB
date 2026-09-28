@@ -37,7 +37,9 @@ export function AnomaliesReport({ budgetId }: Props) {
     // could total more than the card that opened it.
     const { start: startDate, end: endDate } = monthWindow(a.month)
 
-    setDrillDown(planSpentDrill(a.category_id, a.category_name, { startDate, endDate }))
+    setDrillDown(
+      planSpentDrill({ categoryIds: [a.category_id] }, a.category_name, { startDate, endDate })
+    )
   }
 
   function tooltipContent(a: AnomalyItem): React.ReactNode {

@@ -60,8 +60,8 @@ class PlanMonth:
     @property
     def quiet(self) -> bool:
         """Nothing assigned, moved in, moved out or spent: the one statement of
-        "this row has no activity", which Budget vs Actual reads to drop a
-        category and Plan vs Reality to leave a cell (and a row) empty.
+        "this row has no activity", which Plan vs Spent reads to leave a cell
+        (and a row) empty, and the AI's `budget_vs_actual` to drop a category.
 
         All four, not the floored plan and spent. Read that way, a Mortgage
         envelope assigned 1,500 and paid by a 1,500 principal transfer — plan

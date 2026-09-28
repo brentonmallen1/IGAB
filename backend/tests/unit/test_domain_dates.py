@@ -22,6 +22,7 @@ from igab.domain.dates import (
     months_between,
     months_ending,
     months_spanned,
+    months_touched,
     report_window,
     trailing_start,
     weekday_counts,
@@ -438,3 +439,23 @@ class TestWeekdayCounts:
         month = date(2024, 2, 1)
         counts = weekday_counts(month, month_end(month))
         assert counts == [weekday_occurrences(month, d) for d in range(7)]
+
+
+class TestMonthsTouched:
+    """A range widened to whole months, for a plan that is a month's."""
+
+    def test_a_range_inside_one_month_is_that_month(self):
+        assert months_touched(date(2026, 1, 10), date(2026, 1, 20), date(2026, 5, 1)) == (
+            date(2026, 1, 1),
+            date(2026, 1, 31),
+        )
+
+    def test_a_leap_february_ends_on_the_29th(self):
+        touched = months_touched(date(2028, 2, 3), date(2028, 2, 3), date(2028, 6, 1))
+        assert touched[1] == date(2028, 2, 29)
+
+    def test_the_running_month_stops_at_today(self):
+        assert months_touched(date(2026, 4, 3), date(2026, 4, 30), date(2026, 4, 17)) == (
+            date(2026, 4, 1),
+            date(2026, 4, 17),
+        )

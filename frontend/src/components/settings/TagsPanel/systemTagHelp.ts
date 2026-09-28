@@ -25,7 +25,7 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'savings',
     name: 'Savings',
     on: 'categories',
-    does: `Money set aside. Each Savings category counts as saved in one of two ways. While it’s in the budget: the envelope’s balance is the savings — assigning to it counts as saved, spending from it is spending and lowers what you saved, and moving it to an off-budget savings account changes nothing. When it leaves the budget: money leaving the envelope counts as saved, not spending — for an envelope that feeds an investment, a retirement account or another bank. ${SAVINGS_MODES_DEFINITION} Either way it feeds the Savings report and the savings rate, and still counts against what you assigned, so Budget vs Actual shows the envelope being spent down.`,
+    does: `Money set aside. Each Savings category counts as saved in one of two ways. While it’s in the budget: the envelope’s balance is the savings — assigning to it counts as saved, spending from it is spending and lowers what you saved, and moving it to an off-budget savings account changes nothing. When it leaves the budget: money leaving the envelope counts as saved, not spending — for an envelope that feeds an investment, a retirement account or another bank. ${SAVINGS_MODES_DEFINITION} Either way it feeds the Savings report and the savings rate, and still counts against what you assigned, so Plan vs Spent shows the envelope being spent down.`,
   },
   {
     key: 'emergency_fund',

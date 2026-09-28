@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
+import type { DrillScope } from '../components/reports/drillScope'
 import type { RunwayMoney, RunwaySpending } from '../types'
 import { lastMonthWindow } from '../utils/dateWindow'
 
@@ -14,8 +15,7 @@ export type ReportTab =
   | 'burn-rate'
   | 'cash-flow'
   | 'projection'
-  | 'budget-actual'
-  | 'variance'
+  | 'plan-vs-spent'
   | 'volatility'
   | 'pareto'
   | 'treemap'
@@ -30,7 +30,6 @@ export type ReportTab =
   | 'essentials'
   | 'emergency-fund'
   | 'anomalies'
-  | 'plan-reality'
   | 'spending-trends'
   | 'spending-breakdown'
   | 'category-history'
@@ -64,9 +63,8 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
   { id: 'projection', label: 'Projection', group: 'cashflow' },
-  { id: 'budget-actual', label: 'Budget vs Actual', group: 'budget' },
+  { id: 'plan-vs-spent', label: 'Plan vs Spent', group: 'budget' },
   { id: 'category-history', label: 'Category History', group: 'budget' },
-  { id: 'variance', label: 'Cumulative Variance', group: 'budget' },
   { id: 'volatility', label: 'Volatility', group: 'budget' },
   { id: 'spending-trends', label: 'Spending Trends', group: 'spending' },
   { id: 'spending-breakdown', label: 'Breakdown', group: 'spending' },
@@ -74,7 +72,6 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'treemap', label: 'Treemap', group: 'spending' },
   { id: 'seasonality', label: 'Seasonality', group: 'spending' },
   { id: 'subscriptions', label: 'Subscriptions', group: 'spending' },
-  { id: 'plan-reality', label: 'Plan vs Reality', group: 'insights' },
   { id: 'anomalies', label: 'Anomalies', group: 'insights' },
   { id: 'payees', label: 'Payees', group: 'insights' },
   { id: 'day-patterns', label: 'Day Patterns', group: 'insights' },
@@ -89,6 +86,47 @@ export const TAB_GROUPS: { id: TabGroup; label: string }[] = [
   { id: 'spending', label: 'Spending' },
   { id: 'insights', label: 'Insights' },
 ]
+
+/**
+ * Report ids that no longer exist, and the report that now answers their
+ * question — the one place a retired id is mapped.
+ *
+ * Three things outlive a report: the stored tab (`activeTab`, persisted in
+ * this store), a star (`reports:favorites`, a list the server stores and
+ * never interprets — `services/report_favorites.py`) and a `?tab=` link. Each
+ * reads an id through `currentReportTab`, so a retired id opens the report
+ * that replaced it rather than dropping to the Overview, and a star survives
+ * the merge it was retired by.
+ *
+ * Plan vs Spent is Budget vs Actual, Cumulative Variance and Plan vs Reality
+ * made one report: the three were one dataset at three grains, with
+ * identical twelve-month totals and synonym titles.
+ */
+export const retiredReportTabs: Readonly<Record<string, ReportTab>> = {
+  'budget-actual': 'plan-vs-spent',
+  variance: 'plan-vs-spent',
+  'plan-reality': 'plan-vs-spent',
+}
+
+/** The report a stored or linked id names in this build: itself, the report
+ *  that replaced it, or null for an id this build has never heard of. */
+export function currentReportTab(id: string): ReportTab | null {
+  if (REPORT_TABS.some((t) => t.id === id)) return id as ReportTab
+  // Own keys only: `retiredReportTabs['constructor']` is a function.
+  return Object.hasOwn(retiredReportTabs, id) ? retiredReportTabs[id] : null
+}
+
+/** A starred list as reports this build draws, in the order it was starred:
+ *  a retired id becomes its successor, an unknown one drops, and two stars
+ *  that now name one report are one star. */
+export function currentFavorites(ids: readonly string[]): ReportTab[] {
+  const out: ReportTab[] = []
+  for (const id of ids) {
+    const tab = currentReportTab(id)
+    if (tab !== null && !out.includes(tab)) out.push(tab)
+  }
+  return out
+}
 
 /** Get the group a tab belongs to */
 export function getTabGroup(tabId: ReportTab): TabGroup {
@@ -149,9 +187,12 @@ export function expensesDrill(
   return netClassDrill(label, classes, window)
 }
 
-/** The drill-down behind a plan-family Spent figure — Budget vs Actual, Plan
- *  vs Reality, Volatility, Anomalies: the rows the plan ledger counts as spent
- *  in one category (served as `plan_spent`), whichever way they went.
+/** The drill-down behind a plan-family Spent figure — a Plan vs Spent cell,
+ *  total or month total, Volatility, Anomalies: the rows the plan ledger
+ *  counts as spent (served as `plan_spent`) in the scope the figure covers,
+ *  whichever way they went. One category for a cell or a row's total; the
+ *  report's own scope (`drillScope`) for a month total, which covers every
+ *  category the report does.
  *
  *  They each sent `direction: 'outflow'` and the category, which is not what
  *  the figure counts: it nets refunds, so a refund-heavy month opened a list
@@ -161,7 +202,7 @@ export function expensesDrill(
  *  envelope, which the outflow list did. The rule is the server's, as the
  *  spending reports' classes are — one builder, because four charts open it. */
 export function planSpentDrill(
-  categoryId: string,
+  target: DrillScope,
   label: string,
   window: { startDate: string; endDate: string }
 ): DrillDownContext {
@@ -169,7 +210,7 @@ export function planSpentDrill(
     kind: 'category',
     label,
     scope: 'leaf',
-    categoryIds: [categoryId],
+    ...target,
     planSpent: true,
     ...window,
   }
@@ -225,14 +266,14 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'burn-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'cash-flow': { dates: true, categories: false, payees: false, accounts: true, groupBy: false },
   projection: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'budget-actual': {
-    dates: true,
+  // Its own months selector, and the category scope Budget vs Actual took.
+  'plan-vs-spent': {
+    dates: false,
     categories: true,
     payees: false,
     accounts: false,
     groupBy: false,
   },
-  variance: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   volatility: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   // Its modes read two reports. Category and group read the grouped
   // rollup, which takes the category scope and a view but no payees; payee
@@ -283,13 +324,6 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     groupBy: false,
   },
   anomalies: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'plan-reality': {
-    dates: false,
-    categories: false,
-    payees: false,
-    accounts: false,
-    groupBy: false,
-  },
   payees: { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
   'spending-trends': {
     dates: true,
@@ -567,6 +601,9 @@ export const useReportStore = create<ReportState>()(
         return {
           ...current,
           ...saved,
+          // A tab stored before its report was retired opens its successor
+          // (`retiredReportTabs`), not the Overview.
+          activeTab: currentReportTab(saved.activeTab ?? current.activeTab) ?? 'overview',
           filters: { ...defaultFilters(), ...(saved.filters ?? {}) },
         }
       },

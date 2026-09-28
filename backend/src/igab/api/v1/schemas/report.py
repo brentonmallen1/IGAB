@@ -447,68 +447,31 @@ class CashFlowResponse(ApiModel):
     category_returns: dict[str, CategoryPayee]
 
 
-# ─── Budget vs Actual ─────────────────────────────────────────────────────────
+# ─── Plan vs Spent ────────────────────────────────────────────────────────────
+#
+# One report where Budget vs Actual, Cumulative Variance and Plan vs Reality
+# were three (`services.plan_vs_spent`): the matrix is `categories[].monthly`,
+# the Cumulative Variance series is `month_totals`, and each Budget vs Actual
+# row is a category's `total`.
 
 
-class BudgetActualItem(ApiModel):
-    category_id: uuid.UUID
-    category_name: str
-    category_group_name: str
-    #: The window's budget assignments, as the budget grid shows them.
+class PlanVsSpentCell(ApiModel):
+    month: date
     assigned: Decimal
     #: Money moved into the envelope — a transfer from savings, a deposit
     #: filed to it (`domain.plan.plan_effect`). It raises the plan.
     moved_in: Decimal
-    #: Money moved out of the envelope and not spent — a transfer to a
-    #: brokerage, a principal payment from an untagged envelope. It lowers the
-    #: plan. Non-negative.
-    moved_out: Decimal
-    #: `assigned + moved_in - moved_out`, floored at zero: what `variance` is
-    #: measured against. Served so the chart never adds them itself.
-    plan: Decimal
-    #: Net of refunds. Negative only when refunds beat the spending.
-    spent: Decimal
-    #: Against the plan floored at zero (`domain.plan`), like Plan vs Reality.
-    variance: Decimal
-    #: None where there was no plan to take a share of — "no plan", not 0%.
-    variance_pct: float | None
-    #: The server's verdict; the chart's filter, sort and red bar read it.
-    overspent: bool
-
-
-class BudgetActualResponse(ApiModel):
-    categories: list[BudgetActualItem]
-    total_assigned: Decimal
-    total_moved_in: Decimal
-    total_moved_out: Decimal
-    #: The rows' plans summed; `total_plan - total_spent == total_variance`.
-    total_plan: Decimal
-    total_spent: Decimal
-    #: The rows' floored variances summed (`plan.total_variance`) — the
-    #: headline. Not `total_assigned - total_spent`, which disagrees with the
-    #: rows wherever an envelope was drained.
-    total_variance: Decimal
-    #: A saved filter was named and could not be found (see `CategoryScope`).
-    #: REQUIRED, not defaulted: a report that forgets it would report an empty
-    #: scope as an empty budget, which is the failure the flag exists to prevent.
-    filter_unavailable: bool
-
-
-# ─── Plan vs Reality ──────────────────────────────────────────────────────────
-
-
-class PlanRealityCell(ApiModel):
-    month: date
-    assigned: Decimal
-    moved_in: Decimal
+    #: Money moved out and not spent — a transfer to a brokerage, a principal
+    #: payment from an untagged envelope. It lowers the plan. Non-negative.
     moved_out: Decimal
     #: `assigned + moved_in - moved_out` floored at zero
     #: (`domain.plan.plan_outcome`).
     plan: Decimal
+    #: Net of refunds. Negative only when refunds beat the spending.
     spent: Decimal
     variance: Decimal
     #: The verdict — past the plan by a dollar and 1% of it. The cell's tint
-    #: reads this, never the variance's sign.
+    #: reads this, never the variance's sign. Never true in the running month.
     over: bool
     #: Anything assigned, moved in, moved out or spent this month
     #: (`plan_ledger.PlanMonth.quiet`): the cells the matrix fills and
@@ -516,66 +479,95 @@ class PlanRealityCell(ApiModel):
     active: bool
 
 
-class PlanRealityCategory(ApiModel):
+class PlanVsSpentTotal(ApiModel):
+    """A category over the complete months — the Total column, which was a
+    Budget vs Actual row: its cells added up (`plan.summed_outcome`), each plan
+    floored for its own month. So `plan` can exceed `assigned + moved_in -
+    moved_out` where a month floored."""
+
+    assigned: Decimal
+    moved_in: Decimal
+    moved_out: Decimal
+    #: What `variance` is measured against. Served so the page never adds the
+    #: moved money itself.
+    plan: Decimal
+    spent: Decimal
+    variance: Decimal
+    #: None where there was no plan to take a share of — "no plan", not 0%.
+    variance_pct: float | None
+    #: The server's verdict; the page's tint and sort read it.
+    over: bool
+
+
+class PlanVsSpentCategory(ApiModel):
     category_id: uuid.UUID
     category_name: str
     category_group_name: str
-    monthly: list[PlanRealityCell]
+    monthly: list[PlanVsSpentCell]
     months_over: int
     months_active: int
-    total_assigned: Decimal
-    total_moved_in: Decimal
-    total_moved_out: Decimal
-    total_spent: Decimal
     avg_overspend: Decimal
     #: `domain.plan.is_chronic`. The Guide's checkup reads this flag.
     chronic: bool
     #: Tagged Long-term expense, which is never chronic — said, so the page
     #: can explain an over-plan month that carries no flag.
     sinking_fund: bool
+    total: PlanVsSpentTotal
 
 
-class PlanRealityResponse(ApiModel):
-    months: list[date]
-    #: The newest of `months`, still running (`domain.dates.ReportWindow`):
-    #: its cells are month-to-date, drawn apart and labelled "so far", and no
-    #: verdict or total — chronic, months over, the headline sums — reads it.
-    running_month: date
-    categories: list[PlanRealityCategory]
-    total_assigned: Decimal
-    total_moved_in: Decimal
-    total_moved_out: Decimal
-    total_spent: Decimal
-    chronic_count: int
+class PlanVsSpentMonth(ApiModel):
+    """One month over every category — the totals row, which was a Cumulative
+    Variance point: its cells summed, each plan floored for its month."""
 
-
-# ─── Variance ─────────────────────────────────────────────────────────────────
-
-
-class VariancePoint(ApiModel):
     month: date
     #: True on the running month, whose figures are month-to-date
     #: (`domain.dates.ReportWindow`): drawn apart and labelled "so far", never
     #: in an average, a total or a headline. Required, not defaulted — a path
     #: that forgot it would present an unfinished month as a closed one.
     partial_month: bool
-    budget_assigned: Decimal
+    assigned: Decimal
     moved_in: Decimal
     moved_out: Decimal
-    #: The month's category plans summed, each floored at zero:
-    #: `planned - actual_spent == monthly_variance`.
-    planned: Decimal
-    #: Net of refunds.
-    actual_spent: Decimal
-    monthly_variance: Decimal
+    #: The month's category plans summed: `plan - spent == variance`.
+    plan: Decimal
+    spent: Decimal
+    variance: Decimal
     #: The drift of the complete months through this one. None on the running
     #: month: its whole assignment lands on the 1st and its spending over
     #: thirty days, so counting it read "under budget" every month's start.
     cumulative_variance: Decimal | None
+    #: How many categories went over plan this month; 0 on the running month.
+    categories_over: int
 
 
-class VarianceResponse(ApiModel):
-    points: list[VariancePoint]
+class PlanVsSpentResponse(ApiModel):
+    months: list[date]
+    #: The newest of `months`, still running: its cells are month-to-date,
+    #: drawn apart and labelled "so far", and no verdict or total reads it.
+    running_month: date
+    #: The dates the Total column and the window totals cover — the complete
+    #: months — for the drills that open them. None when there are none yet.
+    totals_start: date | None
+    totals_end: date | None
+    categories: list[PlanVsSpentCategory]
+    month_totals: list[PlanVsSpentMonth]
+    total_assigned: Decimal
+    total_moved_in: Decimal
+    total_moved_out: Decimal
+    #: The categories' plans summed; `total_plan - total_spent ==
+    #: total_variance`.
+    total_plan: Decimal
+    total_spent: Decimal
+    #: The headline: the categories' Totals summed, which is the month totals
+    #: summed and the last complete month's running total. Not
+    #: `total_assigned - total_spent`, which disagrees with the rows wherever an
+    #: envelope was drained.
+    total_variance: Decimal
+    chronic_count: int
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
+    filter_unavailable: bool
 
 
 # ─── Volatility ───────────────────────────────────────────────────────────────

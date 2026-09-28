@@ -156,18 +156,16 @@ CASES: list[Case] = [
             _eq(num(d["total_expense"]), D("40")),
         ),
     ),
-    ("budget-actual", "budget-actual", {}, lambda d: _eq(num(d["total_spent"]), D("40"))),
     (
-        "plan-vs-reality",
-        "plan-vs-reality",
+        "plan-vs-spent",
+        "plan-vs-spent",
         {"months": 3},
-        lambda d: _eq(d["months"][-1], READER_MONTH.isoformat()),
-    ),
-    (
-        "variance",
-        "variance",
-        {"months": 3},
-        lambda d: _eq(d["points"][-1]["month"], READER_MONTH.isoformat()),
+        lambda d: (
+            _eq(d["months"][-1], READER_MONTH.isoformat()),
+            _eq(d["month_totals"][-1]["month"], READER_MONTH.isoformat()),
+            # The reader's today's 40, and not the reader's tomorrow's.
+            _eq(num(d["month_totals"][-1]["spent"]), D("40")),
+        ),
     ),
     (
         "volatility",

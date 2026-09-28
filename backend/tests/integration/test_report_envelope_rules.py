@@ -126,11 +126,11 @@ class TestTheTwoRulesAgreeWhereTheyMust:
 
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
 
         assert bva["total_assigned"] == D("100.00")
         assigned_in_variance = sum(
-            D(str(m.get("budget_assigned", 0))) for m in (variance or []) if isinstance(m, dict)
+            D(str(m.get("assigned", 0))) for m in (variance or []) if isinstance(m, dict)
         )
         assert assigned_in_variance == D("100.00"), variance
 
@@ -142,7 +142,7 @@ class TestTheTwoRulesAgreeWhereTheyMust:
         reports = ReportService(db_session)
         grouped = await reports.spending_grouped(budget.id, FIRST, TODAY)
         volatility = await reports.category_volatility(budget.id, months=2)
-        plan = await reports.plan_vs_reality(budget.id, months=2)
+        plan = await reports.plan_vs_spent(budget.id, months=2)
 
         # None of the three may silently drop the row the others keep.
         assert grouped, "spending_grouped dropped it"
@@ -290,13 +290,13 @@ class TestThePlannedSpendUniverse:
         )
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("0")
+        assert variance[-1]["spent"] == D("0")
         assert variance[-1]["moved_out"] == D("200.00")
-        assert variance[-1]["monthly_variance"] == D("300.00")
+        assert variance[-1]["variance"] == D("300.00")
         assert bva["total_spent"] == D("0")
         assert _running_spent(pvr) == D("0")
 
@@ -326,12 +326,12 @@ class TestThePlannedSpendUniverse:
         await create_transfer(db_session, budget, checking, hysa, "200.00", TODAY, category=cat)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("200.00")
-        assert variance[-1]["monthly_variance"] == D("300.00")
+        assert variance[-1]["spent"] == D("200.00")
+        assert variance[-1]["variance"] == D("300.00")
         assert bva["total_spent"] == D("200.00")
         assert _running_spent(pvr) == D("200.00")
 
@@ -345,11 +345,11 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, brokerage, "-75.00", TODAY, category=cat)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("0")
+        assert variance[-1]["spent"] == D("0")
         assert bva["total_spent"] == D("0")
         assert _running_spent(pvr) == D("0")
 
@@ -363,11 +363,11 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=inflow)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("0")
+        assert variance[-1]["spent"] == D("0")
         assert bva["total_spent"] == D("0")
         assert _running_spent(pvr) == D("0")
 
@@ -382,11 +382,11 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, checking, "30.00", TODAY, category=cat)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
-        assert variance[-1]["actual_spent"] == D("70.00")
+        assert variance[-1]["spent"] == D("70.00")
         assert bva["total_spent"] == D("70.00")
         assert _running_spent(pvr) == D("70.00")
 
@@ -409,12 +409,12 @@ class TestThePlannedSpendUniverse:
         await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=inflow)
 
         reports = ReportService(db_session)
-        variance = await reports.cumulative_variance(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
 
         # The 100 spent less the 30 refunded; nothing else counts.
-        assert variance[-1]["actual_spent"] == D("70.00")
+        assert variance[-1]["spent"] == D("70.00")
         assert bva["total_spent"] == D("70.00")
         assert _running_spent(pvr) == D("70.00")
 
@@ -464,10 +464,12 @@ class TestASinkingFundsBillIsPlannedSpend:
 
     async def test_cumulative_variance_counts_the_payout(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
-        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+        variance = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
+            "month_totals"
+        ]
 
         # The two complete months, then the running one — drawn, not drifted.
-        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance[:2]] == [
+        assert [(m["assigned"], m["spent"]) for m in variance[:2]] == [
             (D("195.00"), D("0")),
             (D("195.00"), D("390.00")),
         ]
@@ -476,7 +478,7 @@ class TestASinkingFundsBillIsPlannedSpend:
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=2)
 
         assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
 
@@ -520,12 +522,14 @@ class TestASavingsTaggedEnvelope:
 
     async def test_cumulative_variance_stops_compounding_the_underspend(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
-        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+        variance = (await ReportService(db_session).plan_vs_spent(budget.id, months=2))[
+            "month_totals"
+        ]
 
         # 195 put by and unspent, then 195 put by and 390 taken out: the plan
         # closes at zero instead of carrying a +390 surplus forever.
         # The two complete months, then the running one — drawn, not drifted.
-        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance[:2]] == [
+        assert [(m["assigned"], m["spent"]) for m in variance[:2]] == [
             (D("195.00"), D("0")),
             (D("195.00"), D("390.00")),
         ]
@@ -534,7 +538,7 @@ class TestASavingsTaggedEnvelope:
 
     async def test_plan_vs_reality_agrees(self, db_session):
         budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
-        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+        pvr = await ReportService(db_session).plan_vs_spent(budget.id, months=2)
 
         assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
 

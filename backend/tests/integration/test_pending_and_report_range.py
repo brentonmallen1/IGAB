@@ -160,12 +160,12 @@ class TestReportRange:
         body = (await api_client.get(f"/api/v1/{budget.id}/reports/range")).json()
         assert body["months_available"] == 1
 
-    async def test_plan_vs_reality_accepts_a_window_past_two_years(self, db_session, api_client):
+    async def test_plan_vs_spent_accepts_a_window_past_two_years(self, db_session, api_client):
         """Its ceiling was 24, which turned every longer pick into a 422 on one
         report out of nine. The 3-month floor is its own rule and stays."""
         budget, _, _ = await _budget(db_session, api_client)
         await db_session.commit()
-        url = f"/api/v1/{budget.id}/reports/plan-vs-reality"
+        url = f"/api/v1/{budget.id}/reports/plan-vs-spent"
 
         assert (await api_client.get(url, params={"months": 36})).status_code == 200
         assert (await api_client.get(url, params={"months": 2})).status_code == 422

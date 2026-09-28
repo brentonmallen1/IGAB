@@ -12,8 +12,6 @@ from igab.api.v1.schemas.report import (
     AccountCompositionResponse,
     AnomalyItem,
     AnomalyReportResponse,
-    BudgetActualItem,
-    BudgetActualResponse,
     BurnRatePoint,
     BurnRateResponse,
     CashFlowResponse,
@@ -43,8 +41,7 @@ from igab.api.v1.schemas.report import (
     NetWorthResponse,
     PaydayEffectResponse,
     PayeeAnalysisResponse,
-    PlanRealityCategory,
-    PlanRealityResponse,
+    PlanVsSpentResponse,
     ReportFavoritesResponse,
     ReportFavoritesUpdate,
     ReportRangeResponse,
@@ -66,8 +63,6 @@ from igab.api.v1.schemas.report import (
     TimelineResponse,
     TimelineTransaction,
     TopCategory,
-    VariancePoint,
-    VarianceResponse,
     VolatilityItem,
     VolatilityResponse,
     WishlistDisciplineResponse,
@@ -136,11 +131,11 @@ MAX_REPORT_MONTHS = 600
 
 ReportMonths = Annotated[int, Query(ge=1, le=MAX_REPORT_MONTHS)]
 
-#: plan-vs-reality reads "chronic" as over-plan in 3+ of the window's last 6
+#: Plan vs Spent reads "chronic" as over-plan in 3+ of the window's last 6
 #: months (`domain.plan.CHRONIC_MONTHS`), so a window shorter than 3 has
 #: nothing to say. That floor is the
 #: report's own rule and stays; only its old 24-month ceiling is gone.
-PlanRealityMonths = Annotated[int, Query(ge=CHRONIC_MONTHS, le=MAX_REPORT_MONTHS)]
+PlanVsSpentMonths = Annotated[int, Query(ge=CHRONIC_MONTHS, le=MAX_REPORT_MONTHS)]
 
 
 #: Bounds for every report parameter that is not a month window.
@@ -397,25 +392,25 @@ async def cash_flow_report(
     return CashFlowResponse.model_validate(data)
 
 
-@router.get("/{budget_id}/reports/budget-actual", response_model=BudgetActualResponse)
-async def budget_actual_report(
+@router.get("/{budget_id}/reports/plan-vs-spent", response_model=PlanVsSpentResponse)
+async def plan_vs_spent_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     today: ReaderToday,
-    start_date: date | None = None,
-    end_date: date | None = None,
+    months: PlanVsSpentMonths = 12,
     category_ids: str | None = Query(None),
     #: A saved filter: its effective category set (named + tagged) scopes the
     #: report — the same resolution the budget page reads.
     filter_id: uuid.UUID | None = None,
     #: Categories carrying any of these tags join the scope.
     tag_ids: str | None = Query(None),
-) -> BudgetActualResponse:
-    start = start_date or today.replace(day=1)
-    end = end_date or today
+) -> PlanVsSpentResponse:
+    """The matrix, its month totals and its category totals, from one read of
+    the plan ledger — the one endpoint Budget vs Actual, Cumulative Variance
+    and Plan vs Reality used to be three of."""
     scope = await resolve_category_scope(
         budget_id,
         category_ids=parse_uuid_list(category_ids),
@@ -424,50 +419,10 @@ async def budget_actual_report(
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
-    data = await report_svc.budget_vs_actual(budget_id, start, end, scope.category_ids)
-    return BudgetActualResponse(
-        categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
-        total_assigned=data["total_assigned"],
-        total_moved_in=data["total_moved_in"],
-        total_moved_out=data["total_moved_out"],
-        total_plan=data["total_plan"],
-        total_spent=data["total_spent"],
-        total_variance=data["total_variance"],
-        filter_unavailable=scope.filter_unavailable,
+    data = await report_svc.plan_vs_spent(budget_id, months, today, scope.category_ids)
+    return PlanVsSpentResponse.model_validate(
+        {**data, "filter_unavailable": scope.filter_unavailable}
     )
-
-
-@router.get("/{budget_id}/reports/plan-vs-reality", response_model=PlanRealityResponse)
-async def plan_vs_reality_report(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    report_svc: Annotated[ReportService, Depends(get_report_service)],
-    today: ReaderToday,
-    months: PlanRealityMonths = 12,
-) -> PlanRealityResponse:
-    data = await report_svc.plan_vs_reality(budget_id, months, today)
-    return PlanRealityResponse(
-        months=data["months"],
-        running_month=data["running_month"],
-        categories=[PlanRealityCategory.model_validate(c) for c in data["categories"]],
-        total_assigned=data["total_assigned"],
-        total_moved_in=data["total_moved_in"],
-        total_moved_out=data["total_moved_out"],
-        total_spent=data["total_spent"],
-        chronic_count=data["chronic_count"],
-    )
-
-
-@router.get("/{budget_id}/reports/variance", response_model=VarianceResponse)
-async def variance_report(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    report_svc: Annotated[ReportService, Depends(get_report_service)],
-    today: ReaderToday,
-    months: ReportMonths = 12,
-) -> VarianceResponse:
-    data = await report_svc.cumulative_variance(budget_id, months, today)
-    return VarianceResponse(points=[VariancePoint.model_validate(p) for p in data])
 
 
 @router.get("/{budget_id}/reports/volatility", response_model=VolatilityResponse)

@@ -6,7 +6,7 @@ import {
   TAB_GROUPS,
   getTabGroup,
   getGroupTabs,
-  type ReportTab,
+  currentReportTab,
   type TabGroup,
 } from '../../stores/reportStore'
 import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
@@ -23,8 +23,6 @@ import { AccountCompositionReport } from '../../components/reports/charts/Accoun
 import { IncomeExpenseReport } from '../../components/reports/charts/IncomeExpenseChart'
 import { BurnRateReport } from '../../components/reports/charts/BurnRateChart'
 import { CashFlowSankeyReport } from '../../components/reports/charts/CashFlowSankey'
-import { BudgetActualReport } from '../../components/reports/charts/BudgetActualChart'
-import { VarianceReport } from '../../components/reports/charts/VarianceChart'
 import { VolatilityReport } from '../../components/reports/charts/VolatilityChart'
 import { ParetoReport } from '../../components/reports/charts/ParetoChart'
 import { SpendingTreemapReport } from '../../components/reports/charts/SpendingTreemap'
@@ -37,7 +35,7 @@ import { SubscriptionsReport } from '../../components/reports/charts/Subscriptio
 import { SavingsReport } from '../../components/reports/charts/SavingsReport'
 import { SavingsRateReport } from '../../components/reports/charts/SavingsRateChart'
 import { AnomaliesReport } from '../../components/reports/charts/AnomaliesReport'
-import { PlanVsRealityReport } from '../../components/reports/charts/PlanVsRealityReport'
+import { PlanVsSpentReport } from '../../components/reports/charts/PlanVsSpentReport'
 import { CashProjectionReport } from '../../components/reports/charts/CashProjectionReport'
 import { SpendingTrendsReport } from '../../components/reports/charts/SpendingTrendsReport'
 import { SpendingBreakdownReport } from '../../components/reports/charts/SpendingBreakdownReport'
@@ -80,12 +78,14 @@ export function ReportsPage() {
   }, [activeTab, setActiveTab])
 
   // A link can name a tab (`/reports?tab=essentials`) — the Guide's roadmap
-  // points at specific reports. Read once, then the stored tab takes over.
+  // points at specific reports. Read once, then the stored tab takes over. A
+  // link to a retired report opens the one that replaced it.
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const wanted = searchParams.get('tab')
     if (!wanted) return
-    if (REPORT_TABS.some((t) => t.id === wanted)) setActiveTab(wanted as ReportTab)
+    const tab = currentReportTab(wanted)
+    if (tab) setActiveTab(tab)
     setSearchParams({}, { replace: true })
   }, [searchParams, setActiveTab, setSearchParams])
 
@@ -166,10 +166,8 @@ export function ReportsPage() {
         return <CashFlowSankeyReport budgetId={budgetId!} />
       case 'projection':
         return <CashProjectionReport budgetId={budgetId!} />
-      case 'budget-actual':
-        return <BudgetActualReport budgetId={budgetId!} />
-      case 'variance':
-        return <VarianceReport budgetId={budgetId!} />
+      case 'plan-vs-spent':
+        return <PlanVsSpentReport budgetId={budgetId!} />
       case 'volatility':
         return <VolatilityReport budgetId={budgetId!} />
       case 'pareto':
@@ -180,8 +178,6 @@ export function ReportsPage() {
         return <SeasonalityReport budgetId={budgetId!} />
       case 'subscriptions':
         return <SubscriptionsReport budgetId={budgetId!} />
-      case 'plan-reality':
-        return <PlanVsRealityReport budgetId={budgetId!} />
       case 'anomalies':
         return <AnomaliesReport budgetId={budgetId!} />
       case 'payees':

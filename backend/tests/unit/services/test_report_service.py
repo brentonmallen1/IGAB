@@ -355,7 +355,7 @@ class TestBudgetVsActual:
         # The drained envelope is a row (something was assigned) on plan, and
         # the totals are the rows'.
         drained = next(c for c in result["categories"] if c["category_name"] == "A")
-        assert (drained["plan"], drained["variance"], drained["overspent"]) == (
+        assert (drained["plan"], drained["variance"], drained["over"]) == (
             D("0"),
             D("0"),
             False,
@@ -374,7 +374,34 @@ class TestBudgetVsActual:
             "total_plan": D("0"),
             "total_spent": D("0"),
             "total_variance": D("0"),
+            "start_date": JAN,
+            "end_date": date(2026, 1, 31),
         }
+
+    @pytest.mark.parametrize(
+        ("start", "end", "today", "read"),
+        [
+            # A range that cuts a month reads the whole month: a plan is a
+            # month's, and half a month's spending against its whole
+            # assignment would read every envelope under plan.
+            (date(2026, 1, 10), date(2026, 1, 20), date(2026, 5, 1), (JAN, date(2026, 1, 31))),
+            (date(2026, 1, 31), date(2026, 2, 1), date(2026, 5, 1), (JAN, date(2026, 2, 28))),
+            # Never past today: the running month is month-to-date.
+            (
+                date(2026, 4, 3),
+                date(2026, 4, 30),
+                date(2026, 4, 17),
+                (date(2026, 4, 1), date(2026, 4, 17)),
+            ),
+            # Whole months already: unchanged.
+            (JAN, date(2026, 3, 31), date(2026, 5, 1), (JAN, date(2026, 3, 31))),
+        ],
+        ids=["cuts-one-month", "straddles-two", "running-month", "whole-months"],
+    )
+    async def test_it_reads_the_whole_months_a_range_touches(self, start, end, today, read):
+        svc = ReportService(make_session(mock_result([]), mock_result([])))
+        result = await svc.budget_vs_actual(BUDGET, start, end, today=today)
+        assert (result["start_date"], result["end_date"]) == read
 
     async def test_variance_pct_is_none_when_no_assignment(self):
         """Category with spending but no assignment has no variance_pct.
@@ -397,10 +424,12 @@ class TestBudgetVsActual:
         assert cat["category_group_name"] == "Everyday"
 
 
-# ─── cumulative_variance ──────────────────────────────────────────────────────
+# ─── plan_vs_spent: the totals row ────────────────────────────────────────────
 
 
-class TestCumulativeVariance:
+class TestPlanVsSpentMonthTotals:
+    """The row of month totals — what Cumulative Variance served."""
+
     @staticmethod
     def _svc(assigns, spends) -> ReportService:
         return ReportService(
@@ -428,14 +457,14 @@ class TestCumulativeVariance:
             ledger_row(CAT_A, m1.replace(day=15), D("-400.00")),
             ledger_row(CAT_A, m2.replace(day=10), D("-600.00")),
         ]
-        result = await self._svc(assigns, spends).cumulative_variance(BUDGET, months=2)
+        result = (await self._svc(assigns, spends).plan_vs_spent(BUDGET, months=2))["month_totals"]
 
         assert len(result) == 3
         r0 = next(r for r in result if r["month"] == m1)
         r1 = next(r for r in result if r["month"] == m2)
-        assert r0["monthly_variance"] == D("100.00")
+        assert r0["variance"] == D("100.00")
         assert r0["cumulative_variance"] == D("100.00")
-        assert r1["monthly_variance"] == D("-100.00")
+        assert r1["variance"] == D("-100.00")
         assert r1["cumulative_variance"] == D("0.00")
 
     async def test_the_running_month_is_drawn_but_not_in_the_drift(self):
@@ -455,15 +484,15 @@ class TestCumulativeVariance:
             for m, amount in ((last, "400.00"), (first, "900.00"))
         ]
         spends = [ledger_row(CAT_A, first, D("-100.00"))]
-        result = await self._svc(assigns, spends).cumulative_variance(BUDGET, months=1)
+        result = (await self._svc(assigns, spends).plan_vs_spent(BUDGET, months=1))["month_totals"]
 
         done, running = result
         assert (done["partial_month"], running["partial_month"]) == (False, True)
         assert done["cumulative_variance"] == D("400.00")
         # Its own figures so far are served; its drift is not.
-        assert running["budget_assigned"] == D("900.00")
-        assert running["actual_spent"] == D("100.00")
-        assert running["monthly_variance"] == D("800.00")
+        assert running["assigned"] == D("900.00")
+        assert running["spent"] == D("100.00")
+        assert running["variance"] == D("800.00")
         assert running["cumulative_variance"] is None
 
     async def test_months_with_no_data_count_as_zero(self):
@@ -481,12 +510,12 @@ class TestCumulativeVariance:
                 sinking=False,
             )
         ]
-        result = await self._svc(assigns, []).cumulative_variance(BUDGET, months=2)
+        result = (await self._svc(assigns, []).plan_vs_spent(BUDGET, months=2))["month_totals"]
 
         r1 = next(r for r in result if r["month"] == m1)
         r2 = next(r for r in result if r["month"] == m2)
-        assert r1["monthly_variance"] == D("400.00")
-        assert r2["monthly_variance"] == D("0.00")
+        assert r1["variance"] == D("400.00")
+        assert r2["variance"] == D("0.00")
         assert r2["cumulative_variance"] == D("400.00")
 
 

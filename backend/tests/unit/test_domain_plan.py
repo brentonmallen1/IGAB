@@ -14,7 +14,7 @@ from igab.domain.plan import (
     is_chronic,
     plan_effect,
     plan_outcome,
-    total_variance,
+    summed_outcome,
 )
 
 D = Decimal
@@ -66,8 +66,9 @@ def test_spending_with_no_plan_is_over_with_no_percentage():
     assert plan_outcome(D("40"), D("40"), moved_in=D("0"), moved_out=D("0")).variance_pct == 0.0
 
 
-class TestTotalVariance:
-    """Budget vs Actual's headline: the rows' floored verdicts, summed."""
+class TestSummedOutcome:
+    """A span of months, or a set of categories: each month's floored verdict,
+    summed — every Plan vs Spent total and the AI's budget_vs_actual."""
 
     def test_a_drained_envelope_does_not_cancel_an_overspent_one(self):
         # 300 moved out of Car Repairs (nothing spent) and Dining 300 over its
@@ -77,22 +78,46 @@ class TestTotalVariance:
             plan_outcome(D("-300"), D("0"), moved_in=D("0"), moved_out=D("0")),
             plan_outcome(D("200"), D("500"), moved_in=D("0"), moved_out=D("0")),
         ]
-        assert total_variance(outcomes) == D("-300")
+        assert summed_outcome(outcomes).variance == D("-300")
 
     def test_under_and_over_net(self):
         outcomes = [
             plan_outcome(D("500"), D("450"), moved_in=D("0"), moved_out=D("0")),
             plan_outcome(D("100"), D("160"), moved_in=D("0"), moved_out=D("0")),
         ]
-        assert total_variance(outcomes) == D("-10")
+        assert summed_outcome(outcomes).variance == D("-10")
 
     def test_spending_with_no_plan_counts_in_full(self):
-        assert total_variance(
+        assert summed_outcome(
             [plan_outcome(D("0"), D("40"), moved_in=D("0"), moved_out=D("0"))]
-        ) == D("-40")
+        ).variance == D("-40")
 
     def test_nothing_is_on_plan(self):
-        assert total_variance([]) == D("0")
+        assert summed_outcome([]) == plan_outcome(D("0"), D("0"), moved_in=D("0"), moved_out=D("0"))
+
+    def test_months_add_up_each_floored_for_its_own_month(self):
+        # 300 assigned in June, swept back out in July, nothing spent: June is
+        # 300 under, July's plan floors at nothing, so the span is 300 under.
+        # One floor over the summed parts read it on plan beside a June cell
+        # saying 300 under.
+        span = summed_outcome(
+            [
+                plan_outcome(D("300"), D("0"), moved_in=D("0"), moved_out=D("0")),
+                plan_outcome(D("-300"), D("0"), moved_in=D("0"), moved_out=D("0")),
+            ]
+        )
+        assert (span.plan, span.variance, span.over) == (D("300"), D("300"), False)
+
+    def test_the_sum_is_judged_by_the_months_tolerance(self):
+        # 5 over a 1,500 year is short of 1%: on plan, as a month would be.
+        months = [
+            plan_outcome(D("500"), D("505"), moved_in=D("0"), moved_out=D("0")),
+            plan_outcome(D("1000"), D("1000"), moved_in=D("0"), moved_out=D("0")),
+        ]
+        assert summed_outcome(months).over is False
+        months.append(plan_outcome(D("0"), D("40"), moved_in=D("0"), moved_out=D("0")))
+        assert summed_outcome(months).over is True
+        assert summed_outcome(months).variance_pct == float(D("-45") / D("1500") * 100)
 
 
 class TestMoneyMovedIn:

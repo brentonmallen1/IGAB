@@ -6,13 +6,18 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  currentFavorites,
+  currentReportTab,
   expensesDrill,
   filterSupport,
   incomeDrill,
   planSpentDrill,
+  REPORT_TABS,
   resolveGroupBy,
+  retiredReportTabs,
   useReportStore,
 } from './reportStore'
+import { REPORT_CATALOG } from '../components/reports/reportCatalog'
 import { lastMonthWindow } from '../utils/dateWindow'
 import { PERSIST_KEYS } from './persistKeys'
 import { pinTimeZone } from '../test-utils/timeZone'
@@ -81,7 +86,7 @@ describe('planSpentDrill', () => {
   const window = { startDate: '2026-08-01', endDate: '2026-08-31' }
 
   it("lists the plan ledger's spent rows of one category, by the server's rule", () => {
-    expect(planSpentDrill('cat-1', 'Groceries · Aug', window)).toEqual({
+    expect(planSpentDrill({ categoryIds: ['cat-1'] }, 'Groceries · Aug', window)).toEqual({
       kind: 'category',
       label: 'Groceries · Aug',
       scope: 'leaf',
@@ -94,7 +99,55 @@ describe('planSpentDrill', () => {
   it('keeps the refunds, so the list totals the figure', () => {
     // Budget vs Actual, Plan vs Reality, Volatility and Anomalies each passed
     // `direction: 'outflow'`: a cell of 70 net opened 100 of purchases.
-    expect(planSpentDrill('cat-1', 'Groceries', window).direction).toBeUndefined()
+    expect(
+      planSpentDrill({ categoryIds: ['cat-1'] }, 'Groceries', window).direction
+    ).toBeUndefined()
+  })
+
+  it("opens a month total over the report's own scope, every category in it", () => {
+    // A Plan vs Spent month total covers every category the report does: with
+    // a tag scoped, the tag; with nothing scoped, no category filter at all.
+    expect(planSpentDrill({ tagIds: ['t-1'] }, 'Aug 26', window)).toMatchObject({
+      tagIds: ['t-1'],
+      planSpent: true,
+    })
+    expect(planSpentDrill({}, 'Aug 26', window).categoryIds).toBeUndefined()
+  })
+})
+
+describe('retired report tabs', () => {
+  it('maps the three plan reports to Plan vs Spent', () => {
+    for (const old of ['budget-actual', 'variance', 'plan-reality']) {
+      expect(currentReportTab(old)).toBe('plan-vs-spent')
+    }
+  })
+
+  it('names only reports this build draws, and never a live id', () => {
+    const live = new Set<string>(REPORT_TABS.map((t) => t.id))
+    for (const [old, successor] of Object.entries(retiredReportTabs)) {
+      expect(live.has(old)).toBe(false)
+      expect(live.has(successor)).toBe(true)
+    }
+  })
+
+  it('passes a live id through and refuses one it never knew', () => {
+    expect(currentReportTab('savings')).toBe('savings')
+    expect(currentReportTab('debts')).toBeNull()
+    // An own key only: an object's prototype is not a report.
+    expect(currentReportTab('constructor')).toBeNull()
+  })
+
+  it('keeps a starred retired report as its successor, once, in order', () => {
+    // Two of the three plan reports starred: one star, where the first stood.
+    expect(
+      currentFavorites(['savings', 'budget-actual', 'essentials', 'plan-reality', 'debts'])
+    ).toEqual(['savings', 'plan-vs-spent', 'essentials'])
+    expect(currentFavorites(['plan-vs-spent', 'variance'])).toEqual(['plan-vs-spent'])
+  })
+
+  it('has one catalog entry for the one report', () => {
+    expect(REPORT_CATALOG['plan-vs-spent'].summary).toBeTruthy()
+    for (const old of Object.keys(retiredReportTabs)) expect(old in REPORT_CATALOG).toBe(false)
   })
 })
 
@@ -173,5 +226,31 @@ describe('resetFilters ahead of Greenwich', () => {
     const { startDate, endDate } = useReportStore.getState().filters
     expect({ startDate, endDate }).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' })
     localStorage.removeItem(PERSIST_KEYS.reports)
+  })
+})
+
+describe('a stored tab of a retired report', () => {
+  afterEach(() => {
+    localStorage.removeItem(PERSIST_KEYS.reports)
+  })
+
+  async function rehydrateWith(activeTab: string) {
+    localStorage.setItem(PERSIST_KEYS.reports, JSON.stringify({ state: { activeTab }, version: 1 }))
+    await useReportStore.persist.rehydrate()
+    return useReportStore.getState().activeTab
+  }
+
+  it.each(['budget-actual', 'variance', 'plan-reality'])(
+    'opens Plan vs Spent for %s',
+    async (old) => {
+      // It fell to the Overview: the page's stale-id guard knew only that the
+      // id was gone, not what replaced it.
+      expect(await rehydrateWith(old)).toBe('plan-vs-spent')
+    }
+  )
+
+  it('keeps a live tab, and drops an unknown one to the Overview', async () => {
+    expect(await rehydrateWith('essentials')).toBe('essentials')
+    expect(await rehydrateWith('debts')).toBe('overview')
   })
 })

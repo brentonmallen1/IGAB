@@ -569,10 +569,10 @@ class TestThePlanReportsLeaveAFiledOpeningOut:
 
         reports = ReportService(db_session)
         bva = await reports.budget_vs_actual(budget.id, first, today)
-        variance = await reports.cumulative_variance(budget.id, months=1)
-        pvr = await reports.plan_vs_reality(budget.id, months=1)
+        variance = (await reports.plan_vs_spent(budget.id, months=1))["month_totals"]
+        pvr = await reports.plan_vs_spent(budget.id, months=1)
         assert bva["total_spent"] == D("80.00")
-        assert variance[-1]["actual_spent"] == D("80.00")
+        assert variance[-1]["spent"] == D("80.00")
         # This month is running, so its cells carry it; the totals are the
         # complete months'.
         running = [

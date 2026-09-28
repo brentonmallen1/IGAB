@@ -59,7 +59,6 @@ import { WishlistDisciplineReport } from './charts/WishlistDisciplineReport'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
 import { AnomaliesReport } from './charts/AnomaliesReport'
-import { BudgetActualReport } from './charts/BudgetActualChart'
 import { BurnRateReport } from './charts/BurnRateChart'
 import { CashFlowSankeyReport } from './charts/CashFlowSankey'
 import { CashProjectionReport } from './charts/CashProjectionReport'
@@ -71,7 +70,7 @@ import { LiabilitiesReport } from './charts/LiabilitiesReport'
 import { NetWorthReport } from './charts/NetWorthChart'
 import { ParetoReport } from './charts/ParetoChart'
 import { PayeeReport } from './charts/PayeeChart'
-import { PlanVsRealityReport } from './charts/PlanVsRealityReport'
+import { PlanVsSpentReport } from './charts/PlanVsSpentReport'
 import { SavingsReport } from './charts/SavingsReport'
 import { SavingsRateReport } from './charts/SavingsRateChart'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
@@ -79,7 +78,6 @@ import { SpendingTreemapReport } from './charts/SpendingTreemap'
 import { SpendingBreakdownReport } from './charts/SpendingBreakdownReport'
 import { SpendingTrendsReport } from './charts/SpendingTrendsReport'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
-import { VarianceReport } from './charts/VarianceChart'
 import { VolatilityReport } from './charts/VolatilityChart'
 import { today } from '../../utils/dates'
 
@@ -99,8 +97,7 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['BurnRate', BurnRateReport],
   ['CashFlowSankey', CashFlowSankeyReport],
   ['CashProjection', CashProjectionReport],
-  ['BudgetActual', BudgetActualReport],
-  ['Variance', VarianceReport],
+  ['PlanVsSpent', PlanVsSpentReport],
   ['Volatility', VolatilityReport],
   ['Pareto', ParetoReport],
   ['SpendingTreemap', SpendingTreemapReport],
@@ -109,7 +106,6 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Seasonality', SeasonalityReport],
   ['Subscriptions', SubscriptionsReport],
   ['Anomalies', AnomaliesReport],
-  ['PlanVsReality', PlanVsRealityReport],
   ['Payee', PayeeReport],
   ['DayPatterns', DayPatternsReport],
   ['Timeline', TimelineReport],
@@ -1332,52 +1328,6 @@ describe('IncomeSourcesReport average', () => {
   })
 })
 
-describe('VarianceReport cards', () => {
-  it('names the newest point the running month, not last month', () => {
-    // The series ends with the month in progress; "Last Month Spent" read
-    // half a month as a whole one.
-    setQuery({
-      data: {
-        points: [
-          {
-            month: '2026-08-01',
-            partial_month: false,
-            budget_assigned: 3000,
-            moved_in: 0,
-            moved_out: 0,
-            planned: 3000,
-            actual_spent: 2900,
-            monthly_variance: 100,
-            cumulative_variance: 100,
-          },
-          {
-            month: '2026-09-01',
-            partial_month: true,
-            budget_assigned: 3000,
-            moved_in: 200,
-            moved_out: 0,
-            planned: 3200,
-            actual_spent: 1200,
-            monthly_variance: 2000,
-            cumulative_variance: null,
-          },
-        ],
-      },
-    })
-    renderReport(<VarianceReport budgetId="b1" />)
-    expect(card('Spent this month so far').value).toBe('$1,200.00')
-    // The plan, money moved in included — not the raw assignment.
-    expect(card('Planned this month so far').value).toBe('$3,200.00')
-    expect(screen.queryByText(/Last Month/)).toBeNull()
-    // The drift is the complete months': the running month's +2,000 of
-    // plan-not-yet-spent is not in it (D5).
-    expect(card('Cumulative Variance')).toEqual({
-      value: '$100.00',
-      sub: 'Under budget through Aug 26',
-    })
-  })
-})
-
 describe('IncomeExpenseReport drill', () => {
   it('opens a month’s Expenses with its refunds, so the list totals the row', () => {
     setQuery({
@@ -1771,210 +1721,6 @@ describe('ParetoReport insight', () => {
   })
 })
 
-describe('PlanVsRealityReport matrix', () => {
-  const planData = {
-    months: ['2026-06-01', '2026-07-01', '2026-08-01'],
-    running_month: '2026-08-01',
-    categories: [
-      {
-        category_id: 'c1',
-        category_name: 'Dining',
-        category_group_name: 'Everyday',
-        monthly: [
-          {
-            month: '2026-06-01',
-            assigned: 100,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 100,
-            spent: 140,
-            variance: -40,
-            over: true,
-            active: true,
-          },
-          {
-            month: '2026-07-01',
-            assigned: 100,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 100,
-            spent: 90,
-            variance: 10,
-            over: false,
-            active: true,
-          },
-          {
-            month: '2026-08-01',
-            assigned: 0,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 0,
-            spent: 0,
-            variance: 0,
-            over: false,
-            active: false,
-          },
-        ],
-        months_over: 1,
-        months_active: 2,
-        total_assigned: '200',
-        total_moved_in: '0',
-        total_moved_out: '0',
-        total_spent: '230',
-        avg_overspend: 40.0,
-        chronic: true,
-        sinking_fund: false,
-      },
-      {
-        category_id: 'c2',
-        category_name: 'Rent',
-        category_group_name: 'Home',
-        monthly: [
-          {
-            month: '2026-06-01',
-            assigned: 900,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 900,
-            spent: 900,
-            variance: 0,
-            over: false,
-            active: true,
-          },
-          {
-            month: '2026-07-01',
-            assigned: 900,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 900,
-            spent: 900.27,
-            variance: -0.27,
-            over: false,
-            active: true,
-          },
-          {
-            month: '2026-08-01',
-            assigned: 900,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 900,
-            spent: 900,
-            variance: 0,
-            over: false,
-            active: true,
-          },
-        ],
-        months_over: 0,
-        months_active: 3,
-        total_assigned: '2700',
-        total_moved_in: '0',
-        total_moved_out: '0',
-        total_spent: '2700.27',
-        avg_overspend: '0',
-        chronic: false,
-        sinking_fund: false,
-      },
-    ],
-    total_assigned: '2900',
-    total_moved_in: '0',
-    total_moved_out: '0',
-    total_spent: '2930.27',
-    chronic_count: 1,
-  }
-
-  it('renders variance cells, over counts, and the chronic badge', () => {
-    setQuery({ data: planData })
-    renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-    expect(screen.getAllByText('Dining').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Chronic').length).toBeGreaterThan(0)
-    expect(screen.getByText('−40')).toBeInTheDocument() // overspent cell
-    expect(screen.getByText('+10')).toBeInTheDocument() // underspent cell
-    expect(screen.getByText('1/2')).toBeInTheDocument() // months over / active
-  })
-
-  it('leads with chronic, last complete month and the worst category', () => {
-    // Three totals cards (assigned, spent, a count) said nothing about which
-    // envelope was the problem or how last month went.
-    setQuery({ data: planData })
-    renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-    expect(card('Chronic').value).toBe('1')
-    // July: August is the running month, and Dining was on plan in July.
-    expect(card('Over last month').value).toBe('0')
-    expect(card('Worst').value).toBe('Dining')
-  })
-
-  it('marks the running month "so far"', () => {
-    setQuery({ data: planData })
-    const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-    const headers = [...container.querySelectorAll('th.plan-reality__month-header')]
-    expect(headers.map((h) => h.textContent?.includes('so far'))).toEqual([false, false, true])
-  })
-
-  it('draws a few cents over as on plan: no "−0", no tint', () => {
-    setQuery({ data: planData })
-    const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-    expect(screen.queryByText('−0')).toBeNull()
-    expect(container.querySelectorAll('td.plan-reality__cell--over')).toHaveLength(1)
-  })
-
-  it('opens scrolled to the newest month', () => {
-    // On a phone only two or three months fit, and it opened on last year.
-    const widths = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(1200)
-    try {
-      setQuery({ data: planData })
-      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
-      const scroller = container.querySelector('.plan-reality__scroll') as HTMLElement
-      expect(scroller.scrollLeft).toBe(1200)
-    } finally {
-      widths.mockRestore()
-    }
-  })
-
-  describe('in privacy mode', () => {
-    afterEach(() => {
-      useAppStore.setState({ privacyMode: false })
-    })
-
-    it('masks every active cell, sign and zero included', () => {
-      // The matrix draws its own labels, outside useFormatters. Its privacy
-      // argument once went unpassed at no test's notice, and with it passed the
-      // sign still sat outside the mask: "−••••", "+••••" and a bare "0".
-      useAppStore.setState({ privacyMode: true })
-      setQuery({ data: planData })
-      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-      // Dining's two active months and Rent's three on-plan ones.
-      const cells = [...container.querySelectorAll('td.plan-reality__cell--clickable')]
-      expect(cells.map((c) => c.textContent)).toEqual(Array(5).fill(PRIVACY_MASK))
-    })
-
-    it('keeps the overspend tint, which shows state rather than a figure', () => {
-      // Deliberate: like the bar heights on every chart and the Budget page's
-      // overspent colour, the tint survives privacy mode. See cellLabel.
-      useAppStore.setState({ privacyMode: true })
-      setQuery({ data: planData })
-      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-      const over = container.querySelectorAll('td.plan-reality__cell--over')
-      expect(over).toHaveLength(1)
-      expect((over[0] as HTMLElement).style.background).toContain('--chart-negative')
-    })
-  })
-
-  it('filters to chronic categories only via the toggle', () => {
-    setQuery({ data: planData })
-    renderReport(<PlanVsRealityReport budgetId="b1" />)
-
-    fireEvent.click(screen.getByLabelText('Chronic only'))
-    expect(screen.getByRole('button', { name: /Dining/ })).toBeInTheDocument()
-    expect(screen.queryByText('Rent')).not.toBeInTheDocument()
-  })
-})
-
 describe('SeasonalityReport in privacy mode', () => {
   afterEach(() => {
     useAppStore.setState({ privacyMode: false })
@@ -1997,278 +1743,6 @@ describe('SeasonalityReport in privacy mode', () => {
     const value = container.querySelector('.heatmap__cell-value')
     expect(value?.textContent).toBe(PRIVACY_MASK)
     expect(container.querySelector('.heatmap__table')?.textContent).not.toMatch(/4\.2k|4180/)
-  })
-})
-
-describe('BudgetActualReport values', () => {
-  it('renders assigned/spent amounts for each category', () => {
-    setQuery({
-      data: {
-        categories: [
-          {
-            category_id: 'c1',
-            category_name: 'Groceries',
-            category_group_name: 'Everyday',
-            assigned: 500,
-            moved_in: 0,
-            moved_out: 0,
-            plan: 500,
-            spent: 450,
-            variance: 50,
-            variance_pct: 10,
-            overspent: false,
-          },
-        ],
-        total_assigned: '500',
-        total_moved_in: '0',
-        total_moved_out: '0',
-        total_plan: '500',
-        total_spent: '450',
-        total_variance: 50,
-      },
-    })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-
-    expect(screen.getByText('Groceries')).toBeInTheDocument()
-    expect(screen.getAllByText(/\$500\.00/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\$450\.00/).length).toBeGreaterThan(0)
-  })
-
-  it('plans against money moved in, not the assignment alone', () => {
-    // 2,000 moved in from savings paid a 2,000 bill. Against the raw
-    // assignment it drew a zero bar beside a 2,000 one and a red overrun.
-    setQuery({
-      data: {
-        categories: [
-          {
-            category_id: 'c1',
-            category_name: 'Medical',
-            category_group_name: 'Health',
-            assigned: 0,
-            moved_in: 2000,
-            moved_out: 0,
-            plan: 2000,
-            spent: 2000,
-            variance: 0,
-            variance_pct: 0,
-            overspent: false,
-          },
-        ],
-        total_assigned: 0,
-        total_moved_in: 2000,
-        total_moved_out: 0,
-        total_plan: 2000,
-        total_spent: 2000,
-        total_variance: 0,
-      },
-    })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-
-    expect(card('Planned').value).toBe('$2,000.00')
-    fireEvent.click(screen.getByText('Medical'))
-    const drill = useReportStore.getState().drillDown
-    // The plan ledger's own rows, both ways — the figure is net of refunds.
-    expect(drill).toMatchObject({ categoryIds: ['c1'], planSpent: true, scope: 'leaf' })
-    expect(drill?.direction).toBeUndefined()
-    useReportStore.getState().setDrillDown(null)
-    expect(screen.getByText('$2,000.00 (assigned $0.00 + moved in $2,000.00)')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Planned' })).toBeInTheDocument()
-  })
-
-  it('reads overspent from the server, so a drained envelope is not an overrun', () => {
-    // Car Repairs had 300 moved OUT and spent nothing: a negative assignment.
-    // The chart used to decide `spent > assigned` itself — 0 > -300 — and kept
-    // it under "Overspent only" while Plan vs Reality called it neutral.
-    setQuery({
-      data: {
-        categories: [
-          {
-            category_id: 'c1',
-            category_name: 'Car Repairs',
-            category_group_name: 'Irregular',
-            assigned: -300,
-            spent: 0,
-            variance: 0,
-            variance_pct: 0,
-            overspent: false,
-          },
-          {
-            category_id: 'c2',
-            category_name: 'Dining',
-            category_group_name: 'Everyday',
-            assigned: 100,
-            spent: 160,
-            variance: -60,
-            variance_pct: -60,
-            overspent: true,
-          },
-        ],
-        total_assigned: '-200',
-        total_spent: '160',
-        total_variance: -60,
-      },
-    })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-
-    fireEvent.click(screen.getByLabelText('Overspent only'))
-    expect(screen.getByText('Dining')).toBeInTheDocument()
-    expect(screen.queryByText('Car Repairs')).not.toBeInTheDocument()
-  })
-
-  it('totals the overspent rows it lists, and puts the period beside them', () => {
-    // The period's whole spend used to be the table's Total while "Overspent
-    // only" was ticked. It is context now, with no share under a column of
-    // variances.
-    setQuery({
-      data: {
-        categories: [
-          {
-            category_id: 'c1',
-            category_name: 'Groceries',
-            category_group_name: 'Everyday',
-            assigned: 500,
-            spent: 450,
-            variance: 50,
-            variance_pct: 10,
-            overspent: false,
-          },
-          {
-            category_id: 'c2',
-            category_name: 'Dining',
-            category_group_name: 'Everyday',
-            assigned: 100,
-            spent: 160,
-            variance: -60,
-            variance_pct: -60,
-            overspent: true,
-          },
-        ],
-        total_assigned: '600',
-        total_spent: '610',
-        total_variance: -10,
-      },
-    })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-    fireEvent.click(screen.getByLabelText('Overspent only'))
-
-    expect(cellsOf('Total of the 1 shown')).toContain('$160.00')
-    const whole = cellsOf('of $610.00 across 2 categories')
-    expect(whole).toContain('$610.00')
-    expect(whole.some((c) => c.includes('%'))).toBe(false)
-  })
-
-  /** Car Repairs drained by 300 with nothing spent; Dining 60 over its 100;
-   *  Gifts 40 spent with no plan. Raw assigned − spent is -200 − 200 = -400;
-   *  the rows' verdicts are 0, -60 and -40. */
-  const drained = {
-    categories: [
-      {
-        category_id: 'c1',
-        category_name: 'Car Repairs',
-        category_group_name: 'Irregular',
-        assigned: -300,
-        spent: 0,
-        variance: 0,
-        variance_pct: null,
-        overspent: false,
-      },
-      {
-        category_id: 'c2',
-        category_name: 'Dining',
-        category_group_name: 'Everyday',
-        assigned: 100,
-        spent: 160,
-        variance: -60,
-        variance_pct: -60,
-        overspent: true,
-      },
-      {
-        category_id: 'c3',
-        category_name: 'Gifts',
-        category_group_name: 'Everyday',
-        assigned: 0,
-        spent: 40,
-        variance: -40,
-        variance_pct: null,
-        overspent: true,
-      },
-    ],
-    total_assigned: -200,
-    total_spent: 200,
-    total_variance: -100,
-    filter_unavailable: false,
-  }
-
-  it('headlines the rows’ verdicts, with the direction in words', () => {
-    // The card was "Variance" over raw assigned − spent: -$400.00 above rows
-    // that sum to -100, with the sign left for the reader to decode.
-    setQuery({ data: drained })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-    expect(card('Over plan by').value).toBe('$100.00')
-    expect(screen.queryByText('-$400.00')).toBeNull()
-  })
-
-  it('says "no plan" for spending nobody planned, not "0.0%"', () => {
-    setQuery({ data: drained })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-    expect(cellsOf('Gifts')).toContain('no plan')
-    expect(cellsOf('Dining')).toContain('-60.0%')
-    expect(screen.queryByText('0.0%')).toBeNull()
-  })
-
-  it('reads a mortgage paid by a principal transfer as a row on plan', () => {
-    // Assigned 1,500, moved out 1,500: plan 0, spent 0. The row used to be
-    // dropped as "$0 / $0", which reads as the mortgage missing; it is a row,
-    // and its % cell says "on plan", not "no plan".
-    setQuery({
-      data: {
-        categories: [
-          {
-            category_id: 'm1',
-            category_name: 'Mortgage',
-            category_group_name: 'Housing',
-            assigned: 1500,
-            moved_in: 0,
-            moved_out: 1500,
-            plan: 0,
-            spent: 0,
-            variance: 0,
-            variance_pct: null,
-            overspent: false,
-          },
-        ],
-        total_assigned: 1500,
-        total_moved_in: 0,
-        total_moved_out: 1500,
-        total_plan: 0,
-        total_spent: 0,
-        total_variance: 0,
-        filter_unavailable: false,
-      },
-    })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-    const cells = cellsOf('Mortgage')
-    expect(cells).toContain('on plan')
-    expect(cells).toContain('$0.00 (assigned $1,500.00 − moved out $1,500.00)')
-    expect(card('Against plan').value).toBe('On plan')
-  })
-
-  it('asks for the tags and the saved filter the filter bar offers, not the categories alone', () => {
-    useReportStore.getState().setFilters({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
-    try {
-      setQuery({ data: drained })
-      renderReport(<BudgetActualReport budgetId="b1" />)
-      const [, , , scope] = hookCalls.get('useBudgetActualReport')!.at(-1)!
-      expect(scope).toEqual({ categoryIds: [], tagIds: ['t1'], filterId: 'f1' })
-    } finally {
-      useReportStore.getState().setFilters({ tagIds: [], filterId: null })
-    }
-  })
-
-  it('says so when the saved filter it was asked for is gone', () => {
-    setQuery({ data: { ...drained, filter_unavailable: true } })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-    expect(screen.getByText(/That saved filter no longer exists/)).toBeInTheDocument()
   })
 })
 
@@ -2620,31 +2094,6 @@ describe('drill tables read spending as a positive figure', () => {
     expect(cells).toContain(amount)
     expect(cells.some((c) => c.startsWith('-'))).toBe(false)
   }
-
-  it('Budget vs Actual', () => {
-    setQuery({
-      data: {
-        categories: [
-          {
-            category_id: 'c1',
-            category_name: 'Groceries',
-            category_group_name: 'Everyday',
-            assigned: 500,
-            spent: 450,
-            variance: 50,
-            variance_pct: 10,
-            overspent: false,
-          },
-        ],
-        total_assigned: '500',
-        total_spent: '450',
-        total_variance: 50,
-      },
-    })
-    renderReport(<BudgetActualReport budgetId="b1" />)
-    noMinus('Groceries', '$450.00')
-    noMinus('Total', '$450.00')
-  })
 
   it('Income vs Expenses', () => {
     setQuery({
