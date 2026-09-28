@@ -17,8 +17,7 @@ export type ReportTab =
   | 'projection'
   | 'plan-vs-spent'
   | 'volatility'
-  | 'pareto'
-  | 'treemap'
+  | 'where-it-went'
   | 'seasonality'
   | 'payees'
   | 'day-patterns'
@@ -31,7 +30,6 @@ export type ReportTab =
   | 'emergency-fund'
   | 'anomalies'
   | 'spending-trends'
-  | 'spending-breakdown'
   | 'category-history'
   | 'income-sources'
   | 'cost-of-living'
@@ -67,9 +65,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'category-history', label: 'Category History', group: 'budget' },
   { id: 'volatility', label: 'Volatility', group: 'budget' },
   { id: 'spending-trends', label: 'Spending Trends', group: 'spending' },
-  { id: 'spending-breakdown', label: 'Breakdown', group: 'spending' },
-  { id: 'pareto', label: 'Pareto', group: 'spending' },
-  { id: 'treemap', label: 'Treemap', group: 'spending' },
+  { id: 'where-it-went', label: 'Where it went', group: 'spending' },
   { id: 'seasonality', label: 'Seasonality', group: 'spending' },
   { id: 'subscriptions', label: 'Subscriptions', group: 'spending' },
   { id: 'anomalies', label: 'Anomalies', group: 'insights' },
@@ -86,47 +82,6 @@ export const TAB_GROUPS: { id: TabGroup; label: string }[] = [
   { id: 'spending', label: 'Spending' },
   { id: 'insights', label: 'Insights' },
 ]
-
-/**
- * Report ids that no longer exist, and the report that now answers their
- * question — the one place a retired id is mapped.
- *
- * Three things outlive a report: the stored tab (`activeTab`, persisted in
- * this store), a star (`reports:favorites`, a list the server stores and
- * never interprets — `services/report_favorites.py`) and a `?tab=` link. Each
- * reads an id through `currentReportTab`, so a retired id opens the report
- * that replaced it rather than dropping to the Overview, and a star survives
- * the merge it was retired by.
- *
- * Plan vs Spent is Budget vs Actual, Cumulative Variance and Plan vs Reality
- * made one report: the three were one dataset at three grains, with
- * identical twelve-month totals and synonym titles.
- */
-export const retiredReportTabs: Readonly<Record<string, ReportTab>> = {
-  'budget-actual': 'plan-vs-spent',
-  variance: 'plan-vs-spent',
-  'plan-reality': 'plan-vs-spent',
-}
-
-/** The report a stored or linked id names in this build: itself, the report
- *  that replaced it, or null for an id this build has never heard of. */
-export function currentReportTab(id: string): ReportTab | null {
-  if (REPORT_TABS.some((t) => t.id === id)) return id as ReportTab
-  // Own keys only: `retiredReportTabs['constructor']` is a function.
-  return Object.hasOwn(retiredReportTabs, id) ? retiredReportTabs[id] : null
-}
-
-/** A starred list as reports this build draws, in the order it was starred:
- *  a retired id becomes its successor, an unknown one drops, and two stars
- *  that now name one report are one star. */
-export function currentFavorites(ids: readonly string[]): ReportTab[] {
-  const out: ReportTab[] = []
-  for (const id of ids) {
-    const tab = currentReportTab(id)
-    if (tab !== null && !out.includes(tab)) out.push(tab)
-  }
-  return out
-}
 
 /** Get the group a tab belongs to */
 export function getTabGroup(tabId: ReportTab): TabGroup {
@@ -279,8 +234,8 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   // rollup, which takes the category scope and a view but no payees; payee
   // mode reads Payee Analysis, which takes payees and neither of the others.
   // All five were lit in every mode, so a category picked in payee mode
-  // appeared to apply while the bars ignored it.
-  pareto: {
+  // appeared to apply while the rows ignored it.
+  'where-it-went': {
     dates: true,
     categories: true,
     payees: true,
@@ -292,15 +247,6 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
       group: { payees: false },
       payee: { categories: false, views: false },
     },
-  },
-  treemap: {
-    dates: true,
-    categories: true,
-    payees: false,
-    accounts: true,
-    groupBy: true,
-    groupByModes: ['group', 'category'],
-    views: true,
   },
   seasonality: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   subscriptions: {
@@ -332,14 +278,6 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     accounts: true,
     groupBy: true,
     groupByModes: ['group', 'category'],
-  },
-  'spending-breakdown': {
-    dates: true,
-    categories: true,
-    payees: false,
-    accounts: true,
-    groupBy: false,
-    views: true,
   },
   'category-history': {
     dates: false,
@@ -390,10 +328,10 @@ export function filterSupport(tab: ReportTab, groupBy: GroupBy): TabFilterSuppor
 
 /** The mode a tab actually draws for the stored preference.
 
-Tabs share one stored groupBy, so "Payee" picked on the pareto arrives at
-the treemap, which has no payee data. Before this resolver the treemap
-silently drew group tiles under a highlighted Payee button — group names
-where the user asked for payees. Fall back to the tab's first mode, and
+Tabs share one stored groupBy, so "Payee" picked on Where it went arrives at
+Spending Trends, which has no payee data. Before this resolver the old
+treemap silently drew group tiles under a highlighted Payee button — group
+names where the user asked for payees. Fall back to the tab's first mode, and
 never write the fallback to the store: the preference should survive the
 detour and still mean payee when the user returns to a tab that can draw it. */
 export function resolveGroupBy(tab: ReportTab, groupBy: GroupBy): GroupBy {
@@ -401,6 +339,114 @@ export function resolveGroupBy(tab: ReportTab, groupBy: GroupBy): GroupBy {
   const modes = support.groupByModes
   if (!support.groupBy || !modes || modes.includes(groupBy)) return groupBy
   return modes[0]
+}
+
+/** How Where it went draws its rows: the ranked table, or the same rows as a
+ *  treemap. A view of one row set, never a second query. */
+export type WhereItWentView = 'table' | 'treemap'
+
+/** The view Where it went actually draws for the stored preference.
+ *
+ *  A treemap's area is a line's share of what is drawn, so it needs every
+ *  line. Payee mode holds only the ranked top 25 of what can be hundreds of
+ *  payees — their tiles would fill the whole area and read as all of the
+ *  spending. Payee mode draws the table, and, like `resolveGroupBy`, the
+ *  fallback is never written back: the treemap is still there on return to a
+ *  category or group mode. */
+export function resolveWhereItWentView(view: WhereItWentView, groupBy: GroupBy): WhereItWentView {
+  return groupBy === 'payee' ? 'table' : view
+}
+
+/** The settings a retired tab id restates in its successor's terms. */
+type RetiredSettings = Partial<Pick<ReportState, 'whereItWentView'>> & {
+  filters?: Partial<ReportFilters>
+}
+
+/**
+ * A report tab that no longer exists, and where its readers go instead.
+ *
+ * Ids outlive their tabs in three places: the persisted `activeTab`, a
+ * `?tab=` link, and the starred list the server stores without reading
+ * (`services/report_favorites.py`). Each one resolves through this map, so a
+ * merged report does not strand a reader on the Overview or silently drop a
+ * star. `settings` restates what the old tab was showing — applied when the
+ * old id is opened, never to a star, which names a report and not a mode.
+ */
+export interface RetiredTab {
+  tab: ReportTab
+  settings?: (filters: ReportFilters) => RetiredSettings
+}
+
+export const RETIRED_REPORT_TABS: Readonly<Record<string, RetiredTab>> = {
+  // Plan vs Spent is Budget vs Actual, Cumulative Variance and Plan vs
+  // Reality made one report: the three were one dataset at three grains, with
+  // identical twelve-month totals and synonym titles. Its months selector is
+  // its own, so none of them has a setting to restate.
+  'budget-actual': { tab: 'plan-vs-spent' },
+  variance: { tab: 'plan-vs-spent' },
+  'plan-reality': { tab: 'plan-vs-spent' },
+  // Breakdown, Pareto and Treemap read one endpoint and showed the same rows
+  // three ways — a donut, bars under a running share, tiles. One report now
+  // (`WhereItWentReport`); each old id opens it the way it looked.
+  //
+  // Breakdown opened on groups, and a group opened its categories.
+  'spending-breakdown': {
+    tab: 'where-it-went',
+    settings: () => ({ whereItWentView: 'table', filters: { groupBy: 'group' } }),
+  },
+  // Pareto ranked in the stored mode, payee included.
+  pareto: { tab: 'where-it-went', settings: () => ({ whereItWentView: 'table' }) },
+  // The treemap drew group tiles for a stored payee mode — it had no payee
+  // data — so group tiles are what its reader was looking at.
+  treemap: {
+    tab: 'where-it-went',
+    settings: (filters) => ({
+      whereItWentView: 'treemap',
+      ...(filters.groupBy === 'payee' ? { filters: { groupBy: 'group' as const } } : {}),
+    }),
+  },
+}
+
+const KNOWN_TABS: ReadonlySet<string> = new Set(REPORT_TABS.map((t) => t.id))
+
+/** The retired entry an id names, if any. Own keys only: a plain object
+ *  lookup answers `constructor` with `Object`, which `openedTabState` would
+ *  have opened as a tab named `undefined`. */
+function retiredTab(id: string): RetiredTab | null {
+  return Object.hasOwn(RETIRED_REPORT_TABS, id) ? RETIRED_REPORT_TABS[id] : null
+}
+
+/** The live tab an id names — itself, or a retired id's successor — or null
+ *  for an id this build has never heard of. */
+export function liveReportTab(id: string): ReportTab | null {
+  if (KNOWN_TABS.has(id)) return id as ReportTab
+  return retiredTab(id)?.tab ?? null
+}
+
+/** A stored list of tab ids — the starred row — as live tabs: a retired id
+ *  becomes its successor, an unknown id drops out, and where two old ids now
+ *  name one report the first keeps its place. Order is the user's, as
+ *  `toggleFavorite` keeps it. */
+export function liveReportTabs(ids: readonly string[]): ReportTab[] {
+  const out: ReportTab[] = []
+  for (const id of ids) {
+    const tab = liveReportTab(id)
+    if (tab !== null && !out.includes(tab)) out.push(tab)
+  }
+  return out
+}
+
+/** What opening `id` sets: the live tab, plus what a retired id's tab was
+ *  showing. Null for an id this build does not know. Pure, so the persisted
+ *  state and a `?tab=` link resolve an old id by one rule. */
+export function openedTabState(
+  id: string,
+  filters: ReportFilters
+): (Pick<ReportState, 'activeTab'> & RetiredSettings) | null {
+  if (KNOWN_TABS.has(id)) return { activeTab: id as ReportTab }
+  const retired = retiredTab(id)
+  if (retired === null) return null
+  return { activeTab: retired.tab, ...retired.settings?.(filters) }
 }
 
 export interface ReportFilters {
@@ -509,9 +555,16 @@ interface ReportState {
    *  disagrees with the card beside it. Persisted, like the range. */
   runwaySpending: RunwaySpending | null
   runwayMoney: RunwayMoney | null
+  /** Where it went's table or treemap. Persisted, like the range: someone who
+   *  reads the treemap finds the treemap next time. */
+  whereItWentView: WhereItWentView
   drillDown: DrillDownContext | null
 
   setActiveTab: (tab: ReportTab) => void
+  /** Open a tab by an id from outside the store — a `?tab=` link — which may
+   *  name a retired tab (`RETIRED_REPORT_TABS`). False when no tab answers. */
+  openTab: (id: string) => boolean
+  setWhereItWentView: (view: WhereItWentView) => void
   setRangeMonths: (months: number) => void
   setNavFavorites: (on: boolean) => void
   setHistoryCategoryId: (id: string) => void
@@ -542,7 +595,7 @@ type PersistedReports = Pick<ReportState, 'activeTab' | 'filters' | 'rangeMonths
 
 export const useReportStore = create<ReportState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       activeTab: 'overview',
       filters: defaultFilters(),
       rangeMonths: DEFAULT_RANGE_MONTHS,
@@ -550,9 +603,19 @@ export const useReportStore = create<ReportState>()(
       historyCategoryId: '',
       runwaySpending: null,
       runwayMoney: null,
+      whereItWentView: 'table',
       drillDown: null,
 
       setActiveTab: (tab) => set({ activeTab: tab, drillDown: null }),
+      openTab: (id) => {
+        const opened = openedTabState(id, get().filters)
+        if (opened === null) return false
+        const { filters, ...rest } = opened
+        set((s) => ({ ...rest, filters: { ...s.filters, ...filters }, drillDown: null }))
+        return true
+      },
+      // The same rows either way, so an open drill still lists what it did.
+      setWhereItWentView: (view) => set({ whereItWentView: view }),
       // Clears the drill for the same reason a filter change does: the open
       // panel's window was resolved against the window that just moved.
       setRangeMonths: (months) => set({ rangeMonths: months, drillDown: null }),
@@ -590,21 +653,31 @@ export const useReportStore = create<ReportState>()(
         historyCategoryId: s.historyCategoryId,
         runwaySpending: s.runwaySpending,
         runwayMoney: s.runwayMoney,
+        whereItWentView: s.whereItWentView,
       }),
       // A state persisted before a filter field existed arrives without it,
       // and `filters.tagIds.length` on undefined is a blank Reports page for
       // anyone who used the tab before upgrading. Filling from the defaults
       // says that once, for every field added since — cheaper and safer than
       // a version bump per field, and it cannot forget one.
+      //
+      // A stored tab that has since been retired opens its successor, showing
+      // what the old tab showed (`RETIRED_REPORT_TABS`). Here, not in a
+      // versioned `migrate`: it is idempotent, and it holds for a tab retired
+      // in any later release without a version bump each time.
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<ReportState>
+        const filters = { ...defaultFilters(), ...(saved.filters ?? {}) }
+        const opened = saved.activeTab ? openedTabState(saved.activeTab, filters) : null
         return {
           ...current,
           ...saved,
-          // A tab stored before its report was retired opens its successor
-          // (`retiredReportTabs`), not the Overview.
-          activeTab: currentReportTab(saved.activeTab ?? current.activeTab) ?? 'overview',
-          filters: { ...defaultFilters(), ...(saved.filters ?? {}) },
+          ...opened,
+          // An id this build has never heard of ('debts', before it was
+          // Liabilities) opens the Overview rather than a tab nothing draws.
+          // The only guard: ReportsPage once kept its own copy of this check.
+          activeTab: opened?.activeTab ?? 'overview',
+          filters: { ...filters, ...opened?.filters },
         }
       },
     }

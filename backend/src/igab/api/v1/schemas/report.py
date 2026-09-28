@@ -601,7 +601,7 @@ class VolatilityResponse(ApiModel):
     window_end: date
 
 
-# ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────────
+# ─── Spending Grouped (Where it went) ─────────────────────────────────────────
 
 
 class SpendingGroupItem(ApiModel):
@@ -795,7 +795,7 @@ class PayeeAnalysisResponse(ApiModel):
     #: The `limit` largest by spend, never a page of a list.
     payees: list[PayeeSpending]
     #: Over EVERY payee in the window, not over `payees` — which is what
-    #: `pct` is a share of, and what the Pareto card measures against.
+    #: `pct` is a share of, and what Where it went's payee mode measures against.
     total: Decimal
     #: How many payees spent in the window. Required, because a client that
     #: knows only "25 rows" cannot say whether that is all of them, and both
@@ -804,7 +804,7 @@ class PayeeAnalysisResponse(ApiModel):
     payee_count: int
     #: How many of the largest payees make up 80% of `total`, counted over
     #: every payee (`domain.concentration`). None when nothing was spent. The
-    #: Pareto card reads it: the client holds only the top 25.
+    #: 80% line in Where it went reads it: the client holds only the top 25.
     payees_to_80pct: int | None
     #: How many of the window's months a payee must appear in to be
     #: `is_recurring` (`domain.spending.recurring_months`). None when the

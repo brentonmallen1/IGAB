@@ -63,7 +63,7 @@ Thirty reports in six groups, all reading the same ledger:
 | Financial State | Net worth, account composition, liabilities, savings, savings rate, essentials, emergency fund coverage |
 | Cash Flow | Income vs. expenses, income by source, burn rate, Sankey money-flow diagram, cash projection |
 | Budget | Budget vs. actual, category history, cumulative variance, volatility |
-| Spending | Spending trends, breakdown, cost of living, wishlist discipline, Pareto, treemap, seasonality heatmap, subscriptions |
+| Spending | Spending trends, where it went (ranked by group, category or payee, with the 80% line and a treemap view), cost of living, wishlist discipline, seasonality heatmap, subscriptions |
 | Insights | Plan vs. reality, anomaly detection, payee analysis, day-of-week patterns (with payday effect), event timeline |
 
 Filter by date range, category, payee, or account. Star the reports you read

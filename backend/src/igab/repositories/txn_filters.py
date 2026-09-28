@@ -933,8 +933,8 @@ def category_tagged(*system_keys: str):
 
 
 #: A row a spending report counts, whichever way its money went: the ONE row
-#: set behind "spending" on every report of that shape — Spending Trends, the
-#: Breakdown, Pareto, the Treemap, Seasonality, Payees and Day Patterns, all
+#: set behind "spending" on every report of that shape — Spending Trends,
+#: Where it went, Seasonality, Payees and Day Patterns, all
 #: through `ReportService._spending_query`, plus the AI spending tool and the
 #: Overview's Top Spending card. Apply the class set (`counted_classes`, with
 #: `apply_class_joins`) and the account scope (`account_scope`) beside it:

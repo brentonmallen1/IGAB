@@ -6,7 +6,7 @@ import { ROOT } from './queryKeys'
 const key = (budgetId: string | null) => [ROOT.budgetViews, budgetId]
 
 /** Editing a view changes how reports roll up, so their cache is stale the
- *  moment a mutation lands — without this, pareto/treemap keep showing the
+ *  moment a mutation lands — without this, Where it went keeps showing the
  *  old arrangement for up to a minute after a save. */
 function invalidate(qc: ReturnType<typeof useQueryClient>, budgetId: string) {
   qc.invalidateQueries({ queryKey: key(budgetId) })
