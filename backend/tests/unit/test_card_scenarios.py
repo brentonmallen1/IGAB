@@ -28,6 +28,7 @@ from igab.domain.carryover import sum_through
 from igab.sample_budget.card_scenarios import (
     ALL_SCENARIOS,
     ANCHORED_SCENARIOS,
+    INTEREST,
     CardScenario,
     merge_into,
     scenarios_for,
@@ -119,6 +120,37 @@ def test_every_scenario_is_distinct_and_named():
     assert len(set(cards)) == len(cards), "two scenarios share a card name"
     for s in EVERY:
         assert s.story.strip() and s.title.strip(), f"{s.slug} has no story"
+
+
+def test_scenarios_sharing_interest_and_fees_keep_to_different_months():
+    """Interest & fees is one envelope per budget, so every scenario that files
+    there shares it on the demo budget. A month's shortfall rides from
+    whichever card carried it, so two scenarios using it in the same month
+    would move each other's positions — and the generator would only say the
+    demo does not land, not why."""
+    owner: dict[int, str] = {}
+    for s in EVERY:
+        for e in s.events:
+            if e.category != INTEREST:
+                continue
+            month = e.when.months_ago
+            assert owner.setdefault(month, s.slug) == s.slug, (
+                f"{s.slug} and {owner[month]} both use Interest & fees {month} months ago"
+            )
+    assert len(owner) >= 2, "the funded and the unfunded shapes are both demoed"
+
+
+def test_interest_and_fees_is_specced_in_the_card_group_not_the_demo_group():
+    """So `ensure_interest_envelope` adopts the specced row instead of making
+    a second "Interest & fees" beside it."""
+    from igab.sample_budget.card_scenarios import to_spec_elements
+
+    for s in ALL_SCENARIOS:
+        elements = to_spec_elements(s, cash_account="Checking")
+        assert INTEREST not in elements.spending_categories, s.slug
+        assert elements.card_group_categories == (
+            (INTEREST,) if INTEREST in s.categories() else ()
+        ), s.slug
 
 
 def test_the_starter_tier_is_a_subset_that_still_teaches():

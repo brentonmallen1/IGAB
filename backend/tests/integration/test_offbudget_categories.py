@@ -608,3 +608,102 @@ class TestEveryAccountResponseCarriesTheSavingsFlag:
             ("update", updated.json()),
         ]:
             assert body["counts_as_savings"] is False, f"{label}: {body}"
+
+
+class TestEveryCategoryResponseCarriesInCardSection:
+    """`in_card_section` is the served placement rule (`CARD_SECTION_CATEGORY`):
+    the budget page draws Interest & fees and each card's envelope in the
+    Credit cards section and nowhere else. `CategoryResponse` requires it, so
+    a path that loads a category without `with_eligibility` raises instead of
+    drawing Interest & fees as a stray grid row."""
+
+    async def _world(self, db_session):
+        from igab.services.card_payment import ensure_payment_category, find_interest_envelope
+
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        await ensure_payment_category(db_session, card)
+        bills = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, bills, "Rent")
+        interest = await find_interest_envelope(db_session, budget.id)
+        linked = await services.category_repo.get_by_linked_account(card.id)
+        assert interest is not None and linked is not None
+        await db_session.flush()
+        expected = {interest.id: True, linked.id: True, rent.id: False}
+        return services, budget, interest.id, expected
+
+    async def test_every_listing_path_carries_it(self, db_session):
+        services, budget, interest_id, expected = await self._world(db_session)
+        repo = services.category_repo
+
+        paths = {
+            "get_all": await repo.get_all(budget.id),
+            "get_all archived": await repo.get_all(budget.id, include_archived=True),
+            "with group names": [c for c, _ in await repo.get_all_with_group_names(budget.id)],
+            "fileable": [c for c, _ in await repo.get_fileable_with_group_names(budget.id)],
+            "taggable": [c for c, _ in await repo.get_taggable_with_group_names(budget.id, None)],
+            "get": [await repo.get(cid) for cid in expected],
+            "get_with_tags": [await repo.get_with_tags(cid) for cid in expected],
+        }
+        for label, rows in paths.items():
+            for row in rows:
+                assert row is not None, label
+                assert isinstance(row.in_card_section, bool), f"{label}: {row.name} unpopulated"
+                if row.id in expected:
+                    assert row.in_card_section is expected[row.id], f"{label}: {row.name}"
+        # Placement is all it changes: Interest & fees is filed to like any
+        # envelope, where a card's own envelope is filed to by nothing.
+        assert interest_id in {c.id for c in paths["fileable"]}
+
+    async def test_it_survives_an_update(self, db_session):
+        """`BaseRepository.update` refreshes, which takes no loader options and
+        drops a with_expression attribute — the re-read is what serves it."""
+        services, _, interest_id, _ = await self._world(db_session)
+
+        await services.category_repo.update(interest_id, name="Card interest")
+        served = await services.category_repo.get_with_tags(interest_id)
+
+        assert served is not None and served.in_card_section is True
+
+    async def test_every_mutating_endpoint_returns_a_serializable_row(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        await db_session.commit()
+        card = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Sapphire Visa", "account_type": "credit_card"},
+        )
+        assert card.status_code == 201, card.text
+        group = await api_client.post(
+            f"/api/v1/{budget.id}/category-groups", json={"name": "Bills"}
+        )
+        created = await api_client.post(
+            f"/api/v1/{budget.id}/categories",
+            json={"category_group_id": group.json()["id"], "name": "Rent"},
+        )
+        assert created.status_code == 201, created.text
+        listed = await api_client.get(f"/api/v1/{budget.id}/categories")
+        archived_too = await api_client.get(
+            f"/api/v1/{budget.id}/categories", params={"include_archived": True}
+        )
+        interest = next(c for c in listed.json() if c["name"] == "Interest & fees")
+        renamed = await api_client.patch(
+            f"/api/v1/categories/{interest['id']}", json={"name": "Card interest"}
+        )
+        unlinked = await api_client.put(
+            f"/api/v1/{budget.id}/categories/{created.json()['id']}/link-liability",
+            json={"liability_id": None},
+        )
+
+        for label, body in [
+            ("create", created.json()),
+            *[("list", row) for row in listed.json()],
+            *[("list archived", row) for row in archived_too.json()],
+            ("rename", renamed.json()),
+            ("link-liability", unlinked.json()),
+        ]:
+            assert isinstance(body.get("in_card_section"), bool), f"{label}: {body}"
+        by_name = {c["name"]: c["in_card_section"] for c in listed.json()}
+        assert by_name == {"Sapphire Visa": True, "Interest & fees": True, "Rent": False}
+        assert renamed.json()["in_card_section"] is True

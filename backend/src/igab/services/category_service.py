@@ -56,7 +56,9 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import CARD_ACCOUNT
 from igab.services.budget_service import BudgetService
+from igab.services.card_payment import CARD_INTEREST_KEY
 from igab.services.change_log import ChangeRecorder, snapshot
 
 #: What still points at a category, and whether removing it costs anything.
@@ -1403,6 +1405,20 @@ class CategoryService:
         """
         from igab.db.models import Account, Liability
 
+        if cat.system_key == CARD_INTEREST_KEY:
+            # Every card's interest is filed here, and a synced interest row
+            # is filed here automatically, so while a card exists deleting it
+            # would only send that money back to "needs a category". Archive
+            # hides it and keeps its history; with no card left it may go.
+            live_card = (
+                await self.session.execute(
+                    select(Account.id)
+                    .where(Account.budget_id == cat.budget_id, CARD_ACCOUNT)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if live_card is not None:
+                return f"'{cat.name}' is where card interest is filed; archive it instead."
         if cat.linked_account_id is not None:
             account = await self.session.get(Account, cat.linked_account_id)
             if account is not None and not account.is_deleted:
@@ -1418,6 +1434,20 @@ class CategoryService:
                     "Unlink it from that loan first."
                 )
         return None
+
+    @staticmethod
+    def require_movable(cat: Category, to_group_id: uuid.UUID) -> None:
+        """Refuse moving the Interest & fees envelope to another group.
+
+        It is found by key wherever it lives, so a move would not lose it —
+        but the Credit cards section is where it is drawn, and a copy of it
+        under an ordinary group header is the one thing the page cannot
+        show. Rename and archive stay open.
+        """
+        if cat.system_key == CARD_INTEREST_KEY and to_group_id != cat.category_group_id:
+            raise InvariantViolation(
+                f"'{cat.name}' lives with the credit cards and cannot be moved to another group"
+            )
 
     async def _validate_move_target(
         self, budget_id: uuid.UUID, move_to: uuid.UUID | None, deleting: list[uuid.UUID]

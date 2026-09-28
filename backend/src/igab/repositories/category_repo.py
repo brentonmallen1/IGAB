@@ -10,6 +10,7 @@ from igab.db.models import BudgetAssignment, Category, CategoryGroup
 from igab.domain.ordering import merge_reorder
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
+    CARD_SECTION_CATEGORY,
     GROUP_ARCHIVED_CATEGORY_COUNT,
     GROUP_IS_CARD_ONLY,
     IN_SYSTEM_GROUP,
@@ -211,7 +212,8 @@ class CategoryRepository(BaseRepository[Category]):
     @staticmethod
     def with_eligibility[T: tuple[Any, ...]](stmt: Select[T]) -> Select[T]:
         """Load every served field a `CategoryResponse` carries on a Category
-        statement: the three eligibility flags and `savings_role`.
+        statement: the three eligibility flags, `savings_role` and
+        `in_card_section`.
 
         Every path that serializes a `CategoryResponse` has to go through here.
         The fields are required in the schema, so a path that skips one raises
@@ -224,6 +226,7 @@ class CategoryRepository(BaseRepository[Category]):
             with_expression(Category.is_fundable, IS_FUNDABLE),
             with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
             with_expression(Category.savings_role, SAVINGS_ROLE),
+            with_expression(Category.in_card_section, CARD_SECTION_CATEGORY),
         )
 
     async def get(self, id: uuid.UUID) -> Category | None:
@@ -275,23 +278,26 @@ class CategoryRepository(BaseRepository[Category]):
         live = list(
             (
                 await self.session.execute(
-                    select(Category)
+                    self.with_eligibility(select(Category))
                     .where(
                         Category.category_group_id == group_id,
                         Category.is_deleted == False,  # noqa: E712
                     )
                     .order_by(Category.sort_order, Category.name)
+                    .execution_options(populate_existing=True)
                 )
             ).scalars()
         )
         final = merge_reorder(
             # The same rule one level down, and the same trap: the grid never
-            # draws a card's envelope (the cards section owns it), so
+            # draws a card-section envelope (the cards section owns it), so
             # a client dragging within a group cannot list it. Omittability has
             # to match what is drawn, not what is hidden — card envelopes are
             # usually hidden too, which is the only reason this had not yet
-            # produced the failure its group-level twin did.
-            [(c.id, c.is_archived or c.linked_account_id is not None) for c in live],
+            # produced the failure its group-level twin did. The served
+            # `in_card_section`, not `linked_account_id`: Interest & fees is
+            # not linked and is not drawn in the grid either.
+            [(c.id, c.is_archived or c.in_card_section) for c in live],
             category_ids,
             noun="category",
             plural="categories",

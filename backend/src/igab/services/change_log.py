@@ -170,6 +170,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "linked_account_id",
         "linked_liability_id",
         "savings_mode",
+        "system_key",
     ),
     "category_group": ("name", "sort_order", "is_archived", "is_system"),
     "assignment": ("category_id", "month", "assigned"),

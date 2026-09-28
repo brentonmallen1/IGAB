@@ -172,6 +172,8 @@ def test_a_situation_with_nothing_to_do_says_so_in_as_many_words(scenario):
         "paid-ahead-covered",
         "refund-written-off",
         "anchored-negative-opening",
+        # Funded interest is spending doing what spending does.
+        "interest-funded",
     }
     says_nothing = scenario.lesson.todo.startswith("Nothing")
     assert says_nothing == (scenario.slug in quiet), (

@@ -53,7 +53,7 @@ def scratch_dbs():
         admin.dispose()
 
 
-def _run_migrations(database: str, target: str = "head") -> None:
+def _run_migrations(database: str, target: str = "head", *, command: str = "upgrade") -> None:
     """Run the chain in a subprocess with DATABASE_URL pointed at the scratch db.
 
     In-process will not do. alembic/env.py overwrites `sqlalchemy.url` from
@@ -73,13 +73,13 @@ def _run_migrations(database: str, target: str = "head") -> None:
         "PYTHONPATH": os.path.join(root, "src"),
     }
     result = subprocess.run(
-        ["uv", "run", "alembic", "upgrade", target],
+        ["uv", "run", "alembic", command, target],
         cwd=root,
         env=env,
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, f"alembic upgrade {target} failed:\n{result.stderr}"
+    assert result.returncode == 0, f"alembic {command} {target} failed:\n{result.stderr}"
 
 
 def _shape(engine, table: str) -> dict:
@@ -170,5 +170,124 @@ def test_migrations_adopt_emergency_bindings(scratch_dbs):
             assert_chosen_adopted(conn, chosen)
             assert_guess_only_adopted(conn, guess_only)
             assert_dismissed_adopted(conn, dismissed)
+    finally:
+        engine.dispose()
+
+
+def test_migration_backfills_the_interest_envelope(scratch_dbs):
+    """Migration 2cb769068102 over the three shapes a budget with cards can be
+    in, and one with none — then down and up again, which must find what the
+    first run made rather than make a second."""
+    from sqlalchemy import insert, select
+
+    from .emergency_fund_adoption_cases import _account, _t, insert_budget
+
+    before = "b3f70c5e12d9"
+    database, _ = scratch_dbs
+    _run_migrations(database, before)
+    engine = create_engine(_url(database))
+
+    def group(conn, budget_id, name, sort_order=0):
+        return conn.execute(
+            insert(_t("category_groups"))
+            .values(budget_id=budget_id, name=name, sort_order=sort_order)
+            .returning(_t("category_groups").c.id)
+        ).scalar_one()
+
+    def category(conn, budget_id, group_id, name, sort_order=0, linked=None):
+        return conn.execute(
+            insert(_t("categories"))
+            .values(
+                budget_id=budget_id,
+                category_group_id=group_id,
+                name=name,
+                sort_order=sort_order,
+                linked_account_id=linked,
+            )
+            .returning(_t("categories").c.id)
+        ).scalar_one()
+
+    def card(conn, budget_id, name):
+        return _account(
+            conn,
+            budget_id,
+            name,
+            key="credit_card",
+            classification="liability",
+            on_budget=True,
+            counts_as_savings=False,
+        )
+
+    try:
+        with engine.begin() as conn:
+            # A card whose envelope sits in the card group.
+            plain = insert_budget(conn, "Plain")
+            plain_group = group(conn, plain, "Credit Card Payments", sort_order=3)
+            category(
+                conn, plain, plain_group, "Sapphire Visa", 0, card(conn, plain, "Sapphire Visa")
+            )
+            # The user already made their own, in the card group.
+            own = insert_budget(conn, "Own")
+            own_group = group(conn, own, "Credit Card Payments")
+            category(
+                conn, own, own_group, "Harborstone Card", 0, card(conn, own, "Harborstone Card")
+            )
+            theirs = category(conn, own, own_group, "Interest and Fees", 1)
+            # Card envelopes kept elsewhere: no card group at all.
+            elsewhere = insert_budget(conn, "Elsewhere")
+            debt = group(conn, elsewhere, "Debt", sort_order=4)
+            category(
+                conn, elsewhere, debt, "Kestrel Card", 0, card(conn, elsewhere, "Kestrel Card")
+            )
+            # No card, nothing to do.
+            cashonly = insert_budget(conn, "Cash only")
+            _account(
+                conn,
+                cashonly,
+                "Checking",
+                key="checking",
+                on_budget=True,
+                counts_as_savings=False,
+            )
+
+        def keyed(conn, budget_id):
+            rows = conn.execute(
+                text(
+                    "SELECT c.id, c.name, c.sort_order, g.name AS group_name, g.sort_order AS gs"
+                    " FROM categories c JOIN category_groups g ON g.id = c.category_group_id"
+                    " WHERE c.budget_id = :b AND c.system_key = 'card_interest'"
+                    " AND NOT c.is_deleted"
+                ),
+                {"b": budget_id},
+            ).all()
+            return rows
+
+        def assert_backfilled():
+            with engine.connect() as conn:
+                [p] = keyed(conn, plain)
+                assert (p.name, p.group_name, p.sort_order) == (
+                    "Interest & fees",
+                    "Credit Card Payments",
+                    1,
+                ), "last in the card group"
+                [o] = keyed(conn, own)
+                assert o.id == theirs and o.name == "Interest and Fees", "adopted, not duplicated"
+                [e] = keyed(conn, elsewhere)
+                assert (e.group_name, e.gs) == ("Credit Card Payments", 5), "group made, last"
+                assert keyed(conn, cashonly) == []
+                named = conn.execute(
+                    select(_t("categories").c.budget_id).where(
+                        _t("categories").c.name.in_(["Interest & fees", "Interest and Fees"])
+                    )
+                ).scalars()
+                assert sorted(map(str, named)) == sorted(map(str, [plain, own, elsewhere]))
+
+        _run_migrations(database)
+        assert_backfilled()
+        # Down drops the key and keeps the envelopes (they may hold money);
+        # up again adopts them by name rather than adding a second.
+        _run_migrations(database, before, command="downgrade")
+        _run_migrations(database)
+        assert_backfilled()
     finally:
         engine.dispose()
