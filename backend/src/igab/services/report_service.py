@@ -1380,8 +1380,8 @@ class ReportService:
         include_classes: Sequence[ActivityClass] | None = None,
         view_id: uuid.UUID | None = None,
     ) -> tuple[list[dict], Decimal, dict]:
-        """Spending per category with its group: the Breakdown, Pareto and the
-        Treemap. Net of refunds, with an Uncategorized line (id None).
+        """Spending per category with its group: Where it went, in its category and
+        group modes and its treemap. Net of refunds, with an Uncategorized line (id None).
 
         With `view_id`, the groups come from that view's arrangement instead of
         the budget's own — the same money read a different way, which is the

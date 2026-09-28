@@ -1,5 +1,5 @@
 """How concentrated spending is: how few of the largest items make up most of
-it. The Pareto report's "80% of Spend" card.
+it. Where it went's "12 of 56 categories make 80% of spending".
 
 Pure. The client computes the same thing for category and group modes, which
 it holds in full; the server computes it for payee mode, because it ranks

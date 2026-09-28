@@ -328,6 +328,68 @@ class TestDrillsTotalWhatChartsTotal:
         assert body["expense_classes"] == ["spending"]
 
 
+class TestWhereItWentRowsOpenWhatTheyCount:
+    """Where it went ranks groups, categories and payees from two reports, and
+    every row opens a list. Each list must total its row, with the drill
+    parameters the page sends (`WhereItWentReport.openLine` and
+    `openGroupTransactions`): the served classes, leaf rows, no direction.
+    The group row is summed on the client from the categories in it, so its
+    list is the one no server figure vouched for."""
+
+    WHOLE = {"start_date": "2026-01-01", "end_date": TODAY.isoformat()}
+
+    async def _drill(self, api_client, budget, **params):
+        return await TestDrillsTotalWhatChartsTotal()._drill(api_client, budget, **params)
+
+    async def test_a_group_row(self, db_session, api_client):
+        budget, cats = await _household(db_session, api_client)
+        body = await _get(api_client, budget, "spending-grouped", **self.WHOLE)
+        classes = ",".join(body["counted_classes"])
+        # 450 of groceries less its 50 refund, 120 of dining, and the 90
+        # Shopping took back: the group's categories summed, as the table does.
+        row = sum(
+            (money(g["total"]) for g in body["groups"] if g["parent_name"] == "Everyday"),
+            Decimal("0"),
+        )
+        members = ",".join(str(cats[k].id) for k in ("groceries", "dining", "shopping"))
+        drilled = await self._drill(
+            api_client, budget, category_ids=members, activity_classes=classes, **self.WHOLE
+        )
+        assert drilled == row == Decimal("480.00")
+
+    async def test_a_line_that_took_back_more_than_it_spent(self, db_session, api_client):
+        budget, cats = await _household(db_session, api_client)
+        feb = {"start_date": "2026-02-01", "end_date": "2026-02-28"}
+        body = await _get(api_client, budget, "spending-grouped", **feb)
+        classes = ",".join(body["counted_classes"])
+        row = next(money(g["total"]) for g in body["groups"] if g["name"] == "Shopping")
+        drilled = await self._drill(
+            api_client,
+            budget,
+            category_ids=str(cats["shopping"].id),
+            activity_classes=classes,
+            **feb,
+        )
+        assert drilled == row == Decimal("-90.00")
+
+    async def test_a_payee_row(self, db_session, api_client):
+        """Alder Street Goods: 40 uncategorized and 120 of dining, less the 90
+        Shopping return — a payee whose refund sits inside its row."""
+        budget, _ = await _household(db_session, api_client)
+        body = await _get(api_client, budget, "payee-analysis", **self.WHOLE)
+        classes = ",".join(body["counted_classes"])
+        for name, expected in (("Corner Market", "450.00"), ("Alder Street Goods", "70.00")):
+            payee = next(p for p in body["payees"] if p["payee_name"] == name)
+            drilled = await self._drill(
+                api_client,
+                budget,
+                payee_ids=payee["payee_id"],
+                activity_classes=classes,
+                **self.WHOLE,
+            )
+            assert drilled == money(payee["total"]) == Decimal(expected), name
+
+
 class TestSpendingTrendsAveragesCompleteMonths:
     async def test_the_running_month_is_not_averaged(self, db_session, api_client):
         """January 290 and February 30 are complete; March's 200 is eighteen
