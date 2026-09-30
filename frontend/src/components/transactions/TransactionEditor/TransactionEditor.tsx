@@ -67,7 +67,13 @@ import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { fromCents, parseApiDecimal } from '../../../utils/money'
 import { expressionToCents } from '../../../utils/amountExpression'
-import { checkSplit, draftsFromLines, fillRemainder, remainderTarget } from '../../../utils/splits'
+import {
+  canRemoveSplitLine,
+  checkSplit,
+  draftsFromLines,
+  fillRemainder,
+  remainderTarget,
+} from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
@@ -414,7 +420,9 @@ export function TransactionEditor({
   }
 
   function removeSplit(tempId: string) {
-    setSplits((prev) => (prev.length > 2 ? prev.filter((s) => s.tempId !== tempId) : prev))
+    setSplits((prev) =>
+      canRemoveSplitLine(prev.length) ? prev.filter((s) => s.tempId !== tempId) : prev
+    )
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -487,7 +495,7 @@ export function TransactionEditor({
           approved: true,
           payee_id: selectedPayeeId || undefined,
         })
-        await replaceSplits.mutateAsync({ id: transaction!.id, splits: splitList })
+        await replaceSplits.mutateAsync({ id: transaction!.id, accountId, splits: splitList })
       } else if (isEdit) {
         // Split in place: the row becomes the parent, keeping attachments and
         // AI links (a create+delete replacement would orphan the receipt).
@@ -1098,7 +1106,7 @@ export function TransactionEditor({
                             type="button"
                             className="txn-editor__split-remove"
                             onClick={() => removeSplit(s.tempId)}
-                            disabled={splits.length <= 2}
+                            disabled={!canRemoveSplitLine(splits.length)}
                             aria-label="Remove split"
                             title="Remove"
                           >

@@ -216,13 +216,24 @@ describe('reaching the split editor', () => {
     expect(screen.getByLabelText('Category').textContent).toContain('Household')
   })
 
-  it('will not drop below two legs', () => {
+  it('comes down to one line, never to none, and says what one line means', () => {
+    // It used to stop at two, which left a saved split no road back to one
+    // category: one line is that road.
     startSplit('10.00')
+    fireEvent.click(splitField(2, 'remove'))
+    expect(splitLines()).toHaveLength(1)
     expect(splitField(1, 'remove').hasAttribute('disabled')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: /Add line/ }))
-    expect(splitField(1, 'remove').hasAttribute('disabled')).toBe(false)
-    fireEvent.click(splitField(3, 'remove'))
-    expect(splitLines()).toHaveLength(2)
+    expect(screen.getByText('One line saves as a single category, not a split.')).toBeTruthy()
+  })
+
+  it('sends a single line for the server to file as one category', async () => {
+    startSplit('10.00')
+    fireEvent.click(splitField(2, 'remove'))
+    pickLegCategory(0, 'Groceries')
+    setLeg(0, '10.00')
+    fireEvent.click(save())
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
+    expect(lastCreate().splits).toHaveLength(1)
   })
 })
 

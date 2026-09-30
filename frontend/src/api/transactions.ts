@@ -376,19 +376,25 @@ export function useConvertToSplit(budgetId: string) {
 export function useReplaceSplits(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, splits }: { id: string; splits: SplitCreate[] }) =>
+    // The account comes from the caller: one line ends the split and the
+    // server returns no lines to read it from, yet the row moved category.
+    mutationFn: ({
+      id,
+      accountId,
+      splits,
+    }: {
+      id: string
+      accountId: string
+      splits: SplitCreate[]
+    }) =>
       apiClient
         .put<Transaction[]>(
           `/transactions/${id}/splits`,
           { splits },
           { params: { budget_id: budgetId } }
         )
-        .then((r) => ({ id, lines: r.data })),
-    onSuccess: ({ id, lines }) => {
-      if (lines[0])
-        invalidateAfterSplitChange(qc, budgetId, { id, account_id: lines[0].account_id })
-      else qc.invalidateQueries({ queryKey: [ROOT.transactionSplits, id] })
-    },
+        .then(() => ({ id, account_id: accountId })),
+    onSuccess: (txn) => invalidateAfterSplitChange(qc, budgetId, txn),
   })
 }
 

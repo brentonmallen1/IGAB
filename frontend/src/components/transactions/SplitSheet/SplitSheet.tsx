@@ -7,7 +7,7 @@ import {
 } from '../../common/SelectionSheet/SelectionSheet'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { checkSplit, coverRemainder } from '../../../utils/splits'
+import { canRemoveSplitLine, checkSplit, coverRemainder } from '../../../utils/splits'
 import { expressionToCents } from '../../../utils/amountExpression'
 import { randomUUID } from '../../../utils/uuid'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
@@ -234,7 +234,9 @@ export function SplitSheet({
                       second "Amount" label would shadow the form's. A tap on the
                       word still lands in the field. */}
                   <div className="split-sheet__field" onClick={focusField}>
-                    <span className="split-sheet__field-label" aria-hidden>Amount</span>
+                    <span className="split-sheet__field-label" aria-hidden>
+                      Amount
+                    </span>
                     <AmountInput
                       className="split-sheet__amount"
                       value={leg.amount}
@@ -244,7 +246,9 @@ export function SplitSheet({
                     />
                   </div>
                   <div className="split-sheet__field" onClick={focusField}>
-                    <span className="split-sheet__field-label" aria-hidden>Memo</span>
+                    <span className="split-sheet__field-label" aria-hidden>
+                      Memo
+                    </span>
                     <input
                       type="text"
                       className="split-sheet__memo"
@@ -256,7 +260,6 @@ export function SplitSheet({
                     />
                   </div>
                   <div className="split-sheet__leg-actions">
-                    {/* A split of one is just a category. */}
                     <button
                       type="button"
                       className="split-sheet__remove"
@@ -264,7 +267,7 @@ export function SplitSheet({
                         setOpenId(null)
                         onChange(legs.filter((l) => l.tempId !== leg.tempId))
                       }}
-                      disabled={legs.length <= 2}
+                      disabled={!canRemoveSplitLine(legs.length)}
                       aria-label={`Remove split ${n}`}
                     >
                       <Trash2 size={15} aria-hidden />
@@ -282,6 +285,9 @@ export function SplitSheet({
               )
             })}
           </ol>
+          {legs.length === 1 && (
+            <p className="split-sheet__single">One line saves as a single category, not a split.</p>
+          )}
 
           <button
             type="button"

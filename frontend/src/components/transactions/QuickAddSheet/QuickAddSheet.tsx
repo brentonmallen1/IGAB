@@ -524,11 +524,18 @@ export function QuickAddSheet() {
       }
 
       const headline = `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}`
-      const where = isSplit
-        ? ` · split ${splits.length} ways`
-        : categoryName
-          ? ` · ${categoryName}`
-          : ''
+      // One line saved as a plain row (the server collapses it): name it.
+      const oneLine =
+        isSplit && splits.length === 1
+          ? categories.find((c) => c.id === splits[0].categoryId)?.name
+          : undefined
+      const where = oneLine
+        ? ` · ${oneLine}`
+        : isSplit
+          ? ` · split ${splits.length} ways`
+          : categoryName
+            ? ` · ${categoryName}`
+            : ''
       let message: string | ReactElement = `${headline}${where}`
       // Before → after only when both ends are the server's; otherwise the
       // sentence above, never a figure the client made up.

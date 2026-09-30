@@ -537,7 +537,8 @@ async def replace_split_lines(
     budget_id: BudgetAccess,
 ) -> list[TransactionResponse]:
     """Edit a split's lines in place: named lines update, unnamed create,
-    missing remove. The parent — its identity, receipts, amount — is untouched."""
+    missing remove. The parent — its identity, receipts, amount — is untouched.
+    A single line ends the split: the row is filed there and no lines return."""
     try:
         lines = await txn_service.replace_splits(budget_id, transaction_id, _split_specs(body))
     except (NotFoundError, InvariantViolation) as e:

@@ -292,9 +292,11 @@ class TestTheServedFlagIsTheOnlyRule:
         )
         approved = await services.transactions.approve(plain.id, budget.id)
         split = await services.transactions.convert_to_split(
-            budget.id, plain.id, [SplitSpec(amount=Decimal("-12.00"))]
+            budget.id,
+            plain.id,
+            [SplitSpec(amount=Decimal("-6.00")), SplitSpec(amount=Decimal("-6.00"))],
         )
-        [line] = await services.transaction_repo.get_splits(split.id)
+        line, _ = await services.transaction_repo.get_splits(split.id)
         replaced = await services.transactions.replace_splits(
             budget.id,
             split.id,

@@ -352,6 +352,14 @@ class TransactionService:
             for s in splits
         ]
         require_split_balances(header.amount, [s.amount for s in specs])
+        if len(specs) == 1:
+            # A split of one line is a category: store the row it describes.
+            [line] = specs
+            header.category_id = line.category_id
+            header.memo = header.memo or line.memo
+            if header.payee_id is None and not header.payee_name:
+                header.payee_id, header.payee_name = line.payee_id, line.payee_name
+            return await self.create(budget_id, header)
 
         # Parent has no category (it's distributed across splits). Auto-
         # categorization in create() may have applied a payee default, so
@@ -387,6 +395,12 @@ class TransactionService:
         if txn.transfer_id is not None:
             raise InvariantViolation("Cannot split a transfer")
 
+        if len(splits) == 1:
+            with self.changes.batch():
+                await self._collapse(budget_id, txn, splits[0], existing=[])
+            await self.transaction_repo.refresh(txn)
+            return txn
+
         before = snapshot("transaction", txn)
         # One batch: undoing it deletes the lines and restores the parent's
         # pre-split category and is_split flag. Lines first — they validate
@@ -413,8 +427,80 @@ class TransactionService:
             raise InvariantViolation("Transaction is not split")
         existing = await self.transaction_repo.get_splits(parent.id)
         with self.changes.batch():
+            if len(splits) == 1:
+                # Down to one line: the split is over, and the row is filed
+                # where that line was. No lines are left to return.
+                await self._collapse(budget_id, parent, splits[0], existing=existing)
+                return []
             lines = await self._apply_split_legs(budget_id, parent, splits, existing=existing)
         return lines
+
+    async def _collapse(
+        self,
+        budget_id: uuid.UUID,
+        txn: Transaction,
+        line: SplitSpec,
+        *,
+        existing: list[Transaction],
+    ) -> None:
+        """A split of one line is not a split: file the row itself where the
+        line says, and remove whatever lines it had (receipts move up to the
+        row, as for any removed line). The row keeps its own memo and payee
+        and takes the line's only where it has none. Records every step, so
+        one undo brings the lines back; callers own the batch.
+        """
+        require_split_balances(txn.amount, [line.amount])
+        await self._check_legs(budget_id, txn, [line], {c.id for c in existing})
+        before = snapshot("transaction", txn)
+        await self._remove_lines(txn, existing)
+        changes: dict[str, Any] = {"is_split": False, "category_id": line.category_id}
+        if not txn.memo and line.memo:
+            changes["memo"] = line.memo
+        if txn.payee_id is None and (line.payee_id is not None or line.payee_name):
+            payee = await self._resolve_payee(budget_id, line.payee_id, line.payee_name)
+            changes["payee_id"] = payee.id if payee else None
+        updated = await self.transaction_repo.update(txn.id, **changes)
+        await self._record_txn(updated, "update", before=before)
+
+    async def _check_legs(
+        self,
+        budget_id: uuid.UUID,
+        parent: Transaction,
+        specs: list[SplitSpec],
+        existing_ids: set[uuid.UUID],
+    ) -> None:
+        """Refuse lines this parent cannot carry: a category on a tracking
+        account, a line id from some other transaction (the route guards only
+        the parent), a category from another budget or one nothing files to.
+        """
+        # Children share the parent's account, and line updates write through
+        # the repo (not service.update) — so the category rule is checked
+        # once here for the whole split.
+        if any(spec.category_id is not None for spec in specs):
+            parent_account = await self.account_repo.get_or_raise(parent.account_id)
+            if not leg_may_carry_category(parent_account.on_budget):
+                raise InvariantViolation(
+                    "Transactions on a tracking account cannot carry a category — "
+                    "off-budget activity is net-worth movement, not budget spending"
+                )
+        for spec in specs:
+            if spec.id is not None and spec.id not in existing_ids:
+                raise InvariantViolation("Split line does not belong to this transaction")
+            await require_in_budget(self.session, Category, spec.category_id, budget_id, "Category")
+            await require_categorizable(self.session, spec.category_id)
+
+    async def _remove_lines(self, parent: Transaction, lines: list[Transaction]) -> None:
+        """Remove split lines, moving their attachments to the parent and
+        remembering them so undo puts them back."""
+        for child in lines:
+            child_before = snapshot("transaction", child)
+            if self.attachment_repo is not None:
+                child_before["_attachment_ids"] = [
+                    str(a.id) for a in await self.attachment_repo.get_for_transaction(child.id)
+                ]
+                await self.attachment_repo.reassign(child.id, parent.id)
+            await self.transaction_repo.soft_delete(child.id)
+            await self._record_txn(child, "delete", before=child_before, refresh=False)
 
     async def _apply_split_legs(
         self,
@@ -438,22 +524,8 @@ class TransactionService:
         the one. Records every step; callers own the batch.
         """
         require_split_balances(parent.amount, [s.amount for s in specs])
-        # Children share the parent's account, and line updates write through
-        # the repo below (not service.update) — so the category rule is
-        # checked once here for the whole split.
-        if any(spec.category_id is not None for spec in specs):
-            parent_account = await self.account_repo.get_or_raise(parent.account_id)
-            if not leg_may_carry_category(parent_account.on_budget):
-                raise InvariantViolation(
-                    "Transactions on a tracking account cannot carry a category — "
-                    "off-budget activity is net-worth movement, not budget spending"
-                )
         existing_by_id = {child.id: child for child in existing}
-        for spec in specs:
-            if spec.id is not None and spec.id not in existing_by_id:
-                raise InvariantViolation("Split line does not belong to this transaction")
-            await require_in_budget(self.session, Category, spec.category_id, budget_id, "Category")
-            await require_categorizable(self.session, spec.category_id)
+        await self._check_legs(budget_id, parent, specs, set(existing_by_id))
 
         kept: list[Transaction] = []
         for spec in specs:
@@ -493,17 +565,7 @@ class TransactionService:
                 kept.append(child)
 
         kept_ids = {child.id for child in kept}
-        for child in existing:
-            if child.id in kept_ids:
-                continue
-            child_before = snapshot("transaction", child)
-            if self.attachment_repo is not None:
-                child_before["_attachment_ids"] = [
-                    str(a.id) for a in await self.attachment_repo.get_for_transaction(child.id)
-                ]
-                await self.attachment_repo.reassign(child.id, parent.id)
-            await self.transaction_repo.soft_delete(child.id)
-            await self._record_txn(child, "delete", before=child_before, refresh=False)
+        await self._remove_lines(parent, [c for c in existing if c.id not in kept_ids])
         return kept
 
     async def update(

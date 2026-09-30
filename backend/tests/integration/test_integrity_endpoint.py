@@ -71,8 +71,9 @@ async def test_seeded_inconsistencies_are_each_detected(db_session):
     )
     splits = [
         TransactionCreate(
-            account_id=account.id, date=TODAY, amount=Decimal("-100.00"), category_id=cat.id
+            account_id=account.id, date=TODAY, amount=Decimal(amount), category_id=cat.id
         )
+        for amount in ("-50.00", "-50.00")
     ]
     parent = await services.transactions.create_split(budget.id, header, splits)
     child = (await services.transaction_repo.get_splits(parent.id))[0]

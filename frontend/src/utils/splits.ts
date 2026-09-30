@@ -34,6 +34,19 @@
  */
 import { centsToInputString, expressionToCents } from './amountExpression'
 
+/**
+ * May a line be removed from a split of `count` lines?
+ *
+ * Down to one, never to none. A split of one line saves as a plain row filed
+ * where that line was — the server stores it so (`_collapse`) — and that is
+ * the only road from a saved split back to one category. Four editors each
+ * held "never below two" instead, which left a saved split no way out short
+ * of deleting the transaction.
+ */
+export function canRemoveSplitLine(count: number): boolean {
+  return count > 1
+}
+
 export interface SplitLegInput {
   amount: string
   categoryId: string | null

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { randomUUID } from '../utils/uuid'
+import { canRemoveSplitLine } from '../utils/splits'
 
 export type EditableField =
   | 'date'
@@ -99,7 +100,7 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
 
   removeSplit: (tempId) => {
     const { splitEditing } = get()
-    if (!splitEditing || splitEditing.splits.length <= 2) return
+    if (!splitEditing || !canRemoveSplitLine(splitEditing.splits.length)) return
     set({
       splitEditing: {
         ...splitEditing,
