@@ -1,4 +1,4 @@
-import { groupedCategorySections } from '../../../utils/categoryPickers'
+import { filingCategoryOptions, groupedCategorySections } from '../../../utils/categoryPickers'
 import {
   CREATE_NEW_PARTNER,
   awaitingPartnerChoice,
@@ -29,6 +29,7 @@ import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
 import { ReceiptScanTab } from './ReceiptScanTab'
+import { PhoneSplit } from '../SplitSheet/PhoneSplit'
 import {
   useTransactionClassification,
   useCreateTransaction,
@@ -218,6 +219,11 @@ export function TransactionEditor({
     setSplits(draftsFromLines(splitLines))
   }
   const splitLinesPending = editingExistingSplit && !linesSeeded
+  const [splitSheetOpen, setSplitSheetOpen] = useState(false)
+  const splitCategoryOptions = useMemo(
+    () => filingCategoryOptions(categories, categoryGroups),
+    [categories, categoryGroups]
+  )
 
   // Tab state: entry method in add mode
   const [activeTab, setActiveTab] = useState<'manual' | 'describe' | 'receipt'>('manual')
@@ -381,6 +387,22 @@ export function TransactionEditor({
       })
     )
     setIsSplit(true)
+  }
+
+  /** As quick add does: the chosen category becomes the first line, and
+   *  comes back out on un-splitting — changing your mind costs no pick. */
+  function beginSplit() {
+    setSplits((prev) =>
+      prev.map((s, i) => (i === 0 ? { ...s, categoryId: categoryId || null } : s))
+    )
+    setIsSplit(true)
+    if (isMobile) setSplitSheetOpen(true)
+  }
+
+  function cancelSplit() {
+    setCategoryId(splits[0]?.categoryId ?? '')
+    setIsSplit(false)
+    setSplitSheetOpen(false)
   }
 
   function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
@@ -1013,6 +1035,23 @@ export function TransactionEditor({
                       </div>
                     )}
                   </>
+                ) : isSplit && isMobile ? (
+                  // On a phone the lines get the whole screen (SplitSheet);
+                  // the form keeps one row saying where the split stands.
+                  <div className="txn-editor__field">
+                    <PhoneSplit
+                      framed
+                      open={splitSheetOpen}
+                      onOpenChange={setSplitSheetOpen}
+                      loading={splitLinesPending}
+                      totalCents={editorTotalCents}
+                      legs={splits}
+                      onChange={setSplits}
+                      categoryOptions={splitCategoryOptions}
+                      canCategorize={canCategorize}
+                      onUnsplit={editingExistingSplit ? undefined : cancelSplit}
+                    />
+                  </div>
                 ) : isSplit ? (
                   <div className="txn-editor__field">
                     <label className="txn-editor__label">
@@ -1021,10 +1060,7 @@ export function TransactionEditor({
                         <button
                           type="button"
                           className="txn-editor__ai-btn"
-                          onClick={() => {
-                            setIsSplit(false)
-                            setCategoryId('')
-                          }}
+                          onClick={cancelSplit}
                           title="Switch to single category"
                         >
                           <X size={12} />
@@ -1105,7 +1141,7 @@ export function TransactionEditor({
                         type="button"
                         className="txn-editor__ai-btn"
                         title="Split this transaction"
-                        onClick={() => setIsSplit(true)}
+                        onClick={beginSplit}
                       >
                         <Split size={12} />
                         Split

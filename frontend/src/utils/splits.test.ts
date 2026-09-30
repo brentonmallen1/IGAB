@@ -8,7 +8,7 @@
  * us.
  */
 import { describe, expect, it } from 'vitest'
-import { checkSplit, fillRemainder, remainderTarget } from './splits'
+import { checkSplit, coverRemainder, fillRemainder, remainderTarget } from './splits'
 import { toCents } from './money'
 import cases from '../../../shared/split_cases.json'
 
@@ -130,5 +130,69 @@ describe('filling the remainder', () => {
       { amount: '', categoryId: 'b' },
     ]
     expect(checkSplit(12000, fillRemainder(legs, 6000)).isValid).toBe(true)
+  })
+})
+
+/**
+ * "Cover the rest": the whole remainder into one category, from the phone's
+ * split sheet. It is not Fill — Fill needs an empty line already set up;
+ * this makes or finds the line itself.
+ */
+describe('covering the remainder', () => {
+  let n = 0
+  const newLeg = () => ({ amount: '', categoryId: null as string | null, id: `new${++n}` })
+  const leg = (amount: string, categoryId: string | null, id = amount + categoryId) => ({
+    amount,
+    categoryId,
+    id,
+  })
+
+  it('adds to the line already in that category, not a second one', () => {
+    const legs = [leg('142.18', 'groceries'), leg('38.40', 'household')]
+    const out = coverRemainder(legs, 1200, 'groceries', newLeg)
+    expect(out.map((l) => [l.categoryId, l.amount])).toEqual([
+      ['groceries', '154.18'],
+      ['household', '38.40'],
+    ])
+  })
+
+  it('takes a blank line before adding one', () => {
+    const legs = [leg('60', 'groceries'), leg('', null)]
+    const out = coverRemainder(legs, 6000, 'kids', newLeg)
+    expect(out).toHaveLength(2)
+    expect(out[1]).toMatchObject({ categoryId: 'kids', amount: '60' })
+  })
+
+  it('fills a categorised line that has no amount yet', () => {
+    const legs = [leg('60', 'groceries'), leg('', 'kids')]
+    expect(coverRemainder(legs, 6000, 'kids', newLeg)[1]).toMatchObject({ amount: '60' })
+  })
+
+  it('adds a line when none is free', () => {
+    const legs = [leg('60', 'groceries'), leg('20', 'household')]
+    const out = coverRemainder(legs, 4000, 'kids', newLeg)
+    expect(out).toHaveLength(3)
+    expect(out[2]).toMatchObject({ categoryId: 'kids', amount: '40' })
+    expect(out[2].id).toMatch(/^new/)
+  })
+
+  it('never touches a line with no category but an amount a person typed', () => {
+    const legs = [leg('60', null), leg('20', 'household')]
+    const out = coverRemainder(legs, 4000, 'kids', newLeg)
+    expect(out[0]).toEqual(legs[0])
+    expect(out).toHaveLength(3)
+  })
+
+  it('does nothing when the split is done or over', () => {
+    const legs = [leg('60', 'groceries')]
+    expect(coverRemainder(legs, 0, 'groceries', newLeg)).toBe(legs)
+    expect(coverRemainder(legs, -500, 'groceries', newLeg)).toBe(legs)
+  })
+
+  it('leaves a valid split', () => {
+    const legs = [leg('142.18', 'groceries'), leg('38.40', 'household')]
+    const total = 14218 + 3840 + 1200
+    const out = coverRemainder(legs, 1200, 'household', newLeg)
+    expect(checkSplit(total, out).isValid).toBe(true)
   })
 })

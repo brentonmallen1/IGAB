@@ -139,6 +139,13 @@
   border-bottom: none;
 }
 
+/* The split's summary row stands in for the Category row, so it wears the
+   row's ground and divider (SplitSheet.css draws only its contents). */
+.quick-add__rows .split-summary {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+}
+
 .quick-add__row-label {
   width: 76px;
   flex-shrink: 0;
@@ -461,105 +468,6 @@
   font-size: var(--font-size-sm);
 }
 
-.quick-add__split {
-  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-primary);
-}
-
-.quick-add__split-head {
-  display: flex;
-  align-items: center;
-  min-height: 36px;
-}
-
-.quick-add__split-cancel,
-.quick-add__split-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: var(--tap-min);
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-accent);
-  font-size: var(--font-size-sm);
-}
-
-.quick-add__split-cancel {
-  margin-left: auto;
-}
-
-.quick-add__split-leg {
-  display: grid;
-  grid-template-columns: 1fr 96px var(--tap-min);
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.quick-add__split-category {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  min-height: var(--tap-min);
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-}
-
-.quick-add__split-amount {
-  min-height: var(--tap-min);
-  padding: 6px var(--spacing-sm);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius-sm);
-  background: var(--input-bg);
-  color: var(--text-primary);
-  /* 16px or iOS zooms the whole viewport on focus and never zooms back */
-  font-size: 16px;
-  text-align: right;
-  width: 100%;
-}
-
-.quick-add__split-amount:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.quick-add__split-remove {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--tap-min);
-  min-height: var(--tap-min);
-  border: none;
-  background: none;
-  color: var(--text-muted);
-}
-
-.quick-add__split-remove:disabled {
-  opacity: 0.35;
-}
-
-.quick-add__split-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-xs);
-}
-
-.quick-add__split-remaining {
-  font-size: var(--font-size-sm);
-  /* The one number that decides whether Save is reachable, so it carries
-     state colour: amber while the legs don't add up, positive when they do. */
-  color: var(--color-warning);
-}
-
-.quick-add__split-remaining--done {
-  color: var(--color-positive);
-}
-
 /* Scan or Save was tapped with no account chosen and the picker was
    dismissed: the row says what is waiting on it. An inset ring, so the row keeps its
    height and the group's hairlines stay put. */
@@ -586,22 +494,4 @@
   .quick-add__row--asked {
     animation: none;
   }
-}
-
-.quick-add__split-status {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.quick-add__split-fill {
-  min-height: var(--tap-min);
-  padding: 0 var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  background: transparent;
-  color: var(--color-accent);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
 }

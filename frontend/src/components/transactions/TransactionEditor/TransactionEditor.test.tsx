@@ -908,3 +908,103 @@ describe('TransactionEditor Describe tab', () => {
     expect(nlForm.accountId).toBe('acc-1')
   })
 })
+
+/**
+ * On a phone the split's lines open full-screen (SplitSheet, via PhoneSplit);
+ * the form keeps one summary row. The save is the editor's, unchanged — what
+ * matters here is that lines made in the sheet reach it, memos included.
+ */
+describe('TransactionEditor splitting on a phone', () => {
+  const option = (name: string) =>
+    screen
+      .getAllByText(name)
+      .find((el) => el.className.includes('selection-sheet__option-label'))!
+      .closest('button')!
+
+  beforeEach(() => {
+    media.mobile = true
+    createMutate.mockClear()
+    confirmOverspend.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+    splitLines = undefined
+  })
+  afterEach(() => {
+    media.mobile = false
+    splitLines = undefined
+  })
+
+  it('opens the sheet from Split, and saves what was made there', async () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '120' } })
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+
+    fireEvent.click(screen.getByLabelText('Split 1 category'))
+    fireEvent.click(option('Groceries'))
+    fireEvent.change(screen.getByLabelText('Split 1 amount'), { target: { value: '84.20' } })
+    fireEvent.change(screen.getByLabelText('Split 1 memo'), { target: { value: 'Weekly shop' } })
+    fireEvent.click(screen.getByRole('button', { name: /Cover the remaining/ }))
+    fireEvent.click(option('Fun'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Done' }).at(-1)!)
+
+    expect(screen.getByRole('button', { name: 'Edit split' }).textContent).toContain('Fully split')
+    fireEvent.click(submitButton())
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
+    expect(createMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: -120,
+        splits: [
+          expect.objectContaining({ amount: -84.2, category_id: 'cat-1', memo: 'Weekly shop' }),
+          expect.objectContaining({ amount: -35.8, category_id: 'cat-2' }),
+        ],
+      })
+    )
+  })
+
+  it('summarises a saved split, whose sheet offers no un-split', () => {
+    splitLines = [
+      { id: 'l1', amount: -40, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
+    ]
+    renderEditor({
+      transaction: {
+        id: 't11',
+        account_id: 'acc-1',
+        date: '2030-01-10',
+        amount: -41.8,
+        category_id: null,
+        payee_id: null,
+        memo: null,
+        cleared: 'uncleared',
+        transfer_id: null,
+        is_split: true,
+      } as unknown as Transaction,
+      accountId: 'acc-1',
+    })
+    const row = screen.getByRole('button', { name: 'Edit split' })
+    expect(row.textContent).toContain('Groceries, Fun')
+    expect(row.textContent).toContain('Fully split')
+    fireEvent.click(row)
+    expect(screen.getByLabelText<HTMLInputElement>('Split 2 amount').value).toBe('1.8')
+    expect(screen.queryByRole('button', { name: /Don't split/ })).toBeNull()
+  })
+})
+
+describe('TransactionEditor starting and stopping a split', () => {
+  // Quick add always carried the pick into the first line and back out; the
+  // editor dropped it both ways, so splitting a Groceries row began blank.
+  it('carries the chosen category into the first line, and back out', () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '120' } })
+    pickCategory('Groceries')
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+
+    const legs = screen.getAllByRole<HTMLInputElement>('combobox', { name: 'Split category' })
+    expect(legs[0].value).toBe('Groceries')
+    expect(legs[1].value).toBe('')
+
+    fireEvent.click(screen.getByTitle('Switch to single category'))
+    expect(screen.getByRole<HTMLInputElement>('combobox', { name: 'Category' }).value).toBe(
+      'Groceries'
+    )
+  })
+})

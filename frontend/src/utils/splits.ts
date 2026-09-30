@@ -115,10 +115,7 @@ export function remainderTarget(
   remainingCents: number
 ): number | null {
   if (!Number.isFinite(remainingCents) || remainingCents <= 0) return null
-  const i = legs.findIndex((leg) => {
-    const cents = expressionToCents(leg.amount)
-    return leg.amount.trim() === '' || isNaN(cents) || cents === 0
-  })
+  const i = legs.findIndex((leg) => isBlank(leg.amount))
   return i === -1 ? null : i
 }
 
@@ -130,4 +127,39 @@ export function fillRemainder<T extends SplitLegInput>(legs: T[], remainingCents
   return legs.map((leg, j) =>
     j === i ? { ...leg, amount: centsToInputString(remainingCents) } : leg
   )
+}
+
+/**
+ * "Cover the rest": put everything still unassigned into `categoryId`.
+ *
+ * A category already on a leg takes it on that leg — two Groceries lines is
+ * a split nobody meant to make. Otherwise it goes on a blank leg (no
+ * category, no amount) if there is one, else on a new leg from `newLeg`.
+ * Unchanged when nothing is left to cover.
+ */
+export function coverRemainder<T extends SplitLegInput>(
+  legs: T[],
+  remainingCents: number,
+  categoryId: string,
+  newLeg: () => T
+): T[] {
+  if (!Number.isFinite(remainingCents) || remainingCents <= 0) return legs
+  const plus = (leg: T): T => {
+    const had = expressionToCents(leg.amount)
+    return {
+      ...leg,
+      categoryId,
+      amount: centsToInputString((isNaN(had) ? 0 : had) + remainingCents),
+    }
+  }
+  const same = legs.findIndex((leg) => leg.categoryId === categoryId)
+  if (same !== -1) return legs.map((leg, i) => (i === same ? plus(leg) : leg))
+  const blank = legs.findIndex((leg) => leg.categoryId === null && isBlank(leg.amount))
+  if (blank !== -1) return legs.map((leg, i) => (i === blank ? plus(leg) : leg))
+  return [...legs, plus({ ...newLeg(), amount: '' })]
+}
+
+function isBlank(amount: string): boolean {
+  const cents = expressionToCents(amount)
+  return amount.trim() === '' || isNaN(cents) || cents === 0
 }

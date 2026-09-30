@@ -201,7 +201,7 @@ describe('reaching the split editor', () => {
 
   it('cancelling the split returns to a single category row', () => {
     startSplit('10.00')
-    fireEvent.click(screen.getByRole('button', { name: /Cancel split/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Don't split/ }))
     expect(screen.queryByLabelText('Split 1 amount')).toBeNull()
     expect(screen.getByTitle('Split this across categories')).toBeTruthy()
   })
@@ -211,14 +211,14 @@ describe('reaching the split editor', () => {
     // split, change your mind, and the pick is silently gone.
     startSplit('10.00')
     pickLegCategory(0, 'Household')
-    fireEvent.click(screen.getByRole('button', { name: /Cancel split/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Don't split/ }))
     expect(screen.getByLabelText('Category').textContent).toContain('Household')
   })
 
   it('will not drop below two legs', () => {
     startSplit('10.00')
     expect(screen.getByLabelText('Remove split 1').hasAttribute('disabled')).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: /Add split/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Add line/ }))
     expect(screen.getByLabelText('Remove split 1').hasAttribute('disabled')).toBe(false)
     fireEvent.click(screen.getByLabelText('Remove split 3'))
     expect(screen.getAllByLabelText(/^Split \d+ amount$/)).toHaveLength(2)
@@ -238,10 +238,12 @@ describe('the legs must add up', () => {
 
   it('reports what is left, and says so when nothing is', () => {
     startSplit('10.00')
+    pickLegCategory(0, 'Groceries')
+    pickLegCategory(1, 'Household')
     setLeg(0, '6.00')
     expect(screen.getByRole('status').textContent).toContain('left')
     setLeg(1, '4.00')
-    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+    expect(screen.getByRole('status').textContent).toBe('Fully split')
   })
 
   it('says "over" rather than a negative remainder', () => {
@@ -257,7 +259,7 @@ describe('the legs must add up', () => {
     pickLegCategory(1, 'Household')
     setLeg(0, '0.10')
     setLeg(1, '0.20')
-    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+    expect(screen.getByRole('status').textContent).toBe('Fully split')
     expect(save().hasAttribute('disabled')).toBe(false)
   })
 
@@ -266,7 +268,7 @@ describe('the legs must add up', () => {
     pickLegCategory(0, 'Groceries')
     setLeg(0, '6.00')
     setLeg(1, '4.00')
-    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+    expect(screen.getByRole('status').textContent).toBe('Every line needs a category')
     expect(save().hasAttribute('disabled')).toBe(true)
   })
 
@@ -280,26 +282,43 @@ describe('the legs must add up', () => {
   })
 })
 
-describe('filling the rest', () => {
+describe('covering the rest', () => {
   // The last leg is subtraction, and the phone's decimal keypad has no minus.
-  it('puts what is left in the empty leg, and the split can be saved', () => {
+  const cover = () => screen.queryByRole('button', { name: /Cover the remaining/ })
+
+  it('adds what is left to a line already in that envelope', () => {
     startSplit('120.00')
     pickLegCategory(0, 'Groceries')
     pickLegCategory(1, 'Household')
     setLeg(0, '84.20')
-    fireEvent.click(screen.getByRole('button', { name: 'Fill' }))
+    setLeg(1, '20.00')
+    fireEvent.click(cover()!)
+    pickInSheet('Groceries')
 
-    expect(screen.getByLabelText<HTMLInputElement>('Split 2 amount').value).toBe('35.80')
-    expect(screen.getByRole('status').textContent).toContain('Fully assigned')
+    expect(screen.getByLabelText<HTMLInputElement>('Split 1 amount').value).toBe('100')
+    expect(screen.getByRole('status').textContent).toBe('Fully split')
     expect(save().hasAttribute('disabled')).toBe(false)
-    expect(screen.queryByRole('button', { name: 'Fill' })).toBeNull()
+    expect(cover()).toBeNull()
   })
 
-  it('is not offered once every leg has a figure', () => {
+  it('puts it on the blank line in a new envelope', () => {
+    startSplit('120.00')
+    pickLegCategory(0, 'Groceries')
+    setLeg(0, '84.20')
+    fireEvent.click(cover()!)
+    pickInSheet('Household')
+
+    expect(screen.getAllByLabelText(/^Split \d+ amount$/)).toHaveLength(2)
+    expect(screen.getByLabelText<HTMLInputElement>('Split 2 amount').value).toBe('35.80')
+    expect(screen.getByLabelText('Split 2 category').textContent).toContain('Household')
+    expect(save().hasAttribute('disabled')).toBe(false)
+  })
+
+  it('is not offered once the lines add up', () => {
     startSplit('10.00')
     setLeg(0, '6.00')
-    setLeg(1, '3.00')
-    expect(screen.queryByRole('button', { name: 'Fill' })).toBeNull()
+    setLeg(1, '4.00')
+    expect(cover()).toBeNull()
   })
 })
 
@@ -308,7 +327,7 @@ describe('what gets sent', () => {
     startSplit(total)
     // Two legs come for free; anything beyond that has to be added.
     for (let i = 2; i < legs.length; i++) {
-      fireEvent.click(screen.getByRole('button', { name: /Add split/ }))
+      fireEvent.click(screen.getByRole('button', { name: /Add line/ }))
     }
     legs.forEach(([name, amount], i) => {
       pickLegCategory(i, name)
@@ -373,7 +392,7 @@ describe('what gets sent', () => {
 
   it('sends no splits at all when the split was cancelled', async () => {
     startSplit('10.00')
-    fireEvent.click(screen.getByRole('button', { name: /Cancel split/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Don't split/ }))
     fireEvent.click(screen.getByLabelText('Category'))
     pickInSheet('Groceries')
     fireEvent.click(save())
@@ -395,7 +414,7 @@ describe('the arithmetic that decides whether Save is reachable', () => {
     pickLegCategory(1, 'Household')
     setLeg(0, '3.50+2.50')
     setLeg(1, '4.00')
-    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+    expect(screen.getByRole('status').textContent).toBe('Fully split')
     expect(save().hasAttribute('disabled')).toBe(false)
   })
 
@@ -419,7 +438,7 @@ describe('the arithmetic that decides whether Save is reachable', () => {
     pickLegCategory(1, 'Household')
     setLeg(0, '6.00')
     setLeg(1, '4.00')
-    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+    expect(screen.getByRole('status').textContent).toBe('Fully split')
   })
 
   it('re-opens the gap when the total is corrected after the legs are set', () => {
