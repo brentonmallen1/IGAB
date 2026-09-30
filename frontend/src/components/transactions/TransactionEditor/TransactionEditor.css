@@ -132,6 +132,15 @@
   color: var(--text-primary);
 }
 
+.txn-editor__tab[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.txn-editor__tab[aria-disabled="true"]:hover {
+  color: var(--text-secondary);
+}
+
 .txn-editor__tab--active {
   color: var(--color-accent);
   border-bottom-color: var(--color-accent);

@@ -61,6 +61,7 @@ import { Link } from 'react-router-dom'
 import { useReprocessAIJob } from '../../../api/aiJobs'
 import { Modal } from '../../common/Modal/Modal'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
+import { entryStarted, STARTED_ENTRY_NOTE, type EntryFields } from './entryStarted'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
@@ -243,6 +244,12 @@ export function TransactionEditor({
   const [activeTab, setActiveTab] = useState<'manual' | 'describe' | 'receipt'>('manual')
   const showTabs = !isEdit
 
+  // Describe / From receipt stay offered only until an entry is started
+  // (entryStarted.ts); the baseline moves with the editor's own prefills.
+  const fields = { date, payeeQuery, categoryId, memo, outflow, inflow }
+  const [pristine, setPristine] = useState<EntryFields>(fields)
+  const started = !isEdit && entryStarted(fields, pristine, { isSplit, isTransfer })
+
   // AI provenance: set by an initialDraft (mobile quick entry) or by the
   // Describe tab; links the created transaction back to its ai_jobs row.
   const [aiJobId, setAiJobId] = useState<string | undefined>(initialDraft?.aiJobId)
@@ -281,6 +288,7 @@ export function TransactionEditor({
     if (payeeQuery || selectedPayeeId) return
     setPayeeQuery(recentPayee.name)
     setSelectedPayeeId(recentPayee.payee_id)
+    setPristine((p) => ({ ...p, payeeQuery: recentPayee.name }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentPayee])
 
@@ -374,6 +382,16 @@ export function TransactionEditor({
   // Describe tab handoff: the parsed draft fills the manual form for review —
   // the user lands on familiar fields with everything editable.
   function applyNLDraft(d: EditorDraft) {
+    // The draft is the new baseline: describing it again only replaces the
+    // AI's words, never a person's.
+    setPristine({
+      date: d.date || date,
+      payeeQuery: d.payeeName ?? '',
+      categoryId: d.categoryId ?? '',
+      memo: d.memo ?? '',
+      outflow: d.outflow ?? '',
+      inflow: d.inflow ?? '',
+    })
     if (d.date) setDate(d.date)
     setPayeeQuery(d.payeeName ?? '')
     setSelectedPayeeId(null)
@@ -385,6 +403,13 @@ export function TransactionEditor({
     setAiJobId(d.aiJobId)
     setAiDrafted(true)
     setActiveTab('manual')
+  }
+
+  /** Inactive rather than hidden once an entry is started, so the tab row
+   *  does not jump as the first field is typed; a tap says why. */
+  function chooseAITab(tab: 'describe' | 'receipt') {
+    if (started) toast(STARTED_ENTRY_NOTE[tab], { duration: 6000 })
+    else setActiveTab(tab)
   }
 
   // AI-suggested split from receipt line items — offered, never auto-applied.
@@ -810,8 +835,9 @@ export function TransactionEditor({
               type="button"
               role="tab"
               aria-selected={activeTab === 'describe'}
+              aria-disabled={started}
               className={`txn-editor__tab ${activeTab === 'describe' ? 'txn-editor__tab--active' : ''}`}
-              onClick={() => setActiveTab('describe')}
+              onClick={() => chooseAITab('describe')}
             >
               <MessageSquareText size={13} />
               Describe it
@@ -820,8 +846,9 @@ export function TransactionEditor({
               type="button"
               role="tab"
               aria-selected={activeTab === 'receipt'}
+              aria-disabled={started}
               className={`txn-editor__tab ${activeTab === 'receipt' ? 'txn-editor__tab--active' : ''}`}
-              onClick={() => setActiveTab('receipt')}
+              onClick={() => chooseAITab('receipt')}
             >
               <ReceiptText size={13} />
               From receipt

@@ -19,7 +19,10 @@ const replaceSplitsMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 const confirmOverspend = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 const toastError = vi.hoisted(() => vi.fn())
 
-vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn() } }))
+const toastPlain = vi.hoisted(() => vi.fn())
+vi.mock('react-hot-toast', () => ({
+  default: Object.assign(toastPlain, { error: toastError, success: vi.fn() }),
+}))
 
 const GROUPS = vi.hoisted(() => [{ id: 'g1', name: 'Everyday', is_archived: false }])
 const CATEGORIES = vi.hoisted(() => [
@@ -100,6 +103,27 @@ vi.mock('../../ai/ReceiptPane', () => ({
   ),
 }))
 vi.mock('../../ai/CardEndingNotice', () => ({ CardEndingNotice: () => null }))
+// Describe's parse is the server's; what the editor does with a draft is
+// what is under test, so the form hands one straight over.
+vi.mock('../../ai/NLEntryForm', () => ({
+  NLEntryForm: ({ onDraft }: { onDraft: (d: Record<string, unknown>) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onDraft({
+          date: '2030-01-12',
+          payeeName: 'Corner Bakery',
+          categoryId: 'cat-1',
+          outflow: '6.50',
+          aiJobId: 'job-nl',
+        })
+      }
+    >
+      Draft it
+    </button>
+  ),
+}))
+vi.mock('./ReceiptScanTab', () => ({ ReceiptScanTab: () => <div data-testid="scan-tab" /> }))
 const media = vi.hoisted(() => ({ mobile: false }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => media.mobile }))
 vi.mock('../../../hooks/useHistoryDismissable', () => ({ useHistoryDismissable: () => {} }))
@@ -804,5 +828,101 @@ describe('TransactionEditor reviewing a scanned receipt', () => {
     renderEditor({ transaction: scanned, aiJob: job })
     expect(screen.getByTestId('receipt-button')).toBeInTheDocument()
     expect(screen.queryByTestId('receipt-pane')).toBeNull()
+  })
+})
+
+/**
+ * Describe and From receipt replace the manual form — a scan by handing off
+ * to a review editor, a description by overwriting the fields. Typing into
+ * Manual entry and then trying one threw the typed entry away; Quick add's
+ * Scan button had the same fault with a long split. Once an entry is
+ * started they go inactive, and say why when tapped.
+ */
+describe('TransactionEditor entry-method tabs once an entry is started', () => {
+  const tab = (name: RegExp) => screen.getByRole('tab', { name })
+
+  beforeEach(() => {
+    toastPlain.mockClear()
+    createMutate.mockClear()
+  })
+
+  it('offers Describe and From receipt on an empty form', () => {
+    renderEditor({ accountId: null })
+    fireEvent.click(tab(/From receipt/))
+    expect(screen.getByTestId('scan-tab')).toBeInTheDocument()
+  })
+
+  it('keeps the typed entry when From receipt is tapped', () => {
+    renderEditor({ accountId: null })
+    fireEvent.change(amountInputs()[0], { target: { value: '84.20' } })
+
+    expect(tab(/From receipt/)).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(tab(/From receipt/))
+
+    expect(screen.queryByTestId('scan-tab')).toBeNull()
+    expect(amountInputs()[0]).toHaveValue('84.20')
+    expect(toastPlain).toHaveBeenCalledWith(
+      expect.stringMatching(/attach the receipt/),
+      expect.anything()
+    )
+  })
+
+  it('keeps a started split when Describe is tapped', () => {
+    renderEditor({ accountId: null })
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+
+    fireEvent.click(tab(/Describe it/))
+    expect(screen.queryByRole('button', { name: 'Draft it' })).toBeNull()
+    expect(toastPlain).toHaveBeenCalled()
+  })
+
+  it("does not count the editor's own prefill as an entry", () => {
+    // Adding from a budget row pre-picks that row's category; nobody typed it.
+    renderEditor({ accountId: null, initialCategoryId: 'cat-1' })
+    expect(tab(/From receipt/)).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('lets an AI draft be described again — only the AI’s words are replaced', () => {
+    renderEditor({ accountId: null })
+    fireEvent.click(tab(/Describe it/))
+    fireEvent.click(screen.getByRole('button', { name: 'Draft it' }))
+
+    expect(tab(/Describe it/)).toHaveAttribute('aria-disabled', 'false')
+    fireEvent.change(amountInputs()[0], { target: { value: '7.25' } })
+    expect(tab(/Describe it/)).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+/**
+ * Describe with no account. Unlike a scan, nothing is queued: the parse
+ * returns a draft into this form at once, and nothing is saved until an
+ * account is chosen here — so there is nothing to wait unplaced in AI
+ * Activity. Quick add opens this same editor with its (possibly empty)
+ * account.
+ */
+describe('TransactionEditor describing a transaction with no account', () => {
+  beforeEach(() => {
+    createMutate.mockClear()
+    confirmOverspend.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+  })
+
+  it('holds the draft until an account is chosen, then saves it there', async () => {
+    renderEditor({ accountId: null })
+    fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Draft it' }))
+
+    expect(amountInputs()[0]).toHaveValue('6.50')
+    const account = screen.getByRole('combobox', { name: 'Account' }) as HTMLSelectElement
+    expect(account.value).toBe('')
+    expect(submitButton()).toBeDisabled()
+
+    fireEvent.change(account, { target: { value: 'acc-2' } })
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
+    expect(createMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ account_id: 'acc-2', amount: -6.5, ai_job_id: 'job-nl' })
+    )
   })
 })
