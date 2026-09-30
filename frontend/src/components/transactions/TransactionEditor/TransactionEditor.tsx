@@ -866,7 +866,11 @@ export function TransactionEditor({
           /* Manual entry tab content (default) */
           <>
             <div className="txn-editor__main">
-              {isReview && aiJob!.attachment_id && (
+              {/* Beside the form on a desktop. On a phone a pane stacked
+                  above the form left almost no room to edit, and could not be
+                  moved or collapsed — there the receipt is a button to the
+                  full-screen viewer, and the fields keep the screen. */}
+              {isReview && aiJob!.attachment_id && !isMobile && (
                 <div className="txn-editor__receipt">
                   <ReceiptPane
                     attachmentId={aiJob!.attachment_id}
@@ -875,6 +879,13 @@ export function TransactionEditor({
                 </div>
               )}
               <div className="txn-editor__body">
+                {isReview && aiJob!.attachment_id && isMobile && (
+                  <ReceiptPane
+                    attachmentId={aiJob!.attachment_id}
+                    contentType={aiJob!.payload.content_type ?? null}
+                    compact
+                  />
+                )}
                 {accountField}
                 {isReconciled && (
                   <div className="txn-editor__lock-note" role="note">

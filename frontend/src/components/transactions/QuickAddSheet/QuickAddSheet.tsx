@@ -913,8 +913,13 @@ export function QuickAddSheet() {
                 worker retries, so a server that is briefly down or busy must
                 not remove the user's ability to hand off a receipt and walk
                 away. "Describe it" is synchronous and genuinely does need a
-                live server, so it keeps the stricter gate. */}
-            {aiStatus.data?.enabled && (
+                live server, so it keeps the stricter gate.
+                Both hand off and close the sheet, so they are offered only
+                while closing costs nothing — the same isDirty that asks before
+                a dismissal. Once something is typed, the receipt attaches to
+                that entry instead (Attach photo, below); a scan would have
+                thrown the entry away, a large split included. */}
+            {aiStatus.data?.enabled && !isDirty && (
               <div className="quick-add__scan-row">
                 <button
                   className="quick-add__scan-btn"

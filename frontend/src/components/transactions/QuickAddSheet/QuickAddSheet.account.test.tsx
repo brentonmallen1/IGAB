@@ -285,3 +285,33 @@ describe('Scan receipt, deciding the account later', () => {
     expect(offered()).toEqual([])
   })
 })
+
+describe('Scan receipt once something has been entered', () => {
+  // Scanning hands off and closes the sheet. With a long split typed in, the
+  // tap discarded all of it — so it is offered only while nothing would be
+  // lost, and the receipt attaches to the entry instead.
+  it('is gone once an amount is typed, leaving Attach photo', () => {
+    renderSheet()
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '84.20' } })
+
+    expect(screen.queryByRole('button', { name: /Scan receipt/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /Attach photo/ })).toBeTruthy()
+  })
+
+  it('stays offered after only an account is chosen', () => {
+    renderSheet()
+    fireEvent.click(accountRow())
+    fireEvent.click(optionRow('Checking'))
+
+    expect(scanButton()).not.toBeDisabled()
+  })
+
+  it('comes back when the entry is cleared again', () => {
+    renderSheet()
+    const amount = screen.getByLabelText('Amount')
+    fireEvent.change(amount, { target: { value: '84.20' } })
+    fireEvent.change(amount, { target: { value: '' } })
+
+    expect(scanButton()).toBeTruthy()
+  })
+})

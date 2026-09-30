@@ -5,7 +5,7 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-txn' })))
 // Typed payload: the transfer tests assert on the ORDER and content of two
@@ -93,12 +93,20 @@ vi.mock('../../../api/attachments', () => ({
 }))
 vi.mock('../../../api/budgets', () => ({ confirmFutureOverspend: confirmOverspend }))
 vi.mock('../../attachments/AttachmentPanel', () => ({ AttachmentPanel: () => null }))
-vi.mock('../../ai/ReceiptPane', () => ({ ReceiptPane: () => null }))
-vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
+// A marker, so the review tests can see which form the receipt takes.
+vi.mock('../../ai/ReceiptPane', () => ({
+  ReceiptPane: ({ compact }: { compact?: boolean }) => (
+    <div data-testid={compact ? 'receipt-button' : 'receipt-pane'} />
+  ),
+}))
+vi.mock('../../ai/CardEndingNotice', () => ({ CardEndingNotice: () => null }))
+const media = vi.hoisted(() => ({ mobile: false }))
+vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => media.mobile }))
 vi.mock('../../../hooks/useHistoryDismissable', () => ({ useHistoryDismissable: () => {} }))
 
 import { TransactionEditor } from './TransactionEditor'
 import type { Transaction } from '../../../types'
+import type { AIJob } from '../../../api/aiJobs'
 
 function renderEditor(props: Partial<Parameters<typeof TransactionEditor>[0]> = {}) {
   // The api/* hooks are mocked, but useToastUndo reaches the real
@@ -748,5 +756,53 @@ describe('TransactionEditor account picker', () => {
       account_id: 'acc-3',
       transfer_account_id: 'acc-2',
     })
+  })
+})
+
+/**
+ * An AI-created row opened on a phone. The receipt used to stack above the
+ * form in a pane capped at a third of the screen, which with the keyboard up
+ * left almost nothing to edit in, and could not be collapsed. There it is a
+ * button to the full-screen viewer now; the side-by-side pane is desktop-only.
+ */
+describe('TransactionEditor reviewing a scanned receipt', () => {
+  const scanned = {
+    id: 't-ai',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -42,
+    category_id: 'cat-1',
+    payee_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: null,
+    is_split: false,
+    created_via: 'ai_receipt',
+  } as unknown as Transaction
+  const job = {
+    id: 'job-1',
+    kind: 'receipt',
+    status: 'completed',
+    attachment_id: 'att-1',
+    payload: { content_type: 'image/jpeg' },
+    result: null,
+    error: null,
+  } as unknown as AIJob
+
+  afterEach(() => {
+    media.mobile = false
+  })
+
+  it('shows the receipt beside the form on a desktop', () => {
+    renderEditor({ transaction: scanned, aiJob: job })
+    expect(screen.getByTestId('receipt-pane')).toBeInTheDocument()
+    expect(screen.queryByTestId('receipt-button')).toBeNull()
+  })
+
+  it('leaves the screen to the form on a phone, the receipt one tap away', () => {
+    media.mobile = true
+    renderEditor({ transaction: scanned, aiJob: job })
+    expect(screen.getByTestId('receipt-button')).toBeInTheDocument()
+    expect(screen.queryByTestId('receipt-pane')).toBeNull()
   })
 })

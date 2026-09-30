@@ -616,17 +616,6 @@
     white-space: nowrap;
   }
 
-  /* Review mode stacks: receipt above the form, capped so fields stay usable */
-  .txn-editor--review .txn-editor__main {
-    flex-direction: column;
-  }
-
-  .txn-editor__receipt {
-    flex: 0 0 auto;
-    max-height: calc(var(--app-h) * 0.32);
-    padding: var(--spacing-md) var(--spacing-md) 0;
-  }
-
   .txn-editor {
     width: 100%;
     max-width: none;

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, Maximize2 } from 'lucide-react'
+import { ExternalLink, Maximize2, ReceiptText } from 'lucide-react'
 import { useAttachmentUrl } from '../../api/attachments'
 import { Lightbox } from '../attachments/Lightbox'
 import './ReceiptPane.css'
@@ -10,17 +10,45 @@ interface Props {
    * viewer (iframe) instead of the image pipeline. */
   contentType?: string | null
   alt?: string
+  /** A one-line button in place of the pane — for a phone, where a pane
+   * pinned above the form left too little room to edit it. Tapping it opens
+   * the same full-screen view the pane's expand button does. */
+  compact?: boolean
 }
 
 /**
  * Zoomable receipt beside the review form. Images: scrollable inline view,
  * tap expands to the full Lightbox with pinch zoom. PDFs: embedded native
- * viewer with an open-in-tab affordance.
+ * viewer with an open-in-tab affordance. `compact` swaps the pane for a
+ * button that goes straight to that full view.
  */
-export function ReceiptPane({ attachmentId, contentType = null, alt = 'Receipt' }: Props) {
+export function ReceiptPane({
+  attachmentId,
+  contentType = null,
+  alt = 'Receipt',
+  compact = false,
+}: Props) {
   const { data: url } = useAttachmentUrl(attachmentId)
   const [expanded, setExpanded] = useState(false)
   const isPdf = contentType === 'application/pdf'
+
+  if (compact) {
+    return (
+      <>
+        <button
+          type="button"
+          className="receipt-pane__compact"
+          disabled={!url}
+          onClick={() => (isPdf ? window.open(url, '_blank') : setExpanded(true))}
+        >
+          <ReceiptText size={14} />
+          {url ? 'View receipt' : 'Loading receipt…'}
+          {isPdf && <ExternalLink size={12} />}
+        </button>
+        {expanded && url && <Lightbox src={url} alt={alt} onClose={() => setExpanded(false)} />}
+      </>
+    )
+  }
 
   if (!url) {
     return <div className="receipt-pane receipt-pane--loading" aria-label="Loading receipt" />
