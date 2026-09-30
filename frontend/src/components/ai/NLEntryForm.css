@@ -7,12 +7,15 @@
 .nl-form__row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--spacing-sm);
 }
 
 .nl-form__input {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  resize: none;
+  line-height: 1.4;
+  font-family: inherit;
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   border-radius: var(--border-radius-sm);
@@ -35,8 +38,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  gap: 6px;
   height: 36px;
+  padding: 0 12px;
+  font-size: var(--font-size-sm);
   border-radius: var(--border-radius-sm);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -119,16 +124,12 @@
 @media (max-width: 768px) {
   /* The 16px floor that stops iOS zooming into a focused field lives once in
      base.css for every input on a phone; this only sets the height. */
-  .nl-form__input {
-    min-height: var(--tap-min);
-  }
-
+  /* Two equal halves under the box: the thumb finds Dictate and Send
+     without aiming. Send alone takes the whole row. */
+  .nl-form__mic,
   .nl-form__parse {
+    flex: 1;
     min-height: var(--tap-min);
-  }
-
-  .nl-form__mic {
-    width: var(--tap-min);
-    height: var(--tap-min);
+    height: auto;
   }
 }

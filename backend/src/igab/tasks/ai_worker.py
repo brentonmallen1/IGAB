@@ -30,7 +30,11 @@ from igab.domain.exceptions import InvariantViolation
 
 # Where a receipt lands, and the stub a failed one becomes, live with the rest
 # of placement; FAILURE_STUB_MEMO is re-exported for callers that name it here.
-from igab.services.receipt_placement import FAILURE_STUB_MEMO, UNPLACED  # noqa: F401
+from igab.domain.receipt_fields import (
+    CREATED_VIA,
+    FAILURE_STUB_MEMO,  # noqa: F401
+)
+from igab.services.receipt_placement import UNPLACED
 
 logger = logging.getLogger(__name__)
 
@@ -126,16 +130,16 @@ async def process_one_job(session: AsyncSession, job: AIJob) -> None:
     directly without the loop."""
     if job.kind == "receipt":
         await _process_receipt(session, job)
+    elif job.kind == "nl_parse":
+        await _process_description(session, job)
     else:
         raise NonRetryableJobError(f"Job kind '{job.kind}' has no async processor")
 
 
 async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
-    from igab.services.ai_draft_service import draft_result_json, parse_extraction
+    from igab.services.ai_draft_service import parse_extraction
     from igab.services.ai_service import prepare_image_for_model
-    from igab.services.receipt_placement import attach_to, bank_match, card_account, create_in
 
-    payload = job.payload or {}
     staged = staged_image(job)
     file_bytes: bytes | None = None
     if staged is not None:
@@ -154,13 +158,7 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         raise NonRetryableJobError("Receipt image is missing")
 
     svcs = _build_services(session)
-    # A scan may come with no account: it then waits, unplaced, until the
-    # card on the receipt or a person says where it goes (receipt_placement).
-    account_id = uuid.UUID(payload["account_id"]) if payload.get("account_id") else None
-    if account_id is not None:
-        account = await svcs["transactions"].account_repo.get(account_id)
-        if account is None or str(account.budget_id) != str(job.budget_id):
-            raise NonRetryableJobError("Account for this receipt no longer exists")
+    account_id = await _job_account(svcs, job)
 
     supported, model, from_override = await svcs["ai"].check_vision_support()
     job.model = model  # Record which model processed this job
@@ -181,11 +179,7 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
             )
         raise NonRetryableJobError(msg, model=model)
 
-    client_today = (
-        date.fromisoformat(payload["client_today"])
-        if payload.get("client_today")
-        else datetime.now(UTC).date()
-    )
+    client_today = _client_today(job)
 
     image_b64 = prepare_image_for_model(file_bytes)
 
@@ -224,6 +218,87 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     except Exception as exc:
         _attach_ai_debug(exc, svcs["ai"])
         raise
+
+    await _place(session, svcs, job, draft, account_id, file_bytes)
+
+
+async def _process_description(session: AsyncSession, job: AIJob) -> None:
+    """A typed or dictated description, read into a transaction.
+
+    Queued like a receipt, so nobody waits on the model at a checkout: the
+    words are handed off and the row arrives for review. No account, and it
+    waits unplaced like a scan with none — there is no card ending in words
+    to place it by."""
+    from igab.services.ai_draft_service import parse_extraction
+
+    text = ((job.payload or {}).get("text") or "").strip()
+    if not text:
+        raise NonRetryableJobError("The description is empty")
+
+    svcs = _build_services(session)
+    account_id = await _job_account(svcs, job)
+    client_today = _client_today(job)
+    try:
+        raw = await svcs["ai"].parse_nl_transaction(job.budget_id, text, client_today)
+    except Exception as exc:
+        _attach_ai_debug(exc, svcs["ai"])
+        raise
+    finally:
+        debug = debug_view(svcs["ai"].gateway.last_result)
+        if debug:
+            job.result = {"request": debug["request"]}
+    last = svcs["ai"].gateway.last_result
+    if last is not None:
+        job.model = last.model  # which model read it, as a receipt records
+
+    categories = await svcs["transactions"].category_repo.get_fileable_with_group_names(
+        job.budget_id
+    )
+    try:
+        draft = parse_extraction(
+            raw,
+            kind="nl_parse",
+            client_today=client_today,
+            category_names=[(cat.name, group) for cat, group in categories],
+        )
+    except Exception as exc:
+        _attach_ai_debug(exc, svcs["ai"])
+        raise
+    await _place(session, svcs, job, draft, account_id, None)
+
+
+async def _job_account(svcs: dict, job: AIJob) -> uuid.UUID | None:
+    """The account the job was submitted against, or None: a job may come
+    with none, and then waits, unplaced, until the card on the receipt or a
+    person says where it goes (receipt_placement)."""
+    payload = job.payload or {}
+    account_id = uuid.UUID(payload["account_id"]) if payload.get("account_id") else None
+    if account_id is not None:
+        account = await svcs["transactions"].account_repo.get(account_id)
+        if account is None or str(account.budget_id) != str(job.budget_id):
+            raise NonRetryableJobError("The account for this entry no longer exists")
+    return account_id
+
+
+def _client_today(job: AIJob) -> date:
+    payload = job.payload or {}
+    if payload.get("client_today"):
+        return date.fromisoformat(payload["client_today"])
+    return datetime.now(UTC).date()
+
+
+async def _place(
+    session: AsyncSession,
+    svcs: dict,
+    job: AIJob,
+    draft,
+    account_id: uuid.UUID | None,
+    file_bytes: bytes | None,
+) -> None:
+    """Where a read lands — one path for every job kind: refresh the row a
+    prior run made, place by the card that paid, wait unplaced, or create."""
+    from igab.services.ai_draft_service import draft_result_json
+    from igab.services.receipt_placement import attach_to, bank_match, card_account, create_in
 
     txn: Transaction | None = None
     if job.transaction_id is not None:
@@ -276,11 +351,14 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     await session.flush()
 
 
-async def finish_placement(svcs: dict, job: AIJob, txn: Transaction, file_bytes: bytes) -> None:
+async def finish_placement(
+    svcs: dict, job: AIJob, txn: Transaction, file_bytes: bytes | None
+) -> None:
     """The receipt's image goes on its row, and the job points at it. Shared
-    by extraction and by a person placing a waiting receipt later."""
+    by extraction and by a person placing a waiting entry later. A
+    description has no image, so only the pointer is written."""
     payload = job.payload or {}
-    if job.attachment_id is None:
+    if job.attachment_id is None and file_bytes is not None:
         attachment = await svcs["attachments"].upload(
             txn,
             file_bytes,
@@ -314,7 +392,8 @@ async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction
 
 async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) -> None:
     """Retry with backoff when the error is transient and attempts remain;
-    otherwise terminal — for receipts, the $0 stub keeps the image reachable."""
+    otherwise terminal — the $0 stub keeps the receipt or description
+    reachable."""
     job.error = f"{type(exc).__name__}: {exc}"[:2000]
     # The processing session rolled back, taking any job.model assignment with
     # it — restore it here so failed jobs still say which model ran.
@@ -333,7 +412,7 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
     else:
         job.status = "error"
         job.finished_at = datetime.now(UTC)
-        if job.kind == "receipt":
+        if job.kind in CREATED_VIA:
             try:
                 await _create_failure_stub(session, job)
             except Exception:
@@ -343,11 +422,11 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
 
 
 async def _create_failure_stub(session: AsyncSession, job: AIJob) -> None:
-    """Terminal receipt failure: still create a $0 needs-review transaction
-    with the image attached, so the receipt is never stranded and the user
-    can finish it by hand in the review modal. A scan with no account has
-    nowhere to put one: it waits, unplaced, with its image kept, and placing
-    it makes the stub then."""
+    """Terminal failure: still create a $0 needs-review transaction — with
+    the image attached, for a receipt — so the entry is never stranded and
+    the user can finish it by hand in the review modal. One with no account
+    has nowhere to put one: it waits, unplaced, and placing it makes the
+    stub then."""
     from igab.services.receipt_placement import create_in, open_account
 
     if job.transaction_id is not None:
@@ -369,8 +448,7 @@ async def _create_failure_stub(session: AsyncSession, job: AIJob) -> None:
     txn = await create_in(svcs, job, account.id, None)
     job.transaction_id = txn.id
     staged = staged_image(job)
-    if staged is not None:
-        await finish_placement(svcs, job, txn, staged.read_bytes())
+    await finish_placement(svcs, job, txn, staged.read_bytes() if staged is not None else None)
     session.add(job)
     await session.flush()
 

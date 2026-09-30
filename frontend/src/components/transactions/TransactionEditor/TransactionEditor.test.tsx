@@ -5,7 +5,7 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-txn' })))
 // Typed payload: the transfer tests assert on the ORDER and content of two
@@ -19,7 +19,10 @@ const replaceSplitsMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 const confirmOverspend = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 const toastError = vi.hoisted(() => vi.fn())
 
-vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn() } }))
+const toastPlain = vi.hoisted(() => vi.fn())
+vi.mock('react-hot-toast', () => ({
+  default: Object.assign(toastPlain, { error: toastError, success: vi.fn() }),
+}))
 
 const GROUPS = vi.hoisted(() => [{ id: 'g1', name: 'Everyday', is_archived: false }])
 const CATEGORIES = vi.hoisted(() => [
@@ -93,12 +96,35 @@ vi.mock('../../../api/attachments', () => ({
 }))
 vi.mock('../../../api/budgets', () => ({ confirmFutureOverspend: confirmOverspend }))
 vi.mock('../../attachments/AttachmentPanel', () => ({ AttachmentPanel: () => null }))
-vi.mock('../../ai/ReceiptPane', () => ({ ReceiptPane: () => null }))
-vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
+// A marker, so the review tests can see which form the receipt takes.
+vi.mock('../../ai/ReceiptPane', () => ({
+  ReceiptPane: ({ compact }: { compact?: boolean }) => (
+    <div data-testid={compact ? 'receipt-button' : 'receipt-pane'} />
+  ),
+}))
+vi.mock('../../ai/CardEndingNotice', () => ({ CardEndingNotice: () => null }))
+// The form is its own suite's (NLEntryForm.test); here it reports what the
+// editor handed it and lets a test press Send.
+const nlForm = vi.hoisted(() => ({ accountId: undefined as string | null | undefined }))
+vi.mock('../../ai/NLEntryForm', () => ({
+  NLEntryForm: ({ accountId, onQueued }: { accountId: string | null; onQueued: () => void }) => {
+    nlForm.accountId = accountId
+    return (
+      <button type="button" onClick={onQueued}>
+        Send
+      </button>
+    )
+  },
+}))
+vi.mock('./ReceiptScanTab', () => ({ ReceiptScanTab: () => <div data-testid="scan-tab" /> }))
+const media = vi.hoisted(() => ({ mobile: false }))
+vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => media.mobile }))
 vi.mock('../../../hooks/useHistoryDismissable', () => ({ useHistoryDismissable: () => {} }))
 
 import { TransactionEditor } from './TransactionEditor'
 import type { Transaction } from '../../../types'
+import type { AIJob } from '../../../api/aiJobs'
+import { splitField } from '../SplitSheet/splitSheetTestUtils'
 
 function renderEditor(props: Partial<Parameters<typeof TransactionEditor>[0]> = {}) {
   // The api/* hooks are mocked, but useToastUndo reaches the real
@@ -748,5 +774,238 @@ describe('TransactionEditor account picker', () => {
       account_id: 'acc-3',
       transfer_account_id: 'acc-2',
     })
+  })
+})
+
+/**
+ * An AI-created row opened on a phone. The receipt used to stack above the
+ * form in a pane capped at a third of the screen, which with the keyboard up
+ * left almost nothing to edit in, and could not be collapsed. There it is a
+ * button to the full-screen viewer now; the side-by-side pane is desktop-only.
+ */
+describe('TransactionEditor reviewing a scanned receipt', () => {
+  const scanned = {
+    id: 't-ai',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -42,
+    category_id: 'cat-1',
+    payee_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: null,
+    is_split: false,
+    created_via: 'ai_receipt',
+  } as unknown as Transaction
+  const job = {
+    id: 'job-1',
+    kind: 'receipt',
+    status: 'completed',
+    attachment_id: 'att-1',
+    payload: { content_type: 'image/jpeg' },
+    result: null,
+    error: null,
+  } as unknown as AIJob
+
+  afterEach(() => {
+    media.mobile = false
+  })
+
+  it('shows the receipt beside the form on a desktop', () => {
+    renderEditor({ transaction: scanned, aiJob: job })
+    expect(screen.getByTestId('receipt-pane')).toBeInTheDocument()
+    expect(screen.queryByTestId('receipt-button')).toBeNull()
+  })
+
+  it('leaves the screen to the form on a phone, the receipt one tap away', () => {
+    media.mobile = true
+    renderEditor({ transaction: scanned, aiJob: job })
+    expect(screen.getByTestId('receipt-button')).toBeInTheDocument()
+    expect(screen.queryByTestId('receipt-pane')).toBeNull()
+  })
+})
+
+/**
+ * Describe and From receipt replace the manual form — a scan by handing off
+ * to a review editor, a description by overwriting the fields. Typing into
+ * Manual entry and then trying one threw the typed entry away; Quick add's
+ * Scan button had the same fault with a long split. Once an entry is
+ * started they go inactive, and say why when tapped.
+ */
+describe('TransactionEditor entry-method tabs once an entry is started', () => {
+  const tab = (name: RegExp) => screen.getByRole('tab', { name })
+
+  beforeEach(() => {
+    toastPlain.mockClear()
+    createMutate.mockClear()
+  })
+
+  it('offers Describe and From receipt on an empty form', () => {
+    renderEditor({ accountId: null })
+    fireEvent.click(tab(/From receipt/))
+    expect(screen.getByTestId('scan-tab')).toBeInTheDocument()
+  })
+
+  it('keeps the typed entry when From receipt is tapped', () => {
+    renderEditor({ accountId: null })
+    fireEvent.change(amountInputs()[0], { target: { value: '84.20' } })
+
+    expect(tab(/From receipt/)).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(tab(/From receipt/))
+
+    expect(screen.queryByTestId('scan-tab')).toBeNull()
+    expect(amountInputs()[0]).toHaveValue('84.20')
+    expect(toastPlain).toHaveBeenCalledWith(
+      expect.stringMatching(/attach the receipt/),
+      expect.anything()
+    )
+  })
+
+  it('keeps a started split when Describe is tapped', () => {
+    renderEditor({ accountId: null })
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+
+    fireEvent.click(tab(/Describe it/))
+    expect(screen.queryByRole('button', { name: 'Draft it' })).toBeNull()
+    expect(toastPlain).toHaveBeenCalled()
+  })
+
+  it("does not count the editor's own prefill as an entry", () => {
+    // Adding from a budget row pre-picks that row's category; nobody typed it.
+    renderEditor({ accountId: null, initialCategoryId: 'cat-1' })
+    expect(tab(/From receipt/)).toHaveAttribute('aria-disabled', 'false')
+  })
+})
+
+/**
+ * Describe from the editor. The words are queued like a receipt — nobody
+ * waits on the model — so the tab hands the form the editor's account (none
+ * is fine: it waits in AI Activity) and the editor closes once it is sent.
+ */
+describe('TransactionEditor Describe tab', () => {
+  it('sends with no account when none is chosen', () => {
+    const onClose = vi.fn()
+    renderEditor({ accountId: null, onClose })
+    fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
+    expect(nlForm.accountId).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onClose).toHaveBeenCalled()
+    expect(createMutate).not.toHaveBeenCalled()
+  })
+
+  it('sends with the account picked above it', () => {
+    renderEditor({ accountId: null })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
+      target: { value: 'acc-2' },
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
+    expect(nlForm.accountId).toBe('acc-2')
+  })
+
+  it("sends with the register's own account", () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
+    expect(nlForm.accountId).toBe('acc-1')
+  })
+})
+
+/**
+ * On a phone the split's lines open full-screen (SplitSheet, via PhoneSplit);
+ * the form keeps one summary row. The save is the editor's, unchanged — what
+ * matters here is that lines made in the sheet reach it, memos included.
+ */
+describe('TransactionEditor splitting on a phone', () => {
+  const option = (name: string) =>
+    screen
+      .getAllByText(name)
+      .find((el) => el.className.includes('selection-sheet__option-label'))!
+      .closest('button')!
+
+  beforeEach(() => {
+    media.mobile = true
+    createMutate.mockClear()
+    confirmOverspend.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+    splitLines = undefined
+  })
+  afterEach(() => {
+    media.mobile = false
+    splitLines = undefined
+  })
+
+  it('opens the sheet from Split, and saves what was made there', async () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '120' } })
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+
+    fireEvent.click(splitField(1, 'category'))
+    fireEvent.click(option('Groceries'))
+    fireEvent.change(splitField(1, 'amount'), { target: { value: '84.20' } })
+    fireEvent.change(splitField(1, 'memo'), { target: { value: 'Weekly shop' } })
+    fireEvent.click(screen.getByRole('button', { name: /Cover the remaining/ }))
+    fireEvent.click(option('Fun'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Done' }).at(-1)!)
+
+    expect(screen.getByRole('button', { name: 'Edit split' }).textContent).toContain('Fully split')
+    fireEvent.click(submitButton())
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
+    expect(createMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: -120,
+        splits: [
+          expect.objectContaining({ amount: -84.2, category_id: 'cat-1', memo: 'Weekly shop' }),
+          expect.objectContaining({ amount: -35.8, category_id: 'cat-2' }),
+        ],
+      })
+    )
+  })
+
+  it('summarises a saved split, whose sheet offers no un-split', () => {
+    splitLines = [
+      { id: 'l1', amount: -40, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
+    ]
+    renderEditor({
+      transaction: {
+        id: 't11',
+        account_id: 'acc-1',
+        date: '2030-01-10',
+        amount: -41.8,
+        category_id: null,
+        payee_id: null,
+        memo: null,
+        cleared: 'uncleared',
+        transfer_id: null,
+        is_split: true,
+      } as unknown as Transaction,
+      accountId: 'acc-1',
+    })
+    const row = screen.getByRole('button', { name: 'Edit split' })
+    expect(row.textContent).toContain('Groceries, Fun')
+    expect(row.textContent).toContain('Fully split')
+    fireEvent.click(row)
+    expect(splitField(2, 'amount').value).toBe('1.8')
+    expect(screen.queryByRole('button', { name: /Don't split/ })).toBeNull()
+  })
+})
+
+describe('TransactionEditor starting and stopping a split', () => {
+  // Quick add always carried the pick into the first line and back out; the
+  // editor dropped it both ways, so splitting a Groceries row began blank.
+  it('carries the chosen category into the first line, and back out', () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '120' } })
+    pickCategory('Groceries')
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+
+    const legs = screen.getAllByRole<HTMLInputElement>('combobox', { name: 'Split category' })
+    expect(legs[0].value).toBe('Groceries')
+    expect(legs[1].value).toBe('')
+
+    fireEvent.click(screen.getByTitle('Switch to single category'))
+    expect(screen.getByRole<HTMLInputElement>('combobox', { name: 'Category' }).value).toBe(
+      'Groceries'
+    )
   })
 })

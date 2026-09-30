@@ -9,12 +9,14 @@ import { renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { AIJob, AIJobListResponse, AIJobStatus } from './aiJobs'
+import type { AIJob, AIJobCounts, AIJobListResponse, AIJobStatus } from './aiJobs'
 import {
   isJobInFlight,
+  queueShrank,
   settledJobs,
   showJobQueued,
   useInvalidateWhenJobsSettle,
+  useInvalidateWhenQueueShrinks,
 } from './aiJobSettled'
 import { ROOT } from './queryKeys'
 
@@ -147,10 +149,64 @@ describe('showJobQueued', () => {
 
     showJobQueued(qc, 'b1', job('queued'))
 
-    expect(qc.getQueryData<AIJob>([ROOT.aiJob, 'b1', 'j1'])?.status).toBe('queued')
     expect(qc.getQueryData<AIJob>([ROOT.aiJobForTxn, 'b1', 't1'])?.status).toBe('queued')
     const list = qc.getQueryData<AIJobListResponse>(listKey)
     expect(list?.jobs.map((j) => j.status)).toEqual(['queued', 'done'])
     expect(list?.jobs[1]).toBe(other)
+  })
+
+  it("counts it on the badge at once, so a fast worker's finish is still seen", () => {
+    const { qc } = harness()
+    qc.setQueryData<AIJobCounts>([ROOT.aiJobsActive, 'b1'], { active: 0, needsReview: 2 })
+    showJobQueued(qc, 'b1', job('queued'))
+    expect(qc.getQueryData<AIJobCounts>([ROOT.aiJobsActive, 'b1'])).toEqual({
+      active: 1,
+      needsReview: 2,
+    })
+  })
+})
+
+/**
+ * A scan or a description is handed off and its sheet closes, so no screen
+ * shows the job — and the row it made only reached the register if
+ * something else refetched. The badge polls the in-flight count everywhere;
+ * when it falls, that is the refresh.
+ */
+describe('queueShrank', () => {
+  it.each([
+    [null, 0, false], // first read is history, not news
+    [2, 1, true],
+    [1, 0, true],
+    [0, 1, false], // more work is not finished work
+    [1, 1, false],
+  ])('%s → %s is %s', (before, after, expected) => {
+    expect(queueShrank(before, after)).toBe(expected)
+  })
+})
+
+describe('useInvalidateWhenQueueShrinks', () => {
+  it('refreshes the register wide when the count falls, and only then', () => {
+    const { wrapper, invalidated, invalidate } = harness()
+    const { rerender } = renderHook(
+      ({ active }: { active: number | undefined }) => useInvalidateWhenQueueShrinks('b1', active),
+      { wrapper, initialProps: { active: undefined as number | undefined } }
+    )
+    rerender({ active: 1 })
+    rerender({ active: 2 })
+    expect(invalidate).not.toHaveBeenCalled()
+
+    rerender({ active: 1 })
+    expect(invalidated()).toEqual(
+      expect.arrayContaining([
+        [ROOT.transactions],
+        [ROOT.budgetMonth, 'b1'],
+        [ROOT.accounts, 'b1'],
+        [ROOT.pendingReviewCountAccount],
+        [ROOT.aiJobForTxn],
+      ])
+    )
+    const calls = invalidate.mock.calls.length
+    rerender({ active: 1 })
+    expect(invalidate.mock.calls.length).toBe(calls)
   })
 })

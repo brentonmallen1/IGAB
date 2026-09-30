@@ -31,7 +31,6 @@ export const ROOT = {
   accountTypes: 'account-types',
   accounts: 'accounts',
   aiInsights: 'ai-insights',
-  aiJob: 'ai-job',
   aiJobForTxn: 'ai-job-for-txn',
   aiJobs: 'ai-jobs',
   aiJobsActive: 'ai-jobs-active',

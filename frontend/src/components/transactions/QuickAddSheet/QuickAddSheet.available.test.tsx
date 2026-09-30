@@ -128,6 +128,7 @@ vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => h.notify }))
 
 import { QuickAddSheet } from './QuickAddSheet'
 import { today } from '../../../utils/dates'
+import { splitField } from '../SplitSheet/splitSheetTestUtils'
 
 const THIS_MONTH = `${today().slice(0, 7)}-01`
 
@@ -245,10 +246,30 @@ describe('the category picker', () => {
     renderSheet()
     await monthLoaded()
     fireEvent.click(screen.getByTitle('Split this across categories'))
-    fireEvent.click(screen.getByLabelText('Split 2 category'))
+    fireEvent.click(splitField(2, 'category'))
     await waitFor(() => expect(optionRow('Household').textContent).toContain('-$12.50'))
     fireEvent.click(optionRow('Household'))
-    expect(screen.getByLabelText('Split 2 category').textContent).toContain('Available -$12.50')
+    expect(splitField(2, 'category').textContent).toContain('Available -$12.50')
+  })
+})
+
+describe('before an account is chosen', () => {
+  // The account is chosen at Save, not at open, so the envelope is usually
+  // picked first — and its balance used to wait for the account, never
+  // showing while it was being chosen.
+  it("shows each category's Available in the picker already", async () => {
+    render(
+      <QueryClientProvider client={h.qc}>
+        <QuickAddSheet />
+      </QueryClientProvider>
+    )
+    await monthLoaded()
+    fireEvent.click(screen.getByLabelText('Category'))
+    await waitFor(() =>
+      expect(
+        optionRow('Groceries').querySelector('.selection-sheet__option-hint')?.textContent
+      ).toBe('$240.00')
+    )
   })
 })
 
@@ -278,11 +299,11 @@ describe('the category row', () => {
     expect(row.textContent).not.toContain('Available')
   })
 
-  it('fetches no month and offers no category on a tracking account', async () => {
+  it('offers no category, and no Available, on a tracking account', async () => {
     h.onBudget = false
     renderSheet()
     expect(screen.queryByLabelText('Category')).toBeNull()
-    expect(h.get).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Available/)).toBeNull()
   })
 })
 
@@ -415,12 +436,12 @@ describe('the toast after Save', () => {
     await monthLoaded()
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '10' } })
     fireEvent.click(screen.getByTitle('Split this across categories'))
-    fireEvent.click(screen.getByLabelText('Split 1 category'))
+    fireEvent.click(splitField(1, 'category'))
     fireEvent.click(optionRow('Groceries'))
-    fireEvent.click(screen.getByLabelText('Split 2 category'))
+    fireEvent.click(splitField(2, 'category'))
     fireEvent.click(optionRow('Household'))
-    fireEvent.change(screen.getByLabelText('Split 1 amount'), { target: { value: '6' } })
-    fireEvent.change(screen.getByLabelText('Split 2 amount'), { target: { value: '4' } })
+    fireEvent.change(splitField(1, 'amount'), { target: { value: '6' } })
+    fireEvent.change(splitField(2, 'amount'), { target: { value: '4' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(h.notify).toHaveBeenCalled())
     expect(h.notify.mock.calls[0][0]).toBe('Added −$10.00 · split 2 ways')

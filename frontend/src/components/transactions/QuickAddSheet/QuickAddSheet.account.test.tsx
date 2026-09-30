@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   submit: vi.fn(),
   create: vi.fn(),
+  closeQuickAdd: vi.fn(),
 }))
 
 vi.mock('../../../api/client', () => ({
@@ -69,14 +70,23 @@ vi.mock('../../../stores/appStore', () => ({
 }))
 vi.mock('../../../stores/uiStore', () => ({
   useUIStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ quickAddOpen: true, closeQuickAdd: vi.fn() }),
+    selector({ quickAddOpen: true, closeQuickAdd: h.closeQuickAdd }),
 }))
 vi.mock('../../../hooks/useCurrentPosition', () => ({ useCurrentPosition: () => null }))
 vi.mock('../../../hooks/useMediaQuery', () => ({
   useIsTouch: () => true,
   useIsMobile: () => true,
 }))
-vi.mock('../../ai/NLQuickEntry', () => ({ NLQuickEntry: () => null }))
+// Stands in for the Describe sheet: says which account it was opened with.
+vi.mock('../../ai/NLQuickEntry', () => ({
+  NLQuickEntry: ({ accountId, onClose }: { accountId: string | null; onClose: () => void }) => (
+    <div data-testid="describe-sheet" data-account={accountId ?? 'none'}>
+      <button type="button" onClick={onClose}>
+        Back
+      </button>
+    </div>
+  ),
+}))
 vi.mock('../../../utils/haptics', () => ({ hapticTick: vi.fn() }))
 vi.mock('react-hot-toast', () => ({
   default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
@@ -283,5 +293,78 @@ describe('Scan receipt, deciding the account later', () => {
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12.50' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(offered()).toEqual([])
+  })
+})
+
+describe('Scan receipt once something has been entered', () => {
+  // Scanning hands off and closes the sheet. With a long split typed in, the
+  // tap discarded all of it — so it is offered only while nothing would be
+  // lost, and the receipt attaches to the entry instead.
+  it('is gone once an amount is typed, leaving Attach photo', () => {
+    renderSheet()
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '84.20' } })
+
+    expect(screen.queryByRole('button', { name: /Scan receipt/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /Attach photo/ })).toBeTruthy()
+  })
+
+  it('stays offered after only an account is chosen', () => {
+    renderSheet()
+    fireEvent.click(accountRow())
+    fireEvent.click(optionRow('Checking'))
+
+    expect(scanButton()).not.toBeDisabled()
+  })
+
+  it('comes back when the entry is cleared again', () => {
+    renderSheet()
+    const amount = screen.getByLabelText('Amount')
+    fireEvent.change(amount, { target: { value: '84.20' } })
+    fireEvent.change(amount, { target: { value: '' } })
+
+    expect(scanButton()).toBeTruthy()
+  })
+})
+
+describe('Describe it, like Scan receipt', () => {
+  // Describing is queued like a scan now, so it asks for the account the
+  // same way, and may decide later — the entry then waits in AI Activity.
+  const describeButton = () => screen.getByRole('button', { name: /Describe it/ })
+  const sheet = () => screen.getByTestId('describe-sheet')
+
+  beforeEach(() => h.closeQuickAdd.mockClear())
+
+  it('asks for the account first, then opens with it', () => {
+    renderSheet()
+    fireEvent.click(describeButton())
+    expect(screen.queryByTestId('describe-sheet')).toBeNull()
+
+    fireEvent.click(optionRow('Checking'))
+    expect(sheet()).toHaveAttribute('data-account', 'acc-1')
+  })
+
+  it('may decide the account later', () => {
+    renderSheet()
+    fireEvent.click(describeButton())
+    fireEvent.click(optionRow('Decide later — it waits in AI Activity'))
+    expect(sheet()).toHaveAttribute('data-account', 'none')
+  })
+
+  it('opens straight away once an account is chosen', () => {
+    renderSheet()
+    fireEvent.click(accountRow())
+    fireEvent.click(optionRow('Checking'))
+    fireEvent.click(describeButton())
+    expect(sheet()).toHaveAttribute('data-account', 'acc-1')
+  })
+
+  it('backing out of it leaves quick add open', () => {
+    renderSheet()
+    fireEvent.click(accountRow())
+    fireEvent.click(optionRow('Checking'))
+    fireEvent.click(describeButton())
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.queryByTestId('describe-sheet')).toBeNull()
+    expect(h.closeQuickAdd).not.toHaveBeenCalled()
   })
 })

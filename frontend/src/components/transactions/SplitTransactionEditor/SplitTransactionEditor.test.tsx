@@ -78,6 +78,7 @@ describe('SplitTransactionEditor', () => {
     await waitFor(() => expect(replaceMutate).toHaveBeenCalledTimes(1))
     expect(replaceMutate.mock.calls[0][0]).toEqual({
       id: 't1',
+      accountId: 'a1',
       splits: [
         { id: 'l1', amount: -60, category_id: 'cat-1', memo: 'food' },
         { id: 'l2', amount: -40, category_id: 'cat-2', memo: undefined },

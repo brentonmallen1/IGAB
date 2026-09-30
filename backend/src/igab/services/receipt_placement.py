@@ -14,6 +14,10 @@ belongs:
 The worker and the place endpoint both finish through `create_in` and
 `attach_to`, so a receipt placed at extraction and one placed a week later
 end up the same shape.
+
+A description (typed or dictated, job kind `nl_parse`) lands the same way,
+minus what only a photo has: there is no image to keep, and no card ending
+to place it by — it waits for a person, or goes on the bank's row.
 """
 
 from __future__ import annotations
@@ -29,7 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, AIJob, Transaction
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.receipt_fields import (
-    FAILURE_STUB_MEMO,
+    CREATED_VIA,
+    STUB_MEMO,
     ExistingRow,
     ReceiptRead,
     receipt_changes,
@@ -100,14 +105,14 @@ async def bank_match(
 async def create_in(
     svcs: dict, job: AIJob, account_id: uuid.UUID, draft: AIDraft | None
 ) -> Transaction:
-    """A new unapproved transaction for the receipt. No draft (the extraction
-    failed) makes the $0 stub the failure path has always made, so the image
+    """A new unapproved transaction for the job's read. No draft (the read
+    failed) makes the $0 stub the failure path has always made, so the entry
     is still somewhere a person can finish it."""
     from igab.services.transaction_service import TransactionCreate
 
     if draft is not None:
         return await svcs["drafts"].create_transaction(
-            job.budget_id, account_id, draft, created_via="ai_receipt"
+            job.budget_id, account_id, draft, created_via=CREATED_VIA[job.kind]
         )
     payload = job.payload or {}
     today = (
@@ -121,9 +126,9 @@ async def create_in(
             account_id=account_id,
             date=today,
             amount=Decimal("0"),
-            memo=FAILURE_STUB_MEMO,
+            memo=STUB_MEMO[job.kind],
             approved=False,
-            created_via="ai_receipt",
+            created_via=CREATED_VIA[job.kind],
         ),
     )
 
@@ -147,7 +152,7 @@ async def apply_read(
     from igab.services.transaction_service import TransactionUpdate
 
     row = ExistingRow(
-        own=txn.created_via == "ai_receipt",
+        own=txn.created_via in CREATED_VIA.values(),
         confirmed=bool(txn.approved) or txn.cleared != "uncleared",
         is_split=bool(txn.is_split),
         is_transfer=txn.transfer_id is not None,

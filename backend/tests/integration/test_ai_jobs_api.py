@@ -1,5 +1,5 @@
-"""AI jobs API: submit/list/detail/retry/delete, ownership scoping, the
-ai_job_id link on transaction create, and the has_attachment filter."""
+"""AI jobs API: submit/list/detail/retry/delete, ownership scoping, AI
+provenance on a person's create, and the has_attachment filter."""
 
 import hashlib
 import uuid
@@ -942,54 +942,29 @@ class TestReprocessRefreshesTheRow:
         assert rows == 1
 
 
-class TestAIJobLinkOnCreate:
-    async def _make_done_nl_job(self, db_session, budget) -> AIJob:
-        job = AIJob(
-            budget_id=budget.id,
-            kind="nl_parse",
-            status="done",
-            payload={"text": "coffee 5.50"},
-        )
+class TestProvenanceOnCreate:
+    """Every AI row is made by the worker now — a description is queued like a
+    receipt — so a person's create never carries AI provenance, however it
+    asks. `ai_job_id` was the old hand-off from the synchronous parse."""
+
+    async def test_an_ai_job_id_is_not_a_request_field(self, api_client, db_session):
+        budget, account = await _setup(api_client, db_session)
+        job = AIJob(budget_id=budget.id, kind="nl_parse", status="done", payload={"text": "x"})
         db_session.add(job)
         await db_session.flush()
-        return job
-
-    async def test_create_with_ai_job_id_links_and_stamps(self, api_client, db_session):
-        budget, account = await _setup(api_client, db_session)
-        job = await self._make_done_nl_job(db_session, budget)
-
         resp = await api_client.post(
             f"/api/v1/{budget.id}/transactions",
             json={
                 "account_id": str(account.id),
                 "date": "2026-08-02",
                 "amount": "-5.50",
-                "payee_name": "Starbucks",
-                "approved": False,
                 "ai_job_id": str(job.id),
             },
         )
         assert resp.status_code == 201, resp.text
-        body = resp.json()
-        assert body["created_via"] == "ai_nl"
+        assert resp.json()["created_via"] == "manual"
         await db_session.refresh(job)
-        assert str(job.transaction_id) == body["id"]
-
-    async def test_cross_budget_ai_job_id_rejected(self, api_client, db_session):
-        budget, account = await _setup(api_client, db_session)
-        other_budget = await create_budget(db_session, api_client.test_user, name="Second")
-        job = await self._make_done_nl_job(db_session, other_budget)
-
-        resp = await api_client.post(
-            f"/api/v1/{budget.id}/transactions",
-            json={
-                "account_id": str(account.id),
-                "date": "2026-08-02",
-                "amount": "-5.50",
-                "ai_job_id": str(job.id),
-            },
-        )
-        assert resp.status_code == 404
+        assert job.transaction_id is None
 
     async def test_created_via_not_settable_directly(self, api_client, db_session):
         budget, account = await _setup(api_client, db_session)

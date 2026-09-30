@@ -7,16 +7,15 @@ import { useCategoryAvailable } from './useCategoryAvailable'
 import { AvailableChangeToast } from './AvailableChangeToast'
 import {
   AlertTriangle,
+  CalendarDays,
   Camera,
   ChevronRight,
   FileText,
   Images,
   MessageSquareText,
-  Plus,
   Sparkles,
   Split,
   StickyNote,
-  Trash2,
   X,
 } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
@@ -37,6 +36,7 @@ import {
 import { useAIStatus } from '../../../api/ai'
 import { useSubmitReceipt } from '../../../api/aiJobs'
 import { NLQuickEntry } from '../../ai/NLQuickEntry'
+import { queuedMessage } from '../../ai/queuedMessage'
 import { useCreatePayee, useNearbyPayees, usePayees } from '../../../api/payees'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
@@ -53,6 +53,7 @@ import {
   isAmountExpression,
 } from '../../../utils/amountExpression'
 import { checkSplit } from '../../../utils/splits'
+import { PhoneSplit } from '../SplitSheet/PhoneSplit'
 import { randomUUID } from '../../../utils/uuid'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -64,13 +65,9 @@ import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 
 type Direction = 'outflow' | 'inflow'
 
-/** What tapping Scan or Save goes on to do once the account it asked for is
- *  chosen. */
-type AfterAccount = 'scan' | 'save' | 'save-another'
-
-/** Sentinel for the plain Category row, so one picker can also serve the
- *  split legs, which address themselves by tempId. */
-const SINGLE_CATEGORY = '__single__'
+/** What tapping Scan, Describe or Save goes on to do once the account it
+ *  asked for is chosen. */
+type AfterAccount = 'scan' | 'describe' | 'save' | 'save-another'
 
 /** Two empty legs — a split of one is just a category. */
 function freshSplits(): SplitDraft[] {
@@ -86,7 +83,7 @@ function freshSplits(): SplitDraft[] {
  * across entries.
  */
 export function QuickAddSheet() {
-  const { formatMoney, settings } = useFormatters()
+  const { formatMoney, formatDayMonth, settings } = useFormatters()
   const notify = useUndoToast()
   const currencySymbol = getCurrencySymbol(settings.currencyCode).trim()
   const open = useUIStore((s) => s.quickAddOpen)
@@ -121,10 +118,9 @@ export function QuickAddSheet() {
   const [memo, setMemo] = useState('')
   const [memoOpen, setMemoOpen] = useState(false)
   const [payeeSheetOpen, setPayeeSheetOpen] = useState(false)
-  // Which category picker is open: SINGLE_CATEGORY for the plain row, or a
-  // split leg's tempId. One sheet serves both — a second SelectionSheet
-  // mounted over the first fights it for the viewport on a phone.
-  const [categorySheetFor, setCategorySheetFor] = useState<string | null>(null)
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false)
+  // The split's own full-screen editor, with its own category picker.
+  const [splitSheetOpen, setSplitSheetOpen] = useState(false)
   const [accountSheetOpen, setAccountSheetOpen] = useState(false)
   // Scan or Save was tapped before an account was chosen. The Account row
   // carries a warning until it is answered, so a dismissed picker still says
@@ -133,11 +129,13 @@ export function QuickAddSheet() {
   // What the account picker was opened for: choosing an account carries it
   // on. A ref, not state — it is read inside the same tap that picks.
   const afterAccountRef = useRef<AfterAccount | null>(null)
-  // Scan is asking for an account right now — the picker then offers
-  // "Decide later" as well, which scans with none (the receipt waits in AI
-  // Activity until the card on it or a person says where it goes). State,
-  // not the ref: the picker's options are drawn from it.
-  const [scanAsking, setScanAsking] = useState(false)
+  // Scan or Describe is asking for an account right now — the picker then
+  // offers "Decide later" as well, which hands the entry off with none (it
+  // waits in AI Activity until the card on a receipt or a person says where
+  // it goes). State, not the ref: the picker's options are drawn from it.
+  const [mayDecideLater, setMayDecideLater] = useState(false)
+  // The account Describe was opened with — null when it was decided later.
+  const [nlAccountId, setNlAccountId] = useState<string | null>(null)
   const decidedLaterRef = useRef(false)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
@@ -174,6 +172,7 @@ export function QuickAddSheet() {
     setCategoryId(null)
     setIsSplit(false)
     setSplits(freshSplits())
+    setSplitSheetOpen(false)
     setMemo('')
     setMemoOpen(false)
     setDate(today())
@@ -239,10 +238,12 @@ export function QuickAddSheet() {
   )
 
   // Available in the month the row is dated, for the picker, the row and the
-  // after-save toast. Unfetched where no category can be chosen — including
-  // the first render, before the sticky account is known to be on budget.
+  // after-save toast. Unfetched only where no category can be chosen (a
+  // tracking account). It waited for an account from when one was
+  // pre-selected; with none chosen until Save, the envelope's balance never
+  // showed while the envelope was being picked.
   const { balances, hintFor, readServerBalance } = useCategoryAvailable(
-    open && accountId && canCategorize ? budgetId : null,
+    open && canCategorize ? budgetId : null,
     date
   )
   const categoryHint = canCategorize ? hintFor(categoryId) : undefined
@@ -302,7 +303,7 @@ export function QuickAddSheet() {
   function askForAccount(next: AfterAccount) {
     setAccountAskedFor(next)
     afterAccountRef.current = next
-    setScanAsking(next === 'scan')
+    setMayDecideLater(next === 'scan' || next === 'describe')
     setAccountSheetOpen(true)
   }
 
@@ -311,12 +312,29 @@ export function QuickAddSheet() {
     else askForAccount('scan')
   }
 
-  /** Scan with no account: the receipt waits, unplaced, in AI Activity. */
+  /** Describe asks for the account the way Scan does, and may decide later. */
+  function startDescribe() {
+    if (!accountId) {
+      askForAccount('describe')
+      return
+    }
+    setNlAccountId(accountId)
+    setNlEntryOpen(true)
+  }
+
+  /** Scan or Describe with no account: the entry waits, unplaced, in AI
+   *  Activity. */
   function decideLater() {
+    const next = afterAccountRef.current
     afterAccountRef.current = null
     setAccountAskedFor(null)
-    setScanAsking(false)
+    setMayDecideLater(false)
     setAccountSheetOpen(false)
+    if (next === 'describe') {
+      setNlAccountId(null)
+      setNlEntryOpen(true)
+      return
+    }
     decidedLaterRef.current = true
     // Same gesture rule as chooseAccount: the camera opens inside this tap.
     aiScanInputRef.current?.click()
@@ -325,12 +343,16 @@ export function QuickAddSheet() {
   function chooseAccount(id: string) {
     setAccountId(id)
     setAccountAskedFor(null)
-    setScanAsking(false)
+    setMayDecideLater(false)
     const next = afterAccountRef.current
     afterAccountRef.current = null
     // Still inside the tap that picked the account, which is what lets iOS
     // open the camera from here; deferring it would lose the gesture.
     if (next === 'scan') aiScanInputRef.current?.click()
+    else if (next === 'describe') {
+      setNlAccountId(id)
+      setNlEntryOpen(true)
+    }
     // The render that knows the new account has not happened yet, so the
     // save is handed it directly.
     else if (next === 'save') void save(false, id)
@@ -386,16 +408,7 @@ export function QuickAddSheet() {
     if (queued > 0) {
       if (accountId) noteAccountUsed(accountId)
       hapticTick()
-      toast.success(
-        unplaced
-          ? queued === 1
-            ? "Receipt queued — it waits in AI Activity until it has an account, and isn't in your budget until then"
-            : `${queued} receipts queued — they wait in AI Activity until they have an account, and aren't in your budget until then`
-          : queued === 1
-            ? "Receipt queued — it'll show up in your transactions to review"
-            : `${queued} receipts queued — they'll show up in your transactions to review`,
-        { duration: 6000 }
-      )
+      toast.success(queuedMessage('receipt', queued, unplaced), { duration: 6000 })
     }
     if (duplicates > 0) {
       toast(
@@ -420,23 +433,10 @@ export function QuickAddSheet() {
   const amountValid = !isNaN(cents) && cents > 0
 
   const splitCheck = checkSplit(amountValid ? cents : 0, splits)
-  const remainingCents = splitCheck.remainingCents
   const splitIsValid = !isSplit || splitCheck.isValid
 
   // Everything Save needs except the account, which Save asks for itself.
   const entryComplete = amountValid && !saving && splitIsValid
-
-  function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
-    setSplits((prev) => prev.map((sp) => (sp.tempId === tempId ? { ...sp, ...data } : sp)))
-  }
-
-  function addSplit() {
-    setSplits((prev) => [...prev, { tempId: randomUUID(), amount: '', categoryId: null, memo: '' }])
-  }
-
-  function removeSplit(tempId: string) {
-    setSplits((prev) => (prev.length > 2 ? prev.filter((sp) => sp.tempId !== tempId) : prev))
-  }
 
   /** Start a split from whatever is already on screen: the chosen category
    *  becomes the first leg, so tapping Split never throws away a pick. */
@@ -446,6 +446,7 @@ export function QuickAddSheet() {
     setSplits([{ ...first, categoryId }, ...rest])
     setCategoryId(null)
     setIsSplit(true)
+    setSplitSheetOpen(true)
   }
 
   /** Symmetric with beginSplit: the first leg's category comes back out as the
@@ -454,6 +455,7 @@ export function QuickAddSheet() {
     setCategoryId(splits[0]?.categoryId ?? null)
     setIsSplit(false)
     setSplits(freshSplits())
+    setSplitSheetOpen(false)
   }
 
   function requestSave(addAnother: boolean) {
@@ -522,11 +524,18 @@ export function QuickAddSheet() {
       }
 
       const headline = `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}`
-      const where = isSplit
-        ? ` · split ${splits.length} ways`
-        : categoryName
-          ? ` · ${categoryName}`
-          : ''
+      // One line saved as a plain row (the server collapses it): name it.
+      const oneLine =
+        isSplit && splits.length === 1
+          ? categories.find((c) => c.id === splits[0].categoryId)?.name
+          : undefined
+      const where = oneLine
+        ? ` · ${oneLine}`
+        : isSplit
+          ? ` · split ${splits.length} ways`
+          : categoryName
+            ? ` · ${categoryName}`
+            : ''
       let message: string | ReactElement = `${headline}${where}`
       // Before → after only when both ends are the server's; otherwise the
       // sentence above, never a figure the client made up.
@@ -717,85 +726,24 @@ export function QuickAddSheet() {
             </button>
 
             {isSplit ? (
-              <div className="quick-add__split">
-                <div className="quick-add__split-head">
-                  <span className="quick-add__row-label">Split</span>
-                  <button className="quick-add__split-cancel" onClick={cancelSplit}>
-                    <X size={13} />
-                    Cancel split
-                  </button>
-                </div>
-
-                {splits.map((sp, i) => {
-                  const legName = sp.categoryId
-                    ? (categories.find((c) => c.id === sp.categoryId)?.name ?? '')
-                    : ''
-                  const legHint = legName ? hintFor(sp.categoryId) : undefined
-                  return (
-                    <div key={sp.tempId} className="quick-add__split-leg">
-                      {canCategorize && (
-                        <button
-                          className="quick-add__split-category"
-                          onClick={() => setCategorySheetFor(sp.tempId)}
-                          aria-label={`Split ${i + 1} category`}
-                        >
-                          <span className="quick-add__row-stack">
-                            <span
-                              className={`quick-add__row-value ${legName ? '' : 'quick-add__row-value--empty'}`}
-                            >
-                              {legName || 'Choose category'}
-                            </span>
-                            {legHint && (
-                              <span className="quick-add__row-hint">Available {legHint}</span>
-                            )}
-                          </span>
-                          <ChevronRight size={15} className="quick-add__row-chevron" />
-                        </button>
-                      )}
-                      <AmountInput
-                        className="quick-add__split-amount"
-                        value={sp.amount}
-                        onValueChange={(v) => updateSplit(sp.tempId, { amount: v })}
-                        placeholder="0.00"
-                        aria-label={`Split ${i + 1} amount`}
-                      />
-                      <button
-                        className="quick-add__split-remove"
-                        onClick={() => removeSplit(sp.tempId)}
-                        disabled={splits.length <= 2}
-                        aria-label={`Remove split ${i + 1}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  )
-                })}
-
-                <div className="quick-add__split-foot">
-                  <button className="quick-add__split-add" onClick={addSplit}>
-                    <Plus size={13} />
-                    Add split
-                  </button>
-                  <span
-                    className={`quick-add__split-remaining ${
-                      remainingCents === 0 ? 'quick-add__split-remaining--done' : ''
-                    }`}
-                    role="status"
-                  >
-                    {remainingCents === 0
-                      ? 'Fully assigned'
-                      : `${formatMoney(Math.abs(remainingCents) / 100)} ${
-                          remainingCents > 0 ? 'left' : 'over'
-                        }`}
-                  </span>
-                </div>
-              </div>
+              // The lines themselves open full-screen (SplitSheet): inline,
+              // they were a cramped list the rest of the form scrolled around.
+              <PhoneSplit
+                open={splitSheetOpen}
+                onOpenChange={setSplitSheetOpen}
+                totalCents={amountValid ? cents : 0}
+                legs={splits}
+                onChange={setSplits}
+                categoryOptions={categoryOptions}
+                canCategorize={canCategorize}
+                onUnsplit={cancelSplit}
+              />
             ) : canCategorize ? (
               <div className="quick-add__row quick-add__row--category">
                 <span className="quick-add__row-label">Category</span>
                 <button
                   className="quick-add__row-pick"
-                  onClick={() => setCategorySheetFor(SINGLE_CATEGORY)}
+                  onClick={() => setCategorySheetOpen(true)}
                   aria-label="Category"
                 >
                   <span className="quick-add__row-stack">
@@ -815,8 +763,8 @@ export function QuickAddSheet() {
                   onClick={beginSplit}
                   title="Split this across categories"
                 >
-                  <Split size={14} />
-                  <span className="sr-only">Split across categories</span>
+                  <Split size={14} aria-hidden />
+                  Split
                 </button>
               </div>
             ) : null}
@@ -833,7 +781,7 @@ export function QuickAddSheet() {
               >
                 {accountName ||
                   (accountAskedFor
-                    ? `Choose account to ${accountAskedFor === 'scan' ? 'scan' : 'save'}`
+                    ? `Choose account to ${accountAskedFor === 'save-another' ? 'save' : accountAskedFor}`
                     : 'Choose account')}
               </span>
               <ChevronRight size={16} className="quick-add__row-chevron" />
@@ -854,13 +802,26 @@ export function QuickAddSheet() {
                 >
                   Yesterday
                 </button>
+                {/* Any other day: a chip like its neighbours, saying the day
+                    once one is picked. The native input covers it, invisible,
+                    so a tap opens the phone's own picker — squeezed in beside
+                    the chips it clipped to "09/29/". */}
+                <label
+                  className={`quick-add__date-chip quick-add__date-other ${
+                    date !== today() && date !== yesterday() ? 'quick-add__date-chip--active' : ''
+                  }`}
+                >
+                  <CalendarDays size={14} aria-hidden />
+                  {date !== today() && date !== yesterday() ? formatDayMonth(date) : 'Other'}
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => e.target.value && setDate(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    aria-label="Date"
+                  />
+                </label>
               </div>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                aria-label="Date"
-              />
             </div>
 
             {memoOpen ? (
@@ -908,13 +869,17 @@ export function QuickAddSheet() {
               </div>
             )}
             {/* AI entry paths lead; manual attach is the fallback row below.
-                Scanning is gated on AI being CONFIGURED, not on the server
-                answering a ping right now — the upload is queued and the
-                worker retries, so a server that is briefly down or busy must
-                not remove the user's ability to hand off a receipt and walk
-                away. "Describe it" is synchronous and genuinely does need a
-                live server, so it keeps the stricter gate. */}
-            {aiStatus.data?.enabled && (
+                Both are gated on AI being CONFIGURED, not on the server
+                answering a ping right now — a receipt or a description is
+                queued and the worker retries, so a server that is briefly
+                down or busy must not remove the user's ability to hand one
+                off and walk away.
+                Both hand off and close the sheet, so they are offered only
+                while closing costs nothing — the same isDirty that asks before
+                a dismissal. Once something is typed, the receipt attaches to
+                that entry instead (Attach photo, below); a scan would have
+                thrown the entry away, a large split included. */}
+            {aiStatus.data?.enabled && !isDirty && (
               <div className="quick-add__scan-row">
                 <button
                   className="quick-add__scan-btn"
@@ -929,10 +894,10 @@ export function QuickAddSheet() {
                       ? 'Queuing…'
                       : 'Scan receipt'}
                 </button>
-                {aiStatus.data?.available && (
+                {aiStatus.data?.enabled && (
                   <button
                     className="quick-add__scan-btn"
-                    onClick={() => setNlEntryOpen(true)}
+                    onClick={startDescribe}
                     title="Type or dictate the transaction — AI drafts it for you"
                   >
                     <MessageSquareText size={15} />
@@ -1031,9 +996,11 @@ export function QuickAddSheet() {
       {nlEntryOpen && budgetId && (
         <NLQuickEntry
           budgetId={budgetId}
-          accountId={accountId}
-          onClose={() => {
+          accountId={nlAccountId}
+          onClose={() => setNlEntryOpen(false)}
+          onDone={() => {
             setNlEntryOpen(false)
+            if (nlAccountId) noteAccountUsed(nlAccountId)
             closeQuickAdd()
           }}
         />
@@ -1062,19 +1029,12 @@ export function QuickAddSheet() {
       />
 
       <SelectionSheet
-        open={categorySheetFor !== null}
-        onClose={() => setCategorySheetFor(null)}
-        title={categorySheetFor === SINGLE_CATEGORY ? 'Category' : 'Split category'}
+        open={categorySheetOpen}
+        onClose={() => setCategorySheetOpen(false)}
+        title="Choose category"
         options={categoryOptions}
-        value={
-          categorySheetFor === SINGLE_CATEGORY
-            ? categoryId
-            : (splits.find((sp) => sp.tempId === categorySheetFor)?.categoryId ?? null)
-        }
-        onChange={(id) => {
-          if (categorySheetFor === SINGLE_CATEGORY) setCategoryId(id)
-          else if (categorySheetFor) updateSplit(categorySheetFor, { categoryId: id })
-        }}
+        value={categoryId}
+        onChange={setCategoryId}
         allowNone
         noneLabel="No category"
         placeholder="Search categories…"
@@ -1084,19 +1044,25 @@ export function QuickAddSheet() {
         open={accountSheetOpen}
         onClose={() => {
           afterAccountRef.current = null
-          setScanAsking(false)
+          setMayDecideLater(false)
           setAccountSheetOpen(false)
         }}
-        title="Account"
+        title={
+          accountAskedFor === 'scan'
+            ? 'Account for this receipt'
+            : accountAskedFor === 'describe'
+              ? 'Account for this description'
+              : 'Account'
+        }
         options={accountOptions}
-        allowNone={scanAsking}
+        allowNone={mayDecideLater}
         noneLabel="Decide later — it waits in AI Activity"
         topSection={
           recent.length > 0
             ? { label: 'Recent', options: recent.map((a) => ({ id: a.id, label: a.name })) }
             : undefined
         }
-        value={accountId}
+        value={accountId ?? undefined}
         onChange={(id) => (id ? chooseAccount(id) : decideLater())}
         placeholder="Search accounts…"
       />

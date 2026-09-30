@@ -10,7 +10,8 @@ import { parseApiDecimal } from '../../../utils/money'
 import './PlaceReceipt.css'
 
 /**
- * A receipt scanned with no account, waiting for one.
+ * A receipt scanned — or a transaction described — with no account, waiting
+ * for one.
  *
  * Nothing has moved yet — no transaction exists — and the row says so, then
  * offers the best answer it has: the bank's own row for this purchase, if it
@@ -33,12 +34,15 @@ export function PlaceReceipt({ job, budgetId }: { job: AIJob; budgetId: string }
     [accounts]
   )
 
+  const noun = job.kind === 'receipt' ? 'receipt' : 'entry'
+
   function go(target: PlaceTarget, where: string) {
     place.mutate(
       { jobId: job.id, ...target },
       {
-        onSuccess: () => toast.success(`Receipt put in ${where}`),
-        onError: (err) => toast.error(apiErrorMessage(err, 'Could not place the receipt')),
+        onSuccess: () =>
+          toast.success(`${noun === 'receipt' ? 'Receipt' : 'Entry'} put in ${where}`),
+        onError: (err) => toast.error(apiErrorMessage(err, `Could not place the ${noun}`)),
       }
     )
   }
@@ -80,7 +84,7 @@ export function PlaceReceipt({ job, budgetId }: { job: AIJob; budgetId: string }
             options={options}
             onChange={(id) => id && go({ account_id: id }, names.get(id) ?? 'that account')}
             placeholder="Choose an account…"
-            aria-label="Put this receipt in an account"
+            aria-label={`Put this ${noun} in an account`}
           />
         </span>
       </div>

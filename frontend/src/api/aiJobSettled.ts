@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import type { AIJob, AIJobListResponse, AIJobStatus } from './aiJobs'
+import type { AIJob, AIJobCounts, AIJobListResponse, AIJobStatus } from './aiJobs'
 import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import { ROOT } from './queryKeys'
 
@@ -40,14 +40,49 @@ export function settledJobs(
 
 /** Everything a settled job can have made stale. */
 export function invalidateAfterJobSettled(qc: QueryClient, job: AIJob): Promise<void> {
+  return invalidateSettled(qc, {
+    budgetId: job.budget_id,
+    accountId: job.transaction_account_id,
+    transactionIds: job.transaction_id ? [job.transaction_id] : [],
+  })
+}
+
+function invalidateSettled(
+  qc: QueryClient,
+  opts: Parameters<typeof invalidateAfterTransactionChange>[1]
+): Promise<void> {
   return Promise.all([
-    invalidateAfterTransactionChange(qc, {
-      budgetId: job.budget_id,
-      accountId: job.transaction_account_id,
-      transactionIds: job.transaction_id ? [job.transaction_id] : [],
-    }),
+    invalidateAfterTransactionChange(qc, opts),
     qc.invalidateQueries({ queryKey: [ROOT.aiJobForTxn] }),
   ]).then(() => undefined)
+}
+
+/**
+ * Fewer jobs in flight than at the last read: something settled, and the
+ * count does not say which.
+ *
+ * The watchers above only see jobs a screen is showing. A scan or a
+ * description is handed off and the sheet closes — nobody is showing it —
+ * so the row it made reached the register only if something else happened
+ * to refetch. The badge polls this count on every screen, so it is the one
+ * watcher that is always there; it refreshes wide because it cannot narrow.
+ */
+export function queueShrank(before: number | null, after: number): boolean {
+  return before !== null && after < before
+}
+
+/** Watch the badge's in-flight count and refresh once each time it falls. */
+export function useInvalidateWhenQueueShrinks(
+  budgetId: string | null,
+  active: number | undefined
+): void {
+  const qc = useQueryClient()
+  const last = useRef<number | null>(null)
+  useEffect(() => {
+    if (active === undefined) return
+    if (queueShrank(last.current, active)) void invalidateSettled(qc, { budgetId })
+    last.current = active
+  }, [active, budgetId, qc])
 }
 
 /** Put a job the server just queued again into every cache that shows it,
@@ -55,7 +90,11 @@ export function invalidateAfterJobSettled(qc: QueryClient, job: AIJob): Promise<
  *  worker can finish before the next poll, and the watcher only ever sees
  *  "done" then "done" — never the move it is waiting for. */
 export function showJobQueued(qc: QueryClient, budgetId: string, job: AIJob): void {
-  qc.setQueryData([ROOT.aiJob, budgetId, job.id], job)
+  // The count too: a job that settles before the badge's next poll would
+  // otherwise never be seen to leave, and nothing would refresh for it.
+  qc.setQueriesData<AIJobCounts>({ queryKey: [ROOT.aiJobsActive, budgetId] }, (old) =>
+    old ? { ...old, active: old.active + 1 } : old
+  )
   if (job.transaction_id) qc.setQueryData([ROOT.aiJobForTxn, budgetId, job.transaction_id], job)
   qc.setQueriesData<AIJobListResponse>({ queryKey: [ROOT.aiJobs, budgetId] }, (old) =>
     old?.jobs ? { ...old, jobs: old.jobs.map((j) => (j.id === job.id ? job : j)) } : old

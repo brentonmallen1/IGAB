@@ -661,9 +661,6 @@ export interface TransactionCreate {
   approved?: boolean
   transfer_account_id?: string
   splits?: SplitCreate[]
-  /** Links the created transaction to the AI job that drafted it (NL entry);
-   * the server derives created_via from the job. */
-  ai_job_id?: string
   /** Opt-in mobile capture (both or neither) — powers nearby-payee suggestions */
   latitude?: number
   longitude?: number

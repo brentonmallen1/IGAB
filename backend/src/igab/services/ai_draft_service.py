@@ -1,9 +1,10 @@
 """The single mapping from AI-extracted JSON to a real transaction draft.
 
-Used by the receipt worker and the NL-parse endpoint (and any future AI entry
-source). parse_extraction() is pure so the amount/date/category edge cases can
-be tested exhaustively; create_transaction() delegates to TransactionService so
-every existing invariant (budget scoping, payee resolution precedence, payee
+Used by the AI job worker for receipts and descriptions alike, and by placing
+a waiting one (and any future AI entry source). parse_extraction() is pure so
+the amount/date/category edge cases can be tested exhaustively;
+create_transaction() delegates to TransactionService so every existing
+invariant (budget scoping, payee resolution precedence, payee
 auto-categorization) is reused rather than reimplemented.
 """
 
@@ -303,7 +304,7 @@ def parse_extraction(
 
 def draft_result_json(draft: AIDraft) -> dict:
     """What an AI job records about the draft it produced — the one shape the
-    receipt worker and the text-entry endpoint both store in `job.result`."""
+    worker stores in `job.result` for a receipt and a description alike."""
     return {
         "extraction": draft.raw,
         "draft": {

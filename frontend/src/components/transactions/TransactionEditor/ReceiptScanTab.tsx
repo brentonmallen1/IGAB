@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Upload, X, Loader2, Sparkles, AlertTriangle, FileText } from 'lucide-react'
+import { Upload, X, Sparkles, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   ATTACHMENT_ACCEPT,
@@ -8,48 +8,41 @@ import {
   isAttachableFile,
   isTooLargeToAttach,
 } from '../../../api/attachments'
-import { useSubmitReceipt, useAIJob, type AIJob } from '../../../api/aiJobs'
-import { isJobInFlight } from '../../../api/aiJobSettled'
+import { useSubmitReceipt } from '../../../api/aiJobs'
+import { queuedMessage, WAITS_FOR_AN_ACCOUNT } from '../../ai/queuedMessage'
 import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 
-type Stage =
-  | { kind: 'pick' }
-  | { kind: 'preview'; file: File }
-  | { kind: 'watching'; jobId: string }
-  | { kind: 'failed'; message: string }
+type Stage = { kind: 'pick' } | { kind: 'preview'; file: File }
 
 interface Props {
   budgetId: string
-  /** Resolved account (fixed or picked in the editor); '' when unpicked. */
+  /** Resolved account (fixed or picked in the editor); '' when unpicked —
+   *  the receipt then waits in AI Activity until a person chooses one. */
   accountId: string
-  /** Ollama reachable? false renders the explanatory empty state. */
-  aiAvailable: boolean
-  /** Job finished with a transaction (done, or error→stub): open review. */
-  onReviewReady: (job: AIJob) => void
-  /** Persist sticky last-used account after a successful submit. */
-  onRememberAccount: () => void
-  /** Called before navigating away (Settings, AI Activity links). */
+  /** AI is configured. Not whether the model answers right now: the scan is
+   *  queued and the worker retries, as on the phone. */
+  aiEnabled: boolean
+  /** Queued: the editor is done. */
+  onQueued: () => void
+  /** Called before navigating away (Settings). */
   onClose: () => void
 }
 
-export function ReceiptScanTab({
-  budgetId,
-  accountId,
-  aiAvailable,
-  onReviewReady,
-  onRememberAccount,
-  onClose,
-}: Props) {
+/**
+ * Scan a receipt from the desktop editor — the same hand-off as the phone's
+ * Scan button. The receipt is queued and the editor closes; the row turns up
+ * in the register to review (the AI badge's watch refreshes it), or, with no
+ * account chosen, waits in AI Activity. It used to sit here polling the job
+ * and open a review editor when it finished, which is waiting on the model
+ * all the same.
+ */
+export function ReceiptScanTab({ budgetId, accountId, aiEnabled, onQueued, onClose }: Props) {
   const submitReceipt = useSubmitReceipt(budgetId)
   const [stage, setStage] = useState<Stage>({ kind: 'pick' })
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const handled = useRef(false)
-
-  // Poll the job while watching
-  const { data: job } = useAIJob(budgetId, stage.kind === 'watching' ? stage.jobId : null)
 
   // Object URL for preview thumbnail
   const previewUrl = useMemo(
@@ -64,7 +57,7 @@ export function ReceiptScanTab({
 
   // Clipboard paste handler — only active while this tab is mounted
   useEffect(() => {
-    if (stage.kind === 'watching' || !aiAvailable) return
+    if (!aiEnabled) return
     function onPaste(e: ClipboardEvent) {
       const file = Array.from(e.clipboardData?.files ?? []).find(isAttachableFile)
       if (!file) return
@@ -73,22 +66,7 @@ export function ReceiptScanTab({
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [stage.kind, aiAvailable])
-
-  // Handle job completion
-  useEffect(() => {
-    if (!job || handled.current) return
-    if (isJobInFlight(job.status)) return
-    handled.current = true
-
-    // The caches the worker's row made stale are `useAIJob`'s to refresh
-    // (aiJobSettled.ts) — every watcher of a job does it the same way.
-    if (job.transaction_id) {
-      onReviewReady(job)
-    } else {
-      setStage({ kind: 'failed', message: job.error ?? 'Receipt scan failed' })
-    }
-  }, [job, onReviewReady])
+  }, [aiEnabled])
 
   function selectFile(file: File) {
     if (!isAttachableFile(file)) {
@@ -110,19 +88,19 @@ export function ReceiptScanTab({
   }
 
   async function handleScan() {
-    if (stage.kind !== 'preview' || !accountId) return
+    if (stage.kind !== 'preview') return
     try {
-      const result = await submitReceipt.mutateAsync({ file: stage.file, accountId })
-      onRememberAccount()
-      handled.current = false
-      setStage({ kind: 'watching', jobId: result.id })
+      await submitReceipt.mutateAsync({ file: stage.file, accountId: accountId || null })
+      toast.success(queuedMessage('receipt', 1, !accountId), { duration: 6000 })
+      onQueued()
     } catch (err: unknown) {
+      // Nothing was queued: the photo stays in the preview to try again.
       toast.error(apiErrorMessage(err, 'Failed to queue receipt'))
     }
   }
 
-  // AI unavailable: explanatory empty state
-  if (!aiAvailable) {
+  // AI not set up: explanatory empty state
+  if (!aiEnabled) {
     return (
       <div className="receipt-scan">
         <div className="receipt-scan__empty">
@@ -134,57 +112,6 @@ export function ReceiptScanTab({
             onClick={onClose}
           >
             Configure AI in System settings
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
-  // Failed state (no stub transaction)
-  if (stage.kind === 'failed') {
-    return (
-      <div className="receipt-scan">
-        <div className="receipt-scan__error">
-          <AlertTriangle size={20} />
-          <p>{stage.message}</p>
-          <Link to="/ai-activity" className="receipt-scan__link" onClick={onClose}>
-            View AI activity
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
-  // Watching state (polling job)
-  if (stage.kind === 'watching') {
-    const statusText =
-      job?.status === 'processing'
-        ? 'Reading receipt…'
-        : job?.status === 'queued'
-          ? 'Waiting in queue…'
-          : 'Processing…'
-    const attemptText =
-      job && job.attempts > 1 ? ` (attempt ${job.attempts}/${job.max_attempts})` : ''
-
-    return (
-      <div className="receipt-scan">
-        <div className="receipt-scan__progress">
-          {previewUrl && (
-            <img src={previewUrl} alt="Receipt preview" className="receipt-scan__progress-thumb" />
-          )}
-          <div className="receipt-scan__progress-status">
-            <Loader2 size={20} className="spin" />
-            <span>
-              {statusText}
-              {attemptText}
-            </span>
-          </div>
-          <p className="receipt-scan__progress-note">
-            You can close this window — the scan keeps running and the transaction will arrive for
-            review.
-          </p>
-          <Link to="/ai-activity" className="receipt-scan__link" onClick={onClose}>
-            View AI activity
           </Link>
         </div>
       </div>
@@ -218,11 +145,16 @@ export function ReceiptScanTab({
           type="button"
           className="receipt-scan__submit"
           onClick={handleScan}
-          disabled={!accountId || submitReceipt.isPending}
+          disabled={submitReceipt.isPending}
         >
           <Sparkles size={13} />
           {submitReceipt.isPending ? 'Queuing…' : 'Scan receipt'}
         </button>
+        <span className="receipt-scan__hint">
+          {accountId
+            ? "It's read in the background and turns up in your transactions to review."
+            : WAITS_FOR_AN_ACCOUNT}
+        </span>
       </div>
     )
   }

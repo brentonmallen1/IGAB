@@ -19,7 +19,10 @@ interface Props {
   onClose: () => void
   title: string
   options: SelectionSheetOption[]
-  value: string | null
+  /** The current pick; null is the None row. Undefined is a question not
+   *  answered yet — nothing is marked, not even None, which would otherwise
+   *  read as already chosen. */
+  value: string | null | undefined
   onChange: (id: string | null) => void
   onCreateNew?: (query: string) => Promise<ComboboxOption | void> | void
   /** Pinned group(s) rendered above the full list (e.g. "Nearby" / "Recent" payees) */

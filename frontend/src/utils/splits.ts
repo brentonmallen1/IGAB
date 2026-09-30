@@ -32,7 +32,20 @@
  * function sees the value. Do not widen this module to four decimal places
  * to close that gap; the rounding is upstream.
  */
-import { expressionToCents } from './amountExpression'
+import { centsToInputString, expressionToCents } from './amountExpression'
+
+/**
+ * May a line be removed from a split of `count` lines?
+ *
+ * Down to one, never to none. A split of one line saves as a plain row filed
+ * where that line was — the server stores it so (`_collapse`) — and that is
+ * the only road from a saved split back to one category. Four editors each
+ * held "never below two" instead, which left a saved split no way out short
+ * of deleting the transaction.
+ */
+export function canRemoveSplitLine(count: number): boolean {
+  return count > 1
+}
 
 export interface SplitLegInput {
   amount: string
@@ -102,4 +115,64 @@ export function draftsFromLines(
     categoryId: line.category_id,
     memo: line.memo ?? '',
   }))
+}
+
+/**
+ * Which leg "fill the rest" writes to: the first one with no amount yet.
+ * Null when there is nothing to fill — the split is done or over — or no
+ * leg is empty, where writing into a typed leg would overwrite a figure a
+ * person entered.
+ */
+export function remainderTarget(
+  legs: readonly SplitLegInput[],
+  remainingCents: number
+): number | null {
+  if (!Number.isFinite(remainingCents) || remainingCents <= 0) return null
+  const i = legs.findIndex((leg) => isBlank(leg.amount))
+  return i === -1 ? null : i
+}
+
+/** The legs with what is left written into `remainderTarget`'s leg, as the
+ *  editors hold amounts (magnitude strings). Unchanged when there is none. */
+export function fillRemainder<T extends SplitLegInput>(legs: T[], remainingCents: number): T[] {
+  const i = remainderTarget(legs, remainingCents)
+  if (i === null) return legs
+  return legs.map((leg, j) =>
+    j === i ? { ...leg, amount: centsToInputString(remainingCents) } : leg
+  )
+}
+
+/**
+ * "Cover the rest": put everything still unassigned into `categoryId`.
+ *
+ * A category already on a leg takes it on that leg — two Groceries lines is
+ * a split nobody meant to make. Otherwise it goes on a blank leg (no
+ * category, no amount) if there is one, else on a new leg from `newLeg`.
+ * Unchanged when nothing is left to cover.
+ */
+export function coverRemainder<T extends SplitLegInput>(
+  legs: T[],
+  remainingCents: number,
+  categoryId: string,
+  newLeg: () => T
+): T[] {
+  if (!Number.isFinite(remainingCents) || remainingCents <= 0) return legs
+  const plus = (leg: T): T => {
+    const had = expressionToCents(leg.amount)
+    return {
+      ...leg,
+      categoryId,
+      amount: centsToInputString((isNaN(had) ? 0 : had) + remainingCents),
+    }
+  }
+  const same = legs.findIndex((leg) => leg.categoryId === categoryId)
+  if (same !== -1) return legs.map((leg, i) => (i === same ? plus(leg) : leg))
+  const blank = legs.findIndex((leg) => leg.categoryId === null && isBlank(leg.amount))
+  if (blank !== -1) return legs.map((leg, i) => (i === blank ? plus(leg) : leg))
+  return [...legs, plus({ ...newLeg(), amount: '' })]
+}
+
+function isBlank(amount: string): boolean {
+  const cents = expressionToCents(amount)
+  return amount.trim() === '' || isNaN(cents) || cents === 0
 }

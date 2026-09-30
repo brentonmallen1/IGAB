@@ -56,3 +56,21 @@
   opacity: 1;
   color: var(--text-primary);
 }
+
+.receipt-pane__compact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  align-self: flex-start;
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.receipt-pane__compact:disabled {
+  opacity: 0.6;
+}

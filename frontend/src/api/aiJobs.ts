@@ -7,7 +7,12 @@ import { useAIStatus } from './ai'
 import { ROOT } from './queryKeys'
 import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
-import { isJobInFlight, showJobQueued, useInvalidateWhenJobsSettle } from './aiJobSettled'
+import {
+  isJobInFlight,
+  showJobQueued,
+  useInvalidateWhenJobsSettle,
+  useInvalidateWhenQueueShrinks,
+} from './aiJobSettled'
 
 /** A stable empty list for a watcher with nothing to watch yet. */
 const NO_JOBS: readonly AIJob[] = []
@@ -127,16 +132,6 @@ export interface AIJobListResponse {
   total_count: number
 }
 
-export interface NLDraft {
-  payee: string | null
-  amount: string
-  date: string
-  category_id: string | null
-  category_name: string | null
-  memo: string | null
-  confidence: number
-}
-
 export function useAIJobs(
   budgetId: string | null,
   opts: {
@@ -225,7 +220,7 @@ export interface AIJobCounts {
  */
 export function useAIJobCounts(budgetId: string | null) {
   const aiStatus = useAIStatus()
-  return useQuery({
+  const query = useQuery({
     queryKey: [ROOT.aiJobsActive, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<{ count: number; needs_review?: number }>(
@@ -242,6 +237,8 @@ export function useAIJobCounts(budgetId: string | null) {
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })
+  useInvalidateWhenQueueShrinks(budgetId, query.data?.active)
+  return query
 }
 
 export function useSubmitReceipt(budgetId: string) {
@@ -260,6 +257,28 @@ export function useSubmitReceipt(budgetId: string) {
       const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData)
       return data
     },
+    onSuccess: (job) => {
+      showJobQueued(qc, budgetId, job)
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
+    },
+  })
+}
+
+/** Queue a typed or dictated description, like a receipt: nobody waits on
+ *  the model. `accountId: null` has it wait, unplaced, in AI Activity until a
+ *  person chooses one. */
+export function useSubmitDescription(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ text, accountId }: { text: string; accountId: string | null }) =>
+      apiClient
+        .post<AIJob>(`/${budgetId}/ai/descriptions`, {
+          text,
+          account_id: accountId,
+          client_today: today(),
+        })
+        .then((r) => r.data),
     onSuccess: (job) => {
       showJobQueued(qc, budgetId, job)
       qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
@@ -326,41 +345,4 @@ export function useDeleteAIJob(budgetId: string) {
       qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
   })
-}
-
-export function useParseNLTransaction(budgetId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (text: string) =>
-      apiClient
-        .post<{ job_id: string; draft: NLDraft }>(`/${budgetId}/ai/parse-transaction`, {
-          text,
-          client_today: today(),
-        })
-        .then((r) => r.data),
-    // The endpoint writes an ai_jobs audit row whether the parse succeeds or
-    // fails — the AI Activity log should show it either way.
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
-      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
-    },
-  })
-}
-
-/** Poll a single job while it's in flight — powers the in-modal receipt watch. */
-export function useAIJob(budgetId: string | null, jobId: string | null) {
-  const query = useQuery({
-    queryKey: [ROOT.aiJob, budgetId, jobId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<AIJob>(`/${budgetId}/ai/jobs/${jobId}`)
-      return data
-    },
-    enabled: !!budgetId && !!jobId,
-    refetchInterval: (query) => {
-      const s = query.state.data?.status
-      return s && !isJobInFlight(s) ? false : 2_000
-    },
-  })
-  useWatchedJob(query.data)
-  return query
 }

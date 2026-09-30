@@ -43,7 +43,7 @@ export function ScheduledRow({
   onSkip,
   busy = false,
 }: ScheduledRowProps) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDate } = useFormatters()
   const due = dueState(s, todayISO)
   const out = s.amount < 0
 
@@ -71,7 +71,7 @@ export function ScheduledRow({
       </span>
       <span className="scheduled-row__freq">{frequencyLabel(s.frequency)}</span>
       <span className="scheduled-row__date">
-        {s.next_occurrence_date}
+        {formatDate(s.next_occurrence_date)}
         {due && (
           <span className={`scheduled-row__due scheduled-row__due--${due}`}>
             {dueLabel(daysUntil(s.next_occurrence_date, todayISO))}

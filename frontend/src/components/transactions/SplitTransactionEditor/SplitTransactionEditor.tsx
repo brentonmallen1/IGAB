@@ -10,7 +10,7 @@ import {
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { fromCents, toCents } from '../../../utils/money'
-import { checkSplit, draftsFromLines } from '../../../utils/splits'
+import { canRemoveSplitLine, checkSplit, draftsFromLines } from '../../../utils/splits'
 import { expressionToCents } from '../../../utils/amountExpression'
 import { apiErrorMessage } from '../../../api/client'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -63,7 +63,8 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
       // In place either way: the row keeps its identity, receipt, bank link
       // and provenance. (A create-new-and-delete replacement used to drop
       // all of those and turned a pending row into a cleared one.)
-      if (txn.is_split) await replaceSplits.mutateAsync({ id: txn.id, splits: lines })
+      if (txn.is_split)
+        await replaceSplits.mutateAsync({ id: txn.id, accountId: txn.account_id, splits: lines })
       else await convertToSplit.mutateAsync({ id: txn.id, splits: lines })
       stopSplitEditing()
     } catch (err) {
@@ -127,7 +128,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
               <button
                 className="split-editor__remove"
                 onClick={() => removeSplit(split.tempId)}
-                disabled={splits.length <= 2}
+                disabled={!canRemoveSplitLine(splits.length)}
                 title="Remove split"
               >
                 <Trash2 size={12} />

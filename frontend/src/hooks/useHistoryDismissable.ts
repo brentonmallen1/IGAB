@@ -2,7 +2,11 @@ import { useEffect, useRef } from 'react'
 
 interface SheetHistoryState {
   igabSheet?: string
+  /** How many overlay entries deep this one is — 1 for the first. */
+  igabDepth?: number
 }
+
+const depthOf = (state: unknown): number => (state as SheetHistoryState | null)?.igabDepth ?? 0
 
 /**
  * The one history.back() a UI close has scheduled and not yet run, shared by
@@ -35,6 +39,8 @@ export function useHistoryDismissable(
   canClose?: () => boolean
 ) {
   const closedByPopRef = useRef(false)
+  // Where our entry sits in the stack of overlay entries.
+  const depthRef = useRef(0)
   const onCloseRef = useRef(onClose)
   const canCloseRef = useRef(canClose)
   // Effect rather than render-phase assignment: popstate can only fire after
@@ -55,28 +61,44 @@ export function useHistoryDismissable(
       window.clearTimeout(pending.timer)
       pendingBack = null
     }
+    const topDepth = depthOf(window.history.state)
     if (top === key) {
       // Our entry is already on top — a StrictMode re-run, or a close and
       // reopen of the same overlay before its back() landed. Keep it.
+      depthRef.current = topDepth
     } else if (inherit) {
       // Another overlay closed in this same act and was about to consume its
       // entry. Take the entry over instead of pushing above it: the deferred
       // back() would otherwise pop OUR entry and close us the moment we opened
       // (More -> "Ask about your budget" flashed the assistant and dropped it).
-      window.history.replaceState({ igabSheet: key } satisfies SheetHistoryState, '')
+      depthRef.current = topDepth
+      window.history.replaceState(
+        { igabSheet: key, igabDepth: topDepth } satisfies SheetHistoryState,
+        ''
+      )
     } else {
-      window.history.pushState({ igabSheet: key } satisfies SheetHistoryState, '')
+      depthRef.current = topDepth + 1
+      window.history.pushState(
+        { igabSheet: key, igabDepth: depthRef.current } satisfies SheetHistoryState,
+        ''
+      )
     }
 
     const handlePop = (e: PopStateEvent) => {
-      // Nested sheets: every open overlay hears this event. Popping lands on
-      // the entry below the closed one — if that's OUR entry, we're now the
-      // top sheet and must stay open; only the sheet whose entry was popped
-      // (state no longer ours) closes.
-      if ((e.state as SheetHistoryState | null)?.igabSheet === key) return
+      // Nested sheets: every open overlay hears this event, and only one
+      // whose entry the pop went below has been closed. Landing on our own
+      // entry or one above it leaves us open. "Is the entry landed on
+      // mine?" answered that for two sheets and not for three: the picker
+      // over the split sheet over quick add closed, the pop landed on the
+      // split sheet's entry, and quick add — not seeing its own — asked
+      // "Discard this transaction?" over a pick.
+      if (depthOf(e.state) >= depthRef.current) return
       if (canCloseRef.current?.() === false) {
         // Re-arm: our entry was just consumed by the pop, so put it back.
-        window.history.pushState({ igabSheet: key } satisfies SheetHistoryState, '')
+        window.history.pushState(
+          { igabSheet: key, igabDepth: depthRef.current } satisfies SheetHistoryState,
+          ''
+        )
         return
       }
       closedByPopRef.current = true

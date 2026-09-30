@@ -139,6 +139,13 @@
   border-bottom: none;
 }
 
+/* The split's summary row stands in for the Category row, so it wears the
+   row's ground and divider (SplitSheet.css draws only its contents). */
+.quick-add__rows .split-summary {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+}
+
 .quick-add__row-label {
   width: 76px;
   flex-shrink: 0;
@@ -191,7 +198,6 @@
   flex-shrink: 0;
 }
 
-.quick-add__row--date input,
 .quick-add__row--memo input {
   flex: 1;
   min-height: 44px;
@@ -202,13 +208,23 @@
   font-size: 16px;
 }
 
-/* Chips take the middle of the date row; the native picker keeps its
-   intrinsic width where there is room and shrinks where there is not — at
-   390px it ran 30px past the row and the year was cut off. */
-.quick-add__row--date input {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
+.quick-add__date-other {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The native picker, invisible over its chip: the tap is its own, so the
+   phone opens its date wheel, and the chip does the drawing. */
+.quick-add__date-other input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  font-size: 16px;
 }
 
 .quick-add__date-chips {
@@ -440,113 +456,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   flex-shrink: 0;
   min-width: var(--tap-min);
   min-height: var(--tap-min);
-  margin-right: calc(var(--spacing-md) * -1);
+  padding: 0 var(--spacing-sm);
+  margin-right: calc(var(--spacing-sm) * -1);
   border: none;
   background: none;
-  color: var(--color-accent);
-}
-
-.quick-add__split {
-  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-primary);
-}
-
-.quick-add__split-head {
-  display: flex;
-  align-items: center;
-  min-height: 36px;
-}
-
-.quick-add__split-cancel,
-.quick-add__split-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: var(--tap-min);
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-accent);
+  color: var(--text-secondary);
   font-size: var(--font-size-sm);
-}
-
-.quick-add__split-cancel {
-  margin-left: auto;
-}
-
-.quick-add__split-leg {
-  display: grid;
-  grid-template-columns: 1fr 96px var(--tap-min);
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.quick-add__split-category {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  min-height: var(--tap-min);
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-}
-
-.quick-add__split-amount {
-  min-height: var(--tap-min);
-  padding: 6px var(--spacing-sm);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius-sm);
-  background: var(--input-bg);
-  color: var(--text-primary);
-  /* 16px or iOS zooms the whole viewport on focus and never zooms back */
-  font-size: 16px;
-  text-align: right;
-  width: 100%;
-}
-
-.quick-add__split-amount:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.quick-add__split-remove {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--tap-min);
-  min-height: var(--tap-min);
-  border: none;
-  background: none;
-  color: var(--text-muted);
-}
-
-.quick-add__split-remove:disabled {
-  opacity: 0.35;
-}
-
-.quick-add__split-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-xs);
-}
-
-.quick-add__split-remaining {
-  margin-left: auto;
-  font-size: var(--font-size-sm);
-  /* The one number that decides whether Save is reachable, so it carries
-     state colour: amber while the legs don't add up, positive when they do. */
-  color: var(--color-warning);
-}
-
-.quick-add__split-remaining--done {
-  color: var(--color-positive);
 }
 
 /* Scan or Save was tapped with no account chosen and the picker was

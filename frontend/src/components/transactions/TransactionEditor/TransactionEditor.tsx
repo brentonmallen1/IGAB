@@ -1,4 +1,4 @@
-import { groupedCategorySections } from '../../../utils/categoryPickers'
+import { filingCategoryOptions, groupedCategorySections } from '../../../utils/categoryPickers'
 import {
   CREATE_NEW_PARTNER,
   awaitingPartnerChoice,
@@ -29,6 +29,7 @@ import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
 import { ReceiptScanTab } from './ReceiptScanTab'
+import { PhoneSplit } from '../SplitSheet/PhoneSplit'
 import {
   useTransactionClassification,
   useCreateTransaction,
@@ -39,7 +40,6 @@ import {
   useTransactionSplits,
   usePayees,
   useSimilarTransactions,
-  useTransaction,
   useTransferCandidates,
 } from '../../../api/transactions'
 import toast from 'react-hot-toast'
@@ -61,12 +61,19 @@ import { Link } from 'react-router-dom'
 import { useReprocessAIJob } from '../../../api/aiJobs'
 import { Modal } from '../../common/Modal/Modal'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
+import { entryStarted, STARTED_ENTRY_NOTE, type EntryFields } from './entryStarted'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { fromCents, parseApiDecimal } from '../../../utils/money'
 import { expressionToCents } from '../../../utils/amountExpression'
-import { checkSplit, draftsFromLines } from '../../../utils/splits'
+import {
+  canRemoveSplitLine,
+  checkSplit,
+  draftsFromLines,
+  fillRemainder,
+  remainderTarget,
+} from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
@@ -81,19 +88,6 @@ import { CardEndingNotice } from '../../ai/CardEndingNotice'
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
 
-/** Prefill for create mode — the shared shape every AI entry path (NL text,
- * voice) funnels into so there is exactly one add-transaction flow. */
-export interface EditorDraft {
-  date?: string
-  payeeName?: string
-  categoryId?: string | null
-  memo?: string
-  outflow?: string
-  inflow?: string
-  /** Links the saved transaction back to the AI job for the audit log. */
-  aiJobId?: string
-}
-
 interface Props {
   budgetId: string
   /** Fixed account context (account page). Omit to let the user pick the
@@ -102,8 +96,6 @@ interface Props {
   transaction: Transaction | null
   /** Pre-selected category for new transactions (budget-row add flow). */
   initialCategoryId?: string | null
-  /** Create-mode prefill from an AI parse (NL/voice entry). */
-  initialDraft?: EditorDraft | null
   /** Review mode: the AI job that produced `transaction` — shows the receipt
    * beside the form, the extraction banner, and the suggested-split action. */
   aiJob?: AIJob | null
@@ -115,7 +107,6 @@ export function TransactionEditor({
   accountId: fixedAccountId = null,
   transaction,
   initialCategoryId = null,
-  initialDraft = null,
   aiJob = null,
   onClose,
 }: Props) {
@@ -164,24 +155,20 @@ export function TransactionEditor({
   // A fresh row started from an account page keeps that account fixed.
   const accountId = isEdit ? pickedAccountId : (fixedAccountId ?? pickedAccountId)
 
-  const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? initialDraft?.date ?? today())
-  const [payeeQuery, setPayeeQuery] = useState(
-    !transaction && initialDraft?.payeeName ? initialDraft.payeeName : ''
-  )
+  const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? today())
+  const [payeeQuery, setPayeeQuery] = useState('')
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(
     transaction?.payee_id ?? null
   )
-  const [categoryId, setCategoryId] = useState(
-    transaction?.category_id ?? initialDraft?.categoryId ?? initialCategoryId ?? ''
-  )
-  const [memo, setMemo] = useState(transaction?.memo ?? initialDraft?.memo ?? '')
+  const [categoryId, setCategoryId] = useState(transaction?.category_id ?? initialCategoryId ?? '')
+  const [memo, setMemo] = useState(transaction?.memo ?? '')
   const [outflow, setOutflow] = useState(() => {
-    if (!transaction) return initialDraft?.outflow ?? ''
+    if (!transaction) return ''
     if (transaction.amount >= 0) return ''
     return String(Math.abs(transaction.amount))
   })
   const [inflow, setInflow] = useState(() => {
-    if (!transaction) return initialDraft?.inflow ?? ''
+    if (!transaction) return ''
     if (transaction.amount < 0) return ''
     return String(transaction.amount)
   })
@@ -238,24 +225,27 @@ export function TransactionEditor({
     setSplits(draftsFromLines(splitLines))
   }
   const splitLinesPending = editingExistingSplit && !linesSeeded
+  const [splitSheetOpen, setSplitSheetOpen] = useState(false)
+  const splitCategoryOptions = useMemo(
+    () => filingCategoryOptions(categories, categoryGroups),
+    [categories, categoryGroups]
+  )
 
   // Tab state: entry method in add mode
   const [activeTab, setActiveTab] = useState<'manual' | 'describe' | 'receipt'>('manual')
   const showTabs = !isEdit
 
-  // AI provenance: set by an initialDraft (mobile quick entry) or by the
-  // Describe tab; links the created transaction back to its ai_jobs row.
-  const [aiJobId, setAiJobId] = useState<string | undefined>(initialDraft?.aiJobId)
-  const [aiDrafted, setAiDrafted] = useState(!!initialDraft?.aiJobId)
-
-  // Review handoff: when an AI job completes, we render a nested TransactionEditor
-  const [reviewJob, setReviewJob] = useState<AIJob | null>(null)
-  const { data: reviewTxn } = useTransaction(reviewJob?.transaction_id ?? null)
+  // Describe / From receipt stay offered only until an entry is started
+  // (entryStarted.ts); the baseline moves with the editor's own prefills.
+  const fields = { date, payeeQuery, categoryId, memo, outflow, inflow }
+  const [pristine, setPristine] = useState<EntryFields>(fields)
+  const started = !isEdit && entryStarted(fields, pristine, { isSplit, isTransfer })
 
   const payeeRef = useRef<HTMLDivElement>(null)
   const payeeInitialized = useRef(false)
 
-  const aiAvailable = useAIStatus().data?.available === true
+  // Scanning is queued, so it needs AI set up, not answering right now.
+  const aiEnabled = useAIStatus().data?.enabled === true
 
   // Initialize payee query once payees are loaded (edit mode)
   useEffect(() => {
@@ -273,7 +263,7 @@ export function TransactionEditor({
   // or an AI draft already put in the field.
   const { data: recentPayee } = useRecentPayeeForCategory(
     budgetId,
-    !isEdit && !initialDraft?.payeeName && initialCategoryId ? initialCategoryId : null
+    !isEdit && initialCategoryId ? initialCategoryId : null
   )
   useEffect(() => {
     if (!recentPayee || payeeInitialized.current) return
@@ -281,6 +271,7 @@ export function TransactionEditor({
     if (payeeQuery || selectedPayeeId) return
     setPayeeQuery(recentPayee.name)
     setSelectedPayeeId(recentPayee.payee_id)
+    setPristine((p) => ({ ...p, payeeQuery: recentPayee.name }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentPayee])
 
@@ -371,20 +362,11 @@ export function TransactionEditor({
     if (cleaned) setOutflow('')
   }
 
-  // Describe tab handoff: the parsed draft fills the manual form for review —
-  // the user lands on familiar fields with everything editable.
-  function applyNLDraft(d: EditorDraft) {
-    if (d.date) setDate(d.date)
-    setPayeeQuery(d.payeeName ?? '')
-    setSelectedPayeeId(null)
-    payeeInitialized.current = true
-    setCategoryId(d.categoryId ?? '')
-    setMemo(d.memo ?? '')
-    setOutflow(d.outflow ?? '')
-    setInflow(d.inflow ?? '')
-    setAiJobId(d.aiJobId)
-    setAiDrafted(true)
-    setActiveTab('manual')
+  /** Inactive rather than hidden once an entry is started, so the tab row
+   *  does not jump as the first field is typed; a tap says why. */
+  function chooseAITab(tab: 'describe' | 'receipt') {
+    if (started) toast(STARTED_ENTRY_NOTE[tab], { duration: 6000 })
+    else setActiveTab(tab)
   }
 
   // AI-suggested split from receipt line items — offered, never auto-applied.
@@ -413,6 +395,22 @@ export function TransactionEditor({
     setIsSplit(true)
   }
 
+  /** As quick add does: the chosen category becomes the first line, and
+   *  comes back out on un-splitting — changing your mind costs no pick. */
+  function beginSplit() {
+    setSplits((prev) =>
+      prev.map((s, i) => (i === 0 ? { ...s, categoryId: categoryId || null } : s))
+    )
+    setIsSplit(true)
+    if (isMobile) setSplitSheetOpen(true)
+  }
+
+  function cancelSplit() {
+    setCategoryId(splits[0]?.categoryId ?? '')
+    setIsSplit(false)
+    setSplitSheetOpen(false)
+  }
+
   function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
     setSplits((prev) => prev.map((s) => (s.tempId === tempId ? { ...s, ...data } : s)))
   }
@@ -422,7 +420,9 @@ export function TransactionEditor({
   }
 
   function removeSplit(tempId: string) {
-    setSplits((prev) => (prev.length > 2 ? prev.filter((s) => s.tempId !== tempId) : prev))
+    setSplits((prev) =>
+      canRemoveSplitLine(prev.length) ? prev.filter((s) => s.tempId !== tempId) : prev
+    )
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -495,7 +495,7 @@ export function TransactionEditor({
           approved: true,
           payee_id: selectedPayeeId || undefined,
         })
-        await replaceSplits.mutateAsync({ id: transaction!.id, splits: splitList })
+        await replaceSplits.mutateAsync({ id: transaction!.id, accountId, splits: splitList })
       } else if (isEdit) {
         // Split in place: the row becomes the parent, keeping attachments and
         // AI links (a create+delete replacement would orphan the receipt).
@@ -518,7 +518,6 @@ export function TransactionEditor({
           approved: true,
           payee_id: selectedPayeeId || undefined,
           payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
-          ai_job_id: aiJobId,
           splits: splitList,
         })
         if (!fixedAccountId) noteAccountUsed(accountId)
@@ -594,7 +593,6 @@ export function TransactionEditor({
         date,
         amount,
         cleared,
-        ai_job_id: aiJobId,
       })
       if (!fixedAccountId) noteAccountUsed(accountId)
     }
@@ -667,21 +665,6 @@ export function TransactionEditor({
   const splitCheck = checkSplit(editorTotalCents, splits)
   const splitIsValid = !isSplit || splitCheck.isValid
 
-  // Review handoff: when an AI job completes, render a nested TransactionEditor
-  // in review mode with the newly created transaction.
-  if (reviewJob && reviewTxn) {
-    return (
-      <TransactionEditor
-        key={reviewTxn.id}
-        budgetId={budgetId}
-        accountId={fixedAccountId}
-        transaction={reviewTxn}
-        aiJob={reviewJob}
-        onClose={onClose}
-      />
-    )
-  }
-
   // Which account this row is in — a picker for a new row with no register to
   // inherit from, and the move control for an existing one (AccountField).
   const accountField =
@@ -752,6 +735,13 @@ export function TransactionEditor({
                     ? ` · ${Math.round((aiJob!.result.draft.confidence ?? 0) * 100)}% confidence`
                     : ''}
                 </span>
+                {/* A description's words are its receipt: what the row is
+                    checked against, shown where the image would be. */}
+                {aiJob!.kind === 'nl_parse' && aiJob!.payload.text && (
+                  <span className="txn-editor__ai-banner-note">
+                    You said: “{aiJob!.payload.text}”
+                  </span>
+                )}
                 {unresolvedCategoryNote(aiJob!.result?.draft) && (
                   <span className="txn-editor__ai-banner-note">
                     {unresolvedCategoryNote(aiJob!.result?.draft)}
@@ -786,15 +776,6 @@ export function TransactionEditor({
           </div>
         )}
 
-        {/* AI-draft provenance in add mode: the manual form was prefilled
-            from a description — say so, since the hop is otherwise silent */}
-        {!isEdit && aiDrafted && activeTab === 'manual' && (
-          <div className="txn-editor__ai-banner">
-            <Sparkles size={13} />
-            <span>AI drafted this from your description — check it over, then add.</span>
-          </div>
-        )}
-
         {showTabs && (
           <div className="txn-editor__tabs" role="tablist" aria-label="Entry method">
             <button
@@ -810,8 +791,9 @@ export function TransactionEditor({
               type="button"
               role="tab"
               aria-selected={activeTab === 'describe'}
+              aria-disabled={started}
               className={`txn-editor__tab ${activeTab === 'describe' ? 'txn-editor__tab--active' : ''}`}
-              onClick={() => setActiveTab('describe')}
+              onClick={() => chooseAITab('describe')}
             >
               <MessageSquareText size={13} />
               Describe it
@@ -820,8 +802,9 @@ export function TransactionEditor({
               type="button"
               role="tab"
               aria-selected={activeTab === 'receipt'}
+              aria-disabled={started}
               className={`txn-editor__tab ${activeTab === 'receipt' ? 'txn-editor__tab--active' : ''}`}
-              onClick={() => setActiveTab('receipt')}
+              onClick={() => chooseAITab('receipt')}
             >
               <ReceiptText size={13} />
               From receipt
@@ -829,17 +812,26 @@ export function TransactionEditor({
           </div>
         )}
 
-        {/* Describe tab content: parse free text into a draft, then hop to
-            the manual tab with the fields filled in */}
+        {/* Describe tab content: the words are queued like a receipt and
+            the row arrives in the register to review — nobody waits here */}
         {showTabs && activeTab === 'describe' && (
           <div className="txn-editor__main">
             <div className="txn-editor__body">
               {accountField}
               <div className="txn-editor__describe">
                 <p className="txn-editor__describe-intro">
-                  Type or dictate a transaction — AI drafts it into the form for you to review.
+                  Type or dictate a transaction — AI reads it in the background and it turns up in
+                  your transactions to review.
                 </p>
-                <NLEntryForm budgetId={budgetId} onDraft={applyNLDraft} onNavigate={onClose} />
+                <NLEntryForm
+                  budgetId={budgetId}
+                  accountId={accountId || null}
+                  onQueued={() => {
+                    if (!fixedAccountId && accountId) noteAccountUsed(accountId)
+                    onClose()
+                  }}
+                  onNavigate={onClose}
+                />
               </div>
             </div>
           </div>
@@ -853,10 +845,10 @@ export function TransactionEditor({
               <ReceiptScanTab
                 budgetId={budgetId}
                 accountId={accountId}
-                aiAvailable={aiAvailable}
-                onReviewReady={setReviewJob}
-                onRememberAccount={() => {
+                aiEnabled={aiEnabled}
+                onQueued={() => {
                   if (!fixedAccountId && accountId) noteAccountUsed(accountId)
+                  onClose()
                 }}
                 onClose={onClose}
               />
@@ -866,7 +858,11 @@ export function TransactionEditor({
           /* Manual entry tab content (default) */
           <>
             <div className="txn-editor__main">
-              {isReview && aiJob!.attachment_id && (
+              {/* Beside the form on a desktop. On a phone a pane stacked
+                  above the form left almost no room to edit, and could not be
+                  moved or collapsed — there the receipt is a button to the
+                  full-screen viewer, and the fields keep the screen. */}
+              {isReview && aiJob!.attachment_id && !isMobile && (
                 <div className="txn-editor__receipt">
                   <ReceiptPane
                     attachmentId={aiJob!.attachment_id}
@@ -875,6 +871,13 @@ export function TransactionEditor({
                 </div>
               )}
               <div className="txn-editor__body">
+                {isReview && aiJob!.attachment_id && isMobile && (
+                  <ReceiptPane
+                    attachmentId={aiJob!.attachment_id}
+                    contentType={aiJob!.payload.content_type ?? null}
+                    compact
+                  />
+                )}
                 {accountField}
                 {isReconciled && (
                   <div className="txn-editor__lock-note" role="note">
@@ -1040,6 +1043,23 @@ export function TransactionEditor({
                       </div>
                     )}
                   </>
+                ) : isSplit && isMobile ? (
+                  // On a phone the lines get the whole screen (SplitSheet);
+                  // the form keeps one row saying where the split stands.
+                  <div className="txn-editor__field">
+                    <PhoneSplit
+                      framed
+                      open={splitSheetOpen}
+                      onOpenChange={setSplitSheetOpen}
+                      loading={splitLinesPending}
+                      totalCents={editorTotalCents}
+                      legs={splits}
+                      onChange={setSplits}
+                      categoryOptions={splitCategoryOptions}
+                      canCategorize={canCategorize}
+                      onUnsplit={editingExistingSplit ? undefined : cancelSplit}
+                    />
+                  </div>
                 ) : isSplit ? (
                   <div className="txn-editor__field">
                     <label className="txn-editor__label">
@@ -1048,10 +1068,7 @@ export function TransactionEditor({
                         <button
                           type="button"
                           className="txn-editor__ai-btn"
-                          onClick={() => {
-                            setIsSplit(false)
-                            setCategoryId('')
-                          }}
+                          onClick={cancelSplit}
                           title="Switch to single category"
                         >
                           <X size={12} />
@@ -1089,7 +1106,7 @@ export function TransactionEditor({
                             type="button"
                             className="txn-editor__split-remove"
                             onClick={() => removeSplit(s.tempId)}
-                            disabled={splits.length <= 2}
+                            disabled={!canRemoveSplitLine(splits.length)}
                             aria-label="Remove split"
                             title="Remove"
                           >
@@ -1101,12 +1118,25 @@ export function TransactionEditor({
                         <button type="button" className="txn-editor__split-add" onClick={addSplit}>
                           <Plus size={12} /> Add split
                         </button>
-                        <span
-                          className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}
-                        >
-                          {splitCheck.remainingCents === 0
-                            ? 'Fully assigned'
-                            : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
+                        <span className="txn-editor__split-status">
+                          <span
+                            className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}
+                          >
+                            {splitCheck.remainingCents === 0
+                              ? 'Fully assigned'
+                              : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
+                          </span>
+                          {remainderTarget(splits, splitCheck.remainingCents) !== null && (
+                            <button
+                              type="button"
+                              className="txn-editor__split-fill"
+                              onClick={() =>
+                                setSplits((prev) => fillRemainder(prev, splitCheck.remainingCents))
+                              }
+                            >
+                              Fill
+                            </button>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -1119,7 +1149,7 @@ export function TransactionEditor({
                         type="button"
                         className="txn-editor__ai-btn"
                         title="Split this transaction"
-                        onClick={() => setIsSplit(true)}
+                        onClick={beginSplit}
                       >
                         <Split size={12} />
                         Split
@@ -1305,7 +1335,8 @@ export function TransactionEditor({
               <div className="txn-editor__attachments">
                 <button
                   type="button"
-                  className="txn-editor__similar-toggle"
+                  className="txn-editor__similar-toggle txn-editor__similar-toggle--quiet"
+                  aria-expanded={showAttachments}
                   onClick={() => setShowAttachments((v) => !v)}
                 >
                   <Paperclip size={13} />

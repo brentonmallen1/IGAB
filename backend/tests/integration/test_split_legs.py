@@ -157,7 +157,9 @@ async def test_replace_moves_a_removed_lines_attachments_to_the_parent(db_sessio
     await db_session.flush()
 
     await services.transactions.replace_splits(
-        budget.id, parent.id, [SplitSpec(id=food.id, amount=Decimal("-100.00"))]
+        budget.id,
+        parent.id,
+        [SplitSpec(id=food.id, amount=Decimal("-60.00")), SplitSpec(amount=Decimal("-40.00"))],
     )
 
     assert len(await services.attachment_repo.get_for_transaction(parent.id)) == 1
@@ -210,8 +212,10 @@ async def test_undo_may_remove_lines_under_a_reconciled_parent(db_session):
 
     from igab.db.models import ChangeLog
 
-    [new_line] = await services.transactions.replace_splits(
-        budget.id, parent.id, [SplitSpec(amount=Decimal("-100.00"))]
+    new_line, _ = await services.transactions.replace_splits(
+        budget.id,
+        parent.id,
+        [SplitSpec(amount=Decimal("-70.00")), SplitSpec(amount=Decimal("-30.00"))],
     )
     await db_session.flush()
     created = (
@@ -235,7 +239,9 @@ async def test_create_convert_and_replace_share_the_mirror_rule(db_session):
         budget.id, parent.id, TransactionUpdate(date=date(2026, 8, 5), cleared="cleared")
     )
     lines = await services.transactions.replace_splits(
-        budget.id, parent.id, [SplitSpec(amount=Decimal("-100.00"))]
+        budget.id,
+        parent.id,
+        [SplitSpec(amount=Decimal("-70.00")), SplitSpec(amount=Decimal("-30.00"))],
     )
     assert lines[0].date == date(2026, 8, 5) and lines[0].cleared == "cleared"
     assert lines[0].approved == parent.approved
