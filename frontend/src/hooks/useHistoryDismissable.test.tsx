@@ -106,4 +106,42 @@ describe('useHistoryDismissable', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(sheetKey()).toBeUndefined()
   })
+
+  it('closes only the top sheet of three when it is closed from the UI', async () => {
+    // Quick add, the split sheet over it, a category picker over that.
+    // Picking closed the picker; the pop landed on the split sheet's entry,
+    // and quick add, not finding its own there, asked to discard the entry.
+    const closed: string[] = []
+    function Three() {
+      const [open, setOpen] = useState({ a: true, b: true, c: true })
+      const close = (k: 'a' | 'b' | 'c') => () => {
+        closed.push(k)
+        setOpen((o) => ({ ...o, [k]: false }))
+      }
+      return (
+        <>
+          <Sheet name="a" open={open.a} onClose={close('a')} />
+          <Sheet name="b" open={open.b} onClose={close('b')} />
+          <Sheet name="c" open={open.c} onClose={close('c')} />
+          <button onClick={() => setOpen((o) => ({ ...o, c: false }))}>close c</button>
+        </>
+      )
+    }
+    render(<Three />)
+    fireEvent.click(screen.getByRole('button', { name: 'close c' }))
+    await settle()
+
+    expect(closed).toEqual([])
+    expect(screen.getByRole('dialog', { name: 'a' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'b' })).toBeInTheDocument()
+    expect(sheetKey()).toBe('b')
+
+    // A back gesture then takes the middle one, and only it.
+    await act(async () => {
+      window.history.back()
+    })
+    await settle()
+    expect(closed).toEqual(['b'])
+    expect(screen.getByRole('dialog', { name: 'a' })).toBeInTheDocument()
+  })
 })
