@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from igab.ai.context import debug_view
 from igab.api.route import CommitRoute
 from igab.api.v1.attachments import (
     ALLOWED_CONTENT_TYPES,
@@ -17,9 +16,7 @@ from igab.api.v1.schemas.ai_job import (
     ActiveCountResponse,
     AIJobListResponse,
     AIJobResponse,
-    NLDraft,
-    NLParseRequest,
-    NLParseResponse,
+    DescriptionRequest,
 )
 from igab.api.v1.schemas.base import ApiModel
 from igab.db.models import AIJob, Transaction
@@ -29,22 +26,18 @@ from igab.dependencies import (
     SessionDep,
     get_account_repo,
     get_ai_job_repo,
-    get_ai_service,
     get_attachment_repo,
     get_settings_service,
     get_transaction_repo,
-    get_transaction_service,
 )
 from igab.domain.exceptions import InvariantViolation
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.ai_draft_service import AIDraftService, draft_result_json, parse_extraction
-from igab.services.ai_service import AIService
+from igab.services.ai_draft_service import parse_extraction
 from igab.services.receipt_placement import UNPLACED, bank_match
 from igab.services.settings_service import SettingsService
-from igab.services.transaction_service import TransactionService
 from igab.tasks.ai_worker import ai_worker, cleanup_staging, staging_dir
 from igab.utils.clock import recorded_on
 
@@ -170,16 +163,7 @@ async def submit_receipt(
     needs-review transaction with the image attached (_create_failure_stub),
     so a receipt is never stranded. Only malformed requests are rejected here.
     """
-    if not await settings_svc.get("ollama_host"):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ollama is not configured — set a host in System → AI",
-        )
-
-    if account_id is not None:
-        account = await account_repo.get(account_id)
-        if account is None or str(account.budget_id) != str(budget_id):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    await _check_submittable(settings_svc, account_repo, budget_id, account_id)
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -241,6 +225,67 @@ async def submit_receipt(
     await session.commit()
     ai_worker.notify()
     return AIJobResponse.from_job(await _reloaded(job_repo, job))
+
+
+@router.post(
+    "/{budget_id}/ai/descriptions",
+    response_model=AIJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_description(
+    budget_id: BudgetAccess,
+    body: DescriptionRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+    job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    settings_svc: Annotated[SettingsService, Depends(get_settings_service)],
+) -> AIJobResponse:
+    """Queue a typed or dictated description for the model. Returns at once,
+    like a receipt: nobody waits on the model at a checkout, and the row
+    arrives for review — or, with no account, waits in AI Activity until a
+    person chooses one. The words are kept on the job either way."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="text is required"
+        )
+    await _check_submittable(settings_svc, account_repo, budget_id, body.account_id)
+    today = _parse_client_today(body.client_today)
+    job = await job_repo.create(
+        budget_id=budget_id,
+        kind="nl_parse",
+        status="queued",
+        payload={
+            **({"account_id": str(body.account_id)} if body.account_id is not None else {}),
+            "text": text,
+            "client_today": today.isoformat(),
+        },
+    )
+    # Committed before the worker is woken, for the reason submit_receipt gives.
+    await session.commit()
+    ai_worker.notify()
+    return AIJobResponse.from_job(await _reloaded(job_repo, job))
+
+
+async def _check_submittable(
+    settings_svc: SettingsService,
+    account_repo: AccountRepository,
+    budget_id: uuid.UUID,
+    account_id: uuid.UUID | None,
+) -> None:
+    """What every queued entry must pass before it is accepted: a model host
+    to eventually read it, and an account (if one is named) in this budget.
+    Everything else — the model being up, able to read it — is the worker's."""
+    if not await settings_svc.get("ollama_host"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ollama is not configured — set a host in System → AI",
+        )
+    if account_id is not None:
+        account = await account_repo.get(account_id)
+        if account is None or str(account.budget_id) != str(budget_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
 
 @router.get("/{budget_id}/ai/jobs", response_model=AIJobListResponse)
@@ -374,7 +419,7 @@ async def place_receipt(
     session: SessionDep,
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
 ) -> AIJobResponse:
-    """Give a waiting receipt its account, or its bank row.
+    """Give a waiting receipt or description its account, or its bank row.
 
     The stored extraction is read again against today's categories, so a
     category added while the receipt waited is one it can land in. A receipt
@@ -392,11 +437,12 @@ async def place_receipt(
     job = await _get_owned_job(job_repo, job_id, budget_id)
     if job.status != UNPLACED:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="This receipt already has an account"
+            status_code=status.HTTP_409_CONFLICT, detail="This entry already has an account"
         )
     payload = job.payload or {}
+    # A receipt is placed with its image; a description has none to lose.
     staged = staged_image(job)
-    if staged is None:
+    if staged is None and job.kind == "receipt":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="The receipt image is no longer stored"
         )
@@ -419,7 +465,7 @@ async def place_receipt(
         try:
             draft = parse_extraction(
                 extraction,
-                kind="receipt",
+                kind=job.kind,
                 client_today=today,
                 category_names=[(cat.name, group) for cat, group in categories],
             )
@@ -439,7 +485,7 @@ async def place_receipt(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
         txn = await create_in(svcs, job, account.id, draft)
 
-    await finish_placement(svcs, job, txn, staged.read_bytes())
+    await finish_placement(svcs, job, txn, staged.read_bytes() if staged is not None else None)
     job.status = "error" if job.error else "done"
     job.result = {**(job.result or {}), "placed_by": "person"}
     session.add(job)
@@ -472,79 +518,3 @@ async def delete_job(
     await session.delete(job)
     await session.flush()
     cleanup_staging(job_id)
-
-
-@router.post("/{budget_id}/ai/parse-transaction", response_model=NLParseResponse)
-async def parse_nl_transaction(
-    budget_id: BudgetAccess,
-    body: NLParseRequest,
-    current_user: CurrentUser,
-    session: SessionDep,
-    job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
-    ai_svc: Annotated[AIService, Depends(get_ai_service)],
-    txn_svc: Annotated[TransactionService, Depends(get_transaction_service)],
-) -> NLParseResponse:
-    """Parse free text into a transaction draft, inline (interactive).
-
-    Records an ai_jobs row for the audit log; the draft feeds the existing
-    add-transaction flow, which links back via ai_job_id on create."""
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="text is required"
-        )
-    today = _parse_client_today(body.client_today)
-
-    job = await job_repo.create(
-        budget_id=budget_id,
-        kind="nl_parse",
-        status="processing",
-        attempts=1,
-        started_at=datetime.now(UTC),
-        payload={"text": text, "client_today": today.isoformat()},
-    )
-
-    try:
-        raw = await ai_svc.parse_nl_transaction(budget_id, text, today)
-        categories = await txn_svc.category_repo.get_fileable_with_group_names(budget_id)
-        draft = parse_extraction(
-            raw,
-            kind="nl_parse",
-            client_today=today,
-            category_names=[(cat.name, group) for cat, group in categories],
-        )
-    except Exception as exc:
-        job.status = "error"
-        job.error = f"{type(exc).__name__}: {exc}"[:2000]
-        debug = debug_view(ai_svc.gateway.last_result)
-        if debug:
-            job.result = {"request": debug["request"]}
-        job.finished_at = datetime.now(UTC)
-        session.add(job)
-        await session.commit()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Could not parse that into a transaction — try rephrasing",
-        )
-
-    category_id = await AIDraftService(txn_svc).resolve_category(budget_id, draft.category_name)
-    job.status = "done"
-    job.finished_at = datetime.now(UTC)
-    result = draft_result_json(draft)
-    result.update(debug_view(ai_svc.gateway.last_result))
-    job.result = result
-    session.add(job)
-    await session.commit()
-
-    return NLParseResponse(
-        job_id=job.id,
-        draft=NLDraft(
-            payee=draft.payee_name,
-            amount=str(draft.amount),
-            date=draft.date.isoformat(),
-            category_id=category_id,
-            category_name=draft.category_name if category_id else None,
-            memo=draft.memo,
-            confidence=draft.confidence,
-        ),
-    )

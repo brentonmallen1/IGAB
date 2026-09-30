@@ -35,6 +35,15 @@ from typing import Any
 
 #: The memo on the $0 row a failed scan leaves so its image stays reachable.
 FAILURE_STUB_MEMO = "Receipt scan failed — enter details from the image"
+#: The same for a description the model could not read; its words stay on
+#: the job, which the review banner shows.
+DESCRIPTION_FAILURE_MEMO = "Couldn't read your description — enter the details"
+
+#: Per AI job kind: the `created_via` its own rows carry, and the memo on the
+#: stub a failed one leaves. One table, so a kind cannot have one without
+#: the other.
+CREATED_VIA = {"receipt": "ai_receipt", "nl_parse": "ai_nl"}
+STUB_MEMO = {"receipt": FAILURE_STUB_MEMO, "nl_parse": DESCRIPTION_FAILURE_MEMO}
 
 #: The two facts a bank vouches for.
 BANK_FACTS = frozenset({"date", "amount"})
@@ -42,7 +51,7 @@ BANK_FACTS = frozenset({"date", "amount"})
 
 @dataclass(frozen=True)
 class ExistingRow:
-    #: The scan made this row (`created_via == "ai_receipt"`).
+    #: The AI job made this row (`created_via` in `CREATED_VIA`).
     own: bool
     #: Approved, or cleared by anything (cleared, reconciled, pending).
     confirmed: bool
@@ -65,7 +74,7 @@ class ReceiptRead:
 
 
 def _has_memo(row: ExistingRow) -> bool:
-    return bool(row.memo and row.memo.strip()) and row.memo != FAILURE_STUB_MEMO
+    return bool(row.memo and row.memo.strip()) and row.memo not in STUB_MEMO.values()
 
 
 def writable_fields(row: ExistingRow, *, refresh: bool) -> frozenset[str]:
@@ -100,6 +109,6 @@ def receipt_changes(row: ExistingRow, read: ReceiptRead, *, refresh: bool) -> di
     memo = read.memo.strip() if read.memo else None
     if "memo" in fields and memo:
         changes["memo"] = memo
-    elif row.memo == FAILURE_STUB_MEMO:
+    elif row.memo in STUB_MEMO.values():
         changes["memo"] = None
     return changes

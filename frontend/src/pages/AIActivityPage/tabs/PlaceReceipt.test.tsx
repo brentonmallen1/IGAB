@@ -32,6 +32,7 @@ import type { AIJob } from '../../../api/aiJobs'
 const job = (over: Partial<AIJob> = {}) =>
   ({
     id: 'job-1',
+    kind: 'receipt',
     status: 'unplaced',
     transaction_id: null,
     transaction_account_id: null,
@@ -79,5 +80,10 @@ describe('PlaceReceipt', () => {
     render(<PlaceReceipt job={job()} budgetId="b1" />)
     expect(screen.getByLabelText('Put this receipt in an account')).toBeTruthy()
     expect(screen.queryAllByRole('button', { name: /^Put it/ })).toEqual([])
+  })
+
+  it('calls a waiting description an entry, not a receipt', () => {
+    render(<PlaceReceipt job={job({ kind: 'nl_parse' })} budgetId="b1" />)
+    expect(screen.getByLabelText('Put this entry in an account')).toBeTruthy()
   })
 })

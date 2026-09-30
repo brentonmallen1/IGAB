@@ -1,28 +1,14 @@
-import { parseApiDecimal } from '../../utils/money'
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAIStatus } from '../../api/ai'
-import { useParseNLTransaction, type NLDraft } from '../../api/aiJobs'
+import { useSubmitDescription } from '../../api/aiJobs'
+import { apiErrorMessage } from '../../api/client'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
-import type { EditorDraft } from '../transactions/TransactionEditor/TransactionEditor'
+import { queuedMessage } from './queuedMessage'
 import './NLEntryForm.css'
 import { sectionHref } from '../../pages/SettingsPage/settingsSections'
-
-export function draftToEditorDraft(draft: NLDraft, jobId: string): EditorDraft {
-  const amount = parseApiDecimal(draft.amount)
-  const abs = Math.abs(amount).toFixed(2)
-  return {
-    date: draft.date,
-    payeeName: draft.payee ?? undefined,
-    categoryId: draft.category_id,
-    memo: draft.memo ?? undefined,
-    outflow: amount < 0 ? abs : undefined,
-    inflow: amount >= 0 ? abs : undefined,
-    aiJobId: jobId,
-  }
-}
 
 /** Dictation failures are usually the browser's speech *service*, not the
  * microphone — Chrome happily starts capturing and then errors when the
@@ -45,8 +31,11 @@ function speechErrorMessage(code: string): string {
 
 interface Props {
   budgetId: string
-  /** The parsed draft, ready to prefill the add-transaction form. */
-  onDraft: (draft: EditorDraft) => void
+  /** Where the transaction goes; null and it waits in AI Activity until a
+   *  person chooses. */
+  accountId: string | null
+  /** The words were handed off — the host closes. */
+  onQueued: () => void
   /** Close the host surface before following a link (Settings). */
   onNavigate?: () => void
   autoFocus?: boolean
@@ -54,12 +43,19 @@ interface Props {
 
 /**
  * The natural-language entry form: type or dictate "coffee starbucks 5.50
- * yesterday", parse, and the draft lands in the normal add-transaction form.
+ * yesterday" and send it. Queued like a scanned receipt — nobody waits on
+ * the model at a checkout — and the row turns up in the register to review.
  * Shared by the editor's "Describe it" tab and the mobile quick-entry sheet.
  */
-export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }: Props) {
+export function NLEntryForm({
+  budgetId,
+  accountId,
+  onQueued,
+  onNavigate,
+  autoFocus = true,
+}: Props) {
   const aiStatus = useAIStatus()
-  const parse = useParseNLTransaction(budgetId)
+  const submit = useSubmitDescription(budgetId)
   const speech = useSpeechRecognition()
   const [text, setText] = useState('')
   const [micHidden, setMicHidden] = useState(false)
@@ -83,19 +79,23 @@ export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }:
     if (autoFocus) inputRef.current?.focus()
   }, [autoFocus])
 
-  async function handleParse() {
+  async function handleSend() {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed || submit.isPending) return
+    if (speech.listening) speech.stop()
     try {
-      const result = await parse.mutateAsync(trimmed)
-      onDraft(draftToEditorDraft(result.draft, result.job_id))
+      await submit.mutateAsync({ text: trimmed, accountId })
+      toast.success(queuedMessage('description', 1, !accountId), { duration: 6000 })
+      onQueued()
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(detail ?? 'Could not parse that — try rephrasing')
+      // Nothing was queued: the words stay in the box to send again.
+      toast.error(apiErrorMessage(err, "Couldn't send that — try again"))
     }
   }
 
-  if (aiStatus.data && !aiStatus.data.available) {
+  // Configured is enough: the words are queued and the worker retries, so a
+  // model that is down right now must not stop anyone handing them off.
+  if (aiStatus.data && !aiStatus.data.enabled) {
     return (
       <div className="nl-form__unavailable">
         <Sparkles size={20} />
@@ -128,11 +128,11 @@ export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }:
             // instead of submitting the half-empty transaction.
             if (e.key === 'Enter') {
               e.preventDefault()
-              void handleParse()
+              void handleSend()
             }
           }}
           placeholder='e.g. "coffee at Starbucks 5.50 yesterday"'
-          disabled={parse.isPending}
+          disabled={submit.isPending}
         />
         {speech.supported && !micHidden && (
           <button
@@ -148,16 +148,18 @@ export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }:
         <button
           type="button"
           className="nl-form__parse"
-          onClick={() => void handleParse()}
-          disabled={!text.trim() || parse.isPending}
+          onClick={() => void handleSend()}
+          disabled={!text.trim() || submit.isPending}
         >
-          {parse.isPending ? 'Drafting…' : 'Draft it'}
+          {submit.isPending ? 'Sending…' : 'Send'}
         </button>
       </div>
       <p className="nl-form__hint">
         {speech.listening
           ? 'Listening — speak your transaction, then tap the mic to stop.'
-          : "You'll confirm every detail before anything is saved."}
+          : accountId
+            ? "It's read in the background and turns up in your transactions to review."
+            : 'No account chosen — it waits in AI Activity until you pick one.'}
       </p>
     </div>
   )

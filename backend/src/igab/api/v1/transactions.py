@@ -45,7 +45,6 @@ from igab.dependencies import (
     SessionDep,
     TransactionAccess,
     get_account_repo,
-    get_ai_job_repo,
     get_budget_filter_repo,
     get_change_recorder,
     get_payee_repo,
@@ -66,7 +65,6 @@ from igab.domain.activity_class import (
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository
-from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository
@@ -324,19 +322,8 @@ async def create_transaction(
     budget_id: BudgetAccess,
     body: TransactionCreate,
     current_user: CurrentUser,
-    session: SessionDep,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
-    ai_job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
 ) -> TransactionResponse:
-    # AI provenance is derived from the linked job — never from the client.
-    created_via: str | None = None
-    ai_job = None
-    if body.ai_job_id is not None:
-        ai_job = await ai_job_repo.get(body.ai_job_id)
-        if ai_job is None or str(ai_job.budget_id) != str(budget_id):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI job not found")
-        created_via = "ai_nl" if ai_job.kind == "nl_parse" else "ai_receipt"
-
     try:
         if body.splits:
             header = SvcTxnCreate(
@@ -348,7 +335,6 @@ async def create_transaction(
                 memo=body.memo,
                 cleared=body.cleared,
                 approved=body.approved,
-                created_via=created_via,
                 latitude=body.latitude,
                 longitude=body.longitude,
             )
@@ -377,7 +363,6 @@ async def create_transaction(
                 cleared=body.cleared,
                 approved=body.approved,
                 transfer_account_id=body.transfer_account_id,
-                created_via=created_via,
                 latitude=body.latitude,
                 longitude=body.longitude,
             )
@@ -385,10 +370,6 @@ async def create_transaction(
     except InvariantViolation as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-    if ai_job is not None and ai_job.transaction_id is None:
-        ai_job.transaction_id = txn.id
-        session.add(ai_job)
-        await session.flush()
     return TransactionResponse.model_validate(txn)
 
 

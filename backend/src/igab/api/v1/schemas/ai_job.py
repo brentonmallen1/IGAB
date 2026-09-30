@@ -132,21 +132,10 @@ class ActiveCountResponse(ApiModel):
     needs_review: int = 0
 
 
-class NLParseRequest(ApiModel):
+class DescriptionRequest(ApiModel):
+    """A typed or dictated description, queued for the model like a receipt."""
+
     text: str
+    # None: it waits, unplaced, in AI Activity until a person chooses one.
+    account_id: uuid.UUID | None = None
     client_today: str | None = None  # ISO date from the browser (TZ-correct "today")
-
-
-class NLDraft(ApiModel):
-    payee: str | None
-    amount: str  # signed decimal string, outflow-negative
-    date: str
-    category_id: uuid.UUID | None
-    category_name: str | None
-    memo: str | None
-    confidence: float
-
-
-class NLParseResponse(ApiModel):
-    job_id: uuid.UUID
-    draft: NLDraft

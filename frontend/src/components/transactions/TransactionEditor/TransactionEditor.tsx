@@ -82,19 +82,6 @@ import { CardEndingNotice } from '../../ai/CardEndingNotice'
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
 
-/** Prefill for create mode — the shared shape every AI entry path (NL text,
- * voice) funnels into so there is exactly one add-transaction flow. */
-export interface EditorDraft {
-  date?: string
-  payeeName?: string
-  categoryId?: string | null
-  memo?: string
-  outflow?: string
-  inflow?: string
-  /** Links the saved transaction back to the AI job for the audit log. */
-  aiJobId?: string
-}
-
 interface Props {
   budgetId: string
   /** Fixed account context (account page). Omit to let the user pick the
@@ -103,8 +90,6 @@ interface Props {
   transaction: Transaction | null
   /** Pre-selected category for new transactions (budget-row add flow). */
   initialCategoryId?: string | null
-  /** Create-mode prefill from an AI parse (NL/voice entry). */
-  initialDraft?: EditorDraft | null
   /** Review mode: the AI job that produced `transaction` — shows the receipt
    * beside the form, the extraction banner, and the suggested-split action. */
   aiJob?: AIJob | null
@@ -116,7 +101,6 @@ export function TransactionEditor({
   accountId: fixedAccountId = null,
   transaction,
   initialCategoryId = null,
-  initialDraft = null,
   aiJob = null,
   onClose,
 }: Props) {
@@ -165,24 +149,20 @@ export function TransactionEditor({
   // A fresh row started from an account page keeps that account fixed.
   const accountId = isEdit ? pickedAccountId : (fixedAccountId ?? pickedAccountId)
 
-  const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? initialDraft?.date ?? today())
-  const [payeeQuery, setPayeeQuery] = useState(
-    !transaction && initialDraft?.payeeName ? initialDraft.payeeName : ''
-  )
+  const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? today())
+  const [payeeQuery, setPayeeQuery] = useState('')
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(
     transaction?.payee_id ?? null
   )
-  const [categoryId, setCategoryId] = useState(
-    transaction?.category_id ?? initialDraft?.categoryId ?? initialCategoryId ?? ''
-  )
-  const [memo, setMemo] = useState(transaction?.memo ?? initialDraft?.memo ?? '')
+  const [categoryId, setCategoryId] = useState(transaction?.category_id ?? initialCategoryId ?? '')
+  const [memo, setMemo] = useState(transaction?.memo ?? '')
   const [outflow, setOutflow] = useState(() => {
-    if (!transaction) return initialDraft?.outflow ?? ''
+    if (!transaction) return ''
     if (transaction.amount >= 0) return ''
     return String(Math.abs(transaction.amount))
   })
   const [inflow, setInflow] = useState(() => {
-    if (!transaction) return initialDraft?.inflow ?? ''
+    if (!transaction) return ''
     if (transaction.amount < 0) return ''
     return String(transaction.amount)
   })
@@ -250,11 +230,6 @@ export function TransactionEditor({
   const [pristine, setPristine] = useState<EntryFields>(fields)
   const started = !isEdit && entryStarted(fields, pristine, { isSplit, isTransfer })
 
-  // AI provenance: set by an initialDraft (mobile quick entry) or by the
-  // Describe tab; links the created transaction back to its ai_jobs row.
-  const [aiJobId, setAiJobId] = useState<string | undefined>(initialDraft?.aiJobId)
-  const [aiDrafted, setAiDrafted] = useState(!!initialDraft?.aiJobId)
-
   // Review handoff: when an AI job completes, we render a nested TransactionEditor
   const [reviewJob, setReviewJob] = useState<AIJob | null>(null)
   const { data: reviewTxn } = useTransaction(reviewJob?.transaction_id ?? null)
@@ -280,7 +255,7 @@ export function TransactionEditor({
   // or an AI draft already put in the field.
   const { data: recentPayee } = useRecentPayeeForCategory(
     budgetId,
-    !isEdit && !initialDraft?.payeeName && initialCategoryId ? initialCategoryId : null
+    !isEdit && initialCategoryId ? initialCategoryId : null
   )
   useEffect(() => {
     if (!recentPayee || payeeInitialized.current) return
@@ -377,32 +352,6 @@ export function TransactionEditor({
     const cleaned = v.replace(/[^0-9.,+\-*/() ]/g, '')
     setInflow(cleaned)
     if (cleaned) setOutflow('')
-  }
-
-  // Describe tab handoff: the parsed draft fills the manual form for review —
-  // the user lands on familiar fields with everything editable.
-  function applyNLDraft(d: EditorDraft) {
-    // The draft is the new baseline: describing it again only replaces the
-    // AI's words, never a person's.
-    setPristine({
-      date: d.date || date,
-      payeeQuery: d.payeeName ?? '',
-      categoryId: d.categoryId ?? '',
-      memo: d.memo ?? '',
-      outflow: d.outflow ?? '',
-      inflow: d.inflow ?? '',
-    })
-    if (d.date) setDate(d.date)
-    setPayeeQuery(d.payeeName ?? '')
-    setSelectedPayeeId(null)
-    payeeInitialized.current = true
-    setCategoryId(d.categoryId ?? '')
-    setMemo(d.memo ?? '')
-    setOutflow(d.outflow ?? '')
-    setInflow(d.inflow ?? '')
-    setAiJobId(d.aiJobId)
-    setAiDrafted(true)
-    setActiveTab('manual')
   }
 
   /** Inactive rather than hidden once an entry is started, so the tab row
@@ -543,7 +492,6 @@ export function TransactionEditor({
           approved: true,
           payee_id: selectedPayeeId || undefined,
           payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
-          ai_job_id: aiJobId,
           splits: splitList,
         })
         if (!fixedAccountId) noteAccountUsed(accountId)
@@ -619,7 +567,6 @@ export function TransactionEditor({
         date,
         amount,
         cleared,
-        ai_job_id: aiJobId,
       })
       if (!fixedAccountId) noteAccountUsed(accountId)
     }
@@ -777,6 +724,13 @@ export function TransactionEditor({
                     ? ` · ${Math.round((aiJob!.result.draft.confidence ?? 0) * 100)}% confidence`
                     : ''}
                 </span>
+                {/* A description's words are its receipt: what the row is
+                    checked against, shown where the image would be. */}
+                {aiJob!.kind === 'nl_parse' && aiJob!.payload.text && (
+                  <span className="txn-editor__ai-banner-note">
+                    You said: “{aiJob!.payload.text}”
+                  </span>
+                )}
                 {unresolvedCategoryNote(aiJob!.result?.draft) && (
                   <span className="txn-editor__ai-banner-note">
                     {unresolvedCategoryNote(aiJob!.result?.draft)}
@@ -808,15 +762,6 @@ export function TransactionEditor({
                 Apply suggested split ({suggestedSplit.length})
               </button>
             )}
-          </div>
-        )}
-
-        {/* AI-draft provenance in add mode: the manual form was prefilled
-            from a description — say so, since the hop is otherwise silent */}
-        {!isEdit && aiDrafted && activeTab === 'manual' && (
-          <div className="txn-editor__ai-banner">
-            <Sparkles size={13} />
-            <span>AI drafted this from your description — check it over, then add.</span>
           </div>
         )}
 
@@ -856,17 +801,26 @@ export function TransactionEditor({
           </div>
         )}
 
-        {/* Describe tab content: parse free text into a draft, then hop to
-            the manual tab with the fields filled in */}
+        {/* Describe tab content: the words are queued like a receipt and
+            the row arrives in the register to review — nobody waits here */}
         {showTabs && activeTab === 'describe' && (
           <div className="txn-editor__main">
             <div className="txn-editor__body">
               {accountField}
               <div className="txn-editor__describe">
                 <p className="txn-editor__describe-intro">
-                  Type or dictate a transaction — AI drafts it into the form for you to review.
+                  Type or dictate a transaction — AI reads it in the background and it turns up in
+                  your transactions to review.
                 </p>
-                <NLEntryForm budgetId={budgetId} onDraft={applyNLDraft} onNavigate={onClose} />
+                <NLEntryForm
+                  budgetId={budgetId}
+                  accountId={accountId || null}
+                  onQueued={() => {
+                    if (!fixedAccountId && accountId) noteAccountUsed(accountId)
+                    onClose()
+                  }}
+                  onNavigate={onClose}
+                />
               </div>
             </div>
           </div>

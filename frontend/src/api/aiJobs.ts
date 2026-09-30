@@ -127,16 +127,6 @@ export interface AIJobListResponse {
   total_count: number
 }
 
-export interface NLDraft {
-  payee: string | null
-  amount: string
-  date: string
-  category_id: string | null
-  category_name: string | null
-  memo: string | null
-  confidence: number
-}
-
 export function useAIJobs(
   budgetId: string | null,
   opts: {
@@ -268,6 +258,28 @@ export function useSubmitReceipt(budgetId: string) {
   })
 }
 
+/** Queue a typed or dictated description, like a receipt: nobody waits on
+ *  the model. `accountId: null` has it wait, unplaced, in AI Activity until a
+ *  person chooses one. */
+export function useSubmitDescription(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ text, accountId }: { text: string; accountId: string | null }) =>
+      apiClient
+        .post<AIJob>(`/${budgetId}/ai/descriptions`, {
+          text,
+          account_id: accountId,
+          client_today: today(),
+        })
+        .then((r) => r.data),
+    onSuccess: (job) => {
+      showJobQueued(qc, budgetId, job)
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
+    },
+  })
+}
+
 /** Give a waiting receipt its account, or the existing row it belongs on.
  *  It creates or edits a transaction, so everything a transaction change
  *  stales goes stale here too. */
@@ -322,25 +334,6 @@ export function useDeleteAIJob(budgetId: string) {
   return useMutation({
     mutationFn: (jobId: string) => apiClient.delete(`/${budgetId}/ai/jobs/${jobId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
-      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
-    },
-  })
-}
-
-export function useParseNLTransaction(budgetId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (text: string) =>
-      apiClient
-        .post<{ job_id: string; draft: NLDraft }>(`/${budgetId}/ai/parse-transaction`, {
-          text,
-          client_today: today(),
-        })
-        .then((r) => r.data),
-    // The endpoint writes an ai_jobs audit row whether the parse succeeds or
-    // fails — the AI Activity log should show it either way.
-    onSettled: () => {
       qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
       qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },

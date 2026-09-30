@@ -37,6 +37,7 @@ import {
 import { useAIStatus } from '../../../api/ai'
 import { useSubmitReceipt } from '../../../api/aiJobs'
 import { NLQuickEntry } from '../../ai/NLQuickEntry'
+import { queuedMessage } from '../../ai/queuedMessage'
 import { useCreatePayee, useNearbyPayees, usePayees } from '../../../api/payees'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
@@ -64,9 +65,9 @@ import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 
 type Direction = 'outflow' | 'inflow'
 
-/** What tapping Scan or Save goes on to do once the account it asked for is
- *  chosen. */
-type AfterAccount = 'scan' | 'save' | 'save-another'
+/** What tapping Scan, Describe or Save goes on to do once the account it
+ *  asked for is chosen. */
+type AfterAccount = 'scan' | 'describe' | 'save' | 'save-another'
 
 /** Sentinel for the plain Category row, so one picker can also serve the
  *  split legs, which address themselves by tempId. */
@@ -133,11 +134,13 @@ export function QuickAddSheet() {
   // What the account picker was opened for: choosing an account carries it
   // on. A ref, not state — it is read inside the same tap that picks.
   const afterAccountRef = useRef<AfterAccount | null>(null)
-  // Scan is asking for an account right now — the picker then offers
-  // "Decide later" as well, which scans with none (the receipt waits in AI
-  // Activity until the card on it or a person says where it goes). State,
-  // not the ref: the picker's options are drawn from it.
-  const [scanAsking, setScanAsking] = useState(false)
+  // Scan or Describe is asking for an account right now — the picker then
+  // offers "Decide later" as well, which hands the entry off with none (it
+  // waits in AI Activity until the card on a receipt or a person says where
+  // it goes). State, not the ref: the picker's options are drawn from it.
+  const [mayDecideLater, setMayDecideLater] = useState(false)
+  // The account Describe was opened with — null when it was decided later.
+  const [nlAccountId, setNlAccountId] = useState<string | null>(null)
   const decidedLaterRef = useRef(false)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
@@ -302,7 +305,7 @@ export function QuickAddSheet() {
   function askForAccount(next: AfterAccount) {
     setAccountAskedFor(next)
     afterAccountRef.current = next
-    setScanAsking(next === 'scan')
+    setMayDecideLater(next === 'scan' || next === 'describe')
     setAccountSheetOpen(true)
   }
 
@@ -311,12 +314,29 @@ export function QuickAddSheet() {
     else askForAccount('scan')
   }
 
-  /** Scan with no account: the receipt waits, unplaced, in AI Activity. */
+  /** Describe asks for the account the way Scan does, and may decide later. */
+  function startDescribe() {
+    if (!accountId) {
+      askForAccount('describe')
+      return
+    }
+    setNlAccountId(accountId)
+    setNlEntryOpen(true)
+  }
+
+  /** Scan or Describe with no account: the entry waits, unplaced, in AI
+   *  Activity. */
   function decideLater() {
+    const next = afterAccountRef.current
     afterAccountRef.current = null
     setAccountAskedFor(null)
-    setScanAsking(false)
+    setMayDecideLater(false)
     setAccountSheetOpen(false)
+    if (next === 'describe') {
+      setNlAccountId(null)
+      setNlEntryOpen(true)
+      return
+    }
     decidedLaterRef.current = true
     // Same gesture rule as chooseAccount: the camera opens inside this tap.
     aiScanInputRef.current?.click()
@@ -325,12 +345,16 @@ export function QuickAddSheet() {
   function chooseAccount(id: string) {
     setAccountId(id)
     setAccountAskedFor(null)
-    setScanAsking(false)
+    setMayDecideLater(false)
     const next = afterAccountRef.current
     afterAccountRef.current = null
     // Still inside the tap that picked the account, which is what lets iOS
     // open the camera from here; deferring it would lose the gesture.
     if (next === 'scan') aiScanInputRef.current?.click()
+    else if (next === 'describe') {
+      setNlAccountId(id)
+      setNlEntryOpen(true)
+    }
     // The render that knows the new account has not happened yet, so the
     // save is handed it directly.
     else if (next === 'save') void save(false, id)
@@ -386,16 +410,7 @@ export function QuickAddSheet() {
     if (queued > 0) {
       if (accountId) noteAccountUsed(accountId)
       hapticTick()
-      toast.success(
-        unplaced
-          ? queued === 1
-            ? "Receipt queued — it waits in AI Activity until it has an account, and isn't in your budget until then"
-            : `${queued} receipts queued — they wait in AI Activity until they have an account, and aren't in your budget until then`
-          : queued === 1
-            ? "Receipt queued — it'll show up in your transactions to review"
-            : `${queued} receipts queued — they'll show up in your transactions to review`,
-        { duration: 6000 }
-      )
+      toast.success(queuedMessage('receipt', queued, unplaced), { duration: 6000 })
     }
     if (duplicates > 0) {
       toast(
@@ -833,7 +848,7 @@ export function QuickAddSheet() {
               >
                 {accountName ||
                   (accountAskedFor
-                    ? `Choose account to ${accountAskedFor === 'scan' ? 'scan' : 'save'}`
+                    ? `Choose account to ${accountAskedFor === 'save-another' ? 'save' : accountAskedFor}`
                     : 'Choose account')}
               </span>
               <ChevronRight size={16} className="quick-add__row-chevron" />
@@ -908,12 +923,11 @@ export function QuickAddSheet() {
               </div>
             )}
             {/* AI entry paths lead; manual attach is the fallback row below.
-                Scanning is gated on AI being CONFIGURED, not on the server
-                answering a ping right now — the upload is queued and the
-                worker retries, so a server that is briefly down or busy must
-                not remove the user's ability to hand off a receipt and walk
-                away. "Describe it" is synchronous and genuinely does need a
-                live server, so it keeps the stricter gate.
+                Both are gated on AI being CONFIGURED, not on the server
+                answering a ping right now — a receipt or a description is
+                queued and the worker retries, so a server that is briefly
+                down or busy must not remove the user's ability to hand one
+                off and walk away.
                 Both hand off and close the sheet, so they are offered only
                 while closing costs nothing — the same isDirty that asks before
                 a dismissal. Once something is typed, the receipt attaches to
@@ -934,10 +948,10 @@ export function QuickAddSheet() {
                       ? 'Queuing…'
                       : 'Scan receipt'}
                 </button>
-                {aiStatus.data?.available && (
+                {aiStatus.data?.enabled && (
                   <button
                     className="quick-add__scan-btn"
-                    onClick={() => setNlEntryOpen(true)}
+                    onClick={startDescribe}
                     title="Type or dictate the transaction — AI drafts it for you"
                   >
                     <MessageSquareText size={15} />
@@ -1036,9 +1050,11 @@ export function QuickAddSheet() {
       {nlEntryOpen && budgetId && (
         <NLQuickEntry
           budgetId={budgetId}
-          accountId={accountId}
-          onClose={() => {
+          accountId={nlAccountId}
+          onClose={() => setNlEntryOpen(false)}
+          onDone={() => {
             setNlEntryOpen(false)
+            if (nlAccountId) noteAccountUsed(nlAccountId)
             closeQuickAdd()
           }}
         />
@@ -1089,12 +1105,12 @@ export function QuickAddSheet() {
         open={accountSheetOpen}
         onClose={() => {
           afterAccountRef.current = null
-          setScanAsking(false)
+          setMayDecideLater(false)
           setAccountSheetOpen(false)
         }}
         title="Account"
         options={accountOptions}
-        allowNone={scanAsking}
+        allowNone={mayDecideLater}
         noneLabel="Decide later — it waits in AI Activity"
         topSection={
           recent.length > 0

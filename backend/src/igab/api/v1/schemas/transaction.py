@@ -45,10 +45,6 @@ class TransactionCreate(ApiModel):
     approved: bool = True
     transfer_account_id: uuid.UUID | None = None
     splits: list[SplitCreate] | None = None
-    # Link back to the ai_jobs row this draft came from (NL entry). The server
-    # derives created_via from the job's kind — provenance is never accepted
-    # directly from the client.
-    ai_job_id: uuid.UUID | None = None
     # Opt-in mobile capture; powers nearby-payee suggestions. Never money.
     latitude: float | None = Field(None, ge=-90, le=90)
     longitude: float | None = Field(None, ge=-180, le=180)

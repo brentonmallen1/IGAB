@@ -103,25 +103,18 @@ vi.mock('../../ai/ReceiptPane', () => ({
   ),
 }))
 vi.mock('../../ai/CardEndingNotice', () => ({ CardEndingNotice: () => null }))
-// Describe's parse is the server's; what the editor does with a draft is
-// what is under test, so the form hands one straight over.
+// The form is its own suite's (NLEntryForm.test); here it reports what the
+// editor handed it and lets a test press Send.
+const nlForm = vi.hoisted(() => ({ accountId: undefined as string | null | undefined }))
 vi.mock('../../ai/NLEntryForm', () => ({
-  NLEntryForm: ({ onDraft }: { onDraft: (d: Record<string, unknown>) => void }) => (
-    <button
-      type="button"
-      onClick={() =>
-        onDraft({
-          date: '2030-01-12',
-          payeeName: 'Corner Bakery',
-          categoryId: 'cat-1',
-          outflow: '6.50',
-          aiJobId: 'job-nl',
-        })
-      }
-    >
-      Draft it
-    </button>
-  ),
+  NLEntryForm: ({ accountId, onQueued }: { accountId: string | null; onQueued: () => void }) => {
+    nlForm.accountId = accountId
+    return (
+      <button type="button" onClick={onQueued}>
+        Send
+      </button>
+    )
+  },
 }))
 vi.mock('./ReceiptScanTab', () => ({ ReceiptScanTab: () => <div data-testid="scan-tab" /> }))
 const media = vi.hoisted(() => ({ mobile: false }))
@@ -881,48 +874,37 @@ describe('TransactionEditor entry-method tabs once an entry is started', () => {
     renderEditor({ accountId: null, initialCategoryId: 'cat-1' })
     expect(tab(/From receipt/)).toHaveAttribute('aria-disabled', 'false')
   })
-
-  it('lets an AI draft be described again — only the AI’s words are replaced', () => {
-    renderEditor({ accountId: null })
-    fireEvent.click(tab(/Describe it/))
-    fireEvent.click(screen.getByRole('button', { name: 'Draft it' }))
-
-    expect(tab(/Describe it/)).toHaveAttribute('aria-disabled', 'false')
-    fireEvent.change(amountInputs()[0], { target: { value: '7.25' } })
-    expect(tab(/Describe it/)).toHaveAttribute('aria-disabled', 'true')
-  })
 })
 
 /**
- * Describe with no account. Unlike a scan, nothing is queued: the parse
- * returns a draft into this form at once, and nothing is saved until an
- * account is chosen here — so there is nothing to wait unplaced in AI
- * Activity. Quick add opens this same editor with its (possibly empty)
- * account.
+ * Describe from the editor. The words are queued like a receipt — nobody
+ * waits on the model — so the tab hands the form the editor's account (none
+ * is fine: it waits in AI Activity) and the editor closes once it is sent.
  */
-describe('TransactionEditor describing a transaction with no account', () => {
-  beforeEach(() => {
-    createMutate.mockClear()
-    confirmOverspend.mockClear()
-    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+describe('TransactionEditor Describe tab', () => {
+  it('sends with no account when none is chosen', () => {
+    const onClose = vi.fn()
+    renderEditor({ accountId: null, onClose })
+    fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
+    expect(nlForm.accountId).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onClose).toHaveBeenCalled()
+    expect(createMutate).not.toHaveBeenCalled()
   })
 
-  it('holds the draft until an account is chosen, then saves it there', async () => {
+  it('sends with the account picked above it', () => {
     renderEditor({ accountId: null })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
+      target: { value: 'acc-2' },
+    })
     fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Draft it' }))
+    expect(nlForm.accountId).toBe('acc-2')
+  })
 
-    expect(amountInputs()[0]).toHaveValue('6.50')
-    const account = screen.getByRole('combobox', { name: 'Account' }) as HTMLSelectElement
-    expect(account.value).toBe('')
-    expect(submitButton()).toBeDisabled()
-
-    fireEvent.change(account, { target: { value: 'acc-2' } })
-    fireEvent.click(submitButton())
-
-    await waitFor(() => expect(createMutate).toHaveBeenCalled())
-    expect(createMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ account_id: 'acc-2', amount: -6.5, ai_job_id: 'job-nl' })
-    )
+  it("sends with the register's own account", () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
+    expect(nlForm.accountId).toBe('acc-1')
   })
 })
