@@ -115,6 +115,7 @@ vi.mock('react-hot-toast', () => ({
 vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 
 import { QuickAddSheet } from './QuickAddSheet'
+import { splitField, splitLines } from '../SplitSheet/splitSheetTestUtils'
 
 function mountSheet() {
   return render(
@@ -158,12 +159,12 @@ function pickInSheet(name: string) {
 }
 
 function pickLegCategory(legIndex: number, name: string) {
-  fireEvent.click(screen.getByLabelText(`Split ${legIndex + 1} category`))
+  fireEvent.click(splitField(legIndex + 1, 'category'))
   pickInSheet(name)
 }
 
 function setLeg(legIndex: number, amount: string) {
-  fireEvent.change(screen.getByLabelText(`Split ${legIndex + 1} amount`), {
+  fireEvent.change(splitField(legIndex + 1, 'amount'), {
     target: { value: amount },
   })
 }
@@ -185,7 +186,7 @@ describe('reaching the split editor', () => {
 
   it('starts with two legs, because a split of one is just a category', () => {
     startSplit('10.00')
-    expect(screen.getAllByLabelText(/^Split \d+ amount$/)).toHaveLength(2)
+    expect(splitLines()).toHaveLength(2)
   })
 
   it('carries an already-chosen category into the first leg', () => {
@@ -195,8 +196,8 @@ describe('reaching the split editor', () => {
     pickInSheet('Groceries')
     fireEvent.click(screen.getByTitle('Split this across categories'))
     // The pick survives rather than being thrown away by the mode switch.
-    expect(screen.getByLabelText('Split 1 category').textContent).toContain('Groceries')
-    expect(screen.getByLabelText('Split 2 category').textContent).toContain('Choose category')
+    expect(splitField(1, 'category').textContent).toContain('Groceries')
+    expect(splitField(2, 'category').textContent).toContain('Choose category')
   })
 
   it('cancelling the split returns to a single category row', () => {
@@ -217,11 +218,11 @@ describe('reaching the split editor', () => {
 
   it('will not drop below two legs', () => {
     startSplit('10.00')
-    expect(screen.getByLabelText('Remove split 1').hasAttribute('disabled')).toBe(true)
+    expect(splitField(1, 'remove').hasAttribute('disabled')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: /Add line/ }))
-    expect(screen.getByLabelText('Remove split 1').hasAttribute('disabled')).toBe(false)
-    fireEvent.click(screen.getByLabelText('Remove split 3'))
-    expect(screen.getAllByLabelText(/^Split \d+ amount$/)).toHaveLength(2)
+    expect(splitField(1, 'remove').hasAttribute('disabled')).toBe(false)
+    fireEvent.click(splitField(3, 'remove'))
+    expect(splitLines()).toHaveLength(2)
   })
 })
 
@@ -295,7 +296,7 @@ describe('covering the rest', () => {
     fireEvent.click(cover()!)
     pickInSheet('Groceries')
 
-    expect(screen.getByLabelText<HTMLInputElement>('Split 1 amount').value).toBe('100')
+    expect(splitField(1, 'amount').value).toBe('100')
     expect(screen.getByRole('status').textContent).toBe('Fully split')
     expect(save().hasAttribute('disabled')).toBe(false)
     expect(cover()).toBeNull()
@@ -308,9 +309,9 @@ describe('covering the rest', () => {
     fireEvent.click(cover()!)
     pickInSheet('Household')
 
-    expect(screen.getAllByLabelText(/^Split \d+ amount$/)).toHaveLength(2)
-    expect(screen.getByLabelText<HTMLInputElement>('Split 2 amount').value).toBe('35.80')
-    expect(screen.getByLabelText('Split 2 category').textContent).toContain('Household')
+    expect(splitLines()).toHaveLength(2)
+    expect(splitField(2, 'amount').value).toBe('35.80')
+    expect(splitField(2, 'category').textContent).toContain('Household')
     expect(save().hasAttribute('disabled')).toBe(false)
   })
 

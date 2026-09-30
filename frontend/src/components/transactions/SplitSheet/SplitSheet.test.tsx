@@ -73,8 +73,47 @@ describe('SplitSheet', () => {
     expect(screen.getByText('Split $214.37')).toBeTruthy()
   })
 
+  it('folds every line when the split is complete, and opens one on a tap', () => {
+    render(<Harness initial={started} />)
+    expect(screen.queryByLabelText('Split 1 amount')).toBeNull()
+    expect(screen.queryByLabelText('Split 2 amount')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Split 2: Household, $38.40' }))
+    expect(screen.getByLabelText('Split 2 amount')).toBeTruthy()
+    expect(screen.queryByLabelText('Split 1 amount')).toBeNull()
+  })
+
+  it('keeps one line open at a time', () => {
+    render(<Harness initial={started} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Split 1:/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Split 2:/ }))
+    expect(screen.queryByLabelText('Split 1 amount')).toBeNull()
+    expect(screen.getByLabelText('Split 2 amount')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Done with line' }))
+    expect(screen.queryByLabelText('Split 2 amount')).toBeNull()
+  })
+
+  it('opens the first unfinished line, so a new split starts ready to type', () => {
+    render(<Harness initial={[draft('a', '', 'g'), draft('b', '', null)]} />)
+    expect(screen.getByLabelText('Split 1 amount')).toBeTruthy()
+    expect(screen.queryByLabelText('Split 2 amount')).toBeNull()
+  })
+
+  it('shows an unreadable amount as typed on its folded row, not as zero', () => {
+    render(<Harness initial={[draft('a', '12..5', 'g'), draft('b', '38.40', 'h')]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Done with line' }))
+    expect(screen.getByRole('button', { name: 'Split 1: Groceries, 12..5' })).toBeTruthy()
+  })
+
+  it('opens a line it adds', () => {
+    render(<Harness initial={started} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add line' }))
+    expect(legs()).toHaveLength(3)
+    expect(screen.getByLabelText('Split 3 amount')).toBeTruthy()
+  })
+
   it('gives every line a memo', () => {
     render(<Harness initial={started} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Split 2:/ }))
     fireEvent.change(screen.getByLabelText('Split 2 memo'), { target: { value: 'Paper towels' } })
     expect(legs()[1].memo).toBe('Paper towels')
   })

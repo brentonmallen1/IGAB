@@ -83,33 +83,71 @@
   gap: var(--spacing-sm);
 }
 
-.split-sheet__leg {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-xs) var(--spacing-md);
-  background: var(--surface-sunken);
-  border: 1px solid var(--edge);
-  border-radius: var(--border-radius-md);
-}
-
-.split-sheet__leg-main,
-.split-sheet__leg-sub {
+/* A folded line: one row, tapped to open. */
+.split-sheet__row {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.split-sheet__row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.split-sheet__row-text .split-sheet__cat-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-sheet__row-amount {
+  flex-shrink: 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-sheet__row-amount--empty {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* The open line: its fields stacked, each with room for a thumb. */
+.split-sheet__leg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-md) var(--spacing-xs);
+  background: var(--surface-raised);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-md);
+}
+
+.split-sheet__cat,
+.split-sheet__field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 52px;
+  padding: 0 var(--spacing-md);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
 }
 
 .split-sheet__cat {
-  flex: 1;
-  min-width: 0;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: 0;
-  background: none;
-  border: none;
   color: var(--text-muted);
   text-align: left;
 }
@@ -138,18 +176,28 @@
   color: var(--text-muted);
 }
 
-.split-sheet__amount {
-  width: 120px;
+.split-sheet__field-label {
+  width: 56px;
   flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.split-sheet__amount,
+.split-sheet__memo {
+  flex: 1;
+  min-width: 0;
   min-height: 48px;
-  padding: 0 var(--spacing-sm);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius-sm);
-  background: var(--input-bg);
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--text-primary);
+}
+
+.split-sheet__amount {
   /* Larger than the 16px touch floor, so said in --control-font-size, which
      the floor reads; as font-size it would be drawn at 16px on a phone. */
-  --control-font-size: 18px;
+  --control-font-size: 22px;
   font-size: var(--control-font-size);
   font-weight: 600;
   text-align: right;
@@ -157,33 +205,55 @@
 }
 
 .split-sheet__memo {
-  flex: 1;
-  min-width: 0;
-  min-height: var(--tap-min);
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
   font-size: 16px;
 }
 
+.split-sheet__amount:focus,
+.split-sheet__memo:focus {
+  outline: none;
+}
+
+.split-sheet__field:focus-within {
+  border-color: var(--color-accent);
+}
+
+.split-sheet__amount::placeholder,
 .split-sheet__memo::placeholder {
   color: var(--text-muted);
 }
 
+.split-sheet__leg-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .split-sheet__remove {
-  min-width: var(--tap-min);
   min-height: var(--tap-min);
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  padding: 0 var(--spacing-xs);
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--color-negative);
+  font-size: var(--font-size-sm);
 }
 
 .split-sheet__remove:disabled {
-  opacity: 0.35;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.split-sheet__fold {
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
 }
 
 .split-sheet__add {

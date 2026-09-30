@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import {
@@ -35,13 +35,33 @@ interface Props {
   onUnsplit?: () => void
 }
 
+/** A line still missing its category (where it takes one) or its amount. */
+function firstUnfinished(legs: SplitDraft[], canCategorize: boolean): string | null {
+  const leg = legs.find(
+    (l) => (canCategorize && !l.categoryId) || isNaN(expressionToCents(l.amount))
+  )
+  return leg?.tempId ?? null
+}
+
+/** A folded line's amount: formatted when it reads, as typed when it does
+ *  not (unreadable is not zero), and nothing when blank. */
+function legAmountText(amount: string, money: (cents: number) => string): string | null {
+  if (!amount.trim()) return null
+  const cents = expressionToCents(amount)
+  return isNaN(cents) ? amount : money(cents)
+}
+
+function focusField(e: MouseEvent<HTMLElement>) {
+  e.currentTarget.querySelector('input')?.focus()
+}
+
 /**
  * A split, on a phone, with the whole screen to itself.
  *
  * Inline in a form the lines were a cramped list under fields that scrolled
  * around them, with the total out of sight and a desktop dropdown for each
  * category. Here the total and what is left stay pinned at the top, every
- * line has room for its category, amount and memo, and "Cover the rest"
+ * line folds to one row and opens to its category, amount and memo, and "Cover the rest"
  * puts whatever is left into one envelope in a single choice. Quick add and
  * the editor both open this, so a phone has one split editor.
  */
@@ -57,6 +77,16 @@ export function SplitSheet({
 }: Props) {
   const { formatMoney } = useFormatters()
   const [picker, setPicker] = useState<Picker>(null)
+  // One line open at a time; the rest fold to a row each. The extra tap is
+  // the point: a line is changed on purpose, never by a stray touch while
+  // scrolling past it. Each time the sheet opens, the first unfinished line
+  // starts open, so a new split does not cost a tap per line.
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [wasOpen, setWasOpen] = useState(false)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setOpenId(firstUnfinished(legs, canCategorize))
+  }
 
   const check = checkSplit(totalCents, legs)
   const status = splitStatus(check, formatMoney)
@@ -111,7 +141,10 @@ export function SplitSheet({
               <button
                 type="button"
                 className="split-sheet__cover"
-                onClick={() => setPicker({ kind: 'cover' })}
+                onClick={() => {
+                  setOpenId(null)
+                  setPicker({ kind: 'cover' })
+                }}
               >
                 Cover the remaining {money(check.remainingCents)}…
               </button>
@@ -143,56 +176,106 @@ export function SplitSheet({
           <ol className="split-sheet__legs">
             {legs.map((leg, i) => {
               const option = leg.categoryId ? optionById.get(leg.categoryId) : undefined
+              const n = i + 1
+              if (leg.tempId !== openId) {
+                const amount = legAmountText(leg.amount, money)
+                return (
+                  <li key={leg.tempId}>
+                    <button
+                      type="button"
+                      className="split-sheet__row"
+                      aria-expanded={false}
+                      aria-label={`Split ${n}: ${option?.label ?? 'no category'}, ${amount ?? 'no amount'}`}
+                      onClick={() => setOpenId(leg.tempId)}
+                    >
+                      <span className="split-sheet__row-text">
+                        <span
+                          className={`split-sheet__cat-name ${option || !canCategorize ? '' : 'split-sheet__cat-name--empty'}`}
+                        >
+                          {canCategorize ? (option?.label ?? 'Choose category') : `Line ${n}`}
+                        </span>
+                        <span className="split-sheet__cat-hint">
+                          {leg.memo ||
+                            (option?.hint ? `Available ${option.hint}` : 'Tap to fill in')}
+                        </span>
+                      </span>
+                      <span
+                        className={`split-sheet__row-amount ${amount ? '' : 'split-sheet__row-amount--empty'}`}
+                      >
+                        {amount ?? '—'}
+                      </span>
+                    </button>
+                  </li>
+                )
+              }
               return (
                 <li key={leg.tempId} className="split-sheet__leg">
-                  <div className="split-sheet__leg-main">
-                    {canCategorize && (
-                      <button
-                        type="button"
-                        className="split-sheet__cat"
-                        aria-label={`Split ${i + 1} category`}
-                        onClick={() => setPicker({ kind: 'leg', tempId: leg.tempId })}
-                      >
-                        <span className="split-sheet__cat-text">
-                          <span
-                            className={`split-sheet__cat-name ${option ? '' : 'split-sheet__cat-name--empty'}`}
-                          >
-                            {option?.label ?? 'Choose category'}
-                          </span>
-                          {option?.hint && (
-                            <span className="split-sheet__cat-hint">Available {option.hint}</span>
-                          )}
+                  {canCategorize && (
+                    <button
+                      type="button"
+                      className="split-sheet__cat"
+                      aria-label={`Split ${n} category`}
+                      onClick={() => setPicker({ kind: 'leg', tempId: leg.tempId })}
+                    >
+                      <span className="split-sheet__cat-text">
+                        <span
+                          className={`split-sheet__cat-name ${option ? '' : 'split-sheet__cat-name--empty'}`}
+                        >
+                          {option?.label ?? 'Choose category'}
                         </span>
-                        <ChevronRight size={16} aria-hidden />
-                      </button>
-                    )}
+                        {option?.hint && (
+                          <span className="split-sheet__cat-hint">Available {option.hint}</span>
+                        )}
+                      </span>
+                      <ChevronRight size={16} aria-hidden />
+                    </button>
+                  )}
+                  {/* Not a <label>: the input's own name says which line it is, and a
+                      second "Amount" label would shadow the form's. A tap on the
+                      word still lands in the field. */}
+                  <div className="split-sheet__field" onClick={focusField}>
+                    <span className="split-sheet__field-label" aria-hidden>Amount</span>
                     <AmountInput
                       className="split-sheet__amount"
                       value={leg.amount}
                       onValueChange={(v) => update(leg.tempId, { amount: v })}
                       placeholder="0.00"
-                      aria-label={`Split ${i + 1} amount`}
+                      aria-label={`Split ${n} amount`}
                     />
                   </div>
-                  <div className="split-sheet__leg-sub">
+                  <div className="split-sheet__field" onClick={focusField}>
+                    <span className="split-sheet__field-label" aria-hidden>Memo</span>
                     <input
                       type="text"
                       className="split-sheet__memo"
                       value={leg.memo}
                       onChange={(e) => update(leg.tempId, { memo: e.target.value })}
-                      placeholder="Memo"
+                      placeholder="Optional"
                       enterKeyHint="done"
-                      aria-label={`Split ${i + 1} memo`}
+                      aria-label={`Split ${n} memo`}
                     />
+                  </div>
+                  <div className="split-sheet__leg-actions">
                     {/* A split of one is just a category. */}
                     <button
                       type="button"
                       className="split-sheet__remove"
-                      onClick={() => onChange(legs.filter((l) => l.tempId !== leg.tempId))}
+                      onClick={() => {
+                        setOpenId(null)
+                        onChange(legs.filter((l) => l.tempId !== leg.tempId))
+                      }}
                       disabled={legs.length <= 2}
-                      aria-label={`Remove split ${i + 1}`}
+                      aria-label={`Remove split ${n}`}
                     >
-                      <Trash2 size={15} />
+                      <Trash2 size={15} aria-hidden />
+                      Remove line
+                    </button>
+                    <button
+                      type="button"
+                      className="split-sheet__fold"
+                      onClick={() => setOpenId(null)}
+                    >
+                      Done with line
                     </button>
                   </div>
                 </li>
@@ -203,7 +286,11 @@ export function SplitSheet({
           <button
             type="button"
             className="split-sheet__add"
-            onClick={() => onChange([...legs, newLeg()])}
+            onClick={() => {
+              const leg = newLeg()
+              onChange([...legs, leg])
+              setOpenId(leg.tempId)
+            }}
           >
             <Plus size={15} aria-hidden />
             Add line

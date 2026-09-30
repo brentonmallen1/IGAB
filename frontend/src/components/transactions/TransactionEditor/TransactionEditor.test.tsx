@@ -124,6 +124,7 @@ vi.mock('../../../hooks/useHistoryDismissable', () => ({ useHistoryDismissable: 
 import { TransactionEditor } from './TransactionEditor'
 import type { Transaction } from '../../../types'
 import type { AIJob } from '../../../api/aiJobs'
+import { splitField } from '../SplitSheet/splitSheetTestUtils'
 
 function renderEditor(props: Partial<Parameters<typeof TransactionEditor>[0]> = {}) {
   // The api/* hooks are mocked, but useToastUndo reaches the real
@@ -938,10 +939,10 @@ describe('TransactionEditor splitting on a phone', () => {
     fireEvent.change(amountInputs()[0], { target: { value: '120' } })
     fireEvent.click(screen.getByTitle('Split this transaction'))
 
-    fireEvent.click(screen.getByLabelText('Split 1 category'))
+    fireEvent.click(splitField(1, 'category'))
     fireEvent.click(option('Groceries'))
-    fireEvent.change(screen.getByLabelText('Split 1 amount'), { target: { value: '84.20' } })
-    fireEvent.change(screen.getByLabelText('Split 1 memo'), { target: { value: 'Weekly shop' } })
+    fireEvent.change(splitField(1, 'amount'), { target: { value: '84.20' } })
+    fireEvent.change(splitField(1, 'memo'), { target: { value: 'Weekly shop' } })
     fireEvent.click(screen.getByRole('button', { name: /Cover the remaining/ }))
     fireEvent.click(option('Fun'))
     fireEvent.click(screen.getAllByRole('button', { name: 'Done' }).at(-1)!)
@@ -984,7 +985,7 @@ describe('TransactionEditor splitting on a phone', () => {
     expect(row.textContent).toContain('Groceries, Fun')
     expect(row.textContent).toContain('Fully split')
     fireEvent.click(row)
-    expect(screen.getByLabelText<HTMLInputElement>('Split 2 amount').value).toBe('1.8')
+    expect(splitField(2, 'amount').value).toBe('1.8')
     expect(screen.queryByRole('button', { name: /Don't split/ })).toBeNull()
   })
 })
