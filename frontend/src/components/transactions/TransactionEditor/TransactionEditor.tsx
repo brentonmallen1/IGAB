@@ -39,7 +39,6 @@ import {
   useTransactionSplits,
   usePayees,
   useSimilarTransactions,
-  useTransaction,
   useTransferCandidates,
 } from '../../../api/transactions'
 import toast from 'react-hot-toast'
@@ -230,14 +229,11 @@ export function TransactionEditor({
   const [pristine, setPristine] = useState<EntryFields>(fields)
   const started = !isEdit && entryStarted(fields, pristine, { isSplit, isTransfer })
 
-  // Review handoff: when an AI job completes, we render a nested TransactionEditor
-  const [reviewJob, setReviewJob] = useState<AIJob | null>(null)
-  const { data: reviewTxn } = useTransaction(reviewJob?.transaction_id ?? null)
-
   const payeeRef = useRef<HTMLDivElement>(null)
   const payeeInitialized = useRef(false)
 
-  const aiAvailable = useAIStatus().data?.available === true
+  // Scanning is queued, so it needs AI set up, not answering right now.
+  const aiEnabled = useAIStatus().data?.enabled === true
 
   // Initialize payee query once payees are loaded (edit mode)
   useEffect(() => {
@@ -639,21 +635,6 @@ export function TransactionEditor({
   const splitCheck = checkSplit(editorTotalCents, splits)
   const splitIsValid = !isSplit || splitCheck.isValid
 
-  // Review handoff: when an AI job completes, render a nested TransactionEditor
-  // in review mode with the newly created transaction.
-  if (reviewJob && reviewTxn) {
-    return (
-      <TransactionEditor
-        key={reviewTxn.id}
-        budgetId={budgetId}
-        accountId={fixedAccountId}
-        transaction={reviewTxn}
-        aiJob={reviewJob}
-        onClose={onClose}
-      />
-    )
-  }
-
   // Which account this row is in — a picker for a new row with no register to
   // inherit from, and the move control for an existing one (AccountField).
   const accountField =
@@ -834,10 +815,10 @@ export function TransactionEditor({
               <ReceiptScanTab
                 budgetId={budgetId}
                 accountId={accountId}
-                aiAvailable={aiAvailable}
-                onReviewReady={setReviewJob}
-                onRememberAccount={() => {
+                aiEnabled={aiEnabled}
+                onQueued={() => {
                   if (!fixedAccountId && accountId) noteAccountUsed(accountId)
+                  onClose()
                 }}
                 onClose={onClose}
               />

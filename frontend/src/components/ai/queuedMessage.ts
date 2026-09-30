@@ -22,3 +22,7 @@ export function queuedMessage(
     ? `${head} — it'll show up in your transactions to review`
     : `${head} — they'll show up in your transactions to review`
 }
+
+/** Said beside the send button while no account is chosen. */
+export const WAITS_FOR_AN_ACCOUNT =
+  'No account chosen — it waits in AI Activity until you pick one.'

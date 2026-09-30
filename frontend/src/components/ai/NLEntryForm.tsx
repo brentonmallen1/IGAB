@@ -6,7 +6,7 @@ import { useAIStatus } from '../../api/ai'
 import { useSubmitDescription } from '../../api/aiJobs'
 import { apiErrorMessage } from '../../api/client'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
-import { queuedMessage } from './queuedMessage'
+import { queuedMessage, WAITS_FOR_AN_ACCOUNT } from './queuedMessage'
 import './NLEntryForm.css'
 import { sectionHref } from '../../pages/SettingsPage/settingsSections'
 
@@ -159,7 +159,7 @@ export function NLEntryForm({
           ? 'Listening — speak your transaction, then tap the mic to stop.'
           : accountId
             ? "It's read in the background and turns up in your transactions to review."
-            : 'No account chosen — it waits in AI Activity until you pick one.'}
+            : WAITS_FOR_AN_ACCOUNT}
       </p>
     </div>
   )
