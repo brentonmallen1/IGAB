@@ -32,7 +32,7 @@
  * function sees the value. Do not widen this module to four decimal places
  * to close that gap; the rounding is upstream.
  */
-import { expressionToCents } from './amountExpression'
+import { centsToInputString, expressionToCents } from './amountExpression'
 
 export interface SplitLegInput {
   amount: string
@@ -102,4 +102,32 @@ export function draftsFromLines(
     categoryId: line.category_id,
     memo: line.memo ?? '',
   }))
+}
+
+/**
+ * Which leg "fill the rest" writes to: the first one with no amount yet.
+ * Null when there is nothing to fill — the split is done or over — or no
+ * leg is empty, where writing into a typed leg would overwrite a figure a
+ * person entered.
+ */
+export function remainderTarget(
+  legs: readonly SplitLegInput[],
+  remainingCents: number
+): number | null {
+  if (!Number.isFinite(remainingCents) || remainingCents <= 0) return null
+  const i = legs.findIndex((leg) => {
+    const cents = expressionToCents(leg.amount)
+    return leg.amount.trim() === '' || isNaN(cents) || cents === 0
+  })
+  return i === -1 ? null : i
+}
+
+/** The legs with what is left written into `remainderTarget`'s leg, as the
+ *  editors hold amounts (magnitude strings). Unchanged when there is none. */
+export function fillRemainder<T extends SplitLegInput>(legs: T[], remainingCents: number): T[] {
+  const i = remainderTarget(legs, remainingCents)
+  if (i === null) return legs
+  return legs.map((leg, j) =>
+    j === i ? { ...leg, amount: centsToInputString(remainingCents) } : leg
+  )
 }

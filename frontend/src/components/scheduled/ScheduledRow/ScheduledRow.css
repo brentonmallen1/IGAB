@@ -225,12 +225,19 @@
     padding: var(--spacing-md);
   }
 
-  .scheduled-row__payee {
+  /* Each placement names the register variant too: its desktop rules pin
+     these cells to columns 4-9 at higher specificity, and a phone card with
+     two columns then grew implicit ones. Dates wrapped a digit group per
+     line and the payee ran into the frequency. */
+  .scheduled-row__payee,
+  .scheduled-row--register .scheduled-row__payee {
     grid-area: payee;
     font-weight: 600;
   }
 
-  .scheduled-row__amount {
+  .scheduled-row__amount,
+  .scheduled-row--register .scheduled-row__amount.negative,
+  .scheduled-row--register .scheduled-row__amount.positive {
     grid-area: amount;
     text-align: right;
     padding-right: 0;
@@ -257,6 +264,7 @@
 
   .scheduled-row--register .scheduled-row__category {
     display: block;
+    grid-area: sub;
   }
 
   .scheduled-row__freq,
@@ -297,8 +305,22 @@
     display: none;
   }
 
-  .scheduled-row__actions {
+  /* The register's card has no Auto line (it lives on the Scheduled page),
+     so Enter / Skip take that place beside the date: three lines, not four,
+     under a section of six of these above the real rows. */
+  .scheduled-row--register {
+    grid-template-areas:
+      "payee amount"
+      "sub freq"
+      "date actions";
+  }
+
+  .scheduled-row__actions,
+  .scheduled-row--register .scheduled-row__actions {
     grid-area: actions;
+    /* The register stacks them into its 60px column; a card has the width. */
+    flex-direction: row;
+    align-items: center;
   }
 
   .scheduled-row__btn {

@@ -7,7 +7,10 @@ import { rulesWithContext, stripComments } from '../../../test-utils/cssRules'
 import type { ScheduledTransaction } from '../../../types'
 
 vi.mock('../../../hooks/useFormatters', () => ({
-  useFormatters: () => ({ formatMoney: (n: number) => `$${n.toFixed(2)}` }),
+  useFormatters: () => ({
+    formatMoney: (n: number) => `$${n.toFixed(2)}`,
+    formatDate: (iso: string) => `formatted ${iso}`,
+  }),
 }))
 
 const base: ScheduledTransaction = {
@@ -159,6 +162,19 @@ describe('ScheduledRow stylesheet', () => {
           .includes(sel) && r.atRules.some((a) => a.includes('max-width: 768px'))
     )?.body ?? ''
 
+  /** Every phone rule naming `sel`, in source order — the last one wins. */
+  const phoneAll = (sel: string) =>
+    rules
+      .filter(
+        (r) =>
+          r.selector
+            .split(',')
+            .map((s) => s.trim())
+            .includes(sel) && r.atRules.some((a) => a.includes('max-width: 768px'))
+      )
+      .map((r) => r.body)
+      .join('\n')
+
   it('register: hides account and auto on desktop (the register knows its account)', () => {
     expect(desktop('.scheduled-row--register .scheduled-row__account')).toMatch(/display:\s*none/)
   })
@@ -188,6 +204,25 @@ describe('ScheduledRow stylesheet', () => {
     )
     expect(phone('.scheduled-row__head')).toMatch(/display:\s*none/)
     expect(phone('.scheduled-row__btn')).toMatch(/min-height:\s*var\(--tap-min\)/)
+  })
+
+  it("the register's phone card puts Enter / Skip beside the date — it has no Auto line", () => {
+    // Its desktop rules pin each cell to a column at higher specificity; a
+    // phone placement that named only the base class lost to them, and the
+    // card grew implicit columns with the date wrapped a digit group a line.
+    const areas = [
+      ...phoneAll('.scheduled-row--register').matchAll(/grid-template-areas:([^;]*);/g),
+    ]
+    expect(areas.at(-1)?.[1]).toMatch(/"payee amount"\s*"sub freq"\s*"date actions"/)
+    for (const cell of ['payee', 'actions']) {
+      expect(phone(`.scheduled-row--register .scheduled-row__${cell}`)).toMatch(
+        new RegExp(`grid-area:\\s*${cell}`)
+      )
+    }
+    expect(phone('.scheduled-row--register .scheduled-row__amount.negative')).toMatch(
+      /grid-area:\s*amount/
+    )
+    expect(phone('.scheduled-row--register .scheduled-row__category')).toMatch(/grid-area:\s*sub/)
   })
 
   it('the phone card second line is the envelope in the register and the account on the page', () => {

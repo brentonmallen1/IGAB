@@ -8,7 +8,7 @@
  * us.
  */
 import { describe, expect, it } from 'vitest'
-import { checkSplit } from './splits'
+import { checkSplit, fillRemainder, remainderTarget } from './splits'
 import { toCents } from './money'
 import cases from '../../../shared/split_cases.json'
 
@@ -87,5 +87,48 @@ describe('the clauses that had drifted between the three editors', () => {
 
   it('accepts an arithmetic expression as a leg', () => {
     expect(checkSplit(1449, [leg('10.50'), leg('2.50+1.49')]).isValid).toBe(true)
+  })
+})
+
+/**
+ * "Fill the rest": a split is finished by typing every leg but the last and
+ * then doing the subtraction — on a phone, with a keypad that has no minus
+ * sign. The remainder already shows; tapping it puts it in the empty leg.
+ */
+describe('filling the remainder', () => {
+  const leg = (amount: string) => ({ amount, categoryId: null })
+
+  it('goes into the first leg with no amount', () => {
+    const legs = [leg('60'), leg(''), leg('')]
+    expect(remainderTarget(legs, 6000)).toBe(1)
+    expect(fillRemainder(legs, 6000).map((l) => l.amount)).toEqual(['60', '60', ''])
+  })
+
+  it('writes cents the way the editors hold them', () => {
+    expect(fillRemainder([leg('10'), leg('')], 1234).map((l) => l.amount)).toEqual(['10', '12.34'])
+  })
+
+  it('counts a zero or unreadable leg as empty', () => {
+    expect(remainderTarget([leg('0'), leg('5')], 500)).toBe(0)
+    expect(remainderTarget([leg('5'), leg('abc')], 500)).toBe(1)
+  })
+
+  it('never overwrites a figure a person typed', () => {
+    const legs = [leg('60'), leg('20')]
+    expect(remainderTarget(legs, 4000)).toBeNull()
+    expect(fillRemainder(legs, 4000)).toBe(legs)
+  })
+
+  it('has nothing to fill when done or over', () => {
+    expect(remainderTarget([leg('')], 0)).toBeNull()
+    expect(remainderTarget([leg('')], -500)).toBeNull()
+  })
+
+  it('leaves the result a valid split', () => {
+    const legs = [
+      { amount: '60', categoryId: 'a' },
+      { amount: '', categoryId: 'b' },
+    ]
+    expect(checkSplit(12000, fillRemainder(legs, 6000)).isValid).toBe(true)
   })
 })

@@ -280,6 +280,29 @@ describe('the legs must add up', () => {
   })
 })
 
+describe('filling the rest', () => {
+  // The last leg is subtraction, and the phone's decimal keypad has no minus.
+  it('puts what is left in the empty leg, and the split can be saved', () => {
+    startSplit('120.00')
+    pickLegCategory(0, 'Groceries')
+    pickLegCategory(1, 'Household')
+    setLeg(0, '84.20')
+    fireEvent.click(screen.getByRole('button', { name: 'Fill' }))
+
+    expect(screen.getByLabelText<HTMLInputElement>('Split 2 amount').value).toBe('35.80')
+    expect(screen.getByRole('status').textContent).toContain('Fully assigned')
+    expect(save().hasAttribute('disabled')).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Fill' })).toBeNull()
+  })
+
+  it('is not offered once every leg has a figure', () => {
+    startSplit('10.00')
+    setLeg(0, '6.00')
+    setLeg(1, '3.00')
+    expect(screen.queryByRole('button', { name: 'Fill' })).toBeNull()
+  })
+})
+
 describe('what gets sent', () => {
   async function saveSplit(total: string, legs: [string, string][]) {
     startSplit(total)

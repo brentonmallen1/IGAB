@@ -105,11 +105,17 @@
 
 @media (max-width: 768px) {
   /* The bottom sheet supplies the panel, the title and the footer slot, so
-     the dialog inside it is layout only. */
+     the dialog inside it is layout only — but it still owns the gutter. The
+     sheet's body has none, and with `padding: 0` every dialog on a phone ran
+     edge to edge: fields touching the glass, a Send button cut in half, and
+     the panel colour stopping where the content did. The side gutter is the
+     sheet bar's and footer's, so the fields line up under the close button
+     and over the actions. */
   .dialog {
     width: 100%;
     border: none;
-    padding: 0;
+    background: transparent;
+    padding: var(--spacing-xs) var(--spacing-md) var(--spacing-lg);
     max-height: none;
     overflow: visible;
   }

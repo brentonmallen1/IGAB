@@ -191,7 +191,6 @@
   flex-shrink: 0;
 }
 
-.quick-add__row--date input,
 .quick-add__row--memo input {
   flex: 1;
   min-height: 44px;
@@ -202,13 +201,23 @@
   font-size: 16px;
 }
 
-/* Chips take the middle of the date row; the native picker keeps its
-   intrinsic width where there is room and shrinks where there is not — at
-   390px it ran 30px past the row and the year was cut off. */
-.quick-add__row--date input {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
+.quick-add__date-other {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The native picker, invisible over its chip: the tap is its own, so the
+   phone opens its date wheel, and the chip does the drawing. */
+.quick-add__date-other input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  font-size: 16px;
 }
 
 .quick-add__date-chips {
@@ -440,13 +449,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   flex-shrink: 0;
   min-width: var(--tap-min);
   min-height: var(--tap-min);
-  margin-right: calc(var(--spacing-md) * -1);
+  padding: 0 var(--spacing-sm);
+  margin-right: calc(var(--spacing-sm) * -1);
   border: none;
   background: none;
-  color: var(--color-accent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .quick-add__split {
@@ -538,7 +550,6 @@
 }
 
 .quick-add__split-remaining {
-  margin-left: auto;
   font-size: var(--font-size-sm);
   /* The one number that decides whether Save is reachable, so it carries
      state colour: amber while the legs don't add up, positive when they do. */
@@ -575,4 +586,22 @@
   .quick-add__row--asked {
     animation: none;
   }
+}
+
+.quick-add__split-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.quick-add__split-fill {
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
 }

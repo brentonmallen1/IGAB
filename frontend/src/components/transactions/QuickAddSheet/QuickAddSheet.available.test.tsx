@@ -252,6 +252,26 @@ describe('the category picker', () => {
   })
 })
 
+describe('before an account is chosen', () => {
+  // The account is chosen at Save, not at open, so the envelope is usually
+  // picked first — and its balance used to wait for the account, never
+  // showing while it was being chosen.
+  it("shows each category's Available in the picker already", async () => {
+    render(
+      <QueryClientProvider client={h.qc}>
+        <QuickAddSheet />
+      </QueryClientProvider>
+    )
+    await monthLoaded()
+    fireEvent.click(screen.getByLabelText('Category'))
+    await waitFor(() =>
+      expect(
+        optionRow('Groceries').querySelector('.selection-sheet__option-hint')?.textContent
+      ).toBe('$240.00')
+    )
+  })
+})
+
 describe('the category row', () => {
   it('shows Available once payee memory has chosen the category', async () => {
     renderSheet()
@@ -278,11 +298,11 @@ describe('the category row', () => {
     expect(row.textContent).not.toContain('Available')
   })
 
-  it('fetches no month and offers no category on a tracking account', async () => {
+  it('offers no category, and no Available, on a tracking account', async () => {
     h.onBudget = false
     renderSheet()
     expect(screen.queryByLabelText('Category')).toBeNull()
-    expect(h.get).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Available/)).toBeNull()
   })
 })
 

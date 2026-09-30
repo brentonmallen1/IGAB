@@ -59,7 +59,7 @@ export function NLEntryForm({
   const speech = useSpeechRecognition()
   const [text, setText] = useState('')
   const [micHidden, setMicHidden] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Dictated words flow into the editable input — never auto-submitted
   useEffect(() => {
@@ -115,34 +115,37 @@ export function NLEntryForm({
 
   return (
     <div className="nl-form">
+      {/* A box that wraps: a dictated sentence is long, and a one-line
+          input scrolled it out of sight while it was being checked. */}
+      <textarea
+        ref={inputRef}
+        className={`nl-form__input ${speech.interim ? 'nl-form__input--interim' : ''}`}
+        rows={3}
+        enterKeyHint="send"
+        aria-label="Describe the transaction"
+        value={display}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter sends — nothing here wants a second line — and inside the
+          // editor's <form> it must not submit the half-empty transaction.
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            void handleSend()
+          }
+        }}
+        placeholder='e.g. "coffee at Starbucks 5.50 yesterday"'
+        disabled={submit.isPending}
+      />
       <div className="nl-form__row">
-        <input
-          ref={inputRef}
-          className={`nl-form__input ${speech.interim ? 'nl-form__input--interim' : ''}`}
-          type="text"
-          enterKeyHint="send"
-          value={display}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            // The form may sit inside the editor's <form>; Enter parses here
-            // instead of submitting the half-empty transaction.
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void handleSend()
-            }
-          }}
-          placeholder='e.g. "coffee at Starbucks 5.50 yesterday"'
-          disabled={submit.isPending}
-        />
         {speech.supported && !micHidden && (
           <button
             type="button"
             className={`nl-form__mic ${speech.listening ? 'nl-form__mic--listening' : ''}`}
             onClick={() => (speech.listening ? speech.stop() : speech.start())}
-            aria-label={speech.listening ? 'Stop dictation' : 'Dictate'}
             title={speech.listening ? 'Listening — tap to stop' : 'Dictate'}
           >
-            <Mic size={16} />
+            <Mic size={16} aria-hidden />
+            {speech.listening ? 'Stop' : 'Dictate'}
           </button>
         )}
         <button

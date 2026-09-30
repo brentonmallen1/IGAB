@@ -492,6 +492,22 @@
   padding: 2px 4px;
 }
 
+.txn-editor__split-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.txn-editor__split-fill {
+  padding: 2px var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
 .txn-editor__split-remaining {
   font-size: var(--font-size-xs);
   color: var(--color-negative);
@@ -578,6 +594,12 @@
   opacity: 0.8;
 }
 
+/* The same disclosure without the warning: amber is for "this may be a
+   duplicate", and a row's attachments are not a problem. */
+.txn-editor__similar-toggle--quiet {
+  color: var(--text-secondary);
+}
+
 .txn-editor__similar-toggle > svg:last-child {
   margin-left: auto;
 }
@@ -657,8 +679,12 @@
     padding-bottom: calc(var(--spacing-md) + var(--safe-bottom));
   }
 
+  /* The category picker is a combobox, not a .txn-editor__input: without
+     naming it here it stood shorter than every field around it. */
   .txn-editor__input,
-  .txn-editor__select {
+  .txn-editor__select,
+  .txn-editor .combobox__trigger,
+  .txn-editor .category-combobox__trigger {
     min-height: 44px;
   }
 
@@ -680,7 +706,8 @@
     justify-content: center;
   }
 
-  .txn-editor__split-remove {
+  .txn-editor__split-remove,
+  .txn-editor__split-fill {
     min-width: var(--tap-min);
     min-height: var(--tap-min);
   }
@@ -721,9 +748,9 @@
 /* Why this row counts the way it does in reports. Quiet by default — it is
    reassurance when a number looks wrong, not something to read every time. */
 .txn-editor__classification {
-  margin: 0 0 var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-left: 2px solid var(--border-color);
+  /* In the body's gutter: it sits between the attachments and the footer,
+     outside the padded body, and used to run to the panel's edge. */
+  margin: 0 var(--spacing-lg) var(--spacing-sm);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.5;

@@ -66,7 +66,7 @@ import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { fromCents, parseApiDecimal } from '../../../utils/money'
 import { expressionToCents } from '../../../utils/amountExpression'
-import { checkSplit, draftsFromLines } from '../../../utils/splits'
+import { checkSplit, draftsFromLines, fillRemainder, remainderTarget } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
@@ -1074,12 +1074,25 @@ export function TransactionEditor({
                         <button type="button" className="txn-editor__split-add" onClick={addSplit}>
                           <Plus size={12} /> Add split
                         </button>
-                        <span
-                          className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}
-                        >
-                          {splitCheck.remainingCents === 0
-                            ? 'Fully assigned'
-                            : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
+                        <span className="txn-editor__split-status">
+                          <span
+                            className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}
+                          >
+                            {splitCheck.remainingCents === 0
+                              ? 'Fully assigned'
+                              : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
+                          </span>
+                          {remainderTarget(splits, splitCheck.remainingCents) !== null && (
+                            <button
+                              type="button"
+                              className="txn-editor__split-fill"
+                              onClick={() =>
+                                setSplits((prev) => fillRemainder(prev, splitCheck.remainingCents))
+                              }
+                            >
+                              Fill
+                            </button>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -1278,7 +1291,8 @@ export function TransactionEditor({
               <div className="txn-editor__attachments">
                 <button
                   type="button"
-                  className="txn-editor__similar-toggle"
+                  className="txn-editor__similar-toggle txn-editor__similar-toggle--quiet"
+                  aria-expanded={showAttachments}
                   onClick={() => setShowAttachments((v) => !v)}
                 >
                   <Paperclip size={13} />

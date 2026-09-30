@@ -7,6 +7,7 @@ import { useCategoryAvailable } from './useCategoryAvailable'
 import { AvailableChangeToast } from './AvailableChangeToast'
 import {
   AlertTriangle,
+  CalendarDays,
   Camera,
   ChevronRight,
   FileText,
@@ -53,7 +54,7 @@ import {
   expressionToCents,
   isAmountExpression,
 } from '../../../utils/amountExpression'
-import { checkSplit } from '../../../utils/splits'
+import { checkSplit, fillRemainder, remainderTarget } from '../../../utils/splits'
 import { randomUUID } from '../../../utils/uuid'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -87,7 +88,7 @@ function freshSplits(): SplitDraft[] {
  * across entries.
  */
 export function QuickAddSheet() {
-  const { formatMoney, settings } = useFormatters()
+  const { formatMoney, formatDayMonth, settings } = useFormatters()
   const notify = useUndoToast()
   const currencySymbol = getCurrencySymbol(settings.currencyCode).trim()
   const open = useUIStore((s) => s.quickAddOpen)
@@ -242,10 +243,12 @@ export function QuickAddSheet() {
   )
 
   // Available in the month the row is dated, for the picker, the row and the
-  // after-save toast. Unfetched where no category can be chosen — including
-  // the first render, before the sticky account is known to be on budget.
+  // after-save toast. Unfetched only where no category can be chosen (a
+  // tracking account). It waited for an account from when one was
+  // pre-selected; with none chosen until Save, the envelope's balance never
+  // showed while the envelope was being picked.
   const { balances, hintFor, readServerBalance } = useCategoryAvailable(
-    open && accountId && canCategorize ? budgetId : null,
+    open && canCategorize ? budgetId : null,
     date
   )
   const categoryHint = canCategorize ? hintFor(categoryId) : undefined
@@ -791,17 +794,30 @@ export function QuickAddSheet() {
                     <Plus size={13} />
                     Add split
                   </button>
-                  <span
-                    className={`quick-add__split-remaining ${
-                      remainingCents === 0 ? 'quick-add__split-remaining--done' : ''
-                    }`}
-                    role="status"
-                  >
-                    {remainingCents === 0
-                      ? 'Fully assigned'
-                      : `${formatMoney(Math.abs(remainingCents) / 100)} ${
-                          remainingCents > 0 ? 'left' : 'over'
-                        }`}
+                  <span className="quick-add__split-status">
+                    <span
+                      className={`quick-add__split-remaining ${
+                        remainingCents === 0 ? 'quick-add__split-remaining--done' : ''
+                      }`}
+                      role="status"
+                    >
+                      {remainingCents === 0
+                        ? 'Fully assigned'
+                        : `${formatMoney(Math.abs(remainingCents) / 100)} ${
+                            remainingCents > 0 ? 'left' : 'over'
+                          }`}
+                    </span>
+                    {/* The last leg is subtraction, and the keypad has no
+                        minus: put what is left in the empty leg. */}
+                    {remainderTarget(splits, remainingCents) !== null && (
+                      <button
+                        type="button"
+                        className="quick-add__split-fill"
+                        onClick={() => setSplits((prev) => fillRemainder(prev, remainingCents))}
+                      >
+                        Fill
+                      </button>
+                    )}
                   </span>
                 </div>
               </div>
@@ -830,8 +846,8 @@ export function QuickAddSheet() {
                   onClick={beginSplit}
                   title="Split this across categories"
                 >
-                  <Split size={14} />
-                  <span className="sr-only">Split across categories</span>
+                  <Split size={14} aria-hidden />
+                  Split
                 </button>
               </div>
             ) : null}
@@ -869,13 +885,26 @@ export function QuickAddSheet() {
                 >
                   Yesterday
                 </button>
+                {/* Any other day: a chip like its neighbours, saying the day
+                    once one is picked. The native input covers it, invisible,
+                    so a tap opens the phone's own picker — squeezed in beside
+                    the chips it clipped to "09/29/". */}
+                <label
+                  className={`quick-add__date-chip quick-add__date-other ${
+                    date !== today() && date !== yesterday() ? 'quick-add__date-chip--active' : ''
+                  }`}
+                >
+                  <CalendarDays size={14} aria-hidden />
+                  {date !== today() && date !== yesterday() ? formatDayMonth(date) : 'Other'}
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => e.target.value && setDate(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    aria-label="Date"
+                  />
+                </label>
               </div>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                aria-label="Date"
-              />
             </div>
 
             {memoOpen ? (
@@ -1108,7 +1137,13 @@ export function QuickAddSheet() {
           setMayDecideLater(false)
           setAccountSheetOpen(false)
         }}
-        title="Account"
+        title={
+          accountAskedFor === 'scan'
+            ? 'Account for this receipt'
+            : accountAskedFor === 'describe'
+              ? 'Account for this description'
+              : 'Account'
+        }
         options={accountOptions}
         allowNone={mayDecideLater}
         noneLabel="Decide later — it waits in AI Activity"
@@ -1117,7 +1152,7 @@ export function QuickAddSheet() {
             ? { label: 'Recent', options: recent.map((a) => ({ id: a.id, label: a.name })) }
             : undefined
         }
-        value={accountId}
+        value={accountId ?? undefined}
         onChange={(id) => (id ? chooseAccount(id) : decideLater())}
         placeholder="Search accounts…"
       />
