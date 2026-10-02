@@ -6,6 +6,7 @@ import {
   transferTargets,
 } from '../transferConversion'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
+import { PROJECTED_INTEREST_NOTE } from '../../../utils/projectedInterest'
 import { AccountField } from './AccountField'
 import { accountLockReason, categoryDropNote } from './accountMove'
 import { editorAmount } from './editorAmount'
@@ -22,8 +23,8 @@ import {
   MessageSquareText,
   Paperclip,
   ReceiptText,
-  RefreshCw,
   Lock,
+  Percent,
 } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
@@ -57,12 +58,9 @@ import { type AIJob } from '../../../api/aiJobs'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { Link } from 'react-router-dom'
-import { useReprocessAIJob } from '../../../api/aiJobs'
 import { Modal } from '../../common/Modal/Modal'
-import { isConfigFailure, scanFailureReason } from './scanFailure'
+import { AIReviewBanner } from './AIReviewBanner'
 import { entryStarted, STARTED_ENTRY_NOTE, type EntryFields } from './entryStarted'
-import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { fromCents } from '../../../utils/money'
@@ -82,11 +80,7 @@ import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
-import { categoryForLabel, unresolvedCategoryNote } from '../../ai/draftNotes'
-import { CardEndingNotice } from '../../ai/CardEndingNotice'
-
-/** Where the AI model is configured — the System page, not the budget's Settings. */
-const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
+import { categoryForLabel } from '../../ai/draftNotes'
 
 interface Props {
   budgetId: string
@@ -135,7 +129,6 @@ export function TransactionEditor({
   const { data: classification } = useTransactionClassification(transaction?.id ?? null)
   // Review mode: an AI-created transaction being verified against its receipt
   const isReview = !!aiJob && isEdit
-  const reprocess = useReprocessAIJob(budgetId)
 
   // No fixed account (budget-view add): the user picks one, and nothing is
   // picked for them. A pre-selected account is a choice nobody made — rows
@@ -704,76 +697,26 @@ export function TransactionEditor({
           </button>
         </div>
 
-        {isReview && (
-          <div
-            className={`txn-editor__ai-banner ${aiJob!.status === 'error' ? 'txn-editor__ai-banner--error' : ''}`}
-          >
-            {aiJob!.status === 'error' ? (
-              <>
-                <AlertTriangle size={13} />
-                {/* The specific reason, not just "it failed". A model without
-                    vision and a genuinely unreadable photo produce the same
-                    stub, and only one of them is fixable in System → AI. */}
-                <span>
-                  {scanFailureReason(aiJob!.error)}
-                  {isConfigFailure(aiJob!.error) && (
-                    <>
-                      {' '}
-                      <Link to={AI_SETTINGS} className="txn-editor__ai-banner-link">
-                        Open System → AI
-                      </Link>
-                    </>
-                  )}
-                </span>
-              </>
-            ) : (
-              <>
-                <Sparkles size={13} />
-                <span>
-                  AI extracted from {aiJob!.kind === 'receipt' ? 'receipt' : 'text'}
-                  {aiJob!.result?.draft
-                    ? ` · ${Math.round((aiJob!.result.draft.confidence ?? 0) * 100)}% confidence`
-                    : ''}
-                </span>
-                {/* A description's words are its receipt: what the row is
-                    checked against, shown where the image would be. */}
-                {aiJob!.kind === 'nl_parse' && aiJob!.payload.text && (
-                  <span className="txn-editor__ai-banner-note">
-                    You said: “{aiJob!.payload.text}”
-                  </span>
-                )}
-                {unresolvedCategoryNote(aiJob!.result?.draft) && (
-                  <span className="txn-editor__ai-banner-note">
-                    {unresolvedCategoryNote(aiJob!.result?.draft)}
-                  </span>
-                )}
-                <span className="txn-editor__ai-banner-note">
-                  <CardEndingNotice job={aiJob!} budgetId={budgetId} canMove={false} />
-                </span>
-              </>
-            )}
-            {aiJob!.status === 'error' && (
-              <button
-                type="button"
-                className="txn-editor__ai-banner-action"
-                onClick={() => reprocess.mutate(aiJob!.id)}
-                disabled={reprocess.isPending}
-              >
-                <RefreshCw size={12} />
-                {reprocess.isPending ? 'Retrying…' : 'Try again'}
-              </button>
-            )}
-            {suggestedSplit && suggestedSplit.length >= 2 && !isSplit && (
-              <button
-                type="button"
-                className="txn-editor__ai-banner-action"
-                onClick={applySuggestedSplit}
-              >
-                <Split size={12} />
-                Apply suggested split ({suggestedSplit.length})
-              </button>
-            )}
+        {/* A projected interest row says what it is before anyone edits it:
+            which edits make it theirs, and that deleting it skips the month. */}
+        {isEdit && transaction?.projected_interest_month && (
+          <div className="txn-editor__projection-note" role="note">
+            <Percent size={13} aria-hidden />
+            <span>{PROJECTED_INTEREST_NOTE}</span>
           </div>
+        )}
+
+        {isReview && (
+          <AIReviewBanner
+            job={aiJob!}
+            budgetId={budgetId}
+            splitOffer={
+              suggestedSplit && suggestedSplit.length >= 2 && !isSplit
+                ? suggestedSplit.length
+                : null
+            }
+            onApplySplit={applySuggestedSplit}
+          />
         )}
 
         {showTabs && (

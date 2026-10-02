@@ -189,6 +189,12 @@ class LiabilityOut(ApiModel):
     estimated_interest_this_month: Decimal | None
     #: `current_balance` plus that estimate; equal to it when there is none.
     balance_with_estimate: Decimal
+    #: This month's projected interest row, as a positive figure — already
+    #: IN `current_balance`, because the row is in the register — or null
+    #: when the month carries none. Required, so the page can always say
+    #: which part of the balance is the app's projection rather than the
+    #: lender's own row. `LiabilityService.projected_interest_this_month`.
+    projected_interest_this_month: Decimal | None
     # Positive rows on the ledger with no partner account in the window. Not
     # payments — a balance adjustment, or a payment typed without a transfer
     # — and said out loud rather than silently left out.

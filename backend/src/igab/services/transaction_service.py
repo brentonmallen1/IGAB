@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from collections.abc import Collection
+from collections.abc import AsyncIterator, Collection
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -16,6 +17,7 @@ from igab.domain.card_charges import is_interest_or_fee
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
 from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
+from igab.domain.projected_interest import adopts_projection
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
     locked_changes,
@@ -37,6 +39,7 @@ from igab.services.card_payment import find_interest_envelope, is_card_account
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match, source_for
 from igab.services.filing import may_be_filed_to, require_categorizable
 from igab.services.ownership import require_in_budget
+from igab.services.projected_interest import ProjectedInterest
 
 if TYPE_CHECKING:
     from igab.repositories.attachment_repo import AttachmentRepository
@@ -182,6 +185,56 @@ class TransactionService:
         self.attachment_repo = attachment_repo
         self.match_repo = match_repo
         self.changes = ChangeRecorder(session)
+        #: Settles a loan's projected interest after each write, in its batch.
+        self.projected_interest = ProjectedInterest(session, self.changes)
+        #: (account, date) of every row recorded since the outermost
+        #: `_mutation` opened, before and after the change — what
+        #: `_settle_touched` re-plans projected interest for.
+        self._touched: set[tuple[uuid.UUID | str, datetime.date | str]] = set()
+        self._mutation_depth = 0
+
+    @asynccontextmanager
+    async def _mutation(self) -> AsyncIterator[uuid.UUID]:
+        """One public write: an undo batch, then — once the OUTERMOST write
+        finishes — the projected interest it moved, settled inside the same
+        batch.
+
+        A payment entered, moved, re-dated or deleted changes what its loan's
+        month should carry (`services/projected_interest.py`), and the app's
+        answer has to undo with the person's act: ⌘Z of a payment takes its
+        interest row too, and a sync run's undo takes back the replacements
+        the run caused. Nested writes (a split's parent and its lines, a
+        transfer's two legs) settle once, at the end of the outer one, so a
+        half-written split is never planned from.
+
+        A write that fails settles nothing: the transaction is rolling back,
+        and what it touched goes with it.
+        """
+        with self.changes.batch() as batch_id:
+            assert batch_id is not None  # an open batch always has its id
+            self._mutation_depth += 1
+            try:
+                yield batch_id
+            except BaseException:
+                self._mutation_depth -= 1
+                if self._mutation_depth == 0:
+                    self._touched.clear()
+                raise
+            self._mutation_depth -= 1
+            if self._mutation_depth == 0:
+                await self._settle_touched()
+
+    async def _settle_touched(self) -> None:
+        touched, self._touched = self._touched, set()
+        if touched:
+            await self.projected_interest.settle(touched)
+
+    def _touch(self, txn: Transaction, before: dict | None) -> None:
+        """Note where a recorded row sat before and after the change (the
+        `before` side as its snapshot spells it; `settle` reads either)."""
+        self._touched.add((txn.account_id, txn.date))
+        if before is not None and before.get("account_id") and before.get("date"):
+            self._touched.add((before["account_id"], before["date"]))
 
     async def _record_txn(
         self,
@@ -201,6 +254,7 @@ class TransactionService:
         if action == "update" and before is not None and after is not None:
             if not snapshots_match(after, before):
                 return
+        self._touch(txn, before)
         await self.changes.record(
             budget_id=txn.budget_id,
             entity_type="transaction",
@@ -237,6 +291,15 @@ class TransactionService:
 
     async def create(
         self, budget_id: uuid.UUID, data: TransactionCreate, *, record: bool = True
+    ) -> Transaction:
+        """Write one row (or a transfer's two). A batch even for one plain
+        row: the projected interest a loan payment calls for is written in
+        the same batch, so undoing the payment takes it too."""
+        async with self._mutation():
+            return await self._create(budget_id, data, record=record)
+
+    async def _create(
+        self, budget_id: uuid.UUID, data: TransactionCreate, *, record: bool
     ) -> Transaction:
         account = await self.account_repo.get_or_raise(data.account_id)
         if str(account.budget_id) != str(budget_id):
@@ -365,7 +428,7 @@ class TransactionService:
         # categorization in create() may have applied a payee default, so
         # force category back to NULL alongside the is_split flag.
         header.category_id = None
-        with self.changes.batch():
+        async with self._mutation():
             parent = await self.create(budget_id, header, record=False)
             parent = await self.transaction_repo.update(parent.id, is_split=True, category_id=None)
             # Recorded after the is_split flip so the snapshot holds final state.
@@ -396,7 +459,7 @@ class TransactionService:
             raise InvariantViolation("Cannot split a transfer")
 
         if len(splits) == 1:
-            with self.changes.batch():
+            async with self._mutation():
                 await self._collapse(budget_id, txn, splits[0], existing=[])
             await self.transaction_repo.refresh(txn)
             return txn
@@ -405,7 +468,7 @@ class TransactionService:
         # One batch: undoing it deletes the lines and restores the parent's
         # pre-split category and is_split flag. Lines first — they validate
         # (sum, categories) before anything is written — then the flip.
-        with self.changes.batch():
+        async with self._mutation():
             await self._apply_split_legs(budget_id, txn, splits, existing=[])
             await self.transaction_repo.update(txn.id, is_split=True, category_id=None)
             await self._record_txn(txn, "update", before=before)
@@ -426,7 +489,7 @@ class TransactionService:
         if not parent.is_split:
             raise InvariantViolation("Transaction is not split")
         existing = await self.transaction_repo.get_splits(parent.id)
-        with self.changes.batch():
+        async with self._mutation():
             if len(splits) == 1:
                 # Down to one line: the split is over, and the row is filed
                 # where that line was. No lines are left to return.
@@ -776,8 +839,24 @@ class TransactionService:
                 category_id=changes["category_id"] if "category_id" in changes else txn.category_id,
             )
 
+        # Editing a projected interest row's money or bank state makes it the
+        # person's own row: the app stops managing it, and a lender row the
+        # person typed over the projection is never retired out from under
+        # them. Compared, not tested for presence (the editor sends every
+        # field it shows). A memo edit leaves it a projection.
+        if txn.projected_interest_month is not None and adopts_projection(
+            {
+                "amount": txn.amount,
+                "date": txn.date,
+                "cleared": txn.cleared,
+                "account_id": txn.account_id,
+            },
+            changes,
+        ):
+            changes["projected_interest_month"] = None
+
         before_self = snapshot("transaction", txn)
-        with self.changes.batch():
+        async with self._mutation():
             if transfer_plan is not None:
                 # Merges the row's own transfer_id/payee_id into `changes`, so
                 # the pair moves in one recorded step per row and one undo.
@@ -831,7 +910,7 @@ class TransactionService:
                 "Delete the split's parent transaction (or edit its lines) instead"
             )
 
-        with self.changes.batch() as batch_id:
+        async with self._mutation() as batch_id:
             # Soft delete transfer partner too — unless it's reconciled.
             if txn.transfer_id:
                 partner = await self.transaction_repo.get(txn.transfer_id)
@@ -928,7 +1007,7 @@ class TransactionService:
         if isinstance(outcome, Review) or not outcome.updates:
             return outcome
         before = snapshot("transaction", txn)
-        with self.changes.batch():
+        async with self._mutation():
             updated = await self.transaction_repo.update(txn.id, **outcome.updates)
             await self._record_txn(updated, "update", before=before, source=source)
             # The mirror invariant, same as an edit's: lines follow their
@@ -1088,7 +1167,7 @@ class TransactionService:
             out_payee.id, in_payee.id, own_id=outflow.id, partner_id=inflow.id
         )
         to_clear = set(clear_categories)
-        with self.changes.batch():
+        async with self._mutation():
             for leg, fields in ((outflow, out_fields), (inflow, in_fields)):
                 before = snapshot("transaction", leg)
                 if leg.id in to_clear:
@@ -1134,7 +1213,7 @@ class TransactionService:
         contested: set[uuid.UUID] = set()
         linked = 0
 
-        with self.changes.batch():
+        async with self._mutation():
             for leg in legs:
                 if leg.id in claimed or leg.id in contested:
                     continue
@@ -1548,7 +1627,7 @@ class TransactionService:
                 str(a.id) for a in await self.attachment_repo.get_for_transaction(deleted.id)
             ]
 
-        with self.changes.batch():
+        async with self._mutation():
             # Delete first so the partial unique indexes never see two live
             # rows with the same identity, then write onto the survivor.
             await self.transaction_repo.soft_delete(deleted.id)

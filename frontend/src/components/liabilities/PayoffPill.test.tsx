@@ -25,6 +25,7 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     balance_source: 'ledger',
     estimated_interest_this_month: null,
     balance_with_estimate: 0,
+    projected_interest_this_month: null,
     interest_rate: 6,
     minimum_payment: 400,
     minimum_payment_kind: 'fixed',

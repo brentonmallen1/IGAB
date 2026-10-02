@@ -78,6 +78,11 @@ export interface Liability {
   estimated_interest_this_month: number | null
   /** current_balance plus that estimate; equal to it when there is none. */
   balance_with_estimate: number
+  /** This month's projected interest row (positive), or null when the month
+   * carries none. Already IN current_balance — the row is in the register —
+   * so it is shown as part of the balance, never added to it. Served
+   * (`LiabilityService.projected_interest_this_month`). */
+  projected_interest_this_month: number | null
   /** Positive rows with no partner account in the window — a balance
    * adjustment, or a payment typed without a transfer. Not counted as
    * payments, and said so. */

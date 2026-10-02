@@ -40,6 +40,8 @@ from igab.services.transaction_matching_service import (
 from igab.services.transaction_service import TransactionService
 from igab.utils.clock import today_utc
 
+from ..session_stubs import without_projected_interest
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -334,12 +336,14 @@ class TestSyncFlow:
         # The posting rule is written by TransactionService. Give the mocked
         # service the real writer, bound to this test's mocked repo, so the
         # assertions below can watch txn_repo.update as they always have.
-        real = TransactionService(
-            session=AsyncMock(),
-            transaction_repo=svc.txn_repo,
-            account_repo=AsyncMock(),
-            category_repo=AsyncMock(),
-            payee_repo=AsyncMock(),
+        real = without_projected_interest(
+            TransactionService(
+                session=AsyncMock(),
+                transaction_repo=svc.txn_repo,
+                account_repo=AsyncMock(),
+                category_repo=AsyncMock(),
+                payee_repo=AsyncMock(),
+            )
         )
         svc.txn_service.apply_bank_posting = real.apply_bank_posting
         svc.txn_service.release_bank_link = real.release_bank_link

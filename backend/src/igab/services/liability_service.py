@@ -40,6 +40,7 @@ from igab.domain.tracking_start import Entry, place_entries
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
+from igab.repositories.projected_interest_repo import ProjectedInterestRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.amortization import (
     AmortizationResult,
@@ -228,6 +229,11 @@ class LiabilityStatus:
     #: `current_balance` plus that estimate. Equal to the balance when there
     #: is no estimate, so a caller can render it unconditionally.
     balance_with_estimate: Decimal = ZERO
+    #: This month's projected interest row, positive, or None when the month
+    #: carries none. Part of `current_balance` already — the row is in the
+    #: register — and the reason the estimate above is None while it stands
+    #: (`DEBT_INTEREST_ROW` counts it). See `projected_interest_this_month`.
+    projected_interest_this_month: Decimal | None = None
     # Positive rows on the ledger with no partner account over the window —
     # not counted as payments, so the page can say so.
     uncounted_deposits: Decimal = ZERO
@@ -366,6 +372,18 @@ class LiabilityService:
         if _charged_interest(posted, payments, this_month) != ZERO:
             return None
         return modelled
+
+    async def projected_interest_this_month(
+        self, liability: Liability, as_of: date | None = None
+    ) -> Decimal | None:
+        """The projected interest row standing for this month, as a positive
+        figure, or None. Only a linked ledger can hold one."""
+        if liability.linked_account_id is None:
+            return None
+        row = await ProjectedInterestRepository(self.transaction_repo.session).live_projection(
+            liability.linked_account_id, as_of or today_utc()
+        )
+        return quantize_cents(-row.amount) if row is not None else None
 
     @staticmethod
     def mode(liability: Liability) -> str:
@@ -670,6 +688,9 @@ class LiabilityService:
             modelled_interest_this_month=modelled,
             estimated_interest_this_month=estimated,
             balance_with_estimate=balance + (estimated or ZERO),
+            projected_interest_this_month=await self.projected_interest_this_month(
+                liability, as_of
+            ),
             uncounted_deposits=uncounted,
         )
 

@@ -48,6 +48,7 @@ from igab.domain.matching import (
 from igab.domain.merging import MergeSide
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import snapshot
+from igab.services.projected_interest import ProjectedInterest
 from igab.services.transaction_service import TransactionService
 
 CsvOutcome = Literal["new", "already_imported", "matched", "review"]
@@ -317,6 +318,15 @@ async def apply_csv_plan(
                 after=snapshot("transaction_match", match),
                 source="import",
             )
+        # The inserted rows went in by bulk insert, past the service that
+        # settles a loan's projected interest after each write — so settle
+        # them here, in the import's own batch: a lender's interest row in
+        # the file retires the projection it replaces, a payment in it
+        # projects the month's interest, and undoing the import takes both
+        # back. (The confirmations above settled themselves.)
+        await ProjectedInterest(txn_service.session, recorder).settle(
+            (account_id, r["date"]) for _, r in inserts
+        )
 
     return CsvImportCounts(
         imported=len(inserts),

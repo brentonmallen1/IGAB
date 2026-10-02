@@ -259,8 +259,13 @@ async def test_typical_recent_payment_from_ledger(api_client, db_session):
     body = resp.json()
     assert body["has_live_projection"] is True
     assert money(body["typical_recent_payment"]) == Decimal("275.00")
-    # 6450 owed as the month opened × 6% / 12
-    assert money(body["monthly_interest_now"]) == Decimal("32.25")
+    # Filing the terms projected last month's interest (its payment is
+    # inside the window a projection may still be written for): 6,725 owed
+    # as last month opened × 6% / 12 = 33.62. So this month opened owing
+    # 6,450 + 33.62 = 6,483.62, and its interest is 32.42 — interest on the
+    # interest the lender already charged, as a statement would show it.
+    assert money(body["projected_interest_this_month"] or 0) == Decimal("0")
+    assert money(body["monthly_interest_now"]) == Decimal("32.42")
     assert body["balance_source"] == "ledger"
 
 

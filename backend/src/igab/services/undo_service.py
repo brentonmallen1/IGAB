@@ -49,6 +49,7 @@ from igab.db.models import (
 from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.domain.ordering import renumber
+from igab.domain.projected_interest import RETIRED_KEY
 from igab.domain.reconciliation import RECONCILED_LOCKED_FIELDS, locked_changes
 from igab.guide.wishlist_service import sync_wishlist_tags
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
@@ -112,6 +113,31 @@ def _move_groups(pending: list[ChangeLog]) -> list[list[ChangeLog]] | None:
             return None
         groups.setdefault(str(move_id), []).append(change)
     return list(groups.values()) if len(groups) > 1 else None
+
+
+def _creates_projection(change: ChangeLog) -> bool:
+    """This record wrote a projected interest row (services/projected_interest.py)."""
+    return change.entity_type == "transaction" and bool(
+        (change.after or {}).get("projected_interest_month")
+    )
+
+
+def _take_back_projection(entity: Transaction) -> None:
+    """Undo of a projection's create: unconditional, so undoing the payment
+    that caused it can never jam.
+
+    The row may have been re-sized since (a later settle) or already gone
+    (the lender's own row replaced it, or the person declined the month) —
+    the first is the app's own bookkeeping, not an edit of the person's, so
+    it does not refuse the undo; a row already gone is left exactly as it is,
+    so a decline keeps its month. Taken back as a RETIRE, month cleared: a
+    deleted row that kept its month would read as the person declining that
+    month, and the next payment in it would never be projected. A projection
+    the person has adopted (month already NULL, row live) is theirs, and is
+    not taken this way — `_undo_create`'s ordinary staleness check refuses it.
+    """
+    entity.projected_interest_month = None
+    entity.is_deleted = True
 
 
 def _mark_undone(change: ChangeLog) -> None:
@@ -409,6 +435,14 @@ class UndoService(UndoRestores):
             if not getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already present")
             entity.is_deleted = False
+            if _creates_projection(change):
+                # The undo cleared the month so the row would not read as a
+                # declined month; the redo puts the projection back as one.
+                entity.projected_interest_month = coerce_value(
+                    Transaction,
+                    "projected_interest_month",
+                    (change.after or {})["projected_interest_month"],
+                )
         elif change.action == "update" and change.entity_type in ("category_tags", "payee_tags"):
             await self._restore_tag_membership(change, target="after", force=force)
         elif change.action == "update" and change.entity_type == "guide_state":
@@ -456,6 +490,11 @@ class UndoService(UndoRestores):
         if getattr(entity, "is_deleted", False):
             raise UndoConflict("The item is already deleted")
         entity.is_deleted = True
+        if change.entity_type == "transaction" and (change.before or {}).get(RETIRED_KEY):
+            # The app retiring its own projection, replayed as a retire: a
+            # deleted row that kept its month would read as the person
+            # declining that month (services/projected_interest.py).
+            entity.projected_interest_month = None
         if change.entity_type == "wishlist_project":
             # Replaying the delete re-orphans its wishes, exactly as the
             # original did.
@@ -780,6 +819,12 @@ class UndoService(UndoRestores):
             await CategoryRepository(self.session).reorder(change.entity_id, restored)
 
     async def _undo_create(self, change: ChangeLog, entity, force: bool) -> None:
+        if _creates_projection(change) and (
+            entity.is_deleted or entity.projected_interest_month is not None
+        ):
+            if not entity.is_deleted:
+                _take_back_projection(entity)
+            return
         if change.entity_type in HARD_ROW_NATURAL_KEY:
             if not force and change.after is not None:
                 diff = snapshots_match(snapshot(change.entity_type, entity), change.after)

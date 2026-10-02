@@ -629,6 +629,13 @@ export interface Transaction {
   /** The schedule this row was entered from, or null. Home:
    *  `Transaction.scheduled_transaction_id`. */
   scheduled_transaction_id: string | null
+  /** The month (YYYY-MM-01) this row is the app's PROJECTION of a loan's
+   *  interest for — written from the loan's terms and replaced when the
+   *  lender's own row arrives — or null for every other row. Served; home:
+   *  `Transaction.projected_interest_month` (backend models.py) and
+   *  `services/projected_interest.py`. Render only — whether a month gets
+   *  one is the server's rule. */
+  projected_interest_month: string | null
   has_sync_source: boolean
   created_at: string
   updated_at: string

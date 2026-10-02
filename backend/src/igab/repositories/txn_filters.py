@@ -129,13 +129,29 @@ PROVISIONALLY_LINKED = and_(
 )
 
 
-#: A row that may be offered as "the same transaction as" another: live, and a
+#: The app's own projection of a loan's interest charge for a month
+#: (`Transaction.projected_interest_month`; `services/projected_interest.py`
+#: writes it). Live only — a deleted row carrying the month is a tombstone,
+#: the person's "no" to that month, and is no money at all.
+#:
+#: Written `uncleared`, so it counts in the balance and net worth like any
+#: entered row and stays out of everything that means "the bank agrees":
+#: the cleared balance, reconcile, drift and the anchor ledger.
+PROJECTED_INTEREST_ROW = and_(NOT_DELETED, Transaction.projected_interest_month.isnot(None))
+
+#: A row that may be offered as "the same transaction as" another: live, a
 #: parent row — a split line is part of its parent's transaction, never one of
-#: its own. Where every dedup and match candidate query starts (the sync's and
-#: the CSV import's ladder, the review-queue matcher, the duplicate scan, the
-#: register's "similar transactions"); each adds its own state rule on top.
-#: Four queries used to spell these two conditions by hand.
-MATCHABLE_ROW = and_(NOT_DELETED, PARENT_ROW)
+#: its own — and not a projection. Where every dedup and match candidate query
+#: starts (the sync's and the CSV import's ladder, the review-queue matcher,
+#: the duplicate scan, the register's "similar transactions"); each adds its
+#: own state rule on top. Four queries used to spell these conditions by hand.
+#:
+#: Projections are left out because the lender's real interest row is what
+#: REPLACES one: with equal cents and a nearby date it would otherwise be
+#: matched onto the projection — merged into the app's guess, which would
+#: then never be retired, and the lender's row never seen. A projection is
+#: retired by the ledger rule (`LENDER_INTEREST_ROW`), never matched.
+MATCHABLE_ROW = and_(NOT_DELETED, PARENT_ROW, Transaction.projected_interest_month.is_(None))
 
 
 def on_alias(predicate: ColumnElement[bool], alias: Any) -> ColumnElement[bool]:
@@ -344,12 +360,19 @@ def anchor_ledger(as_of: date):
     has no date cutoff (see `not_future` for why), so those surface as drift
     until their date arrives and the bank posts them. That divergence is
     bounded to exactly those rows and is pinned by a test.
+
+    A projection is never in it: it is written `uncleared`, and clearing one
+    adopts it as the person's own row (`domain.projected_interest`), so
+    CLEARED already excludes it. Said again here so the anchor does not lean
+    on that invariant — a projection the bank cannot see must never size the
+    gap the anchor fills.
     """
     return and_(
         BALANCE_ROW,
         CLEARED,
         not_(CLEARED_AHEAD_OF_BANK),
         not_(DUPLICATED_IN_REVIEW),
+        not_(PROJECTED_INTEREST_ROW),
         not_future(as_of),
     )
 
@@ -823,9 +846,17 @@ RECEIPT_CANDIDATE_ROW = and_(
 #: anchors a tracked loan the day before its oldest row, often in a month a
 #: payment arrived, and the whole principal then read as that month's
 #: interest and suppressed the estimate.
+#:
+#: A projected interest row (PROJECTED_INTEREST_ROW) IS in DEBT_INTEREST_ROW,
+#: deliberately: it is the month's charge as far as the ledger knows, so the
+#: liability page's estimate steps aside for it (`_charged_interest`) rather
+#: than adding the same interest on top. LENDER_INTEREST_ROW is the lender's
+#: own rows only — what the projection planner asks "has the real one
+#: arrived?" of, and so what retires a projection.
 _PLAIN_LEDGER_ROW = and_(BALANCE_ROW, NON_TRANSFER, not_(STARTING_BALANCE_ROW))
 LOAN_PAYMENT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, TRANSFER_LEG)
 DEBT_INTEREST_ROW = and_(_PLAIN_LEDGER_ROW, Transaction.amount < 0)
+LENDER_INTEREST_ROW = and_(DEBT_INTEREST_ROW, not_(PROJECTED_INTEREST_ROW))
 PLAIN_DEPOSIT_ROW = and_(_PLAIN_LEDGER_ROW, Transaction.amount > 0)
 
 

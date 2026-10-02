@@ -12,6 +12,7 @@ import {
   Pencil,
   Unlock,
   CalendarClock,
+  Percent,
 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import {
@@ -34,6 +35,7 @@ import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { parseAmountExpressionInput, toAmountInput } from '../../../utils/amountExpression'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
+import { PROJECTED_INTEREST_LABEL } from '../../../utils/projectedInterest'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
@@ -146,6 +148,9 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     // Both are provenance the status cluster renders from.
     a.created_via !== b.created_via ||
     a.scheduled_transaction_id !== b.scheduled_transaction_id ||
+    // Served; a projection is adopted (month cleared) by an edit that may
+    // move no other field this comparator reads, and its badge must go.
+    a.projected_interest_month !== b.projected_interest_month ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
   )
@@ -519,6 +524,20 @@ export const TransactionRow = memo(function TransactionRow({
               aria-label={scheduleLabel}
             >
               <CalendarClock size={11} />
+            </span>
+          </Tooltip>
+        )}
+        {/* The app wrote this row from the loan's terms; the lender's own
+            interest row replaces it. Provenance, same weight as the schedule
+            glyph — it explains the row, it does not ask for anything. */}
+        {txn.projected_interest_month && (
+          <Tooltip content={PROJECTED_INTEREST_LABEL}>
+            <span
+              className="txn-status-icon txn-status-icon--projected"
+              role="img"
+              aria-label={PROJECTED_INTEREST_LABEL}
+            >
+              <Percent size={11} />
             </span>
           </Tooltip>
         )}

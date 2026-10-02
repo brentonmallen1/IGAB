@@ -39,3 +39,15 @@ def writable_session(*, category_row=None) -> AsyncMock:
     session.execute = AsyncMock(return_value=result)
     session.scalar = AsyncMock(return_value=None)
     return session
+
+
+def without_projected_interest(service):
+    """A TransactionService whose projected-interest settle is a no-op.
+
+    Every write settles a loan's projected interest against the ledger
+    (`services/projected_interest.py`), which a mocked session cannot answer.
+    These unit tests are about other rules; the settle is tested against a
+    real ledger in tests/integration/test_projected_interest.py.
+    """
+    service.projected_interest = MagicMock(settle=AsyncMock(), settle_account=AsyncMock())
+    return service
