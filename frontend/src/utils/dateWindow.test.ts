@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addDaysISO, daysBetween, monthWindow, previousWindow } from './dateWindow'
+import {
+  addDaysISO,
+  daysBetween,
+  monthWindow,
+  previousWindow,
+  wholeMonthWindow,
+} from './dateWindow'
 import { toISODate } from './dates'
 import { pinTimeZone } from '../test-utils/timeZone'
 import previousWindowCases from '../../../shared/previous_window_cases.json'
@@ -89,5 +95,13 @@ describe('toISODate behind Greenwich', () => {
   it('does not push an afternoon today onto tomorrow', () => {
     // 18:00 PDT on 30 Sep is 01:00 UTC on 1 Oct; toISOString() said October.
     expect(toISODate(new Date(2026, 8, 30, 18, 0))).toBe('2026-09-30')
+  })
+})
+
+describe('wholeMonthWindow', () => {
+  it('runs the 1st through the true last day, never clamped to today', () => {
+    expect(wholeMonthWindow('2026-02-01')).toEqual({ start: '2026-02-01', end: '2026-02-28' })
+    expect(wholeMonthWindow('2028-02')).toEqual({ start: '2028-02-01', end: '2028-02-29' })
+    expect(wholeMonthWindow('2099-12-15')).toEqual({ start: '2099-12-01', end: '2099-12-31' })
   })
 })
