@@ -64,4 +64,46 @@ describe('MergePreviewModal', () => {
     fireEvent.click(screen.getByText('Merge'))
     expect(onConfirm).toHaveBeenCalled()
   })
+
+  it('keeps the reconciled bank row and says the split’s lines move onto it', () => {
+    const onConfirm = vi.fn()
+    render(
+      <MergePreviewModal
+        transactions={[
+          txn({ id: 'scan', is_split: true, cleared: 'uncleared', sync_id: null }),
+          txn({ id: 'bank', cleared: 'reconciled' }),
+        ]}
+        payeeMap={new Map([['p1', 'Harborstone Wholesale']])}
+        categoryMap={new Map()}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+        isPending={false}
+      />
+    )
+    expect(screen.getByText(/split's lines move onto the kept transaction/)).toBeTruthy()
+    expect(screen.getByText('Split')).toBeTruthy()
+    fireEvent.click(screen.getByText('Merge'))
+    expect(onConfirm).toHaveBeenCalledWith('bank')
+  })
+
+  it('locks a split over a plain duplicate — the server would refuse the other pick', () => {
+    const onConfirm = vi.fn()
+    render(
+      <MergePreviewModal
+        transactions={[
+          txn({ id: 'plain', sync_id: null, created_at: '2026-09-01T00:00:00Z' }),
+          txn({ id: 'split', is_split: true, sync_id: null, created_at: '2026-09-02T00:00:00Z' }),
+        ]}
+        payeeMap={new Map()}
+        categoryMap={new Map()}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+        isPending={false}
+      />
+    )
+    expect(screen.getByText(/split will always be kept/)).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: /Date/ })[0])
+    fireEvent.click(screen.getByText('Merge'))
+    expect(onConfirm).toHaveBeenCalledWith('split')
+  })
 })

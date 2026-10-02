@@ -78,7 +78,10 @@ def test_refusals_by_name():
     split = side(is_split=True)
     flat = side()
     assert "must be kept as the survivor" in survivor_violation(split, flat, flat.id)
-    assert "merge away a split" in survivor_violation(rec, split, None)
+    assert survivor_violation(rec, split, None) is None, "a reconciled plain row takes the split"
+    assert "another split" in survivor_violation(
+        side(is_split=True, cleared="reconciled"), split, None
+    )
     leg = side(transfer_id=uuid.uuid4())
     assert "merge away a transfer" in survivor_violation(rec, leg, None)
 

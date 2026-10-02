@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction } from '../../../types'
 import { Dialog } from '../../common/Dialog/Dialog'
+import { lockedSurvivor } from '../mergeEligibility'
 import './MergePreviewModal.css'
 
 interface Props {
@@ -35,7 +36,11 @@ function TxnCard({
   formatDate: (dateStr: string) => string
 }) {
   const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
-  const categoryName = txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : '—'
+  const categoryName = txn.is_split
+    ? 'Split'
+    : txn.category_id
+      ? (categoryMap.get(txn.category_id) ?? '—')
+      : '—'
   const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
   const inflow = txn.amount >= 0 ? txn.amount : 0
 
@@ -99,14 +104,14 @@ export function MergePreviewModal({
 }: Props) {
   const { formatMoney, formatDate } = useFormatters()
   const [txn1, txn2] = transactions
-  const reconciledTxn =
-    txn1.cleared === 'reconciled' ? txn1 : txn2.cleared === 'reconciled' ? txn2 : null
-  const defaultSurvivor =
-    reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
+  const locked = lockedSurvivor(txn1, txn2)
+  const defaultSurvivor = locked?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
   const [survivorId, setSurvivorId] = useState<string>(defaultSurvivor)
 
   const survivor = survivorId === txn1.id ? txn1 : txn2
   const deleted = survivorId === txn1.id ? txn2 : txn1
+  // A plain row kept over a split takes the split's lines and becomes it.
+  const takesLines = deleted.is_split && !survivor.is_split
 
   const willCopyImportId = !survivor.import_id && !!deleted.import_id
   const willCopyImportDesc = !survivor.import_description && !!deleted.import_description
@@ -143,9 +148,11 @@ export function MergePreviewModal({
       }
     >
       <p className="dialog-form__hint">
-        {reconciledTxn
-          ? 'The reconciled transaction will always be kept.'
-          : 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'}
+        {locked === null
+          ? 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'
+          : locked.cleared === 'reconciled'
+            ? 'The reconciled transaction will always be kept.'
+            : 'The split will always be kept; the other row merges into it.'}
       </p>
 
       <div className="merge-modal__columns">
@@ -154,7 +161,7 @@ export function MergePreviewModal({
           payeeMap={payeeMap}
           categoryMap={categoryMap}
           isSelected={survivorId === txn1.id}
-          onClick={reconciledTxn ? undefined : () => setSurvivorId(txn1.id)}
+          onClick={locked ? undefined : () => setSurvivorId(txn1.id)}
           formatMoney={formatMoney}
           formatDate={formatDate}
         />
@@ -163,11 +170,18 @@ export function MergePreviewModal({
           payeeMap={payeeMap}
           categoryMap={categoryMap}
           isSelected={survivorId === txn2.id}
-          onClick={reconciledTxn ? undefined : () => setSurvivorId(txn2.id)}
+          onClick={locked ? undefined : () => setSurvivorId(txn2.id)}
           formatMoney={formatMoney}
           formatDate={formatDate}
         />
       </div>
+
+      {takesLines && (
+        <p className="merge-modal__note">
+          The split's lines move onto the kept transaction, which becomes the split. The lines must
+          add up to its amount.
+        </p>
+      )}
 
       {(willCopyImportId || willCopyImportDesc || willCopySyncId) && (
         <p className="merge-modal__note">

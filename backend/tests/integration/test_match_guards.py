@@ -14,11 +14,9 @@ Every scenario ends by re-asserting the golden financial invariants.
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import select
 
 from igab.db.models import Transaction
-from igab.domain.exceptions import InvariantViolation
 
 from .factories import (
     create_account,
@@ -154,10 +152,10 @@ async def test_scan_accept_keeps_transfer_leg_partner_untouched(db_session):
     await assert_financial_invariants(db_session, budget.id)
 
 
-async def test_reconciled_flat_vs_split_parent_blocks_and_stays_pending(db_session):
-    """Reconciled outranks structure for the keeper role — which would make
-    the split parent the loser. That merge is unresolvable: it must raise,
-    mutate nothing, and leave the match pending."""
+async def test_reconciled_flat_takes_in_the_split_parent_on_accept(db_session):
+    """Reconciled outranks structure for the keeper role, so the split parent
+    is the loser. That used to be refused, and the review's Merge did nothing
+    visible. Now the reconciled row takes the lines and becomes the split."""
     services, budget, checking = await _setup(db_session)
     group = await create_category_group(db_session, budget)
     groceries = await create_category(db_session, budget, group, "Groceries")
@@ -186,15 +184,16 @@ async def test_reconciled_flat_vs_split_parent_blocks_and_stays_pending(db_sessi
         confidence_score=0.8,
     )
 
-    with pytest.raises(InvariantViolation, match="split"):
-        await services.matching.accept_match(match.id)
+    await services.matching.accept_match(match.id)
 
     refreshed = await services.match_repo.get(match.id)
-    assert refreshed.status == "pending", "a blocked accept leaves the match for the user"
-    assert not (await _row(db_session, synced_flat.id)).is_deleted
-    assert not (await _row(db_session, parent.id)).is_deleted
+    assert refreshed.status == "accepted"
+    keeper = await _row(db_session, synced_flat.id)
+    assert not keeper.is_deleted and keeper.is_split and keeper.cleared == "reconciled"
+    assert (await _row(db_session, parent.id)).is_deleted
     for child in children:
-        assert not (await _row(db_session, child.id)).is_deleted
+        moved = await _row(db_session, child.id)
+        assert not moved.is_deleted and moved.parent_transaction_id == synced_flat.id
     await assert_financial_invariants(db_session, budget.id)
 
 
@@ -447,6 +446,9 @@ async def test_try_match_leaves_a_pending_match_when_the_merge_is_refused(db_ses
         "-163.94",
         [("-100.00", None), ("-63.94", None)],
         payee=payee,
+        # Both reconciled: still refused. (A reconciled flat row and an
+        # unreconciled split now merge — the flat row takes the lines.)
+        cleared="reconciled",
     )
     synced_flat = await create_transaction(
         db_session,

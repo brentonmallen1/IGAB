@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import cases from '../../../../shared/merge_cases.json'
-import { mayOfferMerge } from './mergeEligibility'
+import { lockedSurvivor, mayOfferMerge } from './mergeEligibility'
 import type { Transaction } from '../../types'
 
 type Side = {
@@ -45,6 +45,17 @@ describe('the shared merge cases', () => {
     it(`${c.note} — never offered when the server would refuse`, () => {
       if (c.register_offers) expect(c.server_accepts).toBe(true)
     })
+
+    if (c.register_offers) {
+      it(`${c.note} — the preview keeps the row the server keeps`, () => {
+        const a = side(c.a as Side, 'side-a')
+        const b = side(c.b as Side, 'side-b')
+        const kept = (c as { kept?: string | null }).kept ?? null
+        const expected = kept === 'a' ? a : kept === 'b' ? b : null
+        expect(lockedSurvivor(a, b)).toBe(expected)
+        expect(lockedSurvivor(b, a)).toBe(expected)
+      })
+    }
   }
 })
 
