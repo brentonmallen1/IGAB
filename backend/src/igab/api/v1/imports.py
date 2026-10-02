@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Literal, TypedDict
+from typing import Literal
 
 import polars as pl
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -20,13 +20,11 @@ from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
     get_account_repo,
-    get_category_repo,
-    get_payee_repo,
     get_transaction_repo,
+    get_transaction_service,
 )
 from igab.domain.account_types import BUILTIN_ACCOUNT_TYPE_KEYS
 from igab.domain.csv_import import FIELDS, parse_csv, suggest_mapping
-from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.import_mapping import (
     RememberedChoice,
     account_key,
@@ -37,11 +35,11 @@ from igab.integrations.ynab.importer import ImportResult as YNABRunResult
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
-from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
-from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
+from igab.services.csv_import import CsvOutcome, apply_csv_plan, plan_csv_import
+from igab.services.transaction_service import TransactionService
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -80,37 +78,20 @@ class LiabilityNeedingTerms(BaseModel):
     name: str
 
 
-class InsertRow(TypedDict):
-    """One row of the bulk transaction insert.
-
-    Typed so `r["import_id"]` narrows to str. Left as a bare dict the row
-    infers as dict[str, UUID | date | Decimal | str | bool | None], and that
-    union is neither a valid key for the seen_ids counter nor a valid element
-    for get_existing_import_ids(..., list[str]).
-    """
-
-    id: uuid.UUID
-    budget_id: uuid.UUID
-    account_id: uuid.UUID
-    date: date
-    amount: Decimal
-    payee_id: uuid.UUID | None
-    category_id: uuid.UUID | None
-    memo: str | None
-    cleared: str
-    approved: bool
-    import_batch_id: uuid.UUID
-    is_split: bool
-    is_deleted: bool
-    created_via: str
-    import_id: str
-
-
 class ImportResult(BaseModel):
+    #: Rows written — new lines and lines queued for review.
     imported: int
+    #: Lines not written: unreadable ones (see `errors`) and lines already
+    #: imported under the same identity.
     skipped: int
     errors: list[str]
-    # Change-log batch covering the imported transactions, for undo
+    #: Lines the match ladder found already here (services/csv_import).
+    matched: int = 0
+    #: Of `matched`, the rows this import marked cleared.
+    confirmed: int = 0
+    #: Lines written and queued for review against a row they may duplicate.
+    review: int = 0
+    # Change-log batch covering everything the import wrote, for undo
     batch_id: uuid.UUID | None = None
 
 
@@ -131,10 +112,12 @@ class CsvPreviewRow(BaseModel):
     payee: str
     memo: str | None
     category: str | None
-    #: Already in this account under the same identity. Re-exporting from a
-    #: bank overlaps the previous export almost every time, so this is the
-    #: headline of a preview rather than a footnote of the result.
-    duplicate: bool
+    #: What the import will do with this line (services/csv_import). Already
+    #: being here is the headline of a preview rather than a footnote of the
+    #: result: a bank export overlaps the previous one almost every time.
+    outcome: CsvOutcome
+    #: A `matched` line that will mark its row cleared.
+    confirms: bool
 
 
 class CsvPreview(BaseModel):
@@ -146,8 +129,16 @@ class CsvPreview(BaseModel):
     #: strptime pattern that read every date, or null if none did.
     date_format: str | None
     total_rows: int
+    #: Lines with nothing like them here — written as new rows.
     new_rows: int
+    #: Lines already imported under the same identity.
     duplicate_rows: int
+    #: Lines the match ladder found already here; `confirmed_rows` of them
+    #: will be marked cleared.
+    matched_rows: int
+    confirmed_rows: int
+    #: Lines that will be written and queued for review.
+    review_rows: int
     skipped: list[CsvSkippedRow]
     #: The first rows, for eyeballing the mapping before anything lands.
     sample: list[CsvPreviewRow]
@@ -779,9 +770,11 @@ async def preview_csv(
 ) -> CsvPreview:
     """What this file would do, before it does it.
 
-    The duplicate count is the point. A bank export overlaps the previous one
-    almost every time, so "128 rows, 12 already imported" is what a person
-    needs to see — not afterwards, in a number they cannot check.
+    The overlap is the point. A bank export overlaps the previous one — or a
+    history imported from another app — almost every time, so "128 rows, 12
+    already imported, 90 already here" is what a person needs to see — not
+    afterwards, in a number they cannot check. The plan is the one the
+    import runs (`plan_csv_import`), line for line.
     """
     account = await account_repo.get_or_raise(account_id)
     if str(account.budget_id) != str(budget_id):
@@ -789,32 +782,34 @@ async def preview_csv(
 
     headers, records, chosen = await _read_csv(file, mapping)
     parsed = _parse_or_400(records, chosen)
+    plans = await plan_csv_import(transaction_repo, budget_id, account_id, parsed.rows)
 
-    identities = [
-        generate_import_id(account_id, row.date, row.amount, row.payee) for row in parsed.rows
-    ]
-    existing = await transaction_repo.get_existing_import_ids(budget_id, identities)
-    duplicate_flags = [i in existing for i in identities]
+    def count(outcome: str) -> int:
+        return sum(1 for p in plans if p.outcome == outcome)
 
     return CsvPreview(
         headers=headers,
         mapping=chosen,
         date_format=parsed.date_format,
         total_rows=parsed.total,
-        new_rows=sum(1 for d in duplicate_flags if not d),
-        duplicate_rows=sum(1 for d in duplicate_flags if d),
+        new_rows=count("new"),
+        duplicate_rows=count("already_imported"),
+        matched_rows=count("matched"),
+        confirmed_rows=sum(1 for p in plans if p.confirms),
+        review_rows=count("review"),
         skipped=[CsvSkippedRow(line=s.line, reason=s.reason) for s in parsed.skipped],
         sample=[
             CsvPreviewRow(
-                line=row.line,
-                date=row.date,
-                amount=row.amount,
-                payee=row.payee,
-                memo=row.memo,
-                category=row.category,
-                duplicate=dup,
+                line=p.row.line,
+                date=p.row.date,
+                amount=p.row.amount,
+                payee=p.row.payee,
+                memo=p.row.memo,
+                category=p.row.category,
+                outcome=p.outcome,
+                confirms=p.confirms,
             )
-            for row, dup in list(zip(parsed.rows, duplicate_flags, strict=True))[:CSV_SAMPLE_ROWS]
+            for p in plans[:CSV_SAMPLE_ROWS]
         ],
     )
 
@@ -827,14 +822,15 @@ async def import_csv(
     file: UploadFile = File(...),
     mapping: str | None = None,
     account_repo: AccountRepository = Depends(get_account_repo),
-    payee_repo: PayeeRepository = Depends(get_payee_repo),
-    category_repo: CategoryRepository = Depends(get_category_repo),
-    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
+    txn_service: TransactionService = Depends(get_transaction_service),
 ) -> ImportResult:
     """Import one account's own transactions from a CSV.
 
-    Parsing is `domain/csv_import`, the same function the preview calls — so
-    what the preview promised is what lands.
+    Parsing is `domain/csv_import` and planning `services/csv_import`, the
+    same two functions the preview calls — so what the preview promised is
+    what lands. The service's recorder carries the acting user, and the
+    whole import is one batch: the toast's Undo, Activity and ⌘Z all take it
+    back as a unit (an import is the person's own act; see UNDO_KEY_SOURCES).
     """
     account = await account_repo.get_or_raise(account_id)
     if str(account.budget_id) != str(budget_id):
@@ -843,76 +839,16 @@ async def import_csv(
     _, records, chosen = await _read_csv(file, mapping)
     parsed = _parse_or_400(records, chosen)
 
-    errors = [f"row {s.line}: {s.reason}" for s in parsed.skipped]
-    skipped = len(parsed.skipped)
-
-    payee_names = sorted({row.payee for row in parsed.rows if row.payee})
-    payee_map: dict[str, uuid.UUID] = {}
-    if payee_names:
-        payee_map = await payee_repo.find_or_create_batch(budget_id, payee_names)
-
-    # A category column names an EXISTING category; it never creates one. A
-    # bank's idea of "Travel" is not this budget's envelope, and inventing
-    # envelopes from a file is how a category list becomes unusable.
-    category_ids: dict[str, uuid.UUID] = {}
-    wanted = {row.category.lower() for row in parsed.rows if row.category}
-    if wanted:
-        for cat in await category_repo.get_all(budget_id):
-            if cat.name.lower() in wanted:
-                category_ids[cat.name.lower()] = cat.id
-
-    batch_id = uuid.uuid4()
-    rows_to_insert: list[InsertRow] = [
-        {
-            "id": uuid.uuid4(),
-            "budget_id": budget_id,
-            "account_id": account_id,
-            "date": row.date,
-            "amount": row.amount,
-            "payee_id": payee_map.get(row.payee) if row.payee else None,
-            "category_id": category_ids.get(row.category.lower()) if row.category else None,
-            "memo": row.memo,
-            "cleared": "cleared",
-            "approved": False,
-            "import_batch_id": batch_id,
-            "is_split": False,
-            "is_deleted": False,
-            "created_via": "import",
-            "import_id": generate_import_id(account_id, row.date, row.amount, row.payee),
-        }
-        for row in parsed.rows
-    ]
-
-    disambiguate_in_batch(rows_to_insert)
-
-    all_import_ids = [r["import_id"] for r in rows_to_insert if r.get("import_id")]
-    existing_ids = await transaction_repo.get_existing_import_ids(budget_id, all_import_ids)
-    new_rows = [r for r in rows_to_insert if r.get("import_id") not in existing_ids]
-    skipped += len(rows_to_insert) - len(new_rows)
-
-    imported = await transaction_repo.bulk_create(new_rows)
-
-    # One change-log row per imported transaction, grouped under the import
-    # batch id so the whole import undoes as a unit — from the toast, from
-    # Activity, or from ⌘Z (an import is the person's own act; see
-    # UNDO_KEY_SOURCES).
-    recorder = ChangeRecorder(transaction_repo.session)
-    recorder.actor_user_id = current_user.id
-    with recorder.batch(batch_id=batch_id):
-        for r in new_rows:
-            await recorder.record(
-                budget_id=budget_id,
-                entity_type="transaction",
-                entity_id=r["id"],
-                action="import",
-                after=snapshot("transaction", r),
-                source="import",
-            )
+    plans = await plan_csv_import(txn_service.transaction_repo, budget_id, account_id, parsed.rows)
+    counts = await apply_csv_plan(txn_service, budget_id, account_id, plans)
     return ImportResult(
-        imported=imported,
-        skipped=skipped,
-        errors=errors,
-        batch_id=batch_id if new_rows else None,
+        imported=counts.imported,
+        skipped=len(parsed.skipped) + counts.already_imported,
+        errors=[f"row {s.line}: {s.reason}" for s in parsed.skipped],
+        matched=counts.matched,
+        confirmed=counts.confirmed,
+        review=counts.review,
+        batch_id=counts.batch_id,
     )
 
 

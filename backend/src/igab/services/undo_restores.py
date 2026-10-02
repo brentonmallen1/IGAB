@@ -59,6 +59,9 @@ HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "account_type": ("budget_id", "key"),
     "reconciliation": ("account_id", "reconciled_at"),
     "category_plan": ("budget_id", "name"),
+    # A review pair a CSV import queued: undoing the import removes the pair
+    # with the row it was about, and redo puts both back.
+    "transaction_match": ("synced_transaction_id", "manual_transaction_id"),
 }
 
 # The FK a re-inserted hard row hangs from. Checked before insert so a

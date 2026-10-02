@@ -14,6 +14,13 @@ import {
 import { invalidateAfterImport } from '../../../api/invalidateAfterImport'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { applicableMapping, rememberMapping } from './csvMappingMemory'
+import {
+  hasWork,
+  isAlreadyHere,
+  primaryLabel,
+  resultMessage,
+  rowTag,
+} from '../../../utils/csvImportOutcome'
 import './CsvImportDialog.css'
 
 /** The fields a column can be mapped to, in the order they are asked about. */
@@ -38,9 +45,10 @@ interface Props {
  * Import this account's own export from its bank.
  *
  * Two phases, because the interesting question is not "did it work" but "what
- * is about to happen": a bank export overlaps the previous one almost every
- * time, and the count of rows already imported is the thing worth seeing
- * before anything lands rather than afterwards in a number nobody can check.
+ * is about to happen": a bank export overlaps the previous one — or a history
+ * imported from another app — almost every time, and the count of rows
+ * already here is the thing worth seeing before anything lands rather than
+ * afterwards in a number nobody can check.
  */
 export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: Props) {
   const { formatMoney, formatDate } = useFormatters()
@@ -101,7 +109,7 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
     // Enabled before there is anything to import, like every dialog's
     // primary, and says why on press rather than sitting greyed out.
     if (!file || !preview) return setError('Choose a CSV file to import')
-    if (preview.new_rows === 0) {
+    if (!hasWork(preview)) {
       return setError(`Every row is already in ${accountName} — nothing to import`)
     }
     setError(null)
@@ -110,13 +118,10 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
       const result = await importCsv(budgetId, accountId, file, mapping)
       rememberMapping(accountId, mapping)
       invalidateAfterImport(queryClient, budgetId)
-      if (result.batch_id && result.imported > 0) {
-        notify(`Imported ${result.imported} transaction${result.imported === 1 ? '' : 's'}`, {
-          batch: result.batch_id,
-        })
-      } else {
-        toast.success('Nothing new to import — every row was already here')
-      }
+      // A batch whenever anything changed — rows written or rows cleared —
+      // so either is one Undo away.
+      if (result.batch_id) notify(resultMessage(result), { batch: result.batch_id })
+      else toast.success(resultMessage(result))
       onClose()
     } catch (err) {
       setError(detailOf(err, 'Import failed'))
@@ -125,7 +130,7 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
     }
   }
 
-  const nothingNew = preview !== null && preview.new_rows === 0
+  const nothingNew = preview !== null && !hasWork(preview)
 
   return (
     <Dialog
@@ -150,11 +155,7 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
               disabled={busy}
               onClick={commit}
             >
-              {busy
-                ? 'Working…'
-                : preview
-                  ? `Import ${preview.new_rows} transaction${preview.new_rows === 1 ? '' : 's'}`
-                  : 'Import'}
+              {busy ? 'Working…' : primaryLabel(preview)}
             </button>
           </div>
         </div>
@@ -189,6 +190,17 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
             <span className={preview.duplicate_rows ? 'csv-import__dupes' : undefined}>
               <strong>{preview.duplicate_rows}</strong> already imported
             </span>
+            {preview.matched_rows > 0 && (
+              <span>
+                <strong>{preview.matched_rows}</strong> matched existing
+                {preview.confirmed_rows > 0 && <> ({preview.confirmed_rows} will clear)</>}
+              </span>
+            )}
+            {preview.review_rows > 0 && (
+              <span className="csv-import__review-count">
+                <strong>{preview.review_rows}</strong> to review
+              </span>
+            )}
             {preview.skipped.length > 0 && (
               <span className="csv-import__skipped-count">
                 <strong>{preview.skipped.length}</strong> skipped
@@ -252,14 +264,26 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
               </tr>
             </thead>
             <tbody>
-              {preview.sample.map((row) => (
-                <tr key={row.line} className={row.duplicate ? 'csv-import__row--dupe' : undefined}>
-                  <td>{formatDate(row.date)}</td>
-                  <td>{row.payee || <span className="csv-import__muted">No payee</span>}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(row.amount)}</td>
-                  <td>{row.duplicate && <span className="csv-import__tag">already here</span>}</td>
-                </tr>
-              ))}
+              {preview.sample.map((row) => {
+                const tag = rowTag(row)
+                return (
+                  <tr
+                    key={row.line}
+                    className={isAlreadyHere(row) ? 'csv-import__row--dupe' : undefined}
+                  >
+                    <td>{formatDate(row.date)}</td>
+                    <td>{row.payee || <span className="csv-import__muted">No payee</span>}</td>
+                    <td style={{ textAlign: 'right' }}>{formatMoney(row.amount)}</td>
+                    <td>
+                      {tag && (
+                        <span className={`csv-import__tag csv-import__tag--${tag.tone}`}>
+                          {tag.label}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
 

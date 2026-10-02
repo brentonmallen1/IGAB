@@ -11,11 +11,19 @@ These are critical trust-surface tests covering:
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.domain.matching import (
+    DEDUP_AUTO_MATCH_THRESHOLD,
+    MatchCandidate,
+    decide_match,
+    dedup_payee_score,
+    dedup_score,
+)
 from igab.integrations.simplefin.client import SimpleFINFeed
 
 from .session_stubs import writable_session
@@ -106,8 +114,8 @@ class TestImportIdGeneration:
 
         There is one function now, and this asserts callers cannot drift
         apart again by importing it from two places."""
-        from igab.api.v1 import imports as csv_importer
         from igab.integrations.ynab import importer as ynab_importer
+        from igab.services import csv_import as csv_importer
 
         assert csv_importer.generate_import_id is generate_import_id
         assert ynab_importer.generate_import_id is generate_import_id
@@ -790,74 +798,71 @@ class TestSimpleFINSyncDeduplication:
 
 
 class TestDedupScoring:
-    """Test payee similarity and deduplication score calculation."""
+    """Payee similarity and the combined dedup score — domain.matching, the
+    one ladder both the sync and the CSV import run."""
 
     def test_payee_similarity_exact(self):
-        from igab.services.simplefin_service import _payee_similarity
-
-        assert _payee_similarity("Starbucks", "Starbucks") == 1.0
+        assert dedup_payee_score(["Starbucks"], "Starbucks") == 1.0
 
     def test_payee_similarity_case_insensitive(self):
-        from igab.services.simplefin_service import _payee_similarity
-
-        assert _payee_similarity("STARBUCKS", "starbucks") == 1.0
+        assert dedup_payee_score(["STARBUCKS"], "starbucks") == 1.0
 
     def test_payee_similarity_partial_contains(self):
-        from igab.services.simplefin_service import _payee_similarity
-
         # Bank appends location/code but payee was cleaned up — treat as strong
         # match. WRatio applies a 0.9 partial-match penalty, so assert the
         # score clears the auto-match bar rather than demanding a perfect 1.0.
-        assert _payee_similarity("STARBUCKS #12345", "Starbucks") >= 0.85
+        assert dedup_payee_score(["STARBUCKS #12345"], "Starbucks") >= 0.85
 
     def test_payee_similarity_fuzzy(self):
-        from igab.services.simplefin_service import _payee_similarity
-
-        score = _payee_similarity("Amazon.com", "Amazon")
+        score = dedup_payee_score(["Amazon.com"], "Amazon")
         assert score >= 0.7
 
     def test_payee_similarity_no_match(self):
-        from igab.services.simplefin_service import _payee_similarity
-
-        assert _payee_similarity("Starbucks", "Walmart") < 0.5
+        assert dedup_payee_score(["Starbucks"], "Walmart") < 0.5
 
     def test_payee_similarity_none_returns_neutral(self):
-        from igab.services.simplefin_service import _payee_similarity
-
-        assert _payee_similarity(None, "Starbucks") == 0.5
-        assert _payee_similarity("Starbucks", None) == 0.5
-        assert _payee_similarity(None, None) == 0.5
+        assert dedup_payee_score([None], "Starbucks") == 0.5
+        assert dedup_payee_score(["Starbucks"], None) == 0.5
+        assert dedup_payee_score([None], None) == 0.5
 
     def test_dedup_score_same_day_same_payee(self):
-        from igab.services.simplefin_service import _calculate_dedup_score
-
-        score = _calculate_dedup_score(
-            "Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 15)
-        )
+        day = date(2026, 4, 15)
+        score = dedup_score(dedup_payee_score(["Starbucks"], "Starbucks"), day, day)
         assert score >= 0.95
 
     def test_dedup_score_two_days_apart_same_payee(self):
-        from igab.services.simplefin_service import _calculate_dedup_score
-
-        score = _calculate_dedup_score(
-            "Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 17)
+        score = dedup_score(
+            dedup_payee_score(["Starbucks"], "Starbucks"), date(2026, 4, 15), date(2026, 4, 17)
         )
         assert score >= DEDUP_AUTO_MATCH_THRESHOLD
 
     def test_dedup_score_same_day_different_payee(self):
-        from igab.services.simplefin_service import _calculate_dedup_score
-
-        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Walmart", date(2026, 4, 15))
+        day = date(2026, 4, 15)
+        score = dedup_score(dedup_payee_score(["Walmart"], "Starbucks"), day, day)
         assert score < DEDUP_AUTO_MATCH_THRESHOLD
 
-    def test_dedup_score_beyond_window_is_low(self):
-        from igab.services.simplefin_service import _calculate_dedup_score
+    def test_beyond_the_auto_radius_the_date_guard_not_the_score_says_review(self):
+        """Beyond the auto radius the date scores 0 and an identical payee
+        alone scores exactly the auto threshold. This file used to assert
+        the score fell short, against its own mirror of the threshold
+        (0.85) — the service's was 0.80, so the assertion was false and the
+        mirror hid it. What actually keeps a far pair from auto-merging is
+        the ladder's date radius, so that is what is pinned."""
+        far = date(2026, 4, 25)
+        score = dedup_score(dedup_payee_score(["Starbucks"], "Starbucks"), date(2026, 4, 15), far)
+        assert score == DEDUP_AUTO_MATCH_THRESHOLD
 
-        # Date beyond DEDUP_DATE_WINDOW_DAYS gets 0 date score; only payee contributes
-        score = _calculate_dedup_score(
-            "Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 25)
+        row = SimpleNamespace(
+            id=uuid.uuid4(),
+            date=far,
+            bank_payee=None,
+            import_description=None,
+            bank_posted_date=None,
         )
-        assert score < DEDUP_AUTO_MATCH_THRESHOLD
+        decision = decide_match(
+            "Starbucks", date(2026, 4, 15), True, [MatchCandidate.from_row(row, "Starbucks")]
+        )
+        assert decision.action == "review"
 
     async def test_sync_skips_when_score_above_threshold(self, mock_svc=None):
         """Low-payee-similarity candidates should NOT be treated as duplicates."""
@@ -949,9 +954,6 @@ class TestDedupScoring:
         assert result["imported"] == 1
         assert result["skipped"] == 0
         svc.txn_service.create.assert_called_once()
-
-
-DEDUP_AUTO_MATCH_THRESHOLD = 0.85  # mirror service constant for test assertions
 
 
 # ─── Edge Cases ──────────────────────────────────────────────────────────────

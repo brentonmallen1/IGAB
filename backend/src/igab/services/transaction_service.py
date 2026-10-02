@@ -903,7 +903,12 @@ class TransactionService:
             await self._record_txn(updated_child, "update", before=child_before, source=source)
 
     async def apply_bank_posting(
-        self, txn: Transaction, feed: FeedRecord, *, confirmed: bool
+        self,
+        txn: Transaction,
+        feed: FeedRecord,
+        *,
+        confirmed: bool,
+        source: str = "system",
     ) -> Apply | Review:
         """The bank feed has a record for this row: apply what the posting
         rule says (domain.bank_posting) and record it.
@@ -911,8 +916,13 @@ class TransactionService:
         The only writer of bank-driven changes. Both sync paths — a row found
         by its bank id and a row found by amount and date — come through
         here, as does an accepted amount-change review (`confirmed=True`,
-        via `merge`). A sync therefore never rewrites a row unrecorded, and a
-        split parent's lines always follow its cleared state.
+        via `merge`), and a CSV import confirming a row it matched. A sync
+        therefore never rewrites a row unrecorded, and a split parent's lines
+        always follow its cleared state.
+
+        `source` is who acted, for the change log: the sync is `system`; a
+        CSV import is the person's own act (`import`), so the clearing it
+        does sits in the import's batch and ⌘Z takes it back with the rows.
         """
         outcome = posting_updates(RowState.from_transaction(txn), feed, confirmed=confirmed)
         if isinstance(outcome, Review) or not outcome.updates:
@@ -920,12 +930,12 @@ class TransactionService:
         before = snapshot("transaction", txn)
         with self.changes.batch():
             updated = await self.transaction_repo.update(txn.id, **outcome.updates)
-            await self._record_txn(updated, "update", before=before, source="system")
+            await self._record_txn(updated, "update", before=before, source=source)
             # The mirror invariant, same as an edit's: lines follow their
             # parent's date and cleared state. A posting can move both.
             mirrored = {k: outcome.updates[k] for k in ("date", "cleared") if k in outcome.updates}
             if mirrored and txn.is_split:
-                await self._mirror_children(txn.id, source="system", **mirrored)
+                await self._mirror_children(txn.id, source=source, **mirrored)
         return outcome
 
     async def release_bank_link(self, txn: Transaction) -> None:

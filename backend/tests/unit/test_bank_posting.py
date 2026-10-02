@@ -253,3 +253,28 @@ def test_pending_split_parent_same_amount_still_posts():
     out = apply(row(cleared="pending", is_split=True, sync_id="t1"), feed())
     assert out["cleared"] == "cleared"
     assert "amount" not in out
+
+
+# ── a bank file the person imported: everything but the feed link ───────────
+
+
+def test_a_file_record_clears_and_leaves_provenance_but_no_feed_link():
+    """A CSV line is the bank's word about the row, so an uncleared row
+    clears and keeps the file's figures beside its own — but a file is not a
+    feed. Writing `sync_source` would claim a link nothing will ever report
+    against again."""
+    out = apply(row(), feed(source=None, sync_id=None))
+    assert out == {
+        "bank_amount": D("-50.00"),
+        "bank_payee": "CORNER MARKET",
+        "import_description": "CORNER MARKET POS",
+        "bank_posted_date": JUL_12,
+        "cleared": "cleared",
+    }
+
+
+def test_a_file_record_on_a_reconciled_row_is_still_locked_out():
+    out = apply(row(cleared="reconciled"), feed(source=None, sync_id=None))
+    assert "cleared" not in out
+    assert "sync_source" not in out
+    assert "has_sync_source" not in out

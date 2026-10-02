@@ -15,10 +15,12 @@ from datetime import date, timedelta
 
 import pytest
 
-from igab.domain.matching import date_proximity, payee_similarity
-from igab.services.simplefin_service import (
+from igab.domain.matching import (
     DEDUP_AUTO_MATCH_THRESHOLD,
-    _calculate_dedup_score,
+    date_proximity,
+    dedup_payee_score,
+    dedup_score,
+    payee_similarity,
 )
 from igab.services.transaction_matching_service import (
     AUTO_ACCEPT_THRESHOLD,
@@ -31,7 +33,7 @@ DAY = date(2026, 8, 1)
 class TestAnUnknownPayeeCannotReachAutoAccept:
     def test_simplefin_cannot_auto_merge_without_a_payee(self):
         # Best case for everything else: same day, exact amount (prefiltered).
-        score = _calculate_dedup_score(None, DAY, None, DAY)
+        score = dedup_score(dedup_payee_score([None], None), DAY, DAY)
         assert score < DEDUP_AUTO_MATCH_THRESHOLD, (
             "a payee-less pair reached the auto-merge threshold on date alone"
         )
@@ -47,7 +49,7 @@ class TestAnUnknownPayeeCannotReachAutoAccept:
     @pytest.mark.parametrize("days", [0, 1, 2, 3, 4, 5, 6, 30])
     def test_no_date_offset_rescues_a_missing_payee(self, days):
         other = DAY + timedelta(days=days)
-        assert _calculate_dedup_score(None, DAY, None, other) < DEDUP_AUTO_MATCH_THRESHOLD
+        assert dedup_score(dedup_payee_score([None], None), DAY, other) < DEDUP_AUTO_MATCH_THRESHOLD
 
 
 class TestPayeeSimilarity:

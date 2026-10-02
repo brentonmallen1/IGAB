@@ -750,7 +750,7 @@ async def test_identical_payee_week_apart_reviews_not_auto(db_session):
 
 async def test_candidate_query_production_window_boundaries(db_session):
     """The production search window: ±10 days in, ±11 out."""
-    from igab.services.simplefin_service import DEDUP_DATE_WINDOW_DAYS
+    from igab.domain.matching import DEDUP_DATE_WINDOW_DAYS
 
     services, user, budget, account, conn = await _sync_setup(db_session)
     center = date.today() - timedelta(days=15)

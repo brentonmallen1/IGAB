@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import (
     Boolean,
@@ -31,6 +31,7 @@ from sqlalchemy import (
     exists,
     false,
     func,
+    inspect,
     not_,
     or_,
     select,
@@ -38,6 +39,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import InstrumentedAttribute, aliased
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.util import ClauseAdapter
 
 from igab.db.models import (
     Account,
@@ -123,6 +125,22 @@ PROVISIONALLY_LINKED = and_(
     Transaction.bank_posted_date.is_(None),
     Transaction.cleared.in_(("pending", "uncleared")),
 )
+
+
+#: A row that may be offered as "the same transaction as" another: live, and a
+#: parent row — a split line is part of its parent's transaction, never one of
+#: its own. Where every dedup and match candidate query starts (the sync's and
+#: the CSV import's ladder, the review-queue matcher, the duplicate scan, the
+#: register's "similar transactions"); each adds its own state rule on top.
+#: Four queries used to spell these two conditions by hand.
+MATCHABLE_ROW = and_(NOT_DELETED, PARENT_ROW)
+
+
+def on_alias(predicate: ColumnElement[bool], alias: Any) -> ColumnElement[bool]:
+    """A predicate from this module, over an alias of Transaction — the other
+    side of a pair query — so that query never respells it for its second
+    table."""
+    return ClauseAdapter(inspect(alias).selectable).traverse(predicate)
 
 
 #: Rows carrying a bank id the bank has NOT posted against, which are
