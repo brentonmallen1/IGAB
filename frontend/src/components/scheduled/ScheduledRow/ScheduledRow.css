@@ -36,8 +36,7 @@
   grid-template-columns: var(--register-cols-all-accounts);
 }
 
-.scheduled-row--register .scheduled-row__account,
-.scheduled-row--register .scheduled-row__auto {
+.scheduled-row--register .scheduled-row__account {
   display: none;
 }
 
@@ -91,7 +90,7 @@
 /* ── Desktop, on the Scheduled page ────────────────────────────────────── */
 .scheduled-row--table,
 .scheduled-row__head {
-  grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 60px auto;
+  grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr auto;
   padding: var(--spacing-sm) var(--spacing-md);
 }
 
@@ -160,8 +159,9 @@
 }
 
 /* Reminder inside the schedule's own window; overdue once the date passed
-   with nobody entering or skipping it — a warning, not a negative: no money
-   has gone wrong, a bill is waiting on a person. */
+   and the row has not posted. Every schedule posts itself on its date, so
+   overdue means the nightly job has not run since — a warning, not a
+   negative: no money has gone wrong, a run is owed. */
 .scheduled-row__due {
   font-size: var(--font-size-2xs);
   font-style: normal;
@@ -204,9 +204,10 @@
 }
 
 /* ── Phone: one card for both layouts ───────────────────────────────────
-   Seven (or eight) columns cannot fit 390px. Payee and amount lead; the
+   Six (or eight) columns cannot fit 390px. Payee and amount lead; the
    second line says which account (page) or which envelope (register); then
-   when and how often; then the two actions at the tap floor. */
+   when, with the two actions at the tap floor beside it — three lines, not
+   four, under a register section of six of these above the real rows. */
 @media (max-width: 768px) {
   .scheduled-row__head {
     display: none;
@@ -219,8 +220,7 @@
     grid-template-areas:
       "payee amount"
       "sub freq"
-      "date auto"
-      "actions actions";
+      "date actions";
     row-gap: var(--spacing-xs);
     padding: var(--spacing-md);
   }
@@ -287,32 +287,6 @@
     grid-column: auto;
     color: var(--text-muted);
     font-size: var(--font-size-xs);
-  }
-
-  .scheduled-row__auto,
-  .scheduled-row--register .scheduled-row__auto {
-    grid-area: auto;
-    color: var(--text-muted);
-    font-size: var(--font-size-xs);
-    text-align: right;
-  }
-
-  .scheduled-row__auto::before {
-    content: "Auto: ";
-  }
-
-  .scheduled-row--register .scheduled-row__auto {
-    display: none;
-  }
-
-  /* The register's card has no Auto line (it lives on the Scheduled page),
-     so Enter / Skip take that place beside the date: three lines, not four,
-     under a section of six of these above the real rows. */
-  .scheduled-row--register {
-    grid-template-areas:
-      "payee amount"
-      "sub freq"
-      "date actions";
   }
 
   .scheduled-row__actions,

@@ -34,7 +34,7 @@ describe('dueLabel', () => {
 })
 
 describe('dueState', () => {
-  const base = { days_before_reminder: 3, auto_create: false }
+  const base = { days_before_reminder: 3 }
   it('is due-soon at the boundary of the reminder window and inside it', () => {
     expect(dueState({ ...base, next_occurrence_date: '2026-09-09' }, '2026-09-06')).toBe('due-soon')
     expect(dueState({ ...base, next_occurrence_date: '2026-09-06' }, '2026-09-06')).toBe('due-soon')
@@ -45,17 +45,16 @@ describe('dueState', () => {
   it('is overdue once the date has passed', () => {
     expect(dueState({ ...base, next_occurrence_date: '2026-09-05' }, '2026-09-06')).toBe('overdue')
   })
-  it('never calls an auto-entered schedule overdue — it posts itself', () => {
+  it('is overdue a day past the date however wide the reminder window — the run is owed', () => {
+    // Every schedule posts itself; a past date means the nightly job has not
+    // run since. There used to be an auto-create branch that read due-soon.
     expect(
-      dueState({ ...base, auto_create: true, next_occurrence_date: '2026-09-05' }, '2026-09-06')
-    ).toBe('due-soon')
+      dueState({ days_before_reminder: 30, next_occurrence_date: '2026-09-05' }, '2026-09-06')
+    ).toBe('overdue')
   })
   it('a zero-day window still flags the day itself', () => {
     expect(
-      dueState(
-        { days_before_reminder: 0, auto_create: false, next_occurrence_date: '2026-09-06' },
-        '2026-09-06'
-      )
+      dueState({ days_before_reminder: 0, next_occurrence_date: '2026-09-06' }, '2026-09-06')
     ).toBe('due-soon')
   })
 })

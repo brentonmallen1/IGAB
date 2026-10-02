@@ -760,7 +760,6 @@ export interface ScheduledTransaction {
   frequency: string
   start_date: string
   end_date: string | null
-  auto_create: boolean
   days_before_reminder: number
   next_occurrence_date: string
   last_created_date: string | null

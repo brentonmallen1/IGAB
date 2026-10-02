@@ -164,7 +164,6 @@ const schedules = [
     second_day_of_month: null,
     next_occurrence_date: '2026-10-01',
     days_before_reminder: 3,
-    auto_create: false,
   },
 ]
 vi.mock('../../../api/scheduledTransactions', () => ({
@@ -520,6 +519,21 @@ describe('the upcoming step', () => {
     is_transfer: false,
     split_legs: [],
   }
+
+  it('says the rows post themselves on their dates — there is no remind-only mode', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary({ held_out_future: [held] })}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+    await user.click(screen.getByRole('button', { name: /upcoming/i }))
+    expect(screen.getByText(/each posts itself on its date/i)).toBeInTheDocument()
+  })
 
   it('saves a cadence the moment it is chosen — an ordinary schedule edit', async () => {
     const user = userEvent.setup()

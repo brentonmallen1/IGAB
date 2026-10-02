@@ -15,7 +15,7 @@ import './ScheduledRow.css'
  * One DOM, two desktop shapes, one phone card. `layout` picks the desktop
  * column set — `register` lines up under the register (date, payee,
  * category, memo, amount, actions); `table` is the Scheduled page's
- * (account, payee, amount, frequency, date, auto, actions). Every cell is
+ * (account, payee, amount, frequency, date, actions). Every cell is
  * always rendered; the stylesheet shows and hides per layout, so the phone
  * card is written once and cannot drift between the two.
  */
@@ -78,7 +78,6 @@ export function ScheduledRow({
           </span>
         )}
       </span>
-      <span className="scheduled-row__auto">{s.auto_create ? 'Yes' : '—'}</span>
       <span className="scheduled-row__actions" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
@@ -112,7 +111,6 @@ export function ScheduledTableHead() {
       <span>Amount</span>
       <span>Frequency</span>
       <span>Next Date</span>
-      <span>Auto</span>
       <span></span>
     </div>
   )

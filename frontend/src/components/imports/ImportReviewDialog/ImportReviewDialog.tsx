@@ -422,8 +422,9 @@ function UpcomingStep({
     <>
       <p className="dialog__body dialog__body--muted">
         YNAB dated these after the import, so they are upcoming transactions rather than posted ones
-        — nothing has left an account yet. YNAB exports a scheduled transaction as its next date
-        only, so each is set to repeat monthly; change the ones that don't.
+        — nothing has left an account yet. Each posts itself on its date, as it did in YNAB. YNAB
+        exports a scheduled transaction as its next date only, so each is set to repeat monthly;
+        change the ones that don't before they next post.
       </p>
 
       <Surface

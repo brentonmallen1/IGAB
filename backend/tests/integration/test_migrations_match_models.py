@@ -291,3 +291,100 @@ def test_migration_backfills_the_interest_envelope(scratch_dbs):
         assert_backfilled()
     finally:
         engine.dispose()
+
+
+def test_migration_rolls_overdue_schedules_forward_without_posting(scratch_dbs):
+    """Migration e53562b192c5: every schedule posts on its date from now on,
+    so before `auto_create` goes, each live overdue schedule moves to its first
+    occurrence on or after today and nothing is posted. A schedule whose end
+    passes on the way ends as Skip ends one; due-today, future and deleted rows
+    are not touched. Down re-adds the column as false and leaves the dates."""
+    from datetime import timedelta
+
+    from igab.utils.clock import today_server_local
+
+    from .emergency_fund_adoption_cases import _account, insert_budget
+
+    before = "2cb769068102"
+    database, _ = scratch_dbs
+    _run_migrations(database, before)
+    engine = create_engine(_url(database))
+    # The subprocess asks the same clock, in the same TZ.
+    today = today_server_local()
+    day = timedelta(days=1)
+
+    def schedule(conn, account, budget, frequency, start, nxt, end=None, deleted=False):
+        sid = uuid.uuid4()
+        conn.execute(
+            text(
+                "INSERT INTO scheduled_transactions (id, budget_id, account_id, amount,"
+                " frequency, start_date, end_date, next_occurrence_date, auto_create,"
+                " days_before_reminder, is_deleted)"
+                " VALUES (:id, :b, :a, -120, :f, :s, :e, :n, false, 3, :d)"
+            ),
+            {"id": sid, "b": budget, "a": account, "f": frequency, "s": start}
+            | {"e": end, "n": nxt, "d": deleted},
+        )
+        return sid
+
+    def read(conn, sid):
+        return tuple(
+            conn.execute(
+                text(
+                    "SELECT next_occurrence_date, is_deleted"
+                    " FROM scheduled_transactions WHERE id = :i"
+                ),
+                {"i": sid},
+            ).one()
+        )
+
+    ago15, ago40 = today - 15 * day, today - 40 * day
+    try:
+        with engine.begin() as conn:
+            budget = insert_budget(conn, "Schedules")
+            acct = _account(
+                conn,
+                budget,
+                "Harborstone Checking",
+                key="checking",
+                on_budget=True,
+                counts_as_savings=False,
+            )
+            weekly = schedule(conn, acct, budget, "weekly", ago15, ago15)
+            ended = schedule(
+                conn, acct, budget, "monthly", today - 100 * day, ago40, end=today - 20 * day
+            )
+            once = schedule(conn, acct, budget, "once", today - 3 * day, today - 3 * day)
+            due_today = schedule(conn, acct, budget, "monthly", today, today)
+            future = schedule(conn, acct, budget, "monthly", today + 5 * day, today + 5 * day)
+            deleted = schedule(conn, acct, budget, "weekly", ago15, ago15, deleted=True)
+
+        def assert_rolled():
+            with engine.connect() as conn:
+                # Three weeks on from fifteen days ago: six days ahead.
+                assert read(conn, weekly) == (today + 6 * day, False)
+                # A month on from 40 days ago is past the end: ended as Skip
+                # ends one, its dates left where they were.
+                assert read(conn, ended) == (ago40, True)
+                assert read(conn, once) == (today - 3 * day, True)
+                assert read(conn, due_today) == (today, False)
+                assert read(conn, future) == (today + 5 * day, False)
+                assert read(conn, deleted) == (ago15, True)
+                posted = conn.execute(text("SELECT count(*) FROM transactions")).scalar_one()
+                assert posted == 0, "the roll-forward posts nothing"
+
+        _run_migrations(database)
+        assert_rolled()
+        columns = {c["name"] for c in inspect(engine).get_columns("scheduled_transactions")}
+        assert "auto_create" not in columns
+
+        _run_migrations(database, before, command="downgrade")
+        with engine.connect() as conn:
+            flags = conn.execute(text("SELECT DISTINCT auto_create FROM scheduled_transactions"))
+            assert list(flags.scalars()) == [False]
+        assert_rolled()  # the dates stay where the upgrade put them
+
+        _run_migrations(database)
+        assert_rolled()  # nothing is overdue the second time round
+    finally:
+        engine.dispose()

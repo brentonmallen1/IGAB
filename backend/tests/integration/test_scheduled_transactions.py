@@ -99,9 +99,8 @@ async def test_enter_now_on_a_scheduled_transfer_links_both_legs(db_session):
     assert out_leg.created_via == "scheduled" and in_leg.created_via == "scheduled"
 
 
-async def test_process_due_auto_create_links_and_logs_as_system(db_session):
+async def test_process_due_links_and_logs_as_system(db_session):
     services, sched_svc, budget, checking, sched, _ = await _setup(db_session)
-    await sched_svc.update(sched.id, auto_create=True)
 
     created = await sched_svc.process_due(budget.id, today_utc())
     assert created == 1
@@ -180,6 +179,57 @@ async def test_undo_of_enter_now_removes_the_row_and_rolls_the_schedule_back(db_
     assert rolled_back.next_occurrence_date == before_next
 
 
+async def test_a_change_recorded_before_auto_create_was_dropped_still_undoes_and_redoes(
+    db_session,
+):
+    """Change-log rows written while the column existed still name
+    `auto_create` in their snapshots. Undo and redo pass over it and restore
+    the rest; redo used to write every key back blind, with no notion of a
+    dropped column."""
+    from sqlalchemy import update
+
+    _, sched_svc, budget, _, sched, _ = await _setup(db_session)
+    await sched_svc.update(sched.id, amount=Decimal("-1350.00"))
+    await db_session.flush()
+    rows = (
+        (
+            await db_session.execute(
+                select(ChangeLog).where(ChangeLog.entity_type == "scheduled_transaction")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert {r.action for r in rows} == {"create", "update"}
+    for row in rows:
+        for side in ("before", "after"):
+            payload = getattr(row, side)
+            if payload is not None:
+                await db_session.execute(
+                    update(ChangeLog)
+                    .where(ChangeLog.id == row.id)
+                    .values({side: {**payload, "auto_create": True}})
+                )
+    await db_session.flush()
+    for row in rows:
+        db_session.expire(row)
+    undo = UndoService(db_session)
+
+    change, _ = await undo.undo_latest(budget.id)  # the update
+    assert change.action == "update"
+    assert (await sched_svc.repo.get(sched.id)).amount == Decimal("-1200.00")
+    change, _ = await undo.undo_latest(budget.id)  # the create
+    assert change.action == "create"
+    assert await sched_svc.repo.get(sched.id) is None
+
+    await undo.redo_latest(budget.id)
+    assert (await sched_svc.repo.get(sched.id)).amount == Decimal("-1200.00")
+    await undo.redo_latest(budget.id)
+    redone = await sched_svc.repo.get(sched.id)
+    assert redone.amount == Decimal("-1350.00")
+    assert not hasattr(redone, "auto_create")
+
+
 # ─── Posting date, missed nights, completion ─────────────────────────────────
 
 
@@ -206,11 +256,12 @@ async def test_last_created_date_is_the_posted_date(db_session):
 
 
 async def test_process_due_posts_each_missed_occurrence_on_its_own_date(db_session):
-    """A job that slept two nights owes two rows. Weekly, auto-create, first
-    due 15 days ago: three occurrences are due, each dated its own week."""
+    """A job that slept two nights owes two rows. Weekly, first due 15 days
+    ago: three occurrences are due, each dated its own week. After the
+    roll-forward migration a backlog like this can only come from downtime."""
     first = today_utc() - timedelta(days=15)
     services, sched_svc, budget, checking, sched, _ = await _setup(
-        db_session, frequency="weekly", start_date=first, auto_create=True
+        db_session, frequency="weekly", start_date=first
     )
 
     created = await sched_svc.process_due(budget.id, today_utc())
@@ -222,21 +273,29 @@ async def test_process_due_posts_each_missed_occurrence_on_its_own_date(db_sessi
     assert refreshed.next_occurrence_date == first + timedelta(days=21)
 
 
-async def test_process_due_leaves_a_non_auto_schedule_due(db_session):
-    """Behaviour change, on purpose: a schedule the person enters by hand is
-    never advanced by the nightly job. It used to roll forward silently, so
-    a missed bill moved to next month with no trace it had been missed."""
-    due = today_utc() - timedelta(days=3)
-    services, sched_svc, budget, checking, sched, _ = await _setup(db_session, start_date=due)
+async def test_every_schedule_posts_on_its_date_there_is_no_remind_only_mode(db_session):
+    """Created with nothing but the defaults — what the YNAB importer makes —
+    a schedule due today posts on the run. A "remind me only" mode used to be
+    the default, the run skipped it, and every imported bill sat overdue."""
+    services, sched_svc, budget, checking, sched, _ = await _setup(db_session)
 
     created = await sched_svc.process_due(budget.id, today_utc())
 
-    assert created == 0
+    assert created == 1
+    [row] = await _rows_for(services, checking.id)
+    assert row.date == today_utc() and row.amount == Decimal("-1200.00")
+    assert (await sched_svc.repo.get(sched.id)).last_created_date == today_utc()
+
+
+async def test_a_schedule_not_yet_due_does_not_post(db_session):
+    tomorrow = today_utc() + timedelta(days=1)
+    services, sched_svc, budget, checking, _, _ = await _setup(db_session, start_date=tomorrow)
+
+    assert await sched_svc.process_due(budget.id, today_utc()) == 0
     assert await _rows_for(services, checking.id) == []
-    assert (await sched_svc.repo.get(sched.id)).next_occurrence_date == due
 
 
-async def test_a_due_twice_monthly_auto_schedule_posts_once_per_occurrence_not_nightly(db_session):
+async def test_a_due_twice_monthly_schedule_posts_once_per_occurrence_not_nightly(db_session):
     """The drift case. `calculate_next` had no twice-monthly branch and fell
     through to "same date", so the schedule never advanced and every nightly
     run posted the same paycheck again."""
@@ -249,7 +308,6 @@ async def test_a_due_twice_monthly_auto_schedule_posts_once_per_occurrence_not_n
         frequency="twice_monthly",
         start_date=start,
         second_day_of_month=15,
-        auto_create=True,
         amount=Decimal("2450.00"),
     )
     expected = [d for d in (start, start.replace(day=15)) if d <= today]
@@ -299,9 +357,7 @@ async def test_process_due_ends_a_schedule_whose_end_date_moved_behind_it(db_ses
     the nightly run retires the schedule without posting another row."""
     today = today_utc()
     start = today - timedelta(days=40)
-    services, sched_svc, budget, checking, sched, _ = await _setup(
-        db_session, start_date=start, auto_create=True
-    )
+    services, sched_svc, budget, checking, sched, _ = await _setup(db_session, start_date=start)
     # Skipped once, so the next occurrence sits about ten days back; then the
     # end date is pulled to between the start and that occurrence.
     skipped = await sched_svc.skip(sched.id)

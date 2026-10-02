@@ -201,6 +201,17 @@ async def test_dates_span_the_window_and_scheduled_are_future(db_session):
     for sched in result.scalars():
         assert sched.next_occurrence_date > ANCHOR
 
+    # Every schedule posts itself on its date, so a next date behind the
+    # anchor would post a backlog into the demo on its first nightly run.
+    from igab.services.scheduled_transaction_service import ScheduledTransactionService
+
+    from .factories import make_services
+
+    sched_svc = ScheduledTransactionService(
+        ScheduledTransactionRepository(db_session), make_services(db_session).transactions
+    )
+    assert await sched_svc.process_due(budget.id, ANCHOR) == 0
+
 
 async def test_budget_summary_hits_target_with_one_overspend(db_session):
     user = await create_user(db_session)

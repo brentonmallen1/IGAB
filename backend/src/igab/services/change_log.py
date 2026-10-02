@@ -245,7 +245,6 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "start_date",
         "end_date",
         "second_day_of_month",
-        "auto_create",
         "days_before_reminder",
         "transfer_account_id",
         "last_created_date",

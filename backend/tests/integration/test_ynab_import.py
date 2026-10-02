@@ -1297,7 +1297,8 @@ async def test_a_future_row_becomes_a_monthly_schedule_not_a_register_row(db_ses
         _future("Checking", "Oakwood Property Mgmt", "-1400.00", group="Bills", category="Rent"),
     )
 
-    result = await _importer(services, db_session, budget).import_budget(data)
+    importer = _importer(services, db_session, budget)
+    result = await importer.import_budget(data)
 
     assert result.transactions_imported == 1
     accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
@@ -1305,7 +1306,6 @@ async def test_a_future_row_becomes_a_monthly_schedule_not_a_register_row(db_ses
     [sched] = await _schedules(db_session, budget.id)
     # A guess — YNAB exports no cadence — and the one nearly every bill needs.
     assert sched.frequency == "monthly"
-    assert sched.auto_create is False
     assert sched.start_date == sched.next_occurrence_date == FEB1
     assert sched.amount == Decimal("-1400.00")
     assert sched.category_id is not None
@@ -1318,6 +1318,13 @@ async def test_a_future_row_becomes_a_monthly_schedule_not_a_register_row(db_ses
         False,
     )
     await assert_financial_invariants(db_session, budget.id)
+
+    # It posts on its date, as YNAB's did. Imported schedules used to be
+    # remind-only, so the nightly run skipped every one and the rent never
+    # posted.
+    assert await importer.scheduled_service.process_due(budget.id, FEB1) == 1
+    rows = await _all_rows(db_session, accounts["Checking"].id)
+    assert sorted(r.date for r in rows) == [JAN5, FEB1]
 
 
 async def test_a_future_transfer_pair_becomes_one_scheduled_transfer_on_the_outflow_account(

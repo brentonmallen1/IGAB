@@ -1,8 +1,10 @@
-"""UTC-anchored date helpers.
+"""Date helpers: which clock answers "what day is it".
 
 `date.today()` is server-local; a self-hosted box in any timezone would
 stamp transaction dates and rate-limit day boundaries inconsistently with
-the app's UTC-based reset messaging. Use these instead.
+the app's UTC-based reset messaging. Use these instead — `today_utc` for the
+app's own bookkeeping, `today_server_local` for the household's day when no
+browser is there to say it, `recorded_on` when one is.
 """
 
 from datetime import UTC, date, datetime
@@ -10,6 +12,20 @@ from datetime import UTC, date, datetime
 
 def today_utc() -> date:
     return datetime.now(UTC).date()
+
+
+def today_server_local() -> date:
+    """The household's today, for a decision the server makes with no browser
+    involved — the nightly run that posts scheduled transactions, and the
+    migration that rolled overdue schedules forward.
+
+    The one clock for those. `TZ` in the environment is the household's day
+    (.env.example): the scheduler's cron already fires in that zone, so a
+    job that then asked for the UTC date would, west of UTC, post tomorrow's
+    rent at five past midnight local — or, east of it, yesterday's. A path a
+    person drives sends `client_today` instead (see `recorded_on`).
+    """
+    return datetime.now().astimezone().date()
 
 
 def recorded_on(explicit: date | None, client_today: date | None) -> date:

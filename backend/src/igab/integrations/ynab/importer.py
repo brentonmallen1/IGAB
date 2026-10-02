@@ -824,10 +824,11 @@ class YNABImporter:
         frequency is a guess and the review is where a person sets the real
         one. Monthly is the guess because it is what nearly all of them are:
         defaulting to `once` meant changing the same dropdown on every row of
-        every import. `auto_create` stays off: an imported guess must not
-        post rows by itself. Accounts, payees and categories resolve through the same
-        functions as register rows; the category-stripping rules (card
-        reserve, tracking account) apply unchanged.
+        every import. Each schedule posts on its date, as YNAB's did; the
+        review is where the cadence is confirmed before it next posts.
+        Accounts, payees and categories resolve through the same functions as
+        register rows; the category-stripping rules (card reserve, tracking
+        account) apply unchanged.
 
         Two future legs of one transfer become one scheduled transfer on the
         outflow leg's account — entering it later materializes both legs.
@@ -893,7 +894,6 @@ class YNABImporter:
                     payee_id=c["payee_id"],
                     category_id=c["category_id"],
                     memo=c["memo"],
-                    auto_create=False,
                     transfer_account_id=c["transfer_account_id"],
                     import_id=c["import_id"],
                 ),

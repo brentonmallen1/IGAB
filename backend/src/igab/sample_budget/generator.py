@@ -1018,6 +1018,9 @@ class SampleBudgetGenerator:
                 end_date=None,
                 days_before_reminder=3,
             )
+            # Strictly after the anchor: every schedule posts itself on its
+            # date, so a next date behind it would post a backlog into
+            # the demo on the first nightly run.
             next_date = first_occurrence_after(
                 s.frequency,
                 anchor,
@@ -1035,7 +1038,6 @@ class SampleBudgetGenerator:
                 frequency=s.frequency,
                 start_date=start_date,
                 second_day_of_month=s.second_day_of_month,
-                auto_create=False,
                 transfer_account_id=(
                     self._accounts[s.transfer_account].id if s.transfer_account else None
                 ),

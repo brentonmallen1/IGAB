@@ -51,10 +51,8 @@ describe('ScheduledTransactionEditor', () => {
     for (const name of ['Account', 'Type', 'Amount', 'Frequency', 'Start date', 'End date']) {
       expect(screen.getByLabelText(name)).toBeInTheDocument()
     }
-    expect(screen.getByLabelText('Auto-create transaction when due')).toHaveAttribute(
-      'type',
-      'checkbox'
-    )
+    // Every schedule posts on its date; there is no "remind me only" mode.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 
   it('keeps Create enabled with no account, and asks for one on press', async () => {

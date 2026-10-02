@@ -5,9 +5,13 @@ The wiring — that all four date-stamping endpoints actually ask this — is
 `tests/integration/test_client_today.py`.
 """
 
-from datetime import date, timedelta
+import time
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from igab.utils.clock import recorded_on, today_utc
+import pytest
+
+from igab.utils.clock import recorded_on, today_server_local, today_utc
 
 
 class TestRecordedOn:
@@ -29,3 +33,30 @@ class TestRecordedOn:
 
     def test_an_explicit_date_wins_even_with_no_client_today(self):
         assert recorded_on(date(2020, 1, 1), None) == date(2020, 1, 1)
+
+
+class TestTodayServerLocal:
+    """The household's day for the nightly run: `TZ` decides it, not UTC."""
+
+    @pytest.fixture
+    def zone(self, monkeypatch):
+        def use(name: str) -> None:
+            monkeypatch.setenv("TZ", name)
+            time.tzset()
+
+        yield use
+        monkeypatch.undo()
+        time.tzset()
+
+    def test_follows_tz(self, zone):
+        for name in ("Pacific/Kiritimati", "Etc/GMT+12", "America/Chicago", "UTC"):
+            zone(name)
+            assert today_server_local() == datetime.now(ZoneInfo(name)).date(), name
+
+    def test_two_zones_a_day_apart_disagree_where_utc_could_not(self, zone):
+        # UTC+14 and UTC-12 are 26 hours apart, so they never share a date.
+        zone("Pacific/Kiritimati")
+        east = today_server_local()
+        zone("Etc/GMT+12")
+        west = today_server_local()
+        assert east > west
