@@ -1,6 +1,7 @@
 import { Fragment, useId, useRef, useState } from 'react'
 import {
   ArrowRightLeft,
+  Banknote,
   CalendarClock,
   ChevronDown,
   ChevronRight,
@@ -44,6 +45,8 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
+import { CardPaymentModal } from '../../accounts/CardPaymentModal'
+import { registerPayAction } from '../../transactions/TransactionTable/payButton'
 import type { PeekScope } from '../TransactionsPeekModal/TransactionsPeekModal'
 import { overspending } from '../budgetTotals'
 import { drawnCardSectionEnvelope } from '../budgetGroups'
@@ -609,6 +612,8 @@ function CardDetail({
   onPeek,
   onPeekCategory,
   onTarget,
+  payLabel,
+  onPay,
   formatMoney,
   formatMonth,
 }: {
@@ -636,6 +641,10 @@ function CardDetail({
   onPeek: () => void
   onPeekCategory: (categoryId: string, categoryName: string) => void
   onTarget: () => void
+  /** "Make a payment" (registerPayAction's word for a card), or null when
+   *  the account is not one that takes a payment. */
+  payLabel: string | null
+  onPay: () => void
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
 }) {
@@ -782,6 +791,15 @@ function CardDetail({
       </div>
 
       <div className="credit-cards__actions">
+        {/* First: paying the card is the thing this strip exists to lead to,
+          and it was the one action missing from it — reachable only from the
+          card's register toolbar. */}
+        {payLabel && (
+          <button type="button" className="credit-cards__action" onClick={onPay}>
+            <Banknote size={12} aria-hidden />
+            {payLabel}
+          </button>
+        )}
         <button type="button" className="credit-cards__action" onClick={onPeek}>
           Transactions
         </button>
@@ -857,6 +875,7 @@ export function CreditCardsSection({
   const [peek, setPeek] = useState<PeekScope | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
+  const [payFor, setPayFor] = useState<string | null>(null)
   // Which card is open, by account — one at a time. Its detail is drawn in
   // place under its line, never in a dialog: the explanation used to live
   // behind an ⓘ button, and a reason you have to go looking for is one
@@ -1126,6 +1145,8 @@ export function CreditCardsSection({
                       onTarget={() =>
                         setTargetFor({ categoryId: card.category_id as string, name: card.name })
                       }
+                      payLabel={registerPayAction(accounts, card.account_id)?.label ?? null}
+                      onPay={() => setPayFor(card.account_id)}
                       formatMoney={formatMoney}
                       formatMonth={formatMonth}
                     />
@@ -1159,6 +1180,9 @@ export function CreditCardsSection({
       )}
       {peek && (
         <TransactionsPeekModal budgetId={budgetId} scope={peek} onClose={() => setPeek(null)} />
+      )}
+      {payFor && (
+        <CardPaymentModal budgetId={budgetId} accountId={payFor} onClose={() => setPayFor(null)} />
       )}
     </Surface>
   )
