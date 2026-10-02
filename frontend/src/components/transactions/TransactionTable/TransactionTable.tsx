@@ -217,7 +217,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     }
   }, [selectedTransactionIds, showAttachmentPanel, attachmentTxnId])
   const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId)
-  const rejectMatch = useRejectMatch(accountId ?? undefined)
+  const rejectMatch = useRejectMatch()
   const createTxn = useCreateTransaction(budgetId)
   const [makeRepeatingTxn, setMakeRepeatingTxn] = useState<Transaction | null>(null)
   const [editingScheduledTxn, setEditingScheduledTxn] = useState<ScheduledTransaction | null>(null)

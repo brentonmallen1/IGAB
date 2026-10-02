@@ -7,6 +7,7 @@ import {
   Link as LinkIcon,
   Lock,
   Pencil,
+  ScanSearch,
   Telescope,
   Upload,
   Wallet,
@@ -23,13 +24,13 @@ import { BUDGET_START_NOTE } from '../../components/accounts/budgetStartNote'
 import { LiabilityTermsHeader } from '../../components/liabilities/LiabilityTermsHeader'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
-import { useAccounts } from '../../api/accounts'
+import { useAccounts, useScanDuplicates } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import {
   formatSyncSummary,
   useSimpleFINConnections,
   useSyncSimpleFIN,
-  usePendingMatches,
+  usePendingMatchesForAccount,
 } from '../../api/simplefin'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -86,8 +87,25 @@ export function AccountPage() {
   const openModal = useUIStore((s) => s.openModal)
   const closeModal = useUIStore((s) => s.closeModal)
   const { data: liabilities = [] } = useLiabilities(budgetId)
-  const { data: pendingMatches = [] } = usePendingMatches(budgetId)
+  // This account's, not the budget's: the banner sits on one register.
+  const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId ?? null)
   const [showMatchModal, setShowMatchModal] = useState(false)
+  const scanDuplicates = useScanDuplicates()
+  // The scan lived at the bottom of the Edit account dialog, where nobody
+  // found it; the page said nothing about duplicates until some were pending.
+  const handleScanDuplicates = async () => {
+    if (!accountId) return
+    try {
+      const { created } = await scanDuplicates.mutateAsync(accountId)
+      if (created === 0) {
+        toast.success('No new possible duplicates in this account')
+      } else {
+        setShowMatchModal(true)
+      }
+    } catch {
+      toast.error('The duplicate scan failed')
+    }
+  }
   const [showCsvImport, setShowCsvImport] = useState(false)
   const storedHeaderCollapsed = useUIStore((s) => s.accountHeaderCollapsed)
   const setHeaderCollapsed = useUIStore((s) => s.setAccountHeaderCollapsed)
@@ -319,6 +337,15 @@ export function AccountPage() {
             title="Import transactions from CSV"
           >
             <Upload size={16} />
+          </button>
+          <button
+            className="account-page__action-btn"
+            onClick={() => void handleScanDuplicates()}
+            disabled={scanDuplicates.isPending}
+            aria-label="Find possible duplicates"
+            title="Find possible duplicates"
+          >
+            <ScanSearch size={16} />
           </button>
           <button
             className="account-page__reconcile-btn"

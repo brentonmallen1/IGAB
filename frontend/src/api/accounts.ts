@@ -87,6 +87,8 @@ export function useScanDuplicates() {
         .then((r) => r.data),
     onSuccess: (_data, accountId) => {
       qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
+      // The budget-wide list (sidebar, other pages) holds the new pairs too.
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
     },
   })
 }
