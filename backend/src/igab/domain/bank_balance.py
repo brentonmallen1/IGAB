@@ -36,13 +36,17 @@ ZERO = Decimal("0")
 class DriftExplanation:
     """The bank's figure, the ledger's, and what accounts for the gap.
 
-    Three facts, not one number, because the same gap has three very
+    Four facts, not one number, because the same gap has four very
     different meanings and only one of them is the user's problem:
 
     - **unposted** — the ledger holds cleared rows the bank has not posted
       against. Ordinary: the register is ahead of the feed, which is what
       ticking a hold cleared is *for*. Resolves itself when the feed
       catches up.
+    - **in review** — a sync wrote the bank's copy of a row beside the
+      person's own and asked whether they are the same purchase. Until that
+      is answered the ledger counts the money twice. Accepting the review is
+      what resolves it.
     - **stale** — the balance the bank reported predates activity the ledger
       already holds, so the two are not measuring the same instant and the
       gap is not evidence of anything.
@@ -60,6 +64,11 @@ class DriftExplanation:
     #: inside `ledger_cleared` and outside `reported` by construction —
     #: see txn_filters.CLEARED_AHEAD_OF_BANK.
     unposted_cleared: Decimal = ZERO
+    #: Signed sum of the person's cleared rows that a pending review holds
+    #: beside the bank's own copy — see txn_filters.IN_REVIEW_CLEARED. Inside
+    #: `ledger_cleared` twice over (this row and the bank's copy) and inside
+    #: `reported` once, so this much of the gap is the queue, not a loss.
+    in_review: Decimal = ZERO
     #: When the bank computed `reported`. None when the bridge did not say.
     as_of: date | None = None
     #: The newest cleared row in the ledger, for comparison against `as_of`.
@@ -72,13 +81,16 @@ class DriftExplanation:
 
     @property
     def unexplained(self) -> Decimal:
-        """The part of the gap the unposted rows do not account for.
+        """The part of the gap the unposted and in-review rows do not
+        account for.
 
-        `reported` excludes those rows and `ledger_cleared` includes them, so
-        a gap made entirely of them is exactly `-unposted_cleared` and this
-        is zero. Signed, and in the same frame as `amount`.
+        `reported` excludes those rows (or, for a review pair, holds one copy
+        where the ledger holds two) and `ledger_cleared` includes them, so a
+        gap made entirely of them is exactly `-(unposted_cleared +
+        in_review)` and this is zero. Signed, and in the same frame as
+        `amount`.
         """
-        return self.amount + self.unposted_cleared
+        return self.amount + self.unposted_cleared + self.in_review
 
     @property
     def stale(self) -> bool:
@@ -99,14 +111,19 @@ class DriftExplanation:
 
     @property
     def reason(self) -> str:
-        """Why the two figures differ: agree | unposted | stale | unexplained.
+        """Why the two figures differ:
+        agree | in_review | unposted | stale | unexplained.
 
-        Precedence is strongest-evidence-first. An exact unposted account of
-        the whole gap is a complete answer and outranks staleness, which is
-        only ever "the comparison is unreliable".
+        Precedence is strongest-evidence-first. An exact account of the whole
+        gap is a complete answer and outranks staleness, which is only ever
+        "the comparison is unreliable". Between the two complete answers,
+        `in_review` leads whenever it is part of the gap: it is the one the
+        person can act on, and the queue it points at is where they act.
         """
         if not self.has_drift:
             return "agree"
+        if self.unexplained == ZERO and self.in_review != ZERO:
+            return "in_review"
         if self.unexplained == ZERO and self.unposted_cleared != ZERO:
             return "unposted"
         if self.stale:
@@ -129,6 +146,7 @@ def explain_drift(
     ledger_cleared: Decimal,
     *,
     unposted_cleared: Decimal = ZERO,
+    in_review: Decimal = ZERO,
     balance_as_of: date | None = None,
     newest_cleared_on: date | None = None,
 ) -> DriftExplanation | None:
@@ -145,6 +163,7 @@ def explain_drift(
         reported=reported,
         ledger_cleared=ledger_cleared,
         unposted_cleared=unposted_cleared,
+        in_review=in_review,
         as_of=balance_as_of,
         newest_cleared_on=newest_cleared_on,
     )
@@ -162,8 +181,11 @@ def drift_is_a_fault(explanation: DriftExplanation | None, *, reconciled: bool) 
 
     An explained gap is not a fault either. Suppressing those does not weaken
     the check that caught two dozen missing rows — `unposted_cleared` is a
-    small, precisely bounded set (bank-linked rows with no posting date), so
-    subtracting it makes the alarm sharper, not quieter.
+    small, precisely bounded set (bank-linked rows with no posting date), and
+    `in_review` is bounded the same way (rows a pending review pair names),
+    so subtracting them makes the alarm sharper, not quieter. A reconciled
+    account whose sync queued its own history for review used to raise a
+    fault for every queued pair.
     """
     if explanation is None or not reconciled:
         return False
@@ -182,7 +204,27 @@ def describe_drift(account_name: str, drift: DriftExplanation) -> str:
     )
     if drift.unposted_cleared != ZERO:
         clause += f" ({_money(abs(drift.unposted_cleared))} of cleared spending not yet posted)"
+    if drift.in_review != ZERO:
+        clause += f" ({_money(abs(drift.in_review))} waiting in the review queue)"
     return clause
+
+
+def drift_record(account_id: object, account_name: str | None, drift: DriftExplanation) -> dict:
+    """One drift as the run record, the sync result and the health check
+    carry it. One shape, because the health check re-judges a run's entry
+    against today's ledger and used to rebuild this dict by hand."""
+    return {
+        "account_id": str(account_id),
+        "account_name": account_name,
+        "bank_balance": str(drift.reported),
+        "ledger_cleared_balance": str(drift.ledger_cleared),
+        # What the user would have to go and find, once the rows the bank
+        # simply has not posted yet, and the review queue's doubled rows,
+        # are taken out of the gap.
+        "unexplained_amount": str(drift.unexplained),
+        "unposted_cleared": str(drift.unposted_cleared),
+        "in_review": str(drift.in_review),
+    }
 
 
 def _money(value: Decimal) -> str:
@@ -221,6 +263,17 @@ def _money(value: Decimal) -> str:
 # it fires when detection had nothing to go on (a zero balance on the run
 # that decided the frame) or when a remembered frame is wrong.
 
+#
+# **An anchor is for an account with no past here.** It stands in for history
+# the register cannot hold. An account that already holds rows from before the
+# fetch window — a YNAB migration, years typed by hand — has that history, and
+# a gap against it is not pre-window history at all: it is whatever the
+# register and the bank disagree about, which is reconcile's question, asked
+# with the person watching. Anchoring it wrote a row years back that silently
+# absorbed the disagreement. So such an account is skipped — informationally,
+# not as a refusal: nothing is wrong, and the drift check, which the anchor
+# would otherwise have disarmed, stays free to report the gap.
+
 _REFUSALS = ("holds_money",)
 
 
@@ -228,7 +281,7 @@ _REFUSALS = ("holds_money",)
 class AnchorVerdict:
     """Whether to write an opening-balance row, and why not."""
 
-    reason: str  # "agrees" | "ok" | "holds_money"
+    reason: str  # "agrees" | "ok" | "has_history" | "holds_money"
     gap: Decimal
 
     @property
@@ -241,18 +294,42 @@ class AnchorVerdict:
         is the ordinary no-op of a ledger that already matches the bank."""
         return self.reason in _REFUSALS
 
+    @property
+    def skipped_for_history(self) -> bool:
+        """A gap left for reconcile because the account already has a past.
+        Not a refusal: reported to the person, never as a fault."""
+        return self.reason == "has_history"
 
-def anchor_verdict(reported: Decimal, ledger: Decimal, *, is_liability: bool) -> AnchorVerdict:
-    """Whether anchoring to `reported` would leave a possible account.
 
-    `ledger` is the cleared balance BEFORE the anchor is written — measuring
-    after it is what made the old drift check blind — and is used only for
-    the gap, never as a plausibility bound. See the note above for why the
-    gap itself carries no signal.
+def anchor_verdict(
+    reported: Decimal,
+    ledger: Decimal,
+    *,
+    is_liability: bool,
+    holds_prior_history: bool,
+) -> AnchorVerdict:
+    """Whether to write an opening anchor, and whether it would leave a
+    possible account.
+
+    `ledger` is `txn_filters.anchor_ledger`, measured BEFORE the anchor is
+    written: the cleared rows the bank's figure should contain — not every
+    posted row, and not the person's copies of rows a pending review holds
+    beside the bank's own. Measuring after the anchor is what made the old
+    drift check blind. It is used only for the gap, never as a plausibility
+    bound; see the note above for why the gap itself carries no signal.
+
+    `holds_prior_history` — the account held rows dated before the fetch
+    window when the sync began. Such an account is never anchored. Checked
+    after agreement, because a ledger that already matches has nothing to
+    skip and nothing worth telling the person, and before `holds_money`,
+    because a skip writes nothing and so has nothing to refuse — and a
+    refusal degrades the run, where a skip is only informational.
     """
     gap = reported - ledger
     if gap == 0:
         return AnchorVerdict("agrees", gap)
+    if holds_prior_history:
+        return AnchorVerdict("has_history", gap)
     if is_liability and reported > 0:
         return AnchorVerdict("holds_money", gap)
     return AnchorVerdict("ok", gap)
@@ -267,4 +344,13 @@ def describe_refused_anchor(
         f"so no opening balance was written against its register of {_money(ledger)}. "
         "This usually means the feed reports debts as positive — reconcile the account "
         "or check the sign of its imported rows."
+    )
+
+
+def describe_skipped_anchor(account_name: str) -> str:
+    """One sentence for an account whose first sync wrote no anchor because
+    it already had a past. Informational: the run is not degraded by it."""
+    return (
+        f"{account_name} already had history from before it was linked, so no opening "
+        "balance was written — reconcile to settle any difference with the bank."
     )

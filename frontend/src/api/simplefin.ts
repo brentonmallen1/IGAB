@@ -184,6 +184,12 @@ export interface ConnectionSyncOutcome {
    *  outcome the drift line cannot report, because an anchor is the row that
    *  defines drift to be zero. */
   refused_anchors?: string[]
+  /** First syncs that wrote no opening balance because the account already
+   *  held rows from before the fetch window, one sentence each (server:
+   *  `domain/bank_balance.describe_skipped_anchor`). Informational, never a
+   *  fault: the person's own history needs no stand-in, and any gap is
+   *  reconcile's to settle. */
+  anchors_skipped_for_history?: string[]
 }
 
 export interface SyncAllResult {
@@ -268,6 +274,7 @@ function asSyncAll(result: SyncResult): SyncAllResult {
         bank_errors: result.bank_errors ?? [],
         balance_drift: result.balance_drift ?? [],
         refused_anchors: result.refused_anchors ?? [],
+        anchors_skipped_for_history: result.anchors_skipped_for_history ?? [],
       },
     ],
   }
@@ -307,7 +314,28 @@ function formatSyncAll(result: SyncAllResult): string {
     summary = `${summary} — ${banks} could not sync`
   }
   const fault = describeFault(result)
-  return fault ? `${summary} — ${fault}` : summary
+  if (fault) return `${summary} — ${fault}`
+  // Only when nothing is wrong: it is a note, and a fault outranks a note.
+  const note = describeSkippedAnchors(
+    result.connections.flatMap((c) => c.anchors_skipped_for_history ?? [])
+  )
+  return note ? `${summary} — ${note}` : summary
+}
+
+/**
+ * First syncs that wrote no opening balance because the account already had
+ * history — a YNAB migration, years typed by hand. One sentence is the
+ * server's own, shown whole; several are counted, because this line has to
+ * stay a line long. Shared by the sync toast and the sync log so the two
+ * cannot word it differently.
+ */
+export function describeSkippedAnchors(notes: string[]): string {
+  if (notes.length === 0) return ''
+  if (notes.length === 1) return notes[0]
+  return (
+    `${notes.length} accounts already had history from before they were linked, ` +
+    'so no opening balances were written'
+  )
 }
 
 /**

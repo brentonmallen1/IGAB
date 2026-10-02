@@ -26,12 +26,7 @@ from igab.dependencies import (
     get_transaction_matching_service,
     get_transaction_service,
 )
-from igab.domain.bank_balance import (
-    DriftExplanation,
-    as_of_date,
-    drift_is_a_fault,
-    explain_drift,
-)
+from igab.domain.bank_balance import DriftExplanation, drift_is_a_fault
 from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
 from igab.services.account_hygiene import AccountHygieneService
@@ -100,6 +95,7 @@ def _apply_drift(
     resp.bank_drift_reason = explanation.reason
     resp.bank_drift_unexplained = explanation.unexplained
     resp.bank_unposted_cleared = explanation.unposted_cleared
+    resp.bank_in_review = explanation.in_review
     resp.bank_drift_is_fault = drift_is_a_fault(explanation, reconciled=reconciled)
 
 
@@ -118,8 +114,7 @@ async def list_accounts(
     balances = await account_repo.balances_for(ids)
     cleared_balances = await account_repo.cleared_balances_for(ids)
     pending_balances = await account_repo.pending_balances_for(ids)
-    unposted_cleared = await account_repo.unposted_cleared_for(ids)
-    newest_cleared_on = await account_repo.newest_cleared_on_for(ids)
+    drifts = await account_repo.drift_for(accounts)
     uncategorized = await account_repo.uncategorized_counts_for(ids)
     result = []
     for acc in accounts:
@@ -130,17 +125,7 @@ async def list_accounts(
         resp.cleared_balance = cleared
         resp.uncleared_balance = balance - cleared
         resp.pending_balance = pending_balances[acc.id]
-        _apply_drift(
-            resp,
-            explain_drift(
-                acc.simplefin_balance,
-                cleared,
-                unposted_cleared=unposted_cleared[acc.id],
-                balance_as_of=as_of_date(acc.simplefin_balance_date),
-                newest_cleared_on=newest_cleared_on[acc.id],
-            ),
-            reconciled=acc.last_reconciled_at is not None,
-        )
+        _apply_drift(resp, drifts[acc.id], reconciled=acc.last_reconciled_at is not None)
         resp.uncategorized_count = uncategorized[acc.id]
         result.append(resp)
     return result
@@ -367,13 +352,7 @@ async def get_account(
     resp.pending_balance = await account_repo.get_pending_balance(acc.id)
     _apply_drift(
         resp,
-        explain_drift(
-            acc.simplefin_balance,
-            cleared,
-            unposted_cleared=await account_repo.get_unposted_cleared(acc.id),
-            balance_as_of=as_of_date(acc.simplefin_balance_date),
-            newest_cleared_on=await account_repo.get_newest_cleared_on(acc.id),
-        ),
+        (await account_repo.drift_for([acc]))[acc.id],
         reconciled=acc.last_reconciled_at is not None,
     )
     resp.uncategorized_count = await account_repo.get_uncategorized_count(acc.id)

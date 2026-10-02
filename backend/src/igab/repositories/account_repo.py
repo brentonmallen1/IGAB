@@ -14,6 +14,7 @@ from igab.db.models import (
     LiabilityBalanceSnapshot,
     Transaction,
 )
+from igab.domain.bank_balance import DriftExplanation, as_of_date, explain_drift
 from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
@@ -23,12 +24,14 @@ from igab.repositories.txn_filters import (
     CLEARED,
     CLEARED_AHEAD_OF_BANK,
     EMERGENCY_FUND_ACCOUNT_SHAPE,
+    IN_REVIEW_CLEARED,
     LIVE_ACCOUNT,
     NEEDS_CATEGORY,
     NOT_DELETED,
     PARENT_ROW,
     PENDING_ROW,
     POSTED,
+    anchor_ledger,
     not_future,
 )
 
@@ -182,8 +185,58 @@ class AccountRepository(BaseRepository[Account]):
         rows ARE in the cleared balance, which is the point — it is the
         amount by which the ledger runs ahead of the bank's own figure. See
         txn_filters.CLEARED_AHEAD_OF_BANK and domain.bank_balance.
+
+        Over BALANCE_ROW, as a slice must be. It summed CLEARED_AHEAD_OF_BANK
+        alone, so a deleted row that had been cleared ahead of the bank —
+        it keeps its bank id as a tombstone — went on "explaining" a gap the
+        cleared balance no longer contained.
         """
-        return await self._sums_by_account(account_ids, CLEARED_AHEAD_OF_BANK)
+        return await self._sums_by_account(account_ids, BALANCE_ROW, CLEARED_AHEAD_OF_BANK)
+
+    async def in_review_cleared_for(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """Cleared money a pending review holds beside the bank's own copy,
+        per account. A slice of `cleared_balances_for`, like the unposted
+        sum above and disjoint from it — see txn_filters.IN_REVIEW_CLEARED."""
+        return await self._sums_by_account(account_ids, IN_REVIEW_CLEARED)
+
+    async def get_anchor_ledger(self, account_id: uuid.UUID, as_of: date) -> Decimal:
+        """What the bank's reported balance should equal on `as_of`, before
+        any opening anchor — see txn_filters.anchor_ledger."""
+        return (await self._sums_by_account([account_id], anchor_ledger(as_of)))[account_id]
+
+    async def drift_for(
+        self, accounts: Sequence[Account]
+    ) -> dict[uuid.UUID, DriftExplanation | None]:
+        """Each account's gap from its bank, and what accounts for it.
+
+        The one place the facts are gathered. Four surfaces judge drift — the
+        sync's fault line, the health badge, the account list and the account
+        page — and each used to fetch the cleared balance, the unposted sum and
+        the newest cleared date by hand before calling `explain_drift`, so a
+        new fact had to be threaded through four copies or one surface would
+        call a gap a fault that the others explained.
+
+        Reads the bank's figure off the account row, which the sync writes
+        before it asks. None for an account the bank has reported nothing for.
+        """
+        ids = [account.id for account in accounts]
+        cleared = await self.cleared_balances_for(ids)
+        unposted = await self.unposted_cleared_for(ids)
+        in_review = await self.in_review_cleared_for(ids)
+        newest = await self.newest_cleared_on_for(ids)
+        return {
+            account.id: explain_drift(
+                account.simplefin_balance,
+                cleared[account.id],
+                unposted_cleared=unposted[account.id],
+                in_review=in_review[account.id],
+                balance_as_of=as_of_date(account.simplefin_balance_date),
+                newest_cleared_on=newest[account.id],
+            )
+            for account in accounts
+        }
 
     async def newest_cleared_on_for(
         self, account_ids: Sequence[uuid.UUID]

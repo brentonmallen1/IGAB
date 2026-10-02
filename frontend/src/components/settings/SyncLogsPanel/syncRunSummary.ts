@@ -6,7 +6,7 @@
  * "0 imported, 500+ skipped" described both a broken bank link and a quiet
  * morning with nothing new.
  */
-import { describeDrift, describeOrphanFix } from '../../../api/simplefin'
+import { describeDrift, describeOrphanFix, describeSkippedAnchors } from '../../../api/simplefin'
 import type { SyncRun, SyncRunAccount } from '../../../api/syncLogs'
 
 /** Names for `domain.enums.SkipReason`, in the terms a person would use. */
@@ -64,14 +64,21 @@ export function runHeadline(run: SyncRun): string {
   }
   if (run.balance_drift.length > 0) return describeDrift(run.balance_drift)
   if (run.error) return run.error
+  const counts = describeCounts(run)
+  // A note, not a fault: it never changes the verdict, and it follows the
+  // counts rather than replacing them.
+  const note = describeSkippedAnchors(run.anchors_skipped_for_history ?? [])
+  return note ? `${counts} — ${note}` : counts
+}
+
+function describeCounts(run: SyncRun): string {
   const parts: string[] = []
   if (run.imported) parts.push(`${run.imported} imported`)
   if (run.adopted) parts.push(`${run.adopted} re-linked`)
   if (run.matched) parts.push(`${run.matched} matched`)
   if (run.cleared) parts.push(`${run.cleared} cleared`)
   if (run.review_queued) parts.push(`${run.review_queued} to review`)
-  if (parts.length === 0) return 'Nothing new'
-  return parts.join(', ')
+  return parts.length === 0 ? 'Nothing new' : parts.join(', ')
 }
 
 /**

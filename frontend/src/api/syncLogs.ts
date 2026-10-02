@@ -54,6 +54,9 @@ export interface SyncRun {
   /** Opening balances this run declined to write, one sentence each: a
    *  first sync that would have left a liability holding money. */
   refused_anchors: string[]
+  /** First syncs that wrote no opening balance because the account already
+   *  had history, one sentence each. Informational, never a fault. */
+  anchors_skipped_for_history?: string[]
   feed_txn_count: number
   imported: number
   skipped: number

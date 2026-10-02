@@ -12,6 +12,12 @@
  * because they had ticked four holds cleared that the bank's own site
  * already showed as posted.
  *
+ * A fourth way arrived with bank sync over a migrated history: the sync
+ * writes the bank's copy of a row beside the person's own when it cannot be
+ * sure they are one purchase, and until the review queue is answered the
+ * ledger counts that money twice. That is the queue's gap, not a loss, and
+ * the sentence says where to go.
+ *
  * Every fact here is served (backend: domain/bank_balance.py). Nothing is
  * re-derived: the same rule decides whether the sync calls a run degraded,
  * and a page that reached its own verdict would be free to disagree with
@@ -23,11 +29,14 @@ export interface DriftFacts {
   reported: number
   /** Signed: positive when the bank holds more than the ledger says. */
   drift: number
-  /** Signed, the part `unposted` does not account for. */
+  /** Signed, the part `unposted` and `inReview` do not account for. */
   unexplained: number
   /** Signed sum of cleared rows the bank has not posted against. */
   unposted: number
-  reason: 'agree' | 'unposted' | 'stale' | 'unexplained'
+  /** Signed sum of the person's cleared rows a pending review holds beside
+   *  the bank's own copy — counted twice here, once at the bank. */
+  inReview: number
+  reason: 'agree' | 'in_review' | 'unposted' | 'stale' | 'unexplained'
   /** Whether the sync calls this a fault. Drives tone, never re-derived. */
   isFault: boolean
   /** The bank's balance date, already formatted, or null. */
@@ -61,6 +70,18 @@ export function bankDriftNotice(
 
   const tone: DriftNotice['tone'] = facts.isFault ? 'fault' : 'calm'
 
+  if (facts.reason === 'in_review') {
+    // The one explained gap the person can close themselves, so it names
+    // the place to do it — and never the refetch, which would find nothing.
+    return {
+      tone,
+      text:
+        `${opening} ${format(Math.abs(facts.inReview))} of cleared spending is ` +
+        `waiting for review beside the bank's copy of it — answer the review ` +
+        `queue and the two line up.`,
+    }
+  }
+
   if (facts.reason === 'unposted') {
     return {
       tone,
@@ -88,12 +109,20 @@ export function bankDriftNotice(
     ? ' Something may not have been pulled in: fetch the last 90 days again from account settings, then reconcile.'
     : ' Reconcile to bring them together.'
 
+  const explained: string[] = []
   if (facts.unposted !== 0) {
+    explained.push(
+      `${format(Math.abs(facts.unposted))} of that is cleared spending the bank has not posted yet`
+    )
+  }
+  if (facts.inReview !== 0) {
+    explained.push(`${format(Math.abs(facts.inReview))} is waiting in the review queue`)
+  }
+  if (explained.length > 0) {
     return {
       tone,
       text:
-        `${opening} ${format(Math.abs(facts.unposted))} of that is cleared ` +
-        `spending the bank has not posted yet; ${format(Math.abs(facts.unexplained))} ` +
+        `${opening} ${explained.join('; ')}; ${format(Math.abs(facts.unexplained))} ` +
         `is unaccounted for.${advice}`,
     }
   }

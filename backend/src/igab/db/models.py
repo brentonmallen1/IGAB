@@ -2607,6 +2607,12 @@ class SyncRun(Base):
     #: outcome the drift check structurally cannot report, because the anchor
     #: is the row that defines drift to be zero.
     refused_anchors: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: First syncs that wrote no opening balance because the account already
+    #: held rows from before the fetch window — one sentence each. Kept apart
+    #: from `refused_anchors` because it is not a fault: nothing was declined
+    #: as implausible, the person's own history simply needs no stand-in, and
+    #: folding it in there would mark an ordinary migration's run degraded.
+    anchors_skipped_for_history: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     #: The change-log batch every write of this run landed in. The sync
     #: log's "Undo this run" takes the batch back as a unit; Cmd+Z cannot,
     #: because these are not the person's own edits.

@@ -1246,11 +1246,12 @@ async def test_first_sync_anchors_the_ledger_to_the_reported_balance(db_session)
     rows = await _live_rows(db_session, account.id)
     anchor = next(r for r in rows if r.sync_id is None)
     # 2400 reported − (−100 imported) = 2500, dated before the oldest row so
-    # history genuinely starts there, reconciled because the bank is the
-    # source, uncategorized so the gap lands where unfiled money goes.
+    # history genuinely starts there, cleared because the bank is the source
+    # (reconciled is the person's own sign-off, and made it undeletable),
+    # uncategorized so the gap lands where unfiled money goes.
     assert anchor.amount == Decimal("2500.00")
     assert anchor.date == today - timedelta(days=6)
-    assert anchor.cleared == "reconciled"
+    assert anchor.cleared == "cleared"
     assert anchor.category_id is None
     assert await services.account_repo.get_balance(account.id) == Decimal("2400.00")
     await db_session.refresh(account)
@@ -1322,6 +1323,295 @@ async def test_a_card_anchor_lands_as_uncovered_debt(db_session):
     assert row.set_aside == Decimal("0")
     # And Ready to Assign never heard about any of it.
     assert summary.to_be_assigned == Decimal("0")
+
+
+# ─── The anchor after a YNAB migration ───────────────────────────────────────
+# The case these encode: Harborstone Checking came over from YNAB with years
+# of history, then was linked to SimpleFIN. The first sync queued the bank's
+# copies of a handful of rows for review beside the YNAB copies it could not
+# confidently call the same purchase — and then sized the opening anchor
+# against a ledger that counted every one of them twice. The anchor came out
+# as minus the queued duplicates, dated years back, reconciled (so nothing
+# could delete it), and accepting the merges afterwards left the ledger short
+# by the same amount for good. Figures are invented and rescaled.
+
+#: The review pair's amount, and a bank descriptor nothing like the person's
+#: own payee — three days apart, which is outside the tight window, so the
+#: ladder asks rather than guesses.
+QUEUED = "-320.35"
+
+
+async def _queue_one_review(db_session, budget, account, *, cleared: str) -> Transaction:
+    """The person's own row, which the first sync's bank copy will be queued
+    against."""
+    payee = await create_payee(db_session, budget, "Sapphire Pharmacy")
+    return await create_transaction(
+        db_session,
+        budget,
+        account,
+        QUEUED,
+        date.today() - timedelta(days=4),
+        payee=payee,
+        cleared=cleared,
+    )
+
+
+def _review_feed() -> list[dict]:
+    today = date.today()
+    return [
+        bank_txn("t-rev", QUEUED, today - timedelta(days=1), payee="MERIDIAN WEB PYMT"),
+        bank_txn("t-new", "-25.00", today - timedelta(days=6), payee="CASCADE COFFEE"),
+    ]
+
+
+def _anchors(rows: list[Transaction]) -> list[Transaction]:
+    return [r for r in rows if (r.memo or "").startswith("Anchors this account")]
+
+
+async def test_the_anchor_can_be_deleted(db_session):
+    """It was written reconciled, and a reconciled row cannot be deleted —
+    so the one time it was wrong, the person could neither remove it nor see
+    why it was there."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    payload = [bank_txn("t-1", "-100.00", date.today() - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2400.00")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    [anchor] = _anchors(await _live_rows(db_session, account.id))
+    await services.transactions.delete(budget.id, anchor.id)
+    assert _anchors(await _live_rows(db_session, account.id)) == []
+
+
+async def test_history_before_the_window_means_no_anchor_and_drift_is_served(db_session):
+    """A YNAB migration already holds the account's past. The gap between it
+    and the bank is reconcile's question, so the sync writes nothing, says
+    why, and leaves the gap where the account page shows it."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    account.name = "Harborstone Checking"
+    today = date.today()
+    await create_transaction(db_session, budget, account, "2610.00", today - timedelta(days=400))
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2300.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["anchored"] == 0
+    assert result["refused_anchors"] == []
+    [note] = result["anchors_skipped_for_history"]
+    assert note.startswith("Harborstone Checking already had history from before it was linked")
+    assert _anchors(await _live_rows(db_session, account.id)) == []
+
+    # Informational: an unreconciled account's run is not degraded by it.
+    await db_session.refresh(conn)
+    assert conn.last_sync_error is None
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    runs, _ = await SyncRunRepository(db_session).list_runs(budget_id=budget.id)
+    assert runs[0].status == "ok"
+    assert runs[0].anchors_skipped_for_history == [note]
+
+    # The gap the anchor would have swallowed is served as drift instead:
+    # 2300 reported against 2610 − 100 = 2510 in the register.
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.amount == Decimal("-210.00")
+    assert drift.reason == "unexplained"
+
+
+async def test_a_reconciled_account_with_history_reports_its_gap_as_drift(db_session):
+    """The anchor is the row that defines drift to be zero. Writing one on an
+    account the person had reconciled hid exactly the gap they had asserted
+    could not exist."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    await create_transaction(db_session, budget, account, "2610.00", today - timedelta(days=400))
+    account.last_reconciled_at = datetime.now(UTC)
+    await db_session.flush()
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2300.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["anchored"] == 0
+    assert len(result["anchors_skipped_for_history"]) == 1
+    [drift] = result["balance_drift"]
+    assert Decimal(drift["unexplained_amount"]) == Decimal("-210.00")
+    await db_session.refresh(conn)
+    assert "off by 210.00" in conn.last_sync_error
+
+
+async def test_the_syncs_own_rows_never_count_as_the_accounts_past(db_session):
+    """Prior history is asked before any feed row lands. A bank that hands
+    back a row dated before the window — some date by transaction, not by
+    posting — must not talk the sync out of the anchor it owes."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    payload = [bank_txn("t-old", "-100.00", date.today() - timedelta(days=120))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2400.00")})
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+    assert result["anchored"] == 1
+    assert result["anchors_skipped_for_history"] == []
+
+
+async def test_queued_review_pairs_are_left_out_of_the_anchor(db_session):
+    """The defect itself. The ledger the anchor was sized against held the
+    queued pair twice; the bank's figure holds it once."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    await _queue_one_review(db_session, budget, account, cleared="cleared")
+    svc = _service(services, _review_feed(), balances={SF_ACCT: Decimal("1000.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["review_queued"] == 1
+    [anchor] = _anchors(await _live_rows(db_session, account.id))
+    # 1000 reported − (−320.35 once − 25.00) = 1345.35. Counted twice it was
+    # 1665.70, and the 320.35 surplus never came back out.
+    assert anchor.amount == Decimal("1345.35")
+
+    # Until the queue is answered the gap is the queue's, and says so.
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.reason == "in_review"
+    assert drift.in_review == Decimal(QUEUED)
+    assert drift.unexplained == Decimal("0")
+
+    [match] = await services.match_repo.get_pending_for_account(account.id)
+    await services.matching.accept_match(match.id)
+    assert await services.account_repo.get_cleared_balance(account.id) == Decimal("1000.00")
+
+
+async def test_a_queued_pair_against_an_uncleared_row_is_counted_once(db_session):
+    """Why the person's side of the pair is the one left out, not the bank's.
+    Last week's hand-typed entries are usually not cleared yet, so the bank's
+    copy is the only cleared one — leaving IT out sized the anchor too large
+    by the queued row, and accepting the merge (which clears the person's
+    row with the bank's amount) then put the row back on top."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    await _queue_one_review(db_session, budget, account, cleared="uncleared")
+    svc = _service(services, _review_feed(), balances={SF_ACCT: Decimal("1000.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["review_queued"] == 1
+    [anchor] = _anchors(await _live_rows(db_session, account.id))
+    assert anchor.amount == Decimal("1345.35")
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.reason == "agree", "nothing is doubled while the person's row is uncleared"
+
+    [match] = await services.match_repo.get_pending_for_account(account.id)
+    await services.matching.accept_match(match.id)
+    assert await services.account_repo.get_cleared_balance(account.id) == Decimal("1000.00")
+
+
+async def test_rejecting_a_queued_pair_leaves_drift_of_exactly_that_row(db_session):
+    """Rejecting says the two are different purchases, so both stay — and the
+    bank only ever reported one of them."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    await _queue_one_review(db_session, budget, account, cleared="cleared")
+    svc = _service(services, _review_feed(), balances={SF_ACCT: Decimal("1000.00")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    [match] = await services.match_repo.get_pending_for_account(account.id)
+    await services.matching.reject_match(match.id)
+
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.in_review == Decimal("0")
+    assert drift.amount == -Decimal(QUEUED)
+    assert drift.reason == "unexplained"
+
+
+async def test_the_anchor_is_measured_on_the_cleared_ledger(db_session):
+    """Drift reads the cleared balance; the anchor read every posted row. An
+    uncleared row the person typed was therefore folded into the anchor, and
+    the anchor that exists to make drift zero never did."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    await create_transaction(
+        db_session, budget, account, "-40.00", today - timedelta(days=2), cleared="uncleared"
+    )
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2400.00")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    [anchor] = _anchors(await _live_rows(db_session, account.id))
+    assert anchor.amount == Decimal("2500.00")
+    assert await services.account_repo.get_cleared_balance(account.id) == Decimal("2400.00")
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.reason == "agree"
+
+
+async def test_a_row_cleared_ahead_of_the_bank_is_left_out_of_the_anchor(db_session):
+    """The bank's figure excludes a hold it has not posted; drift already
+    explains such a row as unposted. Counting it in the anchor as well booked
+    it twice, and the gap surfaced as unexplained the day the bank posted."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    await create_transaction(
+        db_session,
+        budget,
+        account,
+        "-95.00",
+        today - timedelta(days=1),
+        cleared="cleared",
+        sync_id="t-held",
+        sync_source="simplefin",
+    )
+    held = bank_txn("t-held", "-95.00", today - timedelta(days=1), posted=False)
+    posted = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, [*posted, held], balances={SF_ACCT: Decimal("2400.00")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    [anchor] = _anchors(await _live_rows(db_session, account.id))
+    assert anchor.amount == Decimal("2500.00")
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.reason == "unposted"
+
+    # The bank posts the hold; its figure now includes it, and so agrees.
+    svc = _service(
+        services,
+        [*posted, bank_txn("t-held", "-95.00", today - timedelta(days=1))],
+        balances={SF_ACCT: Decimal("2305.00")},
+    )
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.reason == "agree"
+
+
+async def test_a_future_dated_cleared_row_is_the_one_bounded_gap(db_session):
+    """Deliberate divergence, pinned. The anchor is sized on what the bank
+    can have seen today, and the cleared balance drift reads has no date
+    cutoff (see `txn_filters.not_future`). So a cleared row dated next week
+    is the one thing a written anchor leaves as drift — exactly that row,
+    until its date arrives and the bank posts it."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    await create_transaction(
+        db_session, budget, account, "-30.00", today + timedelta(days=5), cleared="cleared"
+    )
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2400.00")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    [anchor] = _anchors(await _live_rows(db_session, account.id))
+    assert anchor.amount == Decimal("2500.00")
+    drift = (await services.account_repo.drift_for([account]))[account.id]
+    assert drift is not None
+    assert drift.unexplained == Decimal("30.00")
 
 
 async def test_history_before_the_budget_start_date_arrives_uncategorized(db_session):
