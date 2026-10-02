@@ -30,7 +30,8 @@ import {
   rideMonths,
   otherCredits,
   cardLine,
-  envelopeRowShown,
+  sectionFilterMatch,
+  sectionRowShown,
   lineMark,
   notCoveredWarns,
   sectionMark,
@@ -839,13 +840,15 @@ function CardDetail({
 export function CreditCardsSection({
   budgetId,
   month,
-  envelopeMatch = null,
+  rowMatch = null,
 }: {
   budgetId: string
   month: string
-  /** Whether Interest & fees matches the budget page's active filter, quick
-   *  filter or search — null when none is active. See `envelopeRowShown`. */
-  envelopeMatch?: boolean | null
+  /** The budget page's active filter, quick filter and search, as the one
+   *  predicate the grid's rows are held to — null when none is active. Card
+   *  lines and Interest & fees answer it by their envelope. See
+   *  `sectionRowShown`. */
+  rowMatch?: ((categoryId: string) => boolean) | null
 }) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
@@ -879,7 +882,14 @@ export function CreditCardsSection({
   // archived envelopes out — and then nothing is drawn for it.
   const interest = drawnCardSectionEnvelope(categories, cards.length)
   const showInterest =
-    interest !== null && envelopeRowShown({ collapsed, filterMatch: envelopeMatch })
+    interest !== null &&
+    sectionRowShown({ collapsed, filterMatch: sectionFilterMatch(rowMatch, interest.id) })
+  const lineShown = cards.map((c) =>
+    sectionRowShown({ collapsed, filterMatch: sectionFilterMatch(rowMatch, c.category_id) })
+  )
+  // Under a filter that names nothing here, the band goes the way an empty
+  // grid group does.
+  if (rowMatch !== null && !showInterest && !lineShown.some(Boolean)) return null
   // The server computes a card's envelope target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
@@ -1010,10 +1020,11 @@ export function CreditCardsSection({
         </div>
       }
     >
-      {!collapsed && (
+      {lineShown.some(Boolean) && (
         <div id="credit-cards-body" className="credit-cards__body">
           <ul className="credit-cards__list" aria-label="Credit cards">
             {cards.map((card, i) => {
+              if (!lineShown[i]) return null
               const open = openFor === card.account_id
               const line = lines[i]
               const detailId = `credit-card-detail-${card.account_id}`

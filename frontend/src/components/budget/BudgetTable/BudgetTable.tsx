@@ -178,7 +178,10 @@ export function BudgetTable() {
   const pageRowIds = budgetPageRowIds({
     gridIds: renderableCategoryIds(groups ?? [], categories ?? []),
     viewIds: viewVisibleIds,
-    sectionEnvelopeId: sectionEnvelope?.id ?? null,
+    sectionIds: [
+      ...(budgetMonth?.cards ?? []).flatMap((c) => (c.category_id ? [c.category_id] : [])),
+      ...(sectionEnvelope ? [sectionEnvelope.id] : []),
+    ],
   })
   const chipBalances = (budgetMonth?.category_balances ?? []).filter((b) =>
     pageRowIds.has(b.category_id)
@@ -186,12 +189,17 @@ export function BudgetTable() {
 
   const isFiltered =
     filterCategoryIds != null || activeQuickFilter != null || isBudgetSearchActive(search)
-  // The same predicates the grid's rows are held to, so the section's row and
-  // a grid row cannot answer the same filter differently.
-  const sectionEnvelopeMatch =
-    sectionEnvelope && isFiltered
-      ? categoryMatchesFilter(sectionEnvelope.id) && categoryMatchesSearch(sectionEnvelope)
-      : null
+  // The same predicates the grid's rows are held to, so a Credit cards row
+  // (a card line, or Interest & fees) and a grid row cannot answer the same
+  // filter differently. A card line answers by its envelope — which is what
+  // lets a filter name a card.
+  const categoryById = new Map((categories ?? []).map((c) => [c.id, c]))
+  const sectionRowMatch = isFiltered
+    ? (categoryId: string) => {
+        const cat = categoryById.get(categoryId)
+        return cat !== undefined && categoryMatchesFilter(categoryId) && categoryMatchesSearch(cat)
+      }
+    : null
   // "Credit Card Payments" never renders as a bare header, even with hidden
   // groups shown. The server decides it (`is_card_only`) and the server's
   // reorder rule reads the same expression, so the grid and the write cannot
@@ -258,7 +266,7 @@ export function BudgetTable() {
       <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} barRef={filterBarRef} />
       {/* Above the category headers so the cards read as part of the month,
           not an afterthought below the fold; folds shut and stays folded. */}
-      <CreditCardsSection budgetId={budgetId} month={month} envelopeMatch={sectionEnvelopeMatch} />
+      <CreditCardsSection budgetId={budgetId} month={month} rowMatch={sectionRowMatch} />
       <div className="budget-table__header budget-grid">
         {/* The master fold sits in the CHEVRON column, directly above every
             group's own chevron, so it reads as their master control. It

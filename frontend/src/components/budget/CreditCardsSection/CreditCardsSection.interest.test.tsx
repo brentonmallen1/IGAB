@@ -68,8 +68,8 @@ const rent = makeCategory({ id: 'rent', name: 'Rent' })
 
 function show({
   toCategorize = 0,
-  envelopeMatch = null,
-}: { toCategorize?: number; envelopeMatch?: boolean | null } = {}) {
+  rowMatch = null,
+}: { toCategorize?: number; rowMatch?: ((categoryId: string) => boolean) | null } = {}) {
   month.current = {
     cards: [
       cardStatus({ account_id: 'acct-visa', category_id: 'visa-env', name: 'Sapphire Visa' }),
@@ -77,7 +77,7 @@ function show({
     category_balances: [{ category_id: 'interest', available: -15, assigned: 0, activity: -15 }],
   } as unknown as BudgetMonth
   state.accounts = [{ id: 'acct-visa', uncategorized_count: toCategorize }]
-  render(<CreditCardsSection budgetId="b1" month="2026-08-01" envelopeMatch={envelopeMatch} />)
+  render(<CreditCardsSection budgetId="b1" month="2026-08-01" rowMatch={rowMatch} />)
 }
 
 beforeEach(() => {
@@ -116,16 +116,25 @@ describe('Interest & fees in the Credit cards section', () => {
   it('under an active filter it matches, it is drawn even on a folded band', () => {
     // The Overspent chip counted it; the fold must not hide the row it counted.
     state.collapsed = true
-    show({ envelopeMatch: true })
+    show({ rowMatch: (id) => id === 'interest' })
     expect(screen.getByTestId('section-row')).toHaveTextContent('Interest & fees')
-    // The card lines stay folded: a filter does not reach them.
-    expect(screen.queryByRole('list', { name: 'Credit cards' })).toBeNull()
+    // A card line the filter does not name is not drawn.
+    expect(screen.queryByRole('button', { name: /Sapphire Visa/ })).toBeNull()
   })
 
-  it('under an active filter it does not match, it is hidden and the card lines stay', () => {
-    show({ envelopeMatch: false })
-    expect(screen.queryByTestId('section-row')).toBeNull()
+  it('a filter that names a card draws its line, folded or not, and not Interest & fees', () => {
+    // A filter could not hold a card: the lines ignored every filter, so a
+    // saved filter showed every card whatever it said.
+    state.collapsed = true
+    show({ rowMatch: (id) => id === 'visa-env' })
     expect(screen.getByRole('button', { name: /Sapphire Visa/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('section-row')).toBeNull()
+  })
+
+  it('a filter that names nothing here hides the band, like an empty grid group', () => {
+    show({ rowMatch: (id) => id === 'rent' })
+    expect(screen.queryByText('Credit cards')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Sapphire Visa/ })).toBeNull()
   })
 
   it('names it where a card has rows to categorize', async () => {

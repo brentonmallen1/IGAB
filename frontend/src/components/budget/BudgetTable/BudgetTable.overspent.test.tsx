@@ -19,7 +19,9 @@ import type { CategoryBalance } from '../../../types'
  */
 
 const chip = vi.hoisted(() => ({ balances: [] as CategoryBalance[] }))
-const section = vi.hoisted(() => ({ envelopeMatch: undefined as boolean | null | undefined }))
+const section = vi.hoisted(() => ({
+  rowMatch: undefined as ((categoryId: string) => boolean) | null | undefined,
+}))
 const data = vi.hoisted(() => ({
   cards: [{ account_id: 'acct-visa' }] as unknown[],
 }))
@@ -79,8 +81,8 @@ vi.mock('../BudgetFilterBar/BudgetFilterBar', () => ({
   },
 }))
 vi.mock('../CreditCardsSection/CreditCardsSection', () => ({
-  CreditCardsSection: ({ envelopeMatch }: { envelopeMatch?: boolean | null }) => {
-    section.envelopeMatch = envelopeMatch
+  CreditCardsSection: ({ rowMatch }: { rowMatch?: ((categoryId: string) => boolean) | null }) => {
+    section.rowMatch = rowMatch
     return null
   },
 }))
@@ -98,7 +100,7 @@ const overspentChip = () => chip.balances.filter((b) => (b.available ?? 0) < 0).
 
 beforeEach(() => {
   data.cards = [{ account_id: 'acct-visa' }]
-  section.envelopeMatch = undefined
+  section.rowMatch = undefined
   useAppStore.setState({ currentBudgetId: 'b1', selectedMonth: '2026-08-01' })
   useUIStore.setState({
     activeFilterId: null,
@@ -112,8 +114,8 @@ beforeEach(() => {
 describe('Interest & fees and the Overspent chip', () => {
   it('a red Interest & fees is counted by the Overspent chip and shows under its filter', () => {
     mount()
-    // Rent and Interest & fees. The card's own envelope stays out, as before:
-    // it is not a row a filter selects among.
+    // Rent and Interest & fees. This card serves no envelope, so it adds no
+    // row; one that does is counted (budgetGroups.test.ts).
     expect(chip.balances.map((b) => b.category_id).sort()).toEqual([
       'groceries',
       'interest',
@@ -121,26 +123,26 @@ describe('Interest & fees and the Overspent chip', () => {
     ])
     expect(overspentChip()).toBe(2)
     // No filter active: the section's fold decides.
-    expect(section.envelopeMatch).toBeNull()
+    expect(section.rowMatch).toBeNull()
 
     useUIStore.setState({ activeQuickFilter: 'overspent' })
     mount()
-    expect(section.envelopeMatch).toBe(true)
+    expect(section.rowMatch?.('interest')).toBe(true)
   })
 
   it('a funded Interest & fees is hidden by the Overspent filter, like a funded grid row', () => {
     useUIStore.setState({ activeQuickFilter: 'money-available' })
     mount()
-    expect(section.envelopeMatch).toBe(false)
+    expect(section.rowMatch?.('interest')).toBe(false)
   })
 
   it('search reaches it by name', () => {
     useUIStore.setState({ categorySearch: 'interest' })
     mount()
-    expect(section.envelopeMatch).toBe(true)
+    expect(section.rowMatch?.('interest')).toBe(true)
     useUIStore.setState({ categorySearch: 'rent' })
     mount()
-    expect(section.envelopeMatch).toBe(false)
+    expect(section.rowMatch?.('interest')).toBe(false)
   })
 
   it('with no card the section is not drawn, so the chip does not count it', () => {

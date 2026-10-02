@@ -14,7 +14,8 @@ import {
   lineMark,
   sectionMark,
   type LineMark,
-  envelopeRowShown,
+  sectionFilterMatch,
+  sectionRowShown,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
 import { cardStatus } from '../../../test-utils/cardFixture'
@@ -624,16 +625,34 @@ describe('the dot once the bill is counted', () => {
   })
 })
 
-describe('envelopeRowShown — Interest & fees under the fold and a filter', () => {
-  it('with no filter active, the fold decides, as it does for the card lines', () => {
-    expect(envelopeRowShown({ collapsed: false, filterMatch: null })).toBe(true)
-    expect(envelopeRowShown({ collapsed: true, filterMatch: null })).toBe(false)
+describe('sectionRowShown — a card line or Interest & fees, under the fold and a filter', () => {
+  it('with no filter active, the fold decides', () => {
+    expect(sectionRowShown({ collapsed: false, filterMatch: null })).toBe(true)
+    expect(sectionRowShown({ collapsed: true, filterMatch: null })).toBe(false)
   })
 
   it('with a filter active, the match decides and the fold does not', () => {
     // The Overspent chip counts a red Interest & fees; a folded band must not
     // then hide the one row the chip was counting.
-    expect(envelopeRowShown({ collapsed: true, filterMatch: true })).toBe(true)
-    expect(envelopeRowShown({ collapsed: false, filterMatch: false })).toBe(false)
+    expect(sectionRowShown({ collapsed: true, filterMatch: true })).toBe(true)
+    expect(sectionRowShown({ collapsed: false, filterMatch: false })).toBe(false)
+  })
+})
+
+describe('sectionFilterMatch — a section row answers the filter by its envelope', () => {
+  const names = (id: string) => id === 'visa-env'
+
+  it('is null while nothing is active, so the fold decides', () => {
+    expect(sectionFilterMatch(null, 'visa-env')).toBeNull()
+    expect(sectionFilterMatch(null, null)).toBeNull()
+  })
+
+  it('asks the page predicate about the envelope', () => {
+    expect(sectionFilterMatch(names, 'visa-env')).toBe(true)
+    expect(sectionFilterMatch(names, 'amex-env')).toBe(false)
+  })
+
+  it('leaves out a card with no envelope — no filter can name it', () => {
+    expect(sectionFilterMatch(names, null)).toBe(false)
   })
 })
