@@ -64,6 +64,7 @@ from igab.repositories.txn_filters import (
     ON_CARD_ACCOUNT,
     PAIRABLE_LEG,
     PARENT_ROW,
+    PAYEE_OF_RECORD_ID,
     PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
@@ -119,10 +120,13 @@ class TransactionRepository(BaseRepository[Transaction]):
         still owes. `counterpart_account_id` is nullable (a plain transaction
         has none), so it cannot fail loudly the same way; the checklist suite
         in test_transfer_counterpart.py sweeps the serializing paths instead.
+        `payee_of_record_id` is nullable for the same reason and swept by
+        test_split_leg_payee.py.
         """
         return stmt.options(
             with_expression(Transaction.needs_category, NEEDS_CATEGORY),
             with_expression(Transaction.counterpart_account_id, COUNTERPART_ACCOUNT_ID),
+            with_expression(Transaction.payee_of_record_id, PAYEE_OF_RECORD_ID),
         )
 
     async def get(self, id: uuid.UUID) -> Transaction | None:

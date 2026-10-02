@@ -597,6 +597,11 @@ export interface Transaction {
    *  txn_filters.py — because a linked leg's payee can be null or wrong.
    *  Render via utils/transferDisplay.ts; never re-derive. */
   counterpart_account_id: string | null
+  /** Who this row was paid to: payee_id, or for a split leg (which has none)
+   *  its parent's. Server-computed — PAYEE_OF_RECORD_ID in backend
+   *  txn_filters.py — because a list of legs does not carry their parents.
+   *  Display only (render via utils/transferDisplay.ts); edit payee_id. */
+  payee_of_record_id: string | null
   memo: string | null
   cleared: ClearedStatus
   approved: boolean

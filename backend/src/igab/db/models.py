@@ -875,6 +875,15 @@ class Transaction(Base):
     #: serializing path for exactly that.
     counterpart_account_id: Mapped[uuid.UUID | None] = query_expression()
 
+    #: Who this row was paid to: its own payee, or for a split leg (which
+    #: carries none) its parent's. The rule is `PAYEE_OF_RECORD_ID`
+    #: (repositories/txn_filters.py), the same one reports group by. Served
+    #: because a list of legs does not hold their parents — the client is
+    #: missing the input. Not a column: a stored copy would go stale the
+    #: moment the parent's payee is edited. Populated by
+    #: `TransactionRepository.with_computed`; None is legal (no payee).
+    payee_of_record_id: Mapped[uuid.UUID | None] = query_expression()
+
     account: Mapped["Account"] = relationship(
         back_populates="transactions", foreign_keys=[account_id]
     )
