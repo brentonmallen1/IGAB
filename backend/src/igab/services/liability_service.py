@@ -34,7 +34,7 @@ from igab.domain.dates import (
     month_starts,
     report_window,
 )
-from igab.domain.interest import monthly_interest
+from igab.domain.interest import chargeable_rate, interest_for_month
 from igab.domain.minimum_payment import FIXED, MinimumPaymentRule
 from igab.domain.tracking_start import Entry, place_entries
 from igab.repositories.account_repo import AccountRepository
@@ -214,11 +214,16 @@ class LiabilityStatus:
     # so "$3,000/mo, of which ~$1,619 is interest" is a fact, not an estimate.
     recent_interest: list[Decimal] = field(default_factory=list)
     average_interest: Decimal | None = None
-    #: This month's interest modelled from the terms, or None when it is not
-    #: claimed — no rate, no balance, or a month that already has a posted
-    #: interest row. An ESTIMATE, and labelled as one everywhere it shows:
-    #: it must stay visibly distinct from a posted row or it gets reconciled
-    #: twice. See `estimated_interest_this_month`.
+    #: This month's interest from the terms — owed at the month's open at
+    #: the chargeable rate — whether or not the ledger already carries it.
+    #: None only without a rate. The API serves it as `monthly_interest_now`.
+    #: See `modelled_interest_this_month`.
+    modelled_interest_this_month: Decimal | None = None
+    #: The same figure, claimed only while the ledger does not carry it yet:
+    #: None with no rate, nothing to charge, or a month that already has a
+    #: posted interest row. An ESTIMATE, and labelled as one everywhere it
+    #: shows: it must stay visibly distinct from a posted row or it gets
+    #: reconciled twice. See `estimated_interest_this_month`.
     estimated_interest_this_month: Decimal | None = None
     #: `current_balance` plus that estimate. Equal to the balance when there
     #: is no estimate, so a caller can render it unconditionally.
@@ -276,31 +281,81 @@ class LiabilityService:
         self.category_repo = category_repo
         self.transaction_repo = transaction_repo
 
-    async def estimated_interest_this_month(
-        self, liability: Liability, balance: Decimal, as_of: date | None = None
-    ) -> Decimal | None:
-        """This month's interest, modelled from the terms — or None.
+    async def interest_base(self, liability: Liability, as_of: date | None = None) -> Decimal:
+        """What this month's interest is charged on: owed as the month OPENED.
 
-        The gap this closes: a loan account imported from YNAB reads one full
-        month of interest LOW, because YNAB shows a current-month interest
-        charge derived from the loan terms and only turns it into a register
-        row when the account is reconciled. The figure is not in the export,
-        and the export has nowhere to carry the rate either, so no import can
-        recover it. The user supplies the terms; this derives the charge.
+        A lender charges last month's closing balance at r/12. Today's
+        balance is the wrong base twice over: it already has this month's
+        payment taken off (24,000 owed and a 500 payment read 117.50 where
+        the lender charges 120.00), and it counts rows dated later this month
+        or beyond, so a scheduled payment entered early moved the figure.
 
-        None means "not claimed", and there are three honest reasons for it:
-        no rate on file (the imported case until someone fills it in), no
-        balance to charge interest on, and — the one that matters — a month
-        that ALREADY HAS a posted interest row. Reconciling in the source
-        application materialises the charge; adding an estimate on top of it
-        would count the same money twice, which is the exact failure the
-        source application has when you reconcile mid-month.
+        A ledger answers from its own opening position
+        (`TransactionRepository.owed_at_month_open`). Without one — an
+        unmanaged debt, or a linked register that is still empty and stands
+        on the remembered manual balance — the stated balance is the only
+        figure there is, and it is used as it stands. An inverted register
+        reads from its ledger like any other and so charges nothing: the
+        page claims no balance for it, and an estimate would be one.
         """
-        rate = liability.interest_rate
-        if rate is None or balance <= ZERO or liability.linked_account_id is None:
-            return None
+        balance, source = await self.get_balance_with_source(liability)
+        if liability.linked_account_id is None or source not in ("ledger", "inverted"):
+            return balance
+        month = month_start(as_of or today_utc())
+        return await self.transaction_repo.owed_at_month_open(liability.linked_account_id, month)
+
+    async def modelled_interest_this_month(
+        self, liability: Liability, as_of: date | None = None
+    ) -> Decimal | None:
+        """This month's interest from the terms, or None without a rate.
+
+        The one modelled figure: the estimate added to the balance, the
+        payoff copy's "this month's interest" (`monthly_interest_now`) and
+        the "plus interest" minimum all read it, so they cannot disagree.
+        Zero is a real answer — a 0% promo month, or nothing owed at the
+        open — and is distinct from None, which means no rate is on file.
+        """
         as_of = as_of or today_utc()
-        this_month = month_start(as_of)
+        rate = chargeable_rate(liability.interest_rate, liability.promo_end_date, as_of)
+        if rate is None:
+            return None
+        return interest_for_month(await self.interest_base(liability, as_of), rate)
+
+    async def estimated_interest_this_month(
+        self, liability: Liability, as_of: date | None = None
+    ) -> Decimal | None:
+        """This month's interest, modelled from the terms and not yet posted — or None.
+
+        What this adds to the balance is the interest the ledger does not
+        carry yet: a loan account kept in YNAB, or by hand, gets its month's
+        interest row only when the account is reconciled, so until then the
+        balance reads one month of interest low. The rate is not in a YNAB
+        export, so no import can recover it; the user supplies the terms and
+        this derives the charge — on the right base, `interest_base`.
+        """
+        return await self._unposted_estimate(
+            liability, await self.modelled_interest_this_month(liability, as_of), as_of
+        )
+
+    async def _unposted_estimate(
+        self, liability: Liability, modelled: Decimal | None, as_of: date | None
+    ) -> Decimal | None:
+        """`modelled`, when it is still owed to the balance; None otherwise.
+
+        None means "not claimed", for one of four honest reasons: no rate on
+        file (the imported case until someone fills it in); no ledger to add
+        it to; nothing to charge — a promo month, nothing owed at the open,
+        or a debt already settled; and the one that matters, a month that
+        ALREADY HAS a posted interest row. Reconciling materialises the
+        charge, and adding the estimate on top would count the same money
+        twice. Never a different figure from `modelled`: the estimate and
+        `monthly_interest_now` are one number, claimed or not.
+        """
+        if modelled is None or modelled <= ZERO or liability.linked_account_id is None:
+            return None
+        if await self.get_balance(liability) <= ZERO:
+            return None
+        this_month = month_start(as_of or today_utc())
         through = add_months(this_month, 1)
         posted = await self.transaction_repo.sum_debt_interest_by_month(
             liability.linked_account_id, end_date=through
@@ -310,7 +365,7 @@ class LiabilityService:
         )
         if _charged_interest(posted, payments, this_month) != ZERO:
             return None
-        return monthly_interest(balance, rate)
+        return modelled
 
     @staticmethod
     def mode(liability: Liability) -> str:
@@ -596,7 +651,8 @@ class LiabilityService:
                     liability.original_principal,
                 )
 
-        estimated = await self.estimated_interest_this_month(liability, balance, as_of)
+        modelled = await self.modelled_interest_this_month(liability, as_of)
+        estimated = await self._unposted_estimate(liability, modelled, as_of)
 
         return LiabilityStatus(
             liability=liability,
@@ -611,6 +667,7 @@ class LiabilityService:
             promo=promo,
             recent_interest=interest,
             average_interest=typical_recent_payment(interest),
+            modelled_interest_this_month=modelled,
             estimated_interest_this_month=estimated,
             balance_with_estimate=balance + (estimated or ZERO),
             uncounted_deposits=uncounted,

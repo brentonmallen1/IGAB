@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.transaction_repo import TransactionRepository
 
 from .factories import (
     create_account,
@@ -14,6 +15,7 @@ from .factories import (
     create_payee,
     create_transaction,
     create_transfer,
+    create_user,
     money,
 )
 
@@ -149,7 +151,7 @@ async def test_implied_term_for_realistic_mortgage(api_client, db_session):
     assert body["implied_never_pays_off"] is False
     assert body["implied_term_months"] is not None
     assert 350 <= body["implied_term_months"] <= 372
-    # This month's interest at the current balance: 280000 × 6.5% / 12
+    # An unmanaged debt is charged on its stated balance: 280000 × 6.5% / 12
     assert money(body["monthly_interest_now"]) == Decimal("1516.67")
 
 
@@ -257,7 +259,7 @@ async def test_typical_recent_payment_from_ledger(api_client, db_session):
     body = resp.json()
     assert body["has_live_projection"] is True
     assert money(body["typical_recent_payment"]) == Decimal("275.00")
-    # 6450 owed × 6% / 12
+    # 6450 owed as the month opened × 6% / 12
     assert money(body["monthly_interest_now"]) == Decimal("32.25")
     assert body["balance_source"] == "ledger"
 
@@ -337,6 +339,7 @@ async def _loan_with_terms(
     balance: str = "24000.00",
     opened: date | None = None,
     opening_payee: str | None = None,
+    terms: dict | None = None,
 ):
     budget = await create_budget(db_session, api_client.test_user)
     made = await api_client.post(
@@ -361,10 +364,10 @@ async def _loan_with_terms(
 
     listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
     companion = next(item for item in listed.json() if item["linked_account_id"] == account_id)
-    if rate is not None:
+    if rate is not None or terms:
         patched = await api_client.patch(
             f"/api/v1/{budget.id}/liabilities/{companion['id']}",
-            json={"interest_rate": rate},
+            json={**({"interest_rate": rate} if rate is not None else {}), **(terms or {})},
         )
         assert patched.status_code == 200, patched.text
     return budget, account, companion
@@ -416,15 +419,19 @@ async def test_estimated_interest_is_suppressed_by_a_posted_interest_row(api_cli
 async def test_a_payment_alone_does_not_suppress_the_estimate(api_client, db_session):
     """The reported gap is open for exactly this window: the payment has
     posted, the account has not been reconciled, so the charge is still only
-    an estimate and the balance reads one month of interest low without it."""
+    an estimate and the balance reads one month of interest low without it.
+
+    And the charge is on what was owed as the month OPENED. It read 117.50
+    here — 6% on the 23,500 left after the payment — but a lender charges
+    last month's close, 24,000, which is 120.00."""
     budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
     checking = await create_account(db_session, budget, "Everyday Checking")
     await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
 
     row = await _get_liability(api_client, budget.id, companion["id"])
     assert money(row["current_balance"]) == Decimal("23500.00")
-    assert money(row["estimated_interest_this_month"]) == Decimal("117.50")
-    assert money(row["balance_with_estimate"]) == Decimal("23617.50")
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+    assert money(row["balance_with_estimate"]) == Decimal("23620.00")
 
 
 async def test_a_starting_balance_beside_a_payment_is_not_the_months_interest(
@@ -435,7 +442,11 @@ async def test_a_starting_balance_beside_a_payment_is_not_the_months_interest(
     24,000 opening was that month's interest charge, and it suppressed the
     estimate as though the month had been reconciled. A Starting Balance row
     is where the ledger begins (`DEBT_INTEREST_ROW`), so the month reads as a
-    payment alone: the same 117.50 as the test above."""
+    payment alone: the same 120.00 as the test above.
+
+    It is also the month's opening position (`opening_position`): dated
+    inside the month, it is still what the month opened owing, so the charge
+    is on the whole 24,000 rather than on nothing."""
     budget, account, companion = await _loan_with_terms(
         api_client,
         db_session,
@@ -448,4 +459,324 @@ async def test_a_starting_balance_beside_a_payment_is_not_the_months_interest(
 
     row = await _get_liability(api_client, budget.id, companion["id"])
     assert money(row["current_balance"]) == Decimal("23500.00")
-    assert money(row["estimated_interest_this_month"]) == Decimal("117.50")
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+
+
+# ─── The base the month is charged on ────────────────────────────────────────
+# A lender charges last month's close × r/12. The estimate charged today's
+# balance instead — after this month's payment, and counting rows dated in
+# the future — and ignored a 0% promo. `monthly_interest_now` repeated the
+# same arithmetic a second time in the API.
+
+
+async def test_last_months_close_is_what_the_month_is_charged_on(api_client, db_session):
+    """Last month: a 1,000 payment and its 100.00 interest row, so the month
+    closed owing 24,000 − 1,000 + 100 = 23,100. This month's 500 payment does
+    not change what the month opened owing: 6% on 23,100 is 115.50, where the
+    current 22,600 would have said 113.00."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    last_month = _month_start(TODAY, 1) + timedelta(days=9)
+    await create_transfer(db_session, budget, checking, account, "1000.00", last_month)
+    await create_transaction(db_session, budget, account, Decimal("-100.00"), last_month)
+    await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("22600.00")
+    assert money(row["estimated_interest_this_month"]) == Decimal("115.50")
+    assert money(row["balance_with_estimate"]) == Decimal("22715.50")
+    assert money(row["monthly_interest_now"]) == Decimal("115.50")
+
+
+async def test_a_future_dated_payment_does_not_move_the_estimate(api_client, db_session):
+    """A payment entered early, dated next month, is in the register — and in
+    today's balance, which the header shows unbounded — but it is not part of
+    the position this month opened with, so the month's charge is unmoved."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    next_month = _month_start(TODAY, -1) + timedelta(days=4)
+    await create_transfer(db_session, budget, checking, account, "500.00", next_month)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("23500.00"), "the header counts it"
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+    assert money(row["monthly_interest_now"]) == Decimal("120.00")
+
+
+async def test_a_pending_payment_does_not_move_the_estimate(api_client, db_session):
+    """Pending money is in no money aggregate (`BALANCE_ROW`), and a pending
+    row dated last month is no exception: the opening position ignores it."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    await create_transfer(
+        db_session,
+        budget,
+        checking,
+        account,
+        "500.00",
+        _month_start(TODAY, 1) + timedelta(days=9),
+        cleared="pending",
+    )
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+
+
+async def test_no_estimate_while_a_promo_covers_the_month(api_client, db_session):
+    """A promo is "0% until X": the rate applies only after it ends. The estimate
+    charged 6% straight through the promo; a month the promo covers to its
+    last day is charged nothing, so there is nothing to add to the balance."""
+    promo_end = _month_start(TODAY, -2) - timedelta(days=1)  # end of next month
+    budget, _account, companion = await _loan_with_terms(
+        api_client, db_session, rate="6", terms={"promo_end_date": promo_end.isoformat()}
+    )
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert row["estimated_interest_this_month"] is None
+    assert money(row["balance_with_estimate"]) == money(row["current_balance"])
+    # Known terms that say the month is free: zero, not "no rate on file".
+    assert money(row["monthly_interest_now"]) == Decimal("0.00")
+
+
+async def test_a_promo_that_ends_this_month_charges_the_month(api_client, db_session):
+    """The month the promo ends partway through is charged in full — the
+    conservative reading (`chargeable_rate`). Ending on the 1st leaves every
+    other day of the month at the rate, whatever today is."""
+    budget, _account, companion = await _loan_with_terms(
+        api_client,
+        db_session,
+        rate="6",
+        terms={"promo_end_date": _month_start(TODAY).isoformat()},
+    )
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+
+
+async def test_a_promo_that_has_ended_charges_the_rate(api_client, db_session):
+    budget, _account, companion = await _loan_with_terms(
+        api_client,
+        db_session,
+        rate="6",
+        terms={"promo_end_date": (_month_start(TODAY) - timedelta(days=1)).isoformat()},
+    )
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+
+
+async def test_monthly_interest_now_and_the_estimate_are_one_figure(api_client, db_session):
+    """`monthly_interest_now` repeated the estimate's arithmetic in the API
+    at today's balance, so the payoff copy and the estimate could quote two
+    different interest figures for one month. Both now read the one modelled
+    figure: equal whenever the estimate is claimed, and still served when a
+    posted interest row means the estimate is not."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["monthly_interest_now"]) == money(row["estimated_interest_this_month"])
+    assert money(row["monthly_interest_now"]) == Decimal("120.00")
+
+    # Reconciled: the charge is a real row now, so nothing is estimated —
+    # and the modelled figure does not move because the row arrived.
+    await create_transaction(db_session, budget, account, Decimal("-120.00"), TODAY)
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert row["estimated_interest_this_month"] is None
+    assert money(row["monthly_interest_now"]) == Decimal("120.00")
+
+
+async def test_a_loan_paid_off_this_month_claims_no_estimate(api_client, db_session):
+    """The month opened owing 24,000, so it has a modelled charge — but the
+    debt reads settled, and adding interest to a settled balance would put a
+    paid-off loan back in debt on the page."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    await create_transfer(db_session, budget, checking, account, "24000.00", TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("0")
+    assert row["estimated_interest_this_month"] is None
+    assert money(row["balance_with_estimate"]) == Decimal("0")
+    assert money(row["monthly_interest_now"]) == Decimal("120.00")
+
+
+async def test_a_loan_that_opens_this_month_is_charged_nothing_yet(api_client, db_session):
+    """An origination row dated this month under an ordinary name: the month
+    opened owing nothing, so it costs nothing — the first charge is next
+    month's, on this month's close. (A Starting Balance row is different: it
+    IS the opening position, see the test above.)"""
+    budget, _account, companion = await _loan_with_terms(
+        api_client, db_session, rate="6", opened=_month_start(TODAY)
+    )
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("24000.00")
+    assert row["estimated_interest_this_month"] is None
+    assert money(row["monthly_interest_now"]) == Decimal("0.00")
+
+
+async def test_a_plus_interest_minimum_adds_the_modelled_figure(api_client, db_session):
+    """A "1% plus this month's interest" minimum computed its interest again,
+    at today's balance. It reads the one modelled figure now: 1% of the
+    23,500 owed is 235.00, plus the month's 120.00 is 355.00 (it said
+    352.50, adding 117.50)."""
+    budget, account, companion = await _loan_with_terms(
+        api_client,
+        db_session,
+        rate="6",
+        terms={
+            "minimum_payment_kind": "percent_of_balance",
+            "minimum_payment_percent": "1",
+            "minimum_payment_floor": "25.00",
+            "minimum_payment_plus_interest": True,
+        },
+    )
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["minimum_payment_due_now"]) == Decimal("355.00")
+
+
+async def test_a_promo_month_adds_no_interest_to_the_minimum(api_client, db_session):
+    """1% of 24,000 is 240.00, and the promo month's interest is nothing."""
+    promo_end = _month_start(TODAY, -2) - timedelta(days=1)
+    budget, _account, companion = await _loan_with_terms(
+        api_client,
+        db_session,
+        rate="6",
+        terms={
+            "promo_end_date": promo_end.isoformat(),
+            "minimum_payment_kind": "percent_of_balance",
+            "minimum_payment_percent": "1",
+            "minimum_payment_floor": "25.00",
+            "minimum_payment_plus_interest": True,
+        },
+    )
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["minimum_payment_due_now"]) == Decimal("240.00")
+
+
+async def test_an_unmanaged_debt_is_charged_on_its_stated_balance(api_client, db_session):
+    """No ledger, no opening position: the stated balance is the only figure
+    there is, and it is charged as it stands — still through the promo rule."""
+    budget = await create_budget(db_session, api_client.test_user)
+    made = await api_client.post(
+        f"/api/v1/{budget.id}/liabilities",
+        json={
+            "name": "Family Loan",
+            "liability_type": "other",
+            "interest_rate": "6",
+            "manual_balance": "2690.00",
+        },
+    )
+    assert made.status_code == 201, made.text
+    body = made.json()
+    assert money(body["monthly_interest_now"]) == Decimal("13.45")
+    assert body["estimated_interest_this_month"] is None, "no ledger to add it to"
+
+    promo_end = _month_start(TODAY, -2) - timedelta(days=1)
+    patched = await api_client.patch(
+        f"/api/v1/{budget.id}/liabilities/{body['id']}",
+        json={"promo_end_date": promo_end.isoformat()},
+    )
+    assert patched.status_code == 200, patched.text
+    assert money(patched.json()["monthly_interest_now"]) == Decimal("0.00")
+
+
+# ─── The opening position, row by row ────────────────────────────────────────
+
+
+async def _bare_loan(db_session):
+    budget = await create_budget(db_session, await create_user(db_session))
+    loan = await create_account(
+        db_session, budget, "Harborstone Auto Loan", account_type="loan", on_budget=False
+    )
+    return budget, loan, TransactionRepository(db_session)
+
+
+async def test_owed_at_month_open_reads_last_months_close(db_session):
+    """`opening_position` over fixed dates, one row kind at a time. March
+    2026 is the month asked about; every row below either is or is not part
+    of what March opened owing."""
+    budget, loan, repo = await _bare_loan(db_session)
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    march = date(2026, 3, 1)
+
+    empty = await repo.owed_at_month_open(loan.id, march)
+    assert empty == Decimal("0"), "an empty ledger"
+    assert not empty.is_signed(), "zero, not negative zero"
+
+    await create_transaction(db_session, budget, loan, "-12000.00", date(2026, 1, 15))
+    await create_transfer(db_session, budget, checking, loan, "400.00", date(2026, 2, 28))
+    assert await repo.owed_at_month_open(loan.id, march) == Decimal("11600.00")
+
+    # Inside March, or after it: not the opening.
+    await create_transfer(db_session, budget, checking, loan, "400.00", date(2026, 3, 1))
+    await create_transfer(db_session, budget, checking, loan, "400.00", date(2026, 4, 1))
+    # Pending is in no money aggregate.
+    await create_transaction(
+        db_session, budget, loan, "300.00", date(2026, 2, 10), cleared="pending"
+    )
+    # A deleted row is not there at all.
+    gone = await create_transaction(db_session, budget, loan, "250.00", date(2026, 2, 11))
+    gone.is_deleted = True
+    await db_session.flush()
+    assert await repo.owed_at_month_open(loan.id, march) == Decimal("11600.00")
+
+    # Any day of the month names the month.
+    assert await repo.owed_at_month_open(loan.id, date(2026, 3, 17)) == Decimal("11600.00")
+    # Uncleared and reconciled rows are money like any other.
+    await create_transaction(
+        db_session, budget, loan, "-60.00", date(2026, 2, 27), cleared="uncleared"
+    )
+    await create_transaction(
+        db_session, budget, loan, "-40.00", date(2026, 2, 26), cleared="reconciled"
+    )
+    assert await repo.owed_at_month_open(loan.id, march) == Decimal("11700.00")
+
+
+async def test_a_split_counts_once_in_the_opening(db_session):
+    """A split parent carries the amount; its children are the same money
+    itemised (`PARENT_ROW`), and counting both would double the debt."""
+    budget, loan, repo = await _bare_loan(db_session)
+    parent = await create_transaction(
+        db_session, budget, loan, "-1000.00", date(2026, 2, 3), is_split=True
+    )
+    for part in ("-600.00", "-400.00"):
+        await create_transaction(
+            db_session, budget, loan, part, date(2026, 2, 3), parent_transaction_id=parent.id
+        )
+    assert await repo.owed_at_month_open(loan.id, date(2026, 3, 1)) == Decimal("1000.00")
+
+
+async def test_a_starting_balance_inside_the_month_is_its_opening(db_session):
+    """A first sync anchors the day before its oldest row, often mid-month.
+    That row is where the ledger begins, so it is the month's opening — but
+    only for its own month: one dated in March is not part of February's."""
+    budget, loan, repo = await _bare_loan(db_session)
+    starting = await create_payee(db_session, budget, STARTING_BALANCE_PAYEE)
+
+    await create_transaction(
+        db_session, budget, loan, "-9000.00", date(2026, 3, 12), payee=starting
+    )
+    assert await repo.owed_at_month_open(loan.id, date(2026, 3, 1)) == Decimal("9000.00")
+    assert await repo.owed_at_month_open(loan.id, date(2026, 2, 1)) == Decimal("0")
+
+    # An ordinary row dated the same day is not the opening; it happened
+    # during the month.
+    await create_transaction(db_session, budget, loan, "-500.00", date(2026, 3, 12))
+    assert await repo.owed_at_month_open(loan.id, date(2026, 3, 1)) == Decimal("9000.00")
+    assert await repo.owed_at_month_open(loan.id, date(2026, 4, 1)) == Decimal("9500.00")
+
+
+async def test_a_ledger_in_credit_at_the_open_answers_negative(db_session):
+    """Not clamped here: `interest_for_month` is the one place that decides
+    what an overpaid month costs (nothing)."""
+    budget, loan, repo = await _bare_loan(db_session)
+    await create_transaction(db_session, budget, loan, "-1000.00", date(2026, 1, 5))
+    await create_transaction(db_session, budget, loan, "1050.00", date(2026, 2, 5))
+    assert await repo.owed_at_month_open(loan.id, date(2026, 3, 1)) == Decimal("-50.00")

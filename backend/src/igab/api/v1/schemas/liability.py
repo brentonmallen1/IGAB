@@ -165,8 +165,11 @@ class LiabilityOut(ApiModel):
     terms_complete: bool
     origination_date: datetime.date | None
     original_principal: Decimal | None
-    # This month's interest at the current balance — the concrete number the
-    # payoff copy compares payments against. Null without a rate.
+    # This month's interest from the terms: owed as the month opened, at the
+    # rate the month is charged (zero inside a 0% promo) — the concrete
+    # number the payoff copy compares payments against. Null without a rate.
+    # `LiabilityService.modelled_interest_this_month`; the estimate below is
+    # this figure whenever it is claimed.
     monthly_interest_now: Decimal | None
     # Average of recent positive payments (None until 2+ months of history).
     # Observed, not projected, so it survives missing terms. A payment is a
@@ -176,8 +179,9 @@ class LiabilityOut(ApiModel):
     # window (None until 2+ months carry any). The actual figure where one
     # exists; `monthly_interest_now` is the modelled one.
     recent_interest_average: Decimal | None
-    #: This month's interest modelled from the terms, present only when the
-    #: month has no posted interest row yet. Required, not optional: a path
+    #: `monthly_interest_now`, present only while it is still owed to the
+    #: balance — a non-zero charge on a debt not yet settled, in a month
+    #: with no posted interest row yet. Required, not optional: a path
     #: that forgets it must raise rather than quietly report a balance that
     #: is one month's interest low, which is the defect this field exists
     #: for. Null is the honest "not claimed" — see

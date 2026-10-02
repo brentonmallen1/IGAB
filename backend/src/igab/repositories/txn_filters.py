@@ -50,6 +50,7 @@ from igab.db.models import (
     TransactionMatch,
 )
 from igab.domain.account_types import CASH_ACCOUNT_TYPE_KEYS
+from igab.domain.dates import add_months, month_start
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES, STARTING_BALANCE_PAYEE
 from igab.repositories.category_filters import (
@@ -826,6 +827,33 @@ _PLAIN_LEDGER_ROW = and_(BALANCE_ROW, NON_TRANSFER, not_(STARTING_BALANCE_ROW))
 LOAN_PAYMENT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, TRANSFER_LEG)
 DEBT_INTEREST_ROW = and_(_PLAIN_LEDGER_ROW, Transaction.amount < 0)
 PLAIN_DEPOSIT_ROW = and_(_PLAIN_LEDGER_ROW, Transaction.amount > 0)
+
+
+def opening_position(month: date) -> ColumnElement[bool]:
+    """The rows an account's balance stood on as `month` opened — last
+    month's close, which is what a lender charges the month's interest on.
+
+    Everything dated before the month, and the account's Starting Balance if
+    it falls inside the month: a first sync anchors a tracked loan the day
+    before its oldest row, often mid-month, and that row is where the ledger
+    begins — the position the month opened with, not something that happened
+    during it. A Starting Balance dated in a LATER month is not part of this
+    one's opening, so it is bounded to the month.
+
+    Bounded by the month rather than by today, which is what makes it
+    as-of: a payment dated later this month, or a scheduled one dated next
+    month, cannot move a figure about the month's opening. `month` may be
+    any day of the month it names.
+    """
+    opens = month_start(month)
+    return and_(
+        BALANCE_ROW,
+        or_(
+            Transaction.date < opens,
+            and_(STARTING_BALANCE_ROW, Transaction.date < add_months(opens, 1)),
+        ),
+    )
+
 
 #: The counterpart of a transfer leg is one of the budget's cash accounts.
 #: Two-valued: EXISTS, never NULL, so it is safe under negation.

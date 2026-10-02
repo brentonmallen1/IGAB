@@ -77,6 +77,7 @@ from igab.repositories.txn_filters import (
     in_category_scope,
     join_split_parent,
     on_alias,
+    opening_position,
     orphaned_link,
     search_matches,
     sync_created_pending,
@@ -683,6 +684,23 @@ class TransactionRepository(BaseRepository[Transaction]):
         """{month_start: interest and fees charged (negative)} on a debt's
         ledger — the plain outflows YNAB and a hand-kept register put there."""
         return await self._sum_account_rows_by_month(account_id, end_date, DEBT_INTEREST_ROW)
+
+    async def owed_at_month_open(self, account_id: uuid.UUID, month: date) -> Decimal:
+        """What a debt's ledger said was owed as `month` opened — last
+        month's close, the balance a lender charges the month's interest on
+        (`opening_position`).
+
+        Positive is owed, the liability page's sign. Not clamped: a ledger in
+        credit at the open answers negative, and `interest_for_month` is the
+        one place that decides what that costs (nothing).
+        """
+        result = await self.session.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                Transaction.account_id == account_id, opening_position(month)
+            )
+        )
+        # Subtracted from zero, not negated: an empty ledger reads 0, not -0.
+        return Decimal("0") - Decimal(result.scalar_one())
 
     async def sum_plain_deposits_by_month(
         self, account_id: uuid.UUID, end_date: date

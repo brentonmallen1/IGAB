@@ -159,5 +159,63 @@ describe('PayoffPill', () => {
     )
 
     expect(screen.getByText("Won't pay off at the minimum payment")).toBeInTheDocument()
+    expect(screen.getByText(/doesn't cover this month's ~\$45(\.00)? interest/)).toBeInTheDocument()
+  })
+
+  // `monthly_interest_now` is the month's modelled charge, and a 0% promo
+  // month charges nothing. The warnings are about the rate, so they must not
+  // quote "~$0.00 interest" as the bar the payments fall below.
+  it('does not quote a zero interest figure in the minimum warning', () => {
+    render(
+      <PayoffPill
+        liability={liability({
+          monthly_interest_now: 0,
+          promo_end_date: '2026-12-31',
+          baseline_never_pays_off: true,
+          baseline_payoff_date: null,
+          payoff_date: null,
+          payoff_never: true,
+        })}
+      />
+    )
+
+    expect(screen.getByText(/doesn't cover the interest its rate charges/)).toBeInTheDocument()
+    expect(screen.queryByText(/\$0(\.00)? interest/)).not.toBeInTheDocument()
+  })
+
+  it('does not quote a zero interest figure in the pace warning', () => {
+    render(
+      <PayoffPill
+        liability={liability({
+          monthly_interest_now: 0,
+          typical_recent_payment: 20,
+          has_live_projection: true,
+          live_never_pays_off: true,
+          payoff_basis: 'observed',
+          payoff_date: null,
+          payoff_never: true,
+        })}
+      />
+    )
+
+    expect(screen.getByText(/below the interest its rate charges/)).toBeInTheDocument()
+    expect(screen.queryByText(/\$0(\.00)? interest/)).not.toBeInTheDocument()
+  })
+
+  it('quotes the modelled figure in the pace warning when there is one', () => {
+    render(
+      <PayoffPill
+        liability={liability({
+          typical_recent_payment: 20,
+          has_live_projection: true,
+          live_never_pays_off: true,
+          payoff_basis: 'observed',
+          payoff_date: null,
+          payoff_never: true,
+        })}
+      />
+    )
+
+    expect(screen.getByText(/below this month's ~\$45(\.00)? interest/)).toBeInTheDocument()
   })
 })
