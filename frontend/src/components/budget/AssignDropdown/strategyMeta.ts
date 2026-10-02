@@ -7,6 +7,11 @@ export const STRATEGY_META: Record<AssignStrategy, { label: string; description:
     description:
       'Fund each category up to its target, distributed proportionally within Ready to Assign.',
   },
+  target_amount: {
+    label: 'Target Amounts',
+    description:
+      "Set each targeted category's assigned amount to what its target asks this month — down as well as up, though never below what it has already spent. A savings balance is topped up, never lowered.",
+  },
   last_month_assigned: {
     label: 'Assigned Last Month',
     description: "Set each category's assigned amount to what it was assigned last month.",
@@ -41,6 +46,7 @@ export const STRATEGY_META: Record<AssignStrategy, { label: string; description:
 
 export const AUTO_STRATEGY_ORDER: AssignStrategy[] = [
   'underfunded',
+  'target_amount',
   'last_month_assigned',
   'last_month_spent',
   'average_assigned',

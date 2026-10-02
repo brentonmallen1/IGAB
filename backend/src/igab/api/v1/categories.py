@@ -790,6 +790,13 @@ async def get_budget_month(
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
+                target_assigned=(
+                    target_service.target_assigned(
+                        t, assigned=b.assigned, available=b.available, month=month
+                    )
+                    if not b.in_system_group and (t := targets.get(b.category_id))
+                    else None
+                ),
                 is_card_payment=b.is_card_payment,
                 repaid_uncovered_debt=b.repaid_uncovered_debt,
                 credit_overspent=b.credit_overspent,
@@ -1098,8 +1105,12 @@ async def auto_assign_categories(
     body: AutoAssignRequest,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    assign_service: Annotated[AssignService, Depends(get_assign_service)],
 ) -> None:
     with budget_service.changes.batch():
+        if body.action == "target_amount":
+            await assign_service.set_to_targets(budget_id, body.month, body.category_ids)
+            return
         for cat_id in body.category_ids:
             await budget_service.auto_assign(budget_id, cat_id, body.month, body.action)
 

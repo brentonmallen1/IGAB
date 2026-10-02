@@ -283,6 +283,10 @@ export interface CategoryBalance {
    * exactly what Fill Underfunded would move. `null` when there is no target.
    */
   needed_this_month: number | null
+  /** What Auto-Assign's "Target Amount" would set assigned to — the figure on
+   *  the inspector's button. Served (TargetService.target_assigned, the rule
+   *  the apply runs); `null` when there is no target. */
+  target_assigned: number | null
   /** A card's envelope — the cards section owns it and the grid never
    *  draws it. Below zero it is overspent like any envelope, and Cover
    *  Overspent covers it by assigning to the card. Served, not derived:
@@ -770,11 +774,17 @@ export interface CategoryHistory {
 }
 
 export type AutoAssignAction =
-  'last_month_assigned' | 'last_month_spent' | 'average_assigned' | 'average_spent' | 'reset'
+  | 'last_month_assigned'
+  | 'last_month_spent'
+  | 'average_assigned'
+  | 'average_spent'
+  | 'reset'
+  | 'target_amount'
 
 /** Bulk strategies offered by the TBA hero's Assign dropdown */
 export type AssignStrategy =
   | 'underfunded'
+  | 'target_amount'
   | 'last_month_assigned'
   | 'last_month_spent'
   | 'average_assigned'

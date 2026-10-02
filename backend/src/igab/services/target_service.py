@@ -9,6 +9,7 @@ from igab.db.models import Category, CategoryTarget
 from igab.domain.dates import month_start, months_between, weekday_occurrences
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.domain.money import quantize_cents
 from igab.domain.targets import MAX_FUNDING_DAY, is_pending
 from igab.repositories.target_repo import TargetRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
@@ -182,6 +183,35 @@ class TargetService:
         Only an undated savings balance does; a dated one is paced, and its
         month's ask is judged on what was assigned toward that pace."""
         return target.target_type == TargetType.SAVINGS_BALANCE and target.target_date is None
+
+    def target_assigned(
+        self,
+        target: CategoryTarget,
+        *,
+        assigned: Decimal,
+        available: Decimal,
+        month: date,
+    ) -> Decimal:
+        """What this month's ASSIGNED should read for the target to be met —
+        the figure Auto-assign's "target amounts" sets, in cents.
+
+        The duty itself for every target paced by month (monthly, weekly,
+        dated savings): one that is over-assigned comes back down toward it,
+        as far as the envelope still holds the excess. An undated savings
+        balance has no monthly figure; it is topped up by what it still needs
+        and never lowered — holding more than a balance target is no shortfall.
+
+        One rule for the Assign dropdown, the inspector's per-category button
+        and the figure the budget month serves beside it.
+        """
+        duty = self.duty(target, assigned=assigned, available=available, month=month)
+        ask = quantize_cents(assigned + duty if self.measures_balance(target) else duty)
+        if ask >= assigned:
+            return ask
+        # Lowering never pulls back more than the envelope still holds: money
+        # spent above a target cannot return to Ready to Assign, and taking
+        # it anyway turns the envelope red — Reduce Overfunded's old bug.
+        return assigned - min(assigned - ask, max(available, ZERO))
 
     def calculate_needed(
         self,

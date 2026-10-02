@@ -2,7 +2,9 @@ import { Zap } from 'lucide-react'
 import { useCategoryHistoryBatch, useAutoAssign } from '../../../api/categoryHistory'
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
-import type { AutoAssignAction, CategoryHistory } from '../../../types'
+import type { AutoAssignAction } from '../../../types'
+import { useBudgetMonth } from '../../../api/budgets'
+import { autoAssignRows } from './autoAssignActions'
 
 interface Props {
   categoryIds: string[]
@@ -13,23 +15,10 @@ export function AutoAssignSection({ categoryIds, budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const month = useAppStore((s) => s.selectedMonth)
   const { data: histories } = useCategoryHistoryBatch(budgetId, categoryIds)
+  const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const autoAssign = useAutoAssign(budgetId, month)
 
-  function aggregate(field: keyof CategoryHistory) {
-    if (!histories || histories.length === 0) return 0
-    return histories.reduce((sum, h) => sum + Number(h[field] ?? 0), 0)
-  }
-
-  const actions: { action: AutoAssignAction; label: string; value: number }[] = [
-    {
-      action: 'last_month_assigned',
-      label: 'Assigned Last Month',
-      value: aggregate('last_month_assigned'),
-    },
-    { action: 'last_month_spent', label: 'Spent Last Month', value: aggregate('last_month_spent') },
-    { action: 'average_assigned', label: 'Average Assigned', value: aggregate('average_assigned') },
-    { action: 'average_spent', label: 'Average Spent', value: aggregate('average_spent') },
-  ]
+  const actions = autoAssignRows(categoryIds, histories, budgetMonth?.category_balances)
 
   function handleAction(action: AutoAssignAction) {
     autoAssign.mutate({ categoryIds, action })

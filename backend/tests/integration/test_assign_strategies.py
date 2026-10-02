@@ -788,3 +788,126 @@ async def test_reduce_overfunded_nothing_over_target_is_noop(db_session):
     assert preview.items == []
     assert preview.affected_count == 0
     assert preview.tba_after == preview.tba_before
+
+
+async def test_target_amount_sets_every_targeted_envelope_to_its_ask(db_session):
+    """Groceries holds 100 against a 500 target, Dining 0 against 100, and
+    Fun — no target — is left alone. Unlike Underfunded, an over-assigned
+    envelope comes down to its target too."""
+    services, budget, groceries, dining = await _underfunded_setup(db_session, income="1000.00")
+    everyday = await create_category_group(db_session, budget, "Extras")
+    fun = await create_category(db_session, budget, everyday, "Fun")
+    await services.budgets.set_assignment(budget.id, fun.id, MONTH, Decimal("40.00"))
+    assign = make_assign(db_session, services)
+
+    preview = await assign.preview(budget.id, MONTH, "target_amount")
+    by_name = {i.category_name: i for i in preview.items}
+    assert set(by_name) == {"Groceries", "Dining"}
+    assert by_name["Groceries"].new_assigned == Decimal("500.00")
+    assert by_name["Dining"].new_assigned == Decimal("100.00")
+    assert preview.total_amount == Decimal("600.00"), "what the targets ask, in total"
+
+    await assign.apply(budget.id, MONTH, "target_amount")
+    summary = await services.budgets.get_budget_summary(budget.id, MONTH)
+    by_cat = {b.category_id: b for b in summary.category_balances}
+    assert by_cat[groceries.id].assigned == Decimal("500.00")
+    assert by_cat[dining.id].assigned == Decimal("100.00")
+    assert by_cat[fun.id].assigned == Decimal("40.00")
+    await assert_financial_invariants(db_session, budget.id)
+
+    again = await assign.preview(budget.id, MONTH, "target_amount")
+    assert again.items == [], "applied once, there is nothing left to set"
+
+
+async def test_target_amount_lowers_an_over_assigned_envelope_and_may_pass_tba(db_session):
+    services, budget, groceries, dining = await _underfunded_setup(db_session, income="300.00")
+    await services.budgets.set_assignment(budget.id, dining.id, MONTH, Decimal("160.00"))
+    assign = make_assign(db_session, services)
+
+    preview = await assign.preview(budget.id, MONTH, "target_amount")
+    by_name = {i.category_name: i for i in preview.items}
+    assert by_name["Dining"].delta == Decimal("-60.00")
+    assert by_name["Groceries"].delta == Decimal("400.00")
+    # TBA 300 - 260 assigned = 40; +60 back, -400 out: not pro-rated like Underfunded
+    assert preview.tba_before == Decimal("40.00")
+    assert preview.tba_after == Decimal("-300.00")
+
+
+async def test_target_amount_never_pulls_back_spent_money(db_session):
+    """Dining: target 100, assigned 160, 140 already spent — 20 left. Setting
+    it to 100 would take 60 and leave it 40 red; it takes the 20 it holds."""
+    services, budget, groceries, dining = await _underfunded_setup(db_session, income="1000.00")
+    checking = await create_account(db_session, budget, "Wallet")
+    await services.budgets.set_assignment(budget.id, dining.id, MONTH, Decimal("160.00"))
+    await create_transaction(
+        db_session, budget, checking, "-140.00", date(2026, 7, 9), category=dining
+    )
+    assign = make_assign(db_session, services)
+
+    preview = await assign.preview(budget.id, MONTH, "target_amount")
+    by_name = {i.category_name: i for i in preview.items}
+    assert by_name["Dining"].delta == Decimal("-20.00")
+    assert by_name["Dining"].new_assigned == Decimal("140.00")
+    assert preview.newly_overspent_count == 0
+
+
+async def test_inspector_target_amount_sets_only_the_selected_and_serves_the_figure(
+    api_client, db_session
+):
+    """The inspector's per-category button and the figure on it: one rule
+    (TargetService.target_assigned), served on the month and run by the POST."""
+    services = make_services(db_session)
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+    income_cat = await create_category(db_session, budget, income_group, "Inflow")
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, everyday, "Groceries")
+    dining = await create_category(db_session, budget, everyday, "Dining")
+    await create_transaction(
+        db_session, budget, checking, "1000.00", date(2026, 7, 2), category=income_cat
+    )
+    await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("100.00"))
+    target_service = TargetService(TargetRepository(db_session))
+    for cat, amount in ((groceries, "500.00"), (dining, "100.00")):
+        await target_service.upsert(
+            category_id=cat.id, target_type="monthly_funding", target_amount=Decimal(amount)
+        )
+
+    month = (await api_client.get(f"/api/v1/{budget.id}/months/2026-07-01")).json()
+    served = {b["category_id"]: b for b in month["category_balances"]}
+    assert Decimal(str(served[str(groceries.id)]["target_assigned"])) == Decimal("500.00")
+
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/categories/auto-assign",
+        json={
+            "month": "2026-07-01",
+            "action": "target_amount",
+            "category_ids": [str(groceries.id)],
+        },
+    )
+    assert resp.status_code == 204
+    summary = await services.budgets.get_budget_summary(budget.id, MONTH)
+    by_cat = {b.category_id: b for b in summary.category_balances}
+    assert by_cat[groceries.id].assigned == Decimal("500.00")
+    assert by_cat[dining.id].assigned == Decimal("0"), "not selected, not touched"
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_an_unknown_inspector_action_is_refused_not_zeroed(api_client, db_session):
+    """It used to fall through `amount_map.get(action, 0)` and empty the envelope."""
+    services = make_services(db_session)
+    budget = await create_budget(db_session, api_client.test_user)
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, everyday, "Groceries")
+    await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("100.00"))
+
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/categories/auto-assign",
+        json={"month": "2026-07-01", "action": "bogus", "category_ids": [str(groceries.id)]},
+    )
+    assert resp.status_code == 422
+    summary = await services.budgets.get_budget_summary(budget.id, MONTH)
+    assert {b.category_id: b for b in summary.category_balances}[groceries.id].assigned == Decimal(
+        "100.00"
+    )

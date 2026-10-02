@@ -1,7 +1,7 @@
 import datetime
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -331,6 +331,10 @@ class CategoryBalance(ApiModel):
     #: What still has to be assigned this month for the target to be met, and
     #: exactly what Fill Underfunded would move. None when there is no target.
     needed_this_month: Decimal | None = None
+    #: What Auto-assign's "Target amount" would set assigned to — the
+    #: inspector shows it on the button. `TargetService.target_assigned`, the
+    #: rule the apply runs. None when there is no target.
+    target_assigned: Decimal | None = None
     #: A card's envelope (linked to the card account). Not drawn in
     #: the category grid — the cards section owns it. Below zero it is
     #: overspent like any envelope and counts in the overspent totals; Cover
@@ -845,7 +849,15 @@ class CategoryHistoryBatchRequest(ApiModel):
 
 class AutoAssignRequest(ApiModel):
     category_ids: list[uuid.UUID]
-    action: str
+    #: Closed: an unrecognised action used to set assigned to zero.
+    action: Literal[
+        "last_month_assigned",
+        "last_month_spent",
+        "average_assigned",
+        "average_spent",
+        "reset",
+        "target_amount",
+    ]
     month: datetime.date
 
 

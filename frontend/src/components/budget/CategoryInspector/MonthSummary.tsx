@@ -9,7 +9,8 @@ import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { today } from '../../../utils/dates'
 import { TargetEditor } from '../TargetEditor'
-import type { AutoAssignAction, Category, CategoryHistory, CategoryTarget } from '../../../types'
+import type { Category, CategoryTarget } from '../../../types'
+import { autoAssignRows } from './autoAssignActions'
 
 interface Props {
   budgetId: string
@@ -94,21 +95,7 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
     carriedOver: leftOver,
   } = sumBalances(budgetMonth?.category_balances ?? [])
 
-  function aggregate(field: keyof CategoryHistory) {
-    if (!histories?.length) return 0
-    return histories.reduce((sum, h) => sum + Number(h[field] ?? 0), 0)
-  }
-
-  const autoActions: { action: AutoAssignAction; label: string; value: number }[] = [
-    {
-      action: 'last_month_assigned',
-      label: 'Assigned Last Month',
-      value: aggregate('last_month_assigned'),
-    },
-    { action: 'last_month_spent', label: 'Spent Last Month', value: aggregate('last_month_spent') },
-    { action: 'average_assigned', label: 'Average Assigned', value: aggregate('average_assigned') },
-    { action: 'average_spent', label: 'Average Spent', value: aggregate('average_spent') },
-  ]
+  const autoActions = autoAssignRows(allCategoryIds, histories, budgetMonth?.category_balances)
 
   const isDisabled = autoAssign.isPending || allCategoryIds.length === 0
 
