@@ -16,6 +16,7 @@ from igab.db.models import (
     WishlistProject,
 )
 from igab.repositories.base import BaseRepository
+from igab.services.change_log import UNDO_KEY_SOURCES
 
 # Snapshot fields that are references, and what they point at. The log stores
 # bare ids; the Activity page needs names — including for entities deleted
@@ -119,22 +120,25 @@ class ChangeLogRepository(BaseRepository[ChangeLog]):
         )
         return list(result.scalars().all())
 
-    async def latest_live_manual(self, budget_id: uuid.UUID) -> ChangeLog | None:
-        """The newest live change a bare ⌘Z may take back: manual rows only.
+    async def latest_live_undoable(self, budget_id: uuid.UUID) -> ChangeLog | None:
+        """The newest live change a bare ⌘Z may take back: the person's own
+        acts — manual edits and the imports they ran (`UNDO_KEY_SOURCES`).
 
         Selection lives here, not on the client — the client used to pick
         from a 20-row window it fetched separately, which raced background
-        writers and starved on a page of already-undone rows. Background and
-        import sources are skipped: a SimpleFIN sync or an AI job landing
-        between the user's action and their ⌘Z must not be what gets undone.
-        Those rows keep their own explicit undo surfaces (the import toast,
-        the Activity page, which can undo anything by id)."""
+        writers and starved on a page of already-undone rows. Background
+        sources are skipped: a SimpleFIN sync or an AI job landing between
+        the user's action and their ⌘Z must not be what gets undone. Those
+        rows keep their own explicit undo surfaces (the sync log, the
+        Activity page, which can undo anything by id). An import is not
+        background: the person picked the file and pressed Import, and ⌘Z
+        skipping it used to take back whatever they did BEFORE it instead."""
         result = await self.session.execute(
             select(ChangeLog)
             .where(
                 ChangeLog.budget_id == budget_id,
                 ChangeLog.undone_at.is_(None),
-                ChangeLog.source == "manual",
+                ChangeLog.source.in_(UNDO_KEY_SOURCES),
             )
             .order_by(ChangeLog.seq.desc())
             .limit(1)

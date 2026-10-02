@@ -386,6 +386,13 @@ def binding_rows_dump(rows: Any) -> list[dict[str, Any]]:
     return sorted(dumped, key=lambda d: tuple(str(d[k]) for k in sorted(d)))
 
 
+#: The sources a bare ⌘Z may take back: the person's own acts. An import is
+#: one — they picked the file and pressed Import. `system` (sync, scheduler)
+#: and `ai` land in the background and keep their own undo surfaces, so a
+#: run arriving between an edit and its ⌘Z is never what gets undone.
+UNDO_KEY_SOURCES = ("manual", "import")
+
+
 def source_for(created_via: str | None) -> str:
     """The change-log `source` a row's origin implies.
 

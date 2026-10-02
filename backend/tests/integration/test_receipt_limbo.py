@@ -340,7 +340,7 @@ class TestTheApi:
         self, api_client, db_session, attachments_dir, extraction
     ):
         # Recorded like every AI-made row: source "ai", so a bare ⌘Z skips it
-        # (latest_live_manual) and the Activity page undoes it by id.
+        # (latest_live_undoable) and the Activity page undoes it by id.
         budget, checking, _, _ = await _budget(db_session, api_client.test_user)
         job = await self._unplaced(db_session, attachments_dir, budget)
         before = await _txn_count(db_session, budget)

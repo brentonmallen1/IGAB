@@ -27,8 +27,9 @@ import { skippedNote } from '../utils/undoneMessage'
  * inline edit already records a server `update` row; the shadow stack was a
  * second representation of the same action, and deleting it is the fix.
  *
- * Selection is the server's too (`POST /changes/undo`): newest live MANUAL
- * change, whole batch if it has one. Background writers — SimpleFIN sync,
+ * Selection is the server's too (`POST /changes/undo`): newest live manual
+ * or import change (an import is the person's own act), whole batch if it
+ * has one. Background writers — SimpleFIN sync,
  * the AI worker, the scheduler — are skipped by source, so a sync landing
  * between the user's action and their ⌘Z is never what gets undone. The
  * Activity page can still undo anything by id.

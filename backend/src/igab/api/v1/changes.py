@@ -57,11 +57,12 @@ async def undo_latest(
     current_user: CurrentUser,
     undo_service: Annotated[UndoService, Depends(get_undo_service)],
 ) -> UndoLatestResult:
-    """Undo the newest live manual change — ⌘Z's target. The server picks:
-    the client used to select from a 20-row window it fetched separately,
-    which raced background writers (a sync landing mid-⌘Z got undone) and
-    starved on a page of already-undone rows. Import/system/AI rows are
-    skipped — they keep their own undo surfaces."""
+    """Undo the newest live change the person made (manual edits and the
+    imports they ran) — ⌘Z's target. The server picks: the client used to
+    select from a 20-row window it fetched separately, which raced background
+    writers (a sync landing mid-⌘Z got undone) and starved on a page of
+    already-undone rows. System/AI rows are skipped — they keep their own
+    undo surfaces."""
     try:
         candidate, undone = await undo_service.undo_latest(budget_id)
     except UndoConflict as e:

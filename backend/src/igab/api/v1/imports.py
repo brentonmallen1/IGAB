@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.route import CommitRoute
-from igab.db.models import Budget, ChangeLog, new_uuid
+from igab.db.models import Budget
 from igab.db.session import get_session
 from igab.dependencies import (
     AccountAccess,
@@ -893,22 +893,21 @@ async def import_csv(
     imported = await transaction_repo.bulk_create(new_rows)
 
     # One change-log row per imported transaction, grouped under the import
-    # batch id so the whole import can be undone as a unit.
-    transaction_repo.session.add_all(
-        [
-            ChangeLog(
-                id=new_uuid(),
+    # batch id so the whole import undoes as a unit — from the toast, from
+    # Activity, or from ⌘Z (an import is the person's own act; see
+    # UNDO_KEY_SOURCES).
+    recorder = ChangeRecorder(transaction_repo.session)
+    recorder.actor_user_id = current_user.id
+    with recorder.batch(batch_id=batch_id):
+        for r in new_rows:
+            await recorder.record(
                 budget_id=budget_id,
                 entity_type="transaction",
                 entity_id=r["id"],
                 action="import",
                 after=snapshot("transaction", r),
-                batch_id=batch_id,
                 source="import",
             )
-            for r in new_rows
-        ]
-    )
     return ImportResult(
         imported=imported,
         skipped=skipped,
