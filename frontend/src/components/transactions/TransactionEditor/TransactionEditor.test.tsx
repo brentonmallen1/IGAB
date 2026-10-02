@@ -985,7 +985,8 @@ describe('TransactionEditor splitting on a phone', () => {
     expect(row.textContent).toContain('Groceries, Fun')
     expect(row.textContent).toContain('Fully split')
     fireEvent.click(row)
-    expect(splitField(2, 'amount').value).toBe('1.8')
+    // A saved $1.80 line used to open as "1.8" — String() on the served amount.
+    expect(splitField(2, 'amount').value).toBe('1.80')
     expect(screen.queryByRole('button', { name: /Don't split/ })).toBeNull()
   })
 })

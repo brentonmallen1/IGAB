@@ -71,7 +71,7 @@ describe('SplitTransactionEditor', () => {
     renderEditor(PARENT)
 
     await waitFor(() => expect(amountInputs()).toHaveLength(2))
-    expect(amountInputs().map((i) => i.value)).toEqual(['60', '40'])
+    expect(amountInputs().map((i) => i.value)).toEqual(['60.00', '40.00'])
     expect(screen.getByText('Fully assigned')).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Save Split'))

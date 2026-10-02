@@ -8,6 +8,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { currentMonthStart, today } from '../../utils/dates'
 import { isCashAccount } from '../../utils/accountKinds'
 import { parseAmountInput } from '../../utils/money'
+import { toAmountInput } from '../../utils/amountExpression'
 import { overspentAfterPayment, thisMonthOrNext } from '../../utils/cardOverspending'
 import { AmountInput } from '../common/AmountInput/AmountInput'
 import { Dialog } from '../common/Dialog/Dialog'
@@ -82,8 +83,12 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
 
   const [supplyId, setSupplyId] = useState(() => supplyAccounts[0]?.id ?? '')
   const [amount, setAmount] = useState(() => {
-    if (isLoan) return minimum !== null && minimum > 0 ? minimum.toFixed(2) : ''
-    return setAside !== null ? setAside.toFixed(2) : (fullBalance?.toFixed(2) ?? '')
+    if (isLoan) return minimum !== null && minimum > 0 ? toAmountInput(minimum) : ''
+    return setAside !== null
+      ? toAmountInput(setAside)
+      : fullBalance !== null && fullBalance !== undefined
+        ? toAmountInput(fullBalance)
+        : ''
   })
   const [extra, setExtra] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -199,7 +204,7 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
                 key={p.label}
                 type="button"
                 className="card-payment__preset"
-                onClick={() => setAmount(p.value.toFixed(2))}
+                onClick={() => setAmount(toAmountInput(p.value))}
               >
                 {p.label} · {formatMoney(p.value)}
               </button>

@@ -101,7 +101,7 @@ describe('filling the remainder', () => {
   it('goes into the first leg with no amount', () => {
     const legs = [leg('60'), leg(''), leg('')]
     expect(remainderTarget(legs, 6000)).toBe(1)
-    expect(fillRemainder(legs, 6000).map((l) => l.amount)).toEqual(['60', '60', ''])
+    expect(fillRemainder(legs, 6000).map((l) => l.amount)).toEqual(['60', '60.00', ''])
   })
 
   it('writes cents the way the editors hold them', () => {
@@ -160,19 +160,19 @@ describe('covering the remainder', () => {
     const legs = [leg('60', 'groceries'), leg('', null)]
     const out = coverRemainder(legs, 6000, 'kids', newLeg)
     expect(out).toHaveLength(2)
-    expect(out[1]).toMatchObject({ categoryId: 'kids', amount: '60' })
+    expect(out[1]).toMatchObject({ categoryId: 'kids', amount: '60.00' })
   })
 
   it('fills a categorised line that has no amount yet', () => {
     const legs = [leg('60', 'groceries'), leg('', 'kids')]
-    expect(coverRemainder(legs, 6000, 'kids', newLeg)[1]).toMatchObject({ amount: '60' })
+    expect(coverRemainder(legs, 6000, 'kids', newLeg)[1]).toMatchObject({ amount: '60.00' })
   })
 
   it('adds a line when none is free', () => {
     const legs = [leg('60', 'groceries'), leg('20', 'household')]
     const out = coverRemainder(legs, 4000, 'kids', newLeg)
     expect(out).toHaveLength(3)
-    expect(out[2]).toMatchObject({ categoryId: 'kids', amount: '40' })
+    expect(out[2]).toMatchObject({ categoryId: 'kids', amount: '40.00' })
     expect(out[2].id).toMatch(/^new/)
   })
 

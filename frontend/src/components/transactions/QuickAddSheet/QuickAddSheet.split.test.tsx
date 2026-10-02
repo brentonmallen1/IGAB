@@ -307,7 +307,7 @@ describe('covering the rest', () => {
     fireEvent.click(cover()!)
     pickInSheet('Groceries')
 
-    expect(splitField(1, 'amount').value).toBe('100')
+    expect(splitField(1, 'amount').value).toBe('100.00')
     expect(screen.getByRole('status').textContent).toBe('Fully split')
     expect(save().hasAttribute('disabled')).toBe(false)
     expect(cover()).toBeNull()

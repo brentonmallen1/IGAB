@@ -1,4 +1,5 @@
 import { parseAmountInput } from '../../utils/money'
+import { toAmountInput } from '../../utils/amountExpression'
 import { groupedCategorySections } from '../../utils/categoryPickers'
 import { useState } from 'react'
 import { useCategories, useCategoryGroups } from '../../api/categories'
@@ -47,11 +48,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
 
   const [accountId, setAccountId] = useState(existing?.account_id ?? initial?.account_id ?? '')
   const [amount, setAmount] = useState(
-    existing
-      ? String(Math.abs(existing.amount))
-      : initial?.amount
-        ? String(Math.abs(initial.amount))
-        : ''
+    existing ? toAmountInput(existing.amount) : initial?.amount ? toAmountInput(initial.amount) : ''
   )
   const [isOutflow, setIsOutflow] = useState(
     existing ? existing.amount < 0 : initial?.amount !== undefined ? initial.amount < 0 : true

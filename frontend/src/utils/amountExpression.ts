@@ -153,9 +153,19 @@ export function evaluateExpressionCents(raw: string): number | null {
   return Math.sign(result) * Math.round(Math.abs(result))
 }
 
-/** Render evaluated cents back into an input field ("16.49", "550"). */
+/** Render cents into an input field: always two decimals ("16.49", "550.00",
+ *  "12.50"). The one rule for what an amount box shows when the app — not a
+ *  person — writes it; "12.5" in a split line was String() doing it instead. */
 export function centsToInputString(cents: number): string {
-  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2)
+  return (cents / 100).toFixed(2)
+}
+
+/** A stored amount seeded into an outflow/inflow-style box: its magnitude,
+ *  two decimals. Those boxes carry the sign structurally. Empty when the
+ *  amount does not parse. */
+export function toAmountInput(amount: number | string): string {
+  const cents = toCents(amount)
+  return Number.isNaN(cents) ? '' : centsToInputString(Math.abs(cents))
 }
 
 /**

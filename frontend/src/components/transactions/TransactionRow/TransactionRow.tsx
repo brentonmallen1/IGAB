@@ -32,7 +32,7 @@ import { nextEditableField } from './fieldOrder'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
 import { useUndoToast } from '../../../utils/toastUndo'
-import { parseAmountExpressionInput } from '../../../utils/amountExpression'
+import { parseAmountExpressionInput, toAmountInput } from '../../../utils/amountExpression'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
@@ -709,7 +709,7 @@ export const TransactionRow = memo(function TransactionRow({
       >
         {isEditing('outflow') ? (
           <InlineInput
-            value={outflow > 0 ? outflow.toFixed(2) : ''}
+            value={outflow > 0 ? toAmountInput(outflow) : ''}
             onCommit={(val) => commitAmount(val, -1)}
             onCancel={stopEditing}
             onTabOut={(d) => advance('outflow', d)}
@@ -730,7 +730,7 @@ export const TransactionRow = memo(function TransactionRow({
       >
         {isEditing('inflow') ? (
           <InlineInput
-            value={inflow > 0 ? inflow.toFixed(2) : ''}
+            value={inflow > 0 ? toAmountInput(inflow) : ''}
             onCommit={(val) => commitAmount(val, 1)}
             onCancel={stopEditing}
             onTabOut={(d) => advance('inflow', d)}

@@ -35,7 +35,7 @@ describe('AmountInput', () => {
     const onKeyDown = vi.fn()
     render(<Harness initial="2*3.5" onKeyDown={onKeyDown} />)
     fireEvent.keyDown(getInput(), { key: 'Enter' })
-    expect(getInput().value).toBe('7')
+    expect(getInput().value).toBe('7.00')
     expect(onKeyDown).toHaveBeenCalledTimes(1)
   })
 
@@ -71,7 +71,7 @@ describe('AmountInput', () => {
   it('evaluates a leading sign as written', () => {
     render(<Harness initial="+50" />)
     fireEvent.blur(getInput())
-    expect(getInput().value).toBe('50')
+    expect(getInput().value).toBe('50.00')
   })
 
   it('shakes on an operator fragment instead of inventing an operand', () => {
@@ -94,7 +94,7 @@ describe('AmountInput', () => {
     // "add 20 to a -100 envelope" looks like as the user types it.
     render(<Harness initial="-100 + 20" />)
     fireEvent.blur(getInput())
-    expect(getInput().value).toBe('-80')
+    expect(getInput().value).toBe('-80.00')
   })
 
   it('avoids float artifacts in evaluated sums (0.1+0.2)', () => {
