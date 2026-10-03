@@ -91,7 +91,14 @@ export function PayoffPill({ liability }: Props) {
   const observed = liability.payoff_basis === 'observed'
   const liveNever = observed && liability.payoff_never
   const baselineNever = liability.baseline_never_pays_off
-  const interestNow = formatMoney(Number(liability.monthly_interest_now))
+  // The month's modelled charge (owed at the month's open, at the month's
+  // rate). Zero is a real answer — a 0% promo month, or a loan that opened
+  // the month owing nothing — and "below ~$0.00 interest" would contradict
+  // the warning it explains, which is about the rate.
+  const interestNow =
+    liability.monthly_interest_now !== null && liability.monthly_interest_now > 0
+      ? `this month's ~${formatMoney(liability.monthly_interest_now)} interest`
+      : 'the interest its rate charges'
   // The computed figure, not the stored one — for a percentage rule they are
   // different numbers, and the copy below quotes it against this month's
   // interest.
@@ -114,8 +121,8 @@ export function PayoffPill({ liability }: Props) {
           <div className="payoff-pill__main">Your recent payments won't pay this off</div>
           <div className="payoff-pill__sub">
             {avg
-              ? `A typical month is ${avg} (transfers into this account) — below this month's ~${interestNow} interest`
-              : `Recent payments fall below this month's ~${interestNow} interest`}
+              ? `A typical month is ${avg} (transfers into this account) — below ${interestNow}`
+              : `Recent payments fall below ${interestNow}`}
             {!baselineNever && liability.baseline_payoff_date
               ? ` · at the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
               : ''}
@@ -133,9 +140,9 @@ export function PayoffPill({ liability }: Props) {
         <div>
           <div className="payoff-pill__main">Won't pay off at the minimum payment</div>
           <div className="payoff-pill__sub">
-            The {minimum} minimum{declines ? ' this month' : ''} doesn't cover this month's ~
-            {interestNow} interest{declines ? ', and it falls as the balance does' : ''} — your
-            actual payments decide the real date
+            The {minimum} minimum{declines ? ' this month' : ''} doesn't cover {interestNow}
+            {declines ? ', and it falls as the balance does' : ''} — your actual payments decide the
+            real date
           </div>
         </div>
       </div>

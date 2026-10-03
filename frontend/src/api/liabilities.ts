@@ -56,7 +56,10 @@ export interface Liability {
   terms_complete: boolean
   origination_date: string | null
   original_principal: number | null
-  /** This month's interest at the current balance; null without a rate */
+  /** This month's interest from the terms: owed as the month opened, at the
+   * rate the month is charged — zero inside a 0% promo. Null without a rate.
+   * Served (`LiabilityService.modelled_interest_this_month`); the estimate
+   * below is this same figure whenever it is claimed. */
   monthly_interest_now: number | null
   /** The MEDIAN month that saw a payment, not the mean. A mortgage paid
    *  with a separate curtailment row is ordinary months with occasional big
@@ -66,8 +69,9 @@ export interface Liability {
    * the same window; null until 2+ months carry any. The actual figure where
    * one exists — `monthly_interest_now` is the modelled one. */
   recent_interest_average: number | null
-  /** This month's interest modelled from the terms, or null when nothing is
-   * claimed: no rate on file, or a month that already has a posted charge.
+  /** `monthly_interest_now`, or null when nothing is claimed: no rate on
+   * file, nothing to charge (a promo month, nothing owed at the month's open,
+   * a settled debt), or a month that already has a posted charge.
    * An ESTIMATE — it must stay visibly distinct from a posted row, or it
    * gets reconciled twice. Served, never computed here (see CLAUDE.md's
    * boundary rule): the server owns what counts as a posted charge. */

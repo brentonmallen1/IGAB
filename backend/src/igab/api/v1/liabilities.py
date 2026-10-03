@@ -36,7 +36,6 @@ from igab.dependencies import (
 )
 from igab.domain.credit import utilization_percent
 from igab.domain.exceptions import InvariantViolation
-from igab.domain.interest import monthly_interest
 from igab.domain.payment_composition import (
     CompositionError,
     check_composition,
@@ -151,23 +150,23 @@ async def _validate_linked_account(
         )
 
 
-def _minimum_due_now(liability, balance: Decimal) -> Decimal | None:
+def _minimum_due_now(liability, balance: Decimal, interest: Decimal | None) -> Decimal | None:
     """What the issuer asks for at today's balance.
 
     `billed`, not `due`: nobody is asked for $35 against a $12 balance, and
     the number on screen should be one a person could actually be charged.
     The scheduling answer — what the rule consumes in a payoff cascade — is
     `due`, and it stays inside the projections.
+
+    `interest` is the month's modelled charge (`modelled_interest_this_month`),
+    the figure a "plus interest" rule adds — not a second computation at
+    today's balance, which charged the post-payment balance and charged a
+    0% promo month at the full rate.
     """
     rule = LiabilityService.minimum_payment_rule(liability)
     if not rule.usable:
         return None
-    interest = (
-        monthly_interest(balance, liability.interest_rate)
-        if liability.interest_rate is not None
-        else Decimal("0")
-    )
-    return rule.billed(balance, interest)
+    return rule.billed(balance, interest if interest is not None else Decimal("0"))
 
 
 async def _liability_out(
@@ -222,16 +221,16 @@ async def _liability_out(
         minimum_payment_percent=liability.minimum_payment_percent,
         minimum_payment_floor=liability.minimum_payment_floor,
         minimum_payment_plus_interest=liability.minimum_payment_plus_interest,
-        minimum_payment_due_now=_minimum_due_now(liability, status_.current_balance),
+        minimum_payment_due_now=_minimum_due_now(
+            liability, status_.current_balance, status_.modelled_interest_this_month
+        ),
         planned_extra_payment=liability.planned_extra_payment,
         terms_complete=status_.terms_complete,
         origination_date=liability.origination_date,
         original_principal=liability.original_principal,
-        monthly_interest_now=(
-            monthly_interest(status_.current_balance, liability.interest_rate)
-            if liability.interest_rate is not None
-            else None
-        ),
+        # The served name for the one modelled figure; the estimate below is
+        # the same number, claimed only while the ledger does not carry it.
+        monthly_interest_now=status_.modelled_interest_this_month,
         # From observed payments, so it stands even with no terms on file —
         # useful precisely there, beside an empty minimum-payment field.
         typical_recent_payment=status_.typical_payment,
