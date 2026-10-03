@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useAccounts, useUpdateAccount, useScanDuplicates } from '../../api/accounts'
+import { useAccounts, useUpdateAccount } from '../../api/accounts'
 import {
   useLinkSimpleFINAccount,
   formatSyncSummary,
@@ -61,8 +61,6 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const unlink = useUnlinkSimpleFINAccount(accountId)
   const refetch = useRefetchSimpleFINAccount(accountId, budgetId)
   const updateSyncSettings = useUpdateAccountSimpleFINSettings(accountId)
-  const scanDuplicates = useScanDuplicates()
-  const [scanResult, setScanResult] = useState<number | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
   const { data: typeRows } = useAccountTypes(budgetId)
@@ -428,35 +426,6 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
               )}
             </div>
           )}
-
-          {/* Maintenance section */}
-          <div className="acct-modal__section acct-modal__section--maintenance">
-            <div className="acct-modal__section-title">Maintenance</div>
-            <div className="acct-modal__scan">
-              <span className="acct-modal__scan-label">
-                Find transactions that may be duplicates
-              </span>
-              <button
-                type="button"
-                className="dialog-btn dialog-btn--secondary"
-                disabled={scanDuplicates.isPending}
-                onClick={async () => {
-                  setScanResult(null)
-                  const result = await scanDuplicates.mutateAsync(accountId)
-                  setScanResult(result.created)
-                }}
-              >
-                {scanDuplicates.isPending ? 'Scanning…' : 'Scan for Duplicates'}
-              </button>
-            </div>
-            {scanResult !== null && (
-              <p className="acct-modal__scan-result">
-                {scanResult === 0
-                  ? 'No new potential duplicates found.'
-                  : `Found ${scanResult} potential duplicate pair${scanResult === 1 ? '' : 's'} — review them in the transaction list.`}
-              </p>
-            )}
-          </div>
         </form>
       </Dialog>
       {showTypeInfo && (

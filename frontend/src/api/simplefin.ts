@@ -464,13 +464,15 @@ export function usePendingMatches(budgetId: string | null) {
   })
 }
 
-export function useAcceptMatch(accountId?: string) {
+export function useAcceptMatch() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/accept`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
-      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
+      // Every account's list: the review dialog passes no accountId, and
+      // [key, undefined] matches no cached [key, id] — the banner went stale.
+      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
       qc.invalidateQueries({ queryKey: [ROOT.transactions] })
       qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
       // Accepting merges away the duplicate — cleared/working balances change
@@ -481,13 +483,15 @@ export function useAcceptMatch(accountId?: string) {
   })
 }
 
-export function useRejectMatch(accountId?: string) {
+export function useRejectMatch() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/reject`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
-      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
+      // Every account's list: the review dialog passes no accountId, and
+      // [key, undefined] matches no cached [key, id] — the banner went stale.
+      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
     },
   })
 }

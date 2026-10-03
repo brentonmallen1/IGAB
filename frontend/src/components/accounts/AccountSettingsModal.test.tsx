@@ -20,7 +20,6 @@ const account = vi.hoisted(() => ({
 vi.mock('../../api/accounts', () => ({
   useAccounts: () => ({ data: [account.current] }),
   useUpdateAccount: () => ({ mutateAsync: updateMutate, isPending: false }),
-  useScanDuplicates: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('../../api/simplefin', () => {
   const idle = () => ({ mutateAsync: vi.fn(), isPending: false })
