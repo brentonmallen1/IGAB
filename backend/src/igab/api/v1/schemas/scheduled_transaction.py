@@ -19,7 +19,6 @@ class ScheduledTransactionCreate(ApiModel):
     category_id: uuid.UUID | None = None
     memo: str | None = None
     end_date: date | None = None
-    auto_create: bool = False
     days_before_reminder: int = Field(default=3, ge=0)
     #: Twice-monthly only: the other day of the month (the first is the
     #: start date's day). Validated together in domain/schedule.py.
@@ -41,7 +40,6 @@ class ScheduledTransactionUpdate(ApiModel):
     category_id: uuid.UUID | None = None
     memo: str | None = None
     end_date: date | None = None
-    auto_create: bool | None = None
     days_before_reminder: int | None = Field(default=None, ge=0)
     next_occurrence_date: date | None = None
     second_day_of_month: int | None = Field(default=None, ge=1, le=31)
@@ -59,7 +57,6 @@ class ScheduledTransactionResponse(ApiModel):
     frequency: str
     start_date: date
     end_date: date | None
-    auto_create: bool
     days_before_reminder: int
     next_occurrence_date: date
     last_created_date: date | None

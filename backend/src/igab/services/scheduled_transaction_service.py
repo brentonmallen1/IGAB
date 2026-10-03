@@ -22,7 +22,6 @@ class ScheduledTransactionCreate:
     category_id: uuid.UUID | None = None
     memo: str | None = None
     end_date: date | None = None
-    auto_create: bool = False
     days_before_reminder: int = 3
     second_day_of_month: int | None = None
     transfer_account_id: uuid.UUID | None = None
@@ -90,7 +89,6 @@ class ScheduledTransactionService:
             start_date=data.start_date,
             end_date=data.end_date,
             second_day_of_month=data.second_day_of_month,
-            auto_create=data.auto_create,
             days_before_reminder=data.days_before_reminder,
             transfer_account_id=data.transfer_account_id,
             import_id=data.import_id,
@@ -264,19 +262,23 @@ class ScheduledTransactionService:
             await self._advance(sched, source=source, batch_id=batch_id, posted_on=posted_on)
 
     async def process_due(self, budget_id: uuid.UUID, today: date) -> int:
-        """The nightly run: post every due occurrence of every auto-create
-        schedule, each on its own date.
+        """The nightly run: post every due occurrence of every schedule, each
+        on its own date.
 
-        Only auto-create schedules are touched. A schedule the person enters
-        by hand stays due — the register shows it overdue — until they enter
-        or skip it. It used to be advanced silently here, so a missed bill
-        moved to next month with no trace that it had been missed.
+        Every schedule posts itself, as YNAB's do. There used to be a "remind
+        me only" mode (`auto_create` off) that this run skipped, which is what
+        an imported schedule always was — so imported bills never posted, and
+        a schedule that has to be remembered defeats the point of having one.
+        Enter now and Skip are for the exceptions; a variable bill posts its
+        expected amount and the person edits it, and the bank's copy is
+        absorbed by the match ladder.
+
+        Overdue here means only that the run did not happen — the server was
+        down. Every missed occurrence posts, dated its own day.
         """
         due = await self.repo.get_due(today, budget_id=budget_id)
         created = 0
         for sched in due:
-            if not sched.auto_create:
-                continue
             current: ScheduledTransaction | None = sched
             # Loop, not one step: a job that slept two nights owes two rows.
             while current is not None and current.next_occurrence_date <= today:

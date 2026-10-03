@@ -12,7 +12,6 @@ export interface ScheduledTransactionCreate {
   category_id?: string
   memo?: string
   end_date?: string
-  auto_create?: boolean
   days_before_reminder?: number
   second_day_of_month?: number
   transfer_account_id?: string

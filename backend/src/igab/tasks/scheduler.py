@@ -8,6 +8,33 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
 
+#: The nightly run that posts scheduled transactions, and its one-shot
+#: catch-up at startup.
+SCHEDULED_TRANSACTIONS_JOB = "process_scheduled_transactions"
+SCHEDULED_TRANSACTIONS_STARTUP_JOB = "process_scheduled_transactions_startup"
+
+
+async def _schema_behind_code(session) -> str | None:
+    """The database's migration revision when it is not the code's head;
+    None when they agree, or when either side cannot say (a schema built
+    from the models has no `alembic_version`; an install without the
+    scripts has no history).
+
+    Every schedule posts itself, and the migration that removed the
+    remind-only mode is also the one that rolled months of overdue
+    schedules forward without posting them. Code started against a
+    database that has not run it — `just dev-backend` on a dev copy owed a
+    migration — would post that whole backlog on its first run.
+    """
+    from igab.services.budget_snapshot import current_revision, migration_history
+
+    history = migration_history()
+    at = await current_revision(session)
+    if not history or not at or at == history[-1]:
+        return None
+    return at
+
+
 async def process_due_scheduled_transactions() -> None:
     from sqlalchemy import select
 
@@ -16,10 +43,21 @@ async def process_due_scheduled_transactions() -> None:
     from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
     from igab.services.scheduled_transaction_service import ScheduledTransactionService
     from igab.services.transaction_service import build_transaction_service
-    from igab.utils.clock import today_utc
+    from igab.utils.clock import today_server_local
 
     async with AsyncSessionLocal() as session:
         try:
+            behind = await _schema_behind_code(session)
+            if behind is not None:
+                logger.warning(
+                    "Scheduled transactions not posted: the database is at migration %s, "
+                    "not the code's head. Run the migrations; the next run catches up.",
+                    behind,
+                )
+                return
+            # The household's day, not UTC's: the cron below fires in TZ, and
+            # a schedule is due on the day the household is living in.
+            today = today_server_local()
             result = await session.execute(select(Budget))
             budgets = list(result.scalars().all())
 
@@ -35,7 +73,7 @@ async def process_due_scheduled_transactions() -> None:
             # the work already done for every budget processed before it.
             for budget in budgets:
                 try:
-                    await sched_svc.process_due(budget.id, today_utc())
+                    await sched_svc.process_due(budget.id, today)
                     await session.commit()
                 except Exception:
                     await session.rollback()
@@ -184,12 +222,27 @@ async def _sweep_attachments() -> None:
 
 
 def start_scheduler() -> None:
+    # Every schedule posts on its date, so a night the server was down is a
+    # night of bills owed. coalesce: a backlog of missed firings is one run
+    # (the run itself posts every missed occurrence, each on its own date).
+    # misfire_grace_time: a firing up to an hour late — the event loop busy,
+    # the host asleep — still runs instead of being dropped.
     scheduler.add_job(
         process_due_scheduled_transactions,
         trigger="cron",
         hour=0,
         minute=5,
-        id="process_scheduled_transactions",
+        id=SCHEDULED_TRANSACTIONS_JOB,
+        replace_existing=True,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+    # The jobstore is in memory, so a restart forgets what the cron missed
+    # while the server was down. One run at startup catches up; with no
+    # trigger, APScheduler runs it once, now.
+    scheduler.add_job(
+        process_due_scheduled_transactions,
+        id=SCHEDULED_TRANSACTIONS_STARTUP_JOB,
         replace_existing=True,
     )
     scheduler.add_job(

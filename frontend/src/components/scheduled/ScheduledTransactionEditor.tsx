@@ -66,7 +66,6 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [transferTo, setTransferTo] = useState(existing?.transfer_account_id ?? '')
   const [categoryId, setCategoryId] = useState(existing?.category_id ?? initial?.category_id ?? '')
   const [memo, setMemo] = useState(existing?.memo ?? initial?.memo ?? '')
-  const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
   const [reminderDays, setReminderDays] = useState(String(existing?.days_before_reminder ?? 3))
   const [error, setError] = useState<string | null>(null)
 
@@ -129,7 +128,6 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
           transfer_account_id: transferTo || null,
           category_id: categoryId || null,
           memo: memo || null,
-          auto_create: autoCreate,
           days_before_reminder: reminder,
         }
         await update.mutateAsync(payload)
@@ -144,7 +142,6 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
           transfer_account_id: transferTo || undefined,
           category_id: categoryId || undefined,
           memo: memo || undefined,
-          auto_create: autoCreate,
           days_before_reminder: reminder,
         }
         await create.mutateAsync(payload)
@@ -330,14 +327,6 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
             value={reminderDays}
             onChange={(e) => setReminderDays(e.target.value)}
           />
-        </label>
-        <label className="dialog-form__field dialog-form__field--inline">
-          <input
-            type="checkbox"
-            checked={autoCreate}
-            onChange={(e) => setAutoCreate(e.target.checked)}
-          />
-          <span>Auto-create transaction when due</span>
         </label>
       </form>
     </Dialog>

@@ -821,13 +821,13 @@ class Transaction(Base):
     # misfiled as a sync row. This is what lets the register show that a row
     # the bank matched was entered by the user first.
     created_via: Mapped[str | None] = mapped_column(String(20))
-    # The schedule this row was entered from (Enter now, or the scheduler's
-    # auto-create). Served, so the row can say so — and the cash projection
-    # partitions on it (txn_filters.reapplied_by_schedule): a row carrying the
-    # id of a schedule it projects leaves the sampled history. For a schedule
-    # with no payee and no category it is the ONLY link, so every path that
-    # enters a row from a schedule must stamp it, or the projection books that
-    # bill twice.
+    # The schedule this row was entered from (Enter now, or the nightly run
+    # posting it on its date). Served, so the row can say so — and the cash
+    # projection partitions on it (txn_filters.reapplied_by_schedule): a row
+    # carrying the id of a schedule it projects leaves the sampled history.
+    # For a schedule with no payee and no category it is the ONLY link, so
+    # every path that enters a row from a schedule must stamp it, or the
+    # projection books that bill twice.
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -1187,7 +1187,6 @@ class ScheduledTransaction(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date)
     second_day_of_month: Mapped[int | None] = mapped_column(Integer)
-    auto_create: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     days_before_reminder: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     transfer_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), index=True

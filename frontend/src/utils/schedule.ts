@@ -56,20 +56,21 @@ export type DueState = 'overdue' | 'due-soon' | null
 
 /** Overdue once the date has passed; due-soon inside the schedule's own
  *  reminder window (`days_before_reminder`, inclusive); otherwise nothing.
- *  A schedule the nightly job auto-enters is never overdue in this sense —
- *  it posts itself — so it only ever reads due-soon. */
+ *  Every schedule posts itself on its date, so overdue means only that the
+ *  nightly job has not run since — the server was down. The marker stays
+ *  as that signal; nothing is waiting on a person. */
 export function dueState(
-  s: Pick<ScheduledTransaction, 'next_occurrence_date' | 'days_before_reminder' | 'auto_create'>,
+  s: Pick<ScheduledTransaction, 'next_occurrence_date' | 'days_before_reminder'>,
   todayISO: string
 ): DueState {
   const days = daysUntil(s.next_occurrence_date, todayISO)
-  if (days < 0) return s.auto_create ? 'due-soon' : 'overdue'
+  if (days < 0) return 'overdue'
   if (days <= s.days_before_reminder) return 'due-soon'
   return null
 }
 
 export function isDueSoon(
-  s: Pick<ScheduledTransaction, 'next_occurrence_date' | 'days_before_reminder' | 'auto_create'>,
+  s: Pick<ScheduledTransaction, 'next_occurrence_date' | 'days_before_reminder'>,
   todayISO: string
 ): boolean {
   return dueState(s, todayISO) !== null

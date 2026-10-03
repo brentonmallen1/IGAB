@@ -211,7 +211,7 @@ describe('formatFieldValue', () => {
     expect(formatFieldValue('payee_id', PAYEE, {})).toBe('#1111')
   })
   it('renders booleans, blanks and documents readably', () => {
-    expect(formatFieldValue('auto_create', true, {})).toBe('yes')
+    expect(formatFieldValue('is_closed', true, {})).toBe('yes')
     expect(formatFieldValue('memo', null, {})).toBe('—')
     expect(formatFieldValue('payload', { a: 1 }, {})).toBe('(document)')
     expect(formatFieldValue('interest_rate', '6.5', {})).toBe('6.5%')

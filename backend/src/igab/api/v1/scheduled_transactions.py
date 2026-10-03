@@ -58,7 +58,6 @@ async def create_scheduled_transaction(
         category_id=body.category_id,
         memo=body.memo,
         end_date=body.end_date,
-        auto_create=body.auto_create,
         days_before_reminder=body.days_before_reminder,
         second_day_of_month=body.second_day_of_month,
         transfer_account_id=body.transfer_account_id,

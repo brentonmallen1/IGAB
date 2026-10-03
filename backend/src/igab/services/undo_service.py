@@ -424,10 +424,7 @@ class UndoService(UndoRestores):
                 diff = [f for f in diff if f not in skip]
                 if diff:
                     raise UndoConflict("The item has been edited since this undo", fields=diff)
-            for field, value in (change.after or {}).items():
-                if field.startswith("_") or field in skip:
-                    continue
-                setattr(entity, field, coerce_value(model, field, value))
+            self._restore_fields(change, entity, skip=skip, target="after")
             if change.entity_type == "assignment":
                 await self._remember_move(change)
             elif change.entity_type == "budget_view":
@@ -1236,15 +1233,25 @@ class UndoService(UndoRestores):
             )
 
     def _restore_fields(
-        self, change: ChangeLog, entity, skip: frozenset[str] = frozenset()
+        self,
+        change: ChangeLog,
+        entity,
+        skip: frozenset[str] = frozenset(),
+        *,
+        target: str = "before",
     ) -> None:
+        """Write one side of a recorded update back onto the entity — `before`
+        for undo, `after` for redo. One loop for both: redo had its own copy,
+        which never learned to pass over a dropped column."""
         model = ENTITY_MODELS[change.entity_type]
-        for field, value in (change.before or {}).items():
+        side = change.before if target == "before" else change.after
+        for field, value in (side or {}).items():
             if field.startswith("_") or field in skip:
                 continue
             # A record written before a column was dropped still names it
-            # (category_targets.repeat_frequency); there is nothing to put it
-            # back into, and the rest of the row still restores.
+            # (category_targets.repeat_frequency, scheduled_transactions
+            # .auto_create); there is nothing to put it back into, and the
+            # rest of the row still restores.
             if field not in cast(Any, model).__table__.columns:
                 continue
             setattr(entity, field, coerce_value(model, field, value))

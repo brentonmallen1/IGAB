@@ -24,7 +24,6 @@ const base: ScheduledTransaction = {
   frequency: 'monthly',
   start_date: '2026-01-05',
   end_date: null,
-  auto_create: true,
   days_before_reminder: 3,
   next_occurrence_date: '2026-09-10',
   last_created_date: null,
@@ -80,7 +79,6 @@ describe('ScheduledRow', () => {
         'amount',
         'freq',
         'date',
-        'auto',
         'actions',
       ]) {
         expect(row.querySelector(`.scheduled-row__${cell}`), cell).not.toBeNull()
@@ -97,10 +95,17 @@ describe('ScheduledRow', () => {
   })
 
   it('shows the due badge, overdue as a warning', () => {
-    // A schedule the nightly job enters itself is never overdue — it only
-    // ever reads due-soon — so this one is entered by hand.
-    renderRow('register', { next_occurrence_date: '2026-09-06', auto_create: false })
+    // Every schedule posts itself; a date already behind today means the
+    // nightly run has not happened since, and the row says so.
+    renderRow('register', { next_occurrence_date: '2026-09-06' })
     expect(document.querySelector('.scheduled-row__due--overdue')).not.toBeNull()
+  })
+
+  it('has no Auto column — every schedule posts on its date', () => {
+    renderRow('table')
+    expect(document.querySelector('.scheduled-row__auto')).toBeNull()
+    render(<ScheduledTableHead />)
+    expect(document.querySelector('.scheduled-row__head')?.textContent).not.toContain('Auto')
   })
 
   it('edits on the row, and enters or skips without editing', () => {
@@ -175,7 +180,7 @@ describe('ScheduledRow stylesheet', () => {
       .map((r) => r.body)
       .join('\n')
 
-  it('register: hides account and auto on desktop (the register knows its account)', () => {
+  it('register: hides account on desktop (the register knows its account)', () => {
     expect(desktop('.scheduled-row--register .scheduled-row__account')).toMatch(/display:\s*none/)
   })
 
@@ -194,19 +199,17 @@ describe('ScheduledRow stylesheet', () => {
       (r) =>
         r.selector.includes('.scheduled-row__head') && r.selector.includes('.scheduled-row--table')
     )
-    expect(head?.body).toMatch(/grid-template-columns:\s*1\.2fr 1\.2fr 1fr 1fr 1fr 60px auto/)
+    expect(head?.body).toMatch(/grid-template-columns:\s*1\.2fr 1\.2fr 1fr 1fr 1fr auto/)
   })
 
-  it('has one phone card, shared by both layouts', () => {
+  it('has one phone card, shared by both layouts — Enter / Skip beside the date', () => {
     const card = phone('.scheduled-row')
-    expect(card).toMatch(
-      /grid-template-areas:\s*"payee amount"\s*"sub freq"\s*"date auto"\s*"actions actions"/
-    )
+    expect(card).toMatch(/grid-template-areas:\s*"payee amount"\s*"sub freq"\s*"date actions"/)
     expect(phone('.scheduled-row__head')).toMatch(/display:\s*none/)
     expect(phone('.scheduled-row__btn')).toMatch(/min-height:\s*var\(--tap-min\)/)
   })
 
-  it("the register's phone card puts Enter / Skip beside the date — it has no Auto line", () => {
+  it("the register's phone card is placed against its desktop column pins", () => {
     // Its desktop rules pin each cell to a column at higher specificity; a
     // phone placement that named only the base class lost to them, and the
     // card grew implicit columns with the date wrapped a digit group a line.

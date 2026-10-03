@@ -17,6 +17,7 @@ from igab.domain.schedule import (
     next_occurrence,
     observed_interval_days,
     projected_occurrences,
+    rolled_forward,
     step_cadence,
     stored_next_occurrence,
     subscription_occurrences,
@@ -108,8 +109,8 @@ class TestYearly:
 
 
 class TestTwiceMonthly:
-    """The branch that did not exist: a due twice-monthly auto-create
-    schedule fell through to "same date" and posted a fresh row every
+    """The branch that did not exist: a due twice-monthly schedule fell
+    through to "same date" and posted a fresh row every
     night. Days are the start date's day and `second_day_of_month`."""
 
     def test_first_day_to_second_day(self):
@@ -250,6 +251,74 @@ class Row:
     start_date: date
     second_day_of_month: int | None = None
     end_date: date | None = None
+
+
+class TestRolledForward:
+    """The `schedules_always_post` migration's arithmetic: an overdue schedule
+    lands on its first occurrence on or after today, stepped as Skip steps,
+    with nothing posted. None is "ended the way Skip ends one"."""
+
+    TODAY = date(2026, 10, 1)
+
+    def test_an_overdue_monthly_lands_on_its_next_date_on_or_after_today(self):
+        row = Row("monthly", date(2026, 6, 15), date(2026, 1, 15))
+        assert rolled_forward(row, self.TODAY) == date(2026, 10, 15)
+
+    def test_an_occurrence_on_today_is_where_it_lands_not_past_it(self):
+        # Due today is due: the first night after the migration posts it.
+        row = Row("monthly", date(2026, 7, 1), date(2026, 1, 1))
+        assert rolled_forward(row, self.TODAY) == self.TODAY
+
+    def test_a_schedule_due_today_is_untouched(self):
+        row = Row("monthly", self.TODAY, date(2026, 1, 1))
+        assert rolled_forward(row, self.TODAY) == self.TODAY
+
+    def test_a_future_schedule_is_untouched(self):
+        row = Row("monthly", date(2026, 11, 3), date(2026, 1, 3))
+        assert rolled_forward(row, self.TODAY) == date(2026, 11, 3)
+
+    def test_a_month_end_schedule_keeps_its_31st_across_the_walk(self):
+        # Stored on the clamped 28 Feb: the walk re-anchors on the start day.
+        row = Row("monthly", date(2026, 2, 28), date(2026, 1, 31))
+        assert rolled_forward(row, date(2026, 4, 10)) == date(2026, 4, 30)
+        assert rolled_forward(row, date(2026, 3, 31)) == date(2026, 3, 31)
+
+    def test_an_end_date_crossed_on_the_way_ends_it(self):
+        row = Row("monthly", date(2026, 6, 15), date(2026, 1, 15), end_date=date(2026, 8, 31))
+        assert rolled_forward(row, self.TODAY) is None
+
+    def test_an_end_date_on_an_occurrence_ahead_still_lands_there(self):
+        row = Row("monthly", date(2026, 6, 15), date(2026, 1, 15), end_date=date(2026, 10, 15))
+        assert rolled_forward(row, self.TODAY) == date(2026, 10, 15)
+
+    def test_an_end_date_already_behind_the_next_date_ends_it_as_skip_would(self):
+        # The end date was pulled back behind the stored next date: Skip ends
+        # such a schedule (no next occurrence), and so does the roll-forward.
+        row = Row("monthly", date(2026, 9, 15), date(2026, 1, 15), end_date=date(2026, 9, 1))
+        assert stored_next_occurrence(row) is None
+        assert rolled_forward(row, self.TODAY) is None
+
+    def test_a_once_whose_date_has_gone_ends(self):
+        row = Row("once", date(2026, 9, 20), date(2026, 9, 20))
+        assert rolled_forward(row, self.TODAY) is None
+
+    def test_a_once_due_today_is_untouched(self):
+        row = Row("once", self.TODAY, self.TODAY)
+        assert rolled_forward(row, self.TODAY) == self.TODAY
+
+    def test_twice_monthly_lands_on_whichever_of_its_two_days_comes_first(self):
+        row = Row("twice_monthly", date(2026, 8, 15), date(2026, 1, 1), second_day_of_month=15)
+        assert rolled_forward(row, date(2026, 10, 2)) == date(2026, 10, 15)
+        assert rolled_forward(row, self.TODAY) == self.TODAY
+
+    def test_weekly_steps_whole_weeks_from_where_it_was(self):
+        row = Row("weekly", date(2026, 9, 3), date(2026, 9, 3))
+        assert rolled_forward(row, self.TODAY) == date(2026, 10, 1)
+        assert rolled_forward(row, date(2026, 10, 2)) == date(2026, 10, 8)
+
+    def test_a_daily_schedule_years_stale_still_lands(self):
+        row = Row("daily", date(2020, 1, 1), date(2020, 1, 1))
+        assert rolled_forward(row, self.TODAY) == self.TODAY
 
 
 class TestStoredRow:

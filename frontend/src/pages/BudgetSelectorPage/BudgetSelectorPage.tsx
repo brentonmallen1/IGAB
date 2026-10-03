@@ -578,9 +578,9 @@ export function BudgetSelectorPage() {
                       <p className="snapshot-verdict__headline">
                         {previewHeldOut.toLocaleString()} future-dated row
                         {previewHeldOut === 1 ? '' : 's'} will become upcoming transaction
-                        {previewHeldOut === 1 ? '' : 's'} rather than posted ones — YNAB exports a
-                        scheduled transaction as its next date only, so the import review will ask
-                        how often each repeats.
+                        {previewHeldOut === 1 ? '' : 's'} that post on their dates, as they did in
+                        YNAB — YNAB exports a scheduled transaction as its next date only, so the
+                        import review will ask how often each repeats.
                       </p>
                     )}
                   </Surface>

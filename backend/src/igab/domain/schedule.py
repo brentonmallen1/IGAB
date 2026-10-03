@@ -2,7 +2,7 @@
 
 Three implementations of "when is the next one" existed before this module:
 the service's `calculate_next` (no `twice_monthly` branch, so a due
-twice-monthly auto-create schedule fell through to "same date" and posted a
+twice-monthly schedule fell through to "same date" and posted a
 fresh row every night without ever advancing), the sample generator's
 `_next_occurrence` (twice-monthly but no weekly/biweekly/daily), and nothing
 at all for a one-off. They agreed on the cases they shared only because the
@@ -141,11 +141,13 @@ def projected_occurrences(
     An occurrence already due but not entered is booked on `today` — the path
     starts there, so a past date is one no projected balance would visit. But
     everything due on or before today is ONE charge, the one row the register
-    shows for the schedule. A manual schedule advances only through Enter or
-    Skip, so one kept as a reminder for a bill paid through bank sync piles up
-    missed occurrences whose money has already left: booking every one of
-    them put -$7,000 on day 0 of a six-month-stale $1,000 rent reminder, and
-    read "goes negative today".
+    shows for the schedule. Every schedule posts itself on its date, so a
+    past date means only that the nightly run has not happened yet; when
+    schedules could be kept as reminders, one left for a bill paid through
+    bank sync piled up missed occurrences whose money had already left, and
+    booking every one of them put -$7,000 on day 0 of a six-month-stale
+    $1,000 rent reminder, reading "goes negative today". One charge is still
+    the honest answer for a run that is merely late.
     """
     end_date = schedule.end_date
     out: list[date] = []
@@ -159,6 +161,30 @@ def projected_occurrences(
             out.append(today)
         current = stored_next_occurrence(schedule, current)
     return out, current is not None and (end_date is None or current <= end_date)
+
+
+def rolled_forward(schedule: StoredSchedule, today: date) -> date | None:
+    """Where an overdue schedule lands when its missed occurrences are passed
+    over without posting: its first occurrence on or after `today`, stepped
+    one occurrence at a time exactly as Skip steps it. None means the walk
+    ran out — a `once` whose date has gone, or an `end_date` crossed on the
+    way — and the schedule ends the way Skip ends one.
+
+    A schedule not yet overdue comes back unchanged. The `schedules_always_post`
+    migration is the caller: when `auto_create` was removed, every schedule
+    began posting on its date, and a backlog of months-old occurrences —
+    rows the person had already typed, or the bank had already sent — must
+    not post on the first night.
+    """
+    current = schedule.next_occurrence_date
+    for _ in range(_MAX_WALK):
+        if current >= today:
+            return current
+        nxt = stored_next_occurrence(schedule, current)
+        if nxt is None:
+            return None
+        current = nxt
+    raise InvariantViolation("Schedule walks too far — check the start date")
 
 
 def first_occurrence_after(
