@@ -1391,7 +1391,11 @@ class CategoryService:
                 Category.is_deleted == False,  # noqa: E712
             )
         )
-        return list(result.scalars().all())
+        # In the caller's order. `IN` promises none, and a refusal names the
+        # first blocker it meets — so deleting a group holding a card's
+        # envelope and Interest & fees gave either reason, run to run.
+        position = {cid: i for i, cid in enumerate(category_ids)}
+        return sorted(result.scalars().all(), key=lambda c: position[c.id])
 
     async def _blocking_link(self, cat: Category) -> str | None:
         """A category the credit-card or debt machinery depends on.
