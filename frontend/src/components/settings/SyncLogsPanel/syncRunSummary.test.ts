@@ -226,3 +226,29 @@ describe('a refused opening balance', () => {
     expect(runVerdict(run({ imported: 3, refused_anchors: [] }))).toBe('worked')
   })
 })
+
+describe('an opening balance skipped for history', () => {
+  // The account already held rows from before the fetch window, so the first
+  // sync wrote no anchor. Nothing is wrong; the log still says why.
+  const NOTE =
+    'Harborstone Checking already had history from before it was linked, so no opening ' +
+    'balance was written — reconcile to settle any difference with the bank.'
+
+  it('is not a fault', () => {
+    expect(runVerdict(run({ imported: 6, anchors_skipped_for_history: [NOTE] }))).toBe('worked')
+  })
+
+  it('follows the counts with the server sentence', () => {
+    expect(runHeadline(run({ imported: 6, anchors_skipped_for_history: [NOTE] }))).toBe(
+      `6 imported — ${NOTE}`
+    )
+  })
+
+  it('still says why on a run that imported nothing', () => {
+    expect(runHeadline(run({ anchors_skipped_for_history: [NOTE] }))).toBe(`Nothing new — ${NOTE}`)
+  })
+
+  it('reads a run recorded before the field existed', () => {
+    expect(runHeadline(run({ imported: 6 }))).toBe('6 imported')
+  })
+})

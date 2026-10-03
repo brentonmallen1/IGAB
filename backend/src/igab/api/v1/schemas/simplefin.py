@@ -133,6 +133,8 @@ class BalanceDriftInfo(ApiModel):
     #: records written before the split existed.
     unexplained_amount: Decimal | None = None
     unposted_cleared: Decimal | None = None
+    #: Cleared rows a pending review holds beside the bank's own copy.
+    in_review: Decimal | None = None
 
 
 class SyncResult(ApiModel):
@@ -157,6 +159,10 @@ class SyncResult(ApiModel):
     #: than the balance the bank reports. Each entry is one sentence naming
     #: both figures and what to do. See `domain.bank_balance.anchor_verdict`.
     refused_anchors: list[str] = []
+    #: First syncs that wrote no opening balance because the account already
+    #: had history from before the fetch window — one sentence each, naming
+    #: the account and what to do. Informational, never a fault.
+    anchors_skipped_for_history: list[str] = []
     #: Accounts whose first sync wrote a Starting Balance row to anchor the
     #: ledger to the bank's reported balance — the 90-day window cannot
     #: carry an older carried balance any other way.
@@ -182,6 +188,7 @@ class ConnectionSyncOutcome(ApiModel):
     bank_errors: list[BankErrorInfo] = []
     balance_drift: list[BalanceDriftInfo] = []
     refused_anchors: list[str] = []
+    anchors_skipped_for_history: list[str] = []
 
 
 class SyncAllResult(ApiModel):
@@ -278,6 +285,7 @@ class SyncRunResponse(ApiModel):
     orphaned_links: list[OrphanedLinkInfo] = []
     balance_drift: list[BalanceDriftInfo] = []
     refused_anchors: list[str] = []
+    anchors_skipped_for_history: list[str] = []
     feed_txn_count: int = 0
     imported: int = 0
     skipped: int = 0

@@ -32,6 +32,7 @@ from igab.domain.bank_balance import (
     as_of_date,
     describe_drift,
     drift_is_a_fault,
+    drift_record,
     explain_drift,
 )
 
@@ -179,6 +180,79 @@ class TestTheSentence:
         sentence = describe_drift("Harborstone Checking", drift)
         assert "off by 120.00" in sentence
         assert "not yet posted" not in sentence
+
+
+#: The person's own cleared $64.20 at Sapphire Pharmacy, which a sync queued
+#: for review beside the bank's copy because it could not be sure the two were
+#: one purchase. Signed as the row is: spending.
+IN_REVIEW = Decimal("-64.20")
+
+
+class TestTheReviewQueue:
+    """A first sync over a YNAB history queues the pairs it is unsure of and
+    writes the bank's copy beside the person's own. Until the queue is
+    answered the ledger counts each such row twice and the bank counts it
+    once — and on a reconciled account every queued pair used to read as
+    missing money."""
+
+    def test_a_gap_made_of_queued_pairs_is_explained(self):
+        drift = explain_drift(BANK, BANK + IN_REVIEW, in_review=IN_REVIEW)
+        assert drift is not None
+        assert drift.amount == Decimal("64.20")
+        assert drift.unexplained == Decimal("0")
+        assert drift.reason == "in_review"
+
+    def test_it_is_not_a_fault_on_a_reconciled_account(self):
+        drift = explain_drift(BANK, BANK + IN_REVIEW, in_review=IN_REVIEW)
+        assert not drift_is_a_fault(drift, reconciled=True)
+
+    def test_with_unposted_rows_too_the_queue_leads(self):
+        """Both slices complete the answer; the queue is the one the person
+        can act on, so it names the reason."""
+        drift = explain_drift(
+            BANK, BANK + UNPOSTED + IN_REVIEW, unposted_cleared=UNPOSTED, in_review=IN_REVIEW
+        )
+        assert drift is not None
+        assert drift.unexplained == Decimal("0")
+        assert drift.reason == "in_review"
+        assert not drift_is_a_fault(drift, reconciled=True)
+
+    def test_unposted_alone_still_reads_unposted(self):
+        drift = explain_drift(BANK, BANK + UNPOSTED, unposted_cleared=UNPOSTED)
+        assert drift is not None
+        assert drift.reason == "unposted"
+
+    def test_the_queue_outranks_staleness(self):
+        drift = explain_drift(
+            BANK,
+            BANK + IN_REVIEW,
+            in_review=IN_REVIEW,
+            balance_as_of=YESTERDAY,
+            newest_cleared_on=TODAY,
+        )
+        assert drift is not None
+        assert drift.stale
+        assert drift.reason == "in_review"
+
+    def test_a_remainder_beyond_the_queue_is_still_a_fault(self):
+        """$64.20 of the $120.00 is the queue; $55.80 is not, and that part
+        is worth saying."""
+        drift = _explain(in_review=IN_REVIEW)
+        assert drift is not None
+        assert drift.unexplained == Decimal("55.80")
+        assert drift.reason == "unexplained"
+        assert drift_is_a_fault(drift, reconciled=True)
+        sentence = describe_drift("Harborstone Checking", drift)
+        assert "off by 55.80" in sentence
+        assert "64.20 waiting in the review queue" in sentence
+
+    def test_the_record_carries_it(self):
+        drift = explain_drift(BANK, BANK + IN_REVIEW, in_review=IN_REVIEW)
+        assert drift is not None
+        record = drift_record("acct-1", "Harborstone Checking", drift)
+        assert record["in_review"] == "-64.20"
+        assert record["unexplained_amount"] == "0.00"
+        assert record["account_name"] == "Harborstone Checking"
 
 
 class TestAsOfDate:

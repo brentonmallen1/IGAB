@@ -47,6 +47,7 @@ from igab.db.models import (
     Payee,
     Transaction,
     TransactionAttachment,
+    TransactionMatch,
 )
 from igab.domain.account_types import CASH_ACCOUNT_TYPE_KEYS
 from igab.domain.enums import ScheduleFrequency
@@ -269,6 +270,87 @@ def not_future(as_of: date):
     is pinned by a test. Do not "fix" it into agreement.
     """
     return Transaction.date <= as_of
+
+
+_BANK_COPY = aliased(Transaction)
+
+#: The person's own row in a pending review pair. The feed posted a row the
+#: matcher could not confidently call the same purchase, so the bank's copy
+#: was written beside this one and the pair queued for an answer
+#: (`simplefin_service._import_for_review`, `_queue_reidentified_review`, the
+#: matching service's own queue). Accepting merges the two into one row with
+#: the bank's amount, cleared; rejecting keeps both.
+#:
+#: While the question is open, a CLEARED row here is money the cleared ledger
+#: counts twice — once as this row, once as the bank's copy — and the bank
+#: counts once.
+#:
+#: **The person's side, not the bank's, and that is load-bearing.** Leaving
+#: out the bank's copy instead agrees with this only when the person's row is
+#: cleared and the amounts match. A pair against a row not yet cleared — the
+#: usual state of last week's hand-typed entries — is counted once already,
+#: by the bank's copy; dropping that copy sized a first-sync anchor too large
+#: by exactly the row that accepting the merge then put back. And where the
+#: amounts differ, the bank's figure is the one the merge keeps.
+#:
+#: The bank's copy must still be live: a pair whose synced row was deleted
+#: duplicates nothing.
+DUPLICATED_IN_REVIEW = (
+    exists()
+    .where(
+        TransactionMatch.manual_transaction_id == Transaction.id,
+        TransactionMatch.status == "pending",
+        _BANK_COPY.id == TransactionMatch.synced_transaction_id,
+        _BANK_COPY.is_deleted == False,  # noqa: E712
+    )
+    .correlate(Transaction)
+)
+
+#: The cleared rows a pending review is holding beside the bank's own copy —
+#: the slice of the cleared balance `domain.bank_balance` reports as
+#: `in_review`. Disjoint from CLEARED_AHEAD_OF_BANK by construction (both
+#: queueing paths release the person's row's bank link first, and the matcher
+#: pairs only USER_ENTERED rows), and kept disjoint here explicitly so a row
+#: can never be subtracted from the gap twice.
+IN_REVIEW_CLEARED = and_(BALANCE_ROW, CLEARED, DUPLICATED_IN_REVIEW, not_(CLEARED_AHEAD_OF_BANK))
+
+
+def anchor_ledger(as_of: date):
+    """The rows a bank's reported balance should equal on `as_of`.
+
+    What a first sync's opening anchor is measured against, so the anchor is
+    exactly the part of the bank's figure the register cannot account for —
+    history from before the fetch window. It is the cleared ledger drift
+    reads (BALANCE_ROW and CLEARED), less the three slices the bank's figure
+    does not contain:
+
+    - CLEARED_AHEAD_OF_BANK — cleared here, not yet posted there. Drift
+      already explains these as `unposted_cleared`; counting them in the
+      anchor booked them a second time and left drift unexplained by exactly
+      their sum the moment the anchor was written.
+    - DUPLICATED_IN_REVIEW — the bank's copy of these is already counted.
+      This is the defect that wrote an anchor of minus the queued
+      duplicates: every low-confidence pair a first sync queued beside a
+      YNAB history was summed twice, and the anchor cancelled the second
+      copy as if it were pre-window debt. Accepting the merges then left the
+      ledger short by the same amount, permanently, behind a row nobody
+      could delete.
+    - Rows dated after `as_of` — a statement cannot include what has not
+      happened yet.
+
+    So once an anchor is written the drift check's `unexplained` is zero by
+    construction, except for future-dated cleared rows: the cleared balance
+    has no date cutoff (see `not_future` for why), so those surface as drift
+    until their date arrives and the bank posts them. That divergence is
+    bounded to exactly those rows and is pinned by a test.
+    """
+    return and_(
+        BALANCE_ROW,
+        CLEARED,
+        not_(CLEARED_AHEAD_OF_BANK),
+        not_(DUPLICATED_IN_REVIEW),
+        not_future(as_of),
+    )
 
 
 # A transfer leg, by either of the two signals that mark one. The partner link

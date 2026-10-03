@@ -13,10 +13,14 @@ feature exists to perform.
 
 from decimal import Decimal
 
-from igab.domain.bank_balance import anchor_verdict, describe_refused_anchor
+from igab.domain.bank_balance import (
+    anchor_verdict,
+    describe_refused_anchor,
+    describe_skipped_anchor,
+)
 
-ASSET = {"is_liability": False}
-DEBT = {"is_liability": True}
+ASSET = {"is_liability": False, "holds_prior_history": False}
+DEBT = {"is_liability": True, "holds_prior_history": False}
 
 
 class TestAgreement:
@@ -80,3 +84,57 @@ class TestTheOneRefusal:
         assert "2,690.00" in line
         assert "-200.00" in line
         assert "reconcile" in line.lower()
+
+
+class TestAnAccountWithAPast:
+    """A first sync of an account that already held rows from before the
+    fetch window — a YNAB migration onto Harborstone Checking — wrote an
+    anchor dated years back that silently absorbed whatever the register and
+    the bank disagreed about. Such an account has its history; the gap is
+    reconcile's question, not the sync's."""
+
+    WITH_HISTORY = {"is_liability": False, "holds_prior_history": True}
+    DEBT_WITH_HISTORY = {"is_liability": True, "holds_prior_history": True}
+
+    def test_history_means_no_anchor(self):
+        v = anchor_verdict(Decimal("2400.00"), Decimal("2610.00"), **self.WITH_HISTORY)
+        assert v.reason == "has_history"
+        assert not v.should_write
+        assert v.skipped_for_history
+
+    def test_a_skip_is_not_a_refusal(self):
+        """Informational only: an ordinary migration's run is not degraded."""
+        v = anchor_verdict(Decimal("2400.00"), Decimal("2610.00"), **self.WITH_HISTORY)
+        assert not v.refused
+
+    def test_the_gap_is_still_measured(self):
+        """The figure reconcile will be asked to settle."""
+        v = anchor_verdict(Decimal("2400.00"), Decimal("2610.00"), **self.WITH_HISTORY)
+        assert v.gap == Decimal("-210.00")
+
+    def test_agreement_outranks_history(self):
+        """Nothing to skip and nothing worth telling the person."""
+        v = anchor_verdict(Decimal("2400.00"), Decimal("2400.00"), **self.WITH_HISTORY)
+        assert v.reason == "agrees"
+        assert not v.skipped_for_history
+
+    def test_history_outranks_holds_money(self):
+        """A skip writes nothing, so it has nothing to refuse — and a refusal
+        would mark the run degraded where a skip is informational."""
+        v = anchor_verdict(Decimal("2690.00"), Decimal("-200.00"), **self.DEBT_WITH_HISTORY)
+        assert v.reason == "has_history"
+        assert not v.refused
+
+    def test_ordinary_verdicts_never_claim_a_skip(self):
+        for v in (
+            anchor_verdict(Decimal("2400.00"), Decimal("-100.00"), **ASSET),
+            anchor_verdict(Decimal("2690.00"), Decimal("-200.00"), **DEBT),
+            anchor_verdict(Decimal("100"), Decimal("100"), **ASSET),
+        ):
+            assert not v.skipped_for_history
+
+    def test_the_sentence_names_the_account_and_the_way_forward(self):
+        line = describe_skipped_anchor("Harborstone Checking")
+        assert line.startswith("Harborstone Checking already had history")
+        assert "no opening balance was written" in line
+        assert "reconcile" in line

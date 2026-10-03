@@ -206,3 +206,81 @@ describe('formatSyncSummary', () => {
     expect(single).toContain('relink')
   })
 })
+
+describe('an account linked over its own history', () => {
+  // A YNAB migration, then SimpleFIN on the same account. The first sync
+  // used to write an opening balance dated years back that silently absorbed
+  // whatever the register and the bank disagreed about. It now writes none,
+  // and this line is where the person hears why.
+  const NOTE =
+    'Harborstone Checking already had history from before it was linked, so no opening ' +
+    'balance was written — reconcile to settle any difference with the bank.'
+
+  it('follows the counts with the server sentence, whole', () => {
+    const summary = formatSyncSummary(
+      result({
+        imported: 6,
+        connections: [connection({ imported: 6, anchors_skipped_for_history: [NOTE] })],
+      })
+    )
+    expect(summary).toBe(`Imported 6 — ${NOTE}`)
+  })
+
+  it('counts several rather than running on', () => {
+    const summary = formatSyncSummary(
+      result({
+        imported: 6,
+        connections: [
+          connection({ anchors_skipped_for_history: [NOTE] }),
+          connection({ connection_id: 'c2', anchors_skipped_for_history: [NOTE] }),
+        ],
+      })
+    )
+    expect(summary).toContain('2 accounts already had history from before they were linked')
+  })
+
+  it('gives way to a fault, which outranks a note', () => {
+    const summary = formatSyncSummary(
+      result({
+        imported: 6,
+        connections: [
+          connection({
+            anchors_skipped_for_history: [NOTE],
+            balance_drift: [
+              {
+                account_id: 'a1',
+                account_name: 'Harborstone Checking',
+                bank_balance: '2300.0000',
+                ledger_cleared_balance: '2510.0000',
+              },
+            ],
+          }),
+        ],
+      })
+    )
+    expect(summary).toContain('is off from the bank by 210.00')
+    expect(summary).not.toContain('already had history')
+  })
+
+  it('reaches a single-connection sync too', () => {
+    const single = formatSyncSummary({
+      imported: 6,
+      skipped: 0,
+      matched: 0,
+      adopted: 0,
+      review_queued: 0,
+      cleared: 0,
+      removed_pending: 0,
+      orphaned_links: [],
+      bank_errors: [],
+      balance_drift: [],
+      anchors_skipped_for_history: [NOTE],
+      error: null,
+      global_used: null,
+      global_remaining: null,
+      account_used: null,
+      account_remaining: null,
+    })
+    expect(single).toBe(`Imported 6 — ${NOTE}`)
+  })
+})

@@ -61,17 +61,22 @@ export interface Account {
    *  reported nothing. Served (backend: domain/bank_balance.py) — the sync
    *  decides on the same rule whether a run is degraded. */
   bank_drift: number | null
-  /** Why the two figures differ: 'agree' | 'unposted' | 'stale' |
-   *  'unexplained'. Only 'unexplained' means rows may be missing; the page
-   *  used to tell the user to refetch 90 days for all three.
+  /** Why the two figures differ: 'agree' | 'in_review' | 'unposted' |
+   *  'stale' | 'unexplained'. Only 'unexplained' means rows may be missing;
+   *  the page used to tell the user to refetch 90 days for all of them.
    *  (backend: domain/bank_balance.py) */
-  bank_drift_reason: 'agree' | 'unposted' | 'stale' | 'unexplained' | null
-  /** The part of `bank_drift` that `bank_unposted_cleared` does not account
-   *  for, signed. (backend: domain/bank_balance.py) */
+  bank_drift_reason: 'agree' | 'in_review' | 'unposted' | 'stale' | 'unexplained' | null
+  /** The part of `bank_drift` that `bank_unposted_cleared` and
+   *  `bank_in_review` do not account for, signed.
+   *  (backend: domain/bank_balance.py) */
   bank_drift_unexplained: number | null
   /** Cleared money the bank has not posted against — the ledger running
    *  ahead of the feed. (backend: txn_filters.CLEARED_AHEAD_OF_BANK) */
   bank_unposted_cleared: number | null
+  /** Cleared money a pending review holds beside the bank's own copy — the
+   *  ledger counting a row twice until the review queue is answered.
+   *  (backend: txn_filters.IN_REVIEW_CLEARED) */
+  bank_in_review: number | null
   /** Whether the sync calls this gap a fault. Served, not re-derived here:
    *  the sync decides it and the page must not be free to disagree with the
    *  sync badge. (backend: domain/bank_balance.drift_is_a_fault) */
@@ -1990,6 +1995,9 @@ export interface SyncResult {
   balance_drift: import('../api/simplefin').BalanceDrift[]
   /** Opening balances the run declined to write. See api/simplefin.ts. */
   refused_anchors?: string[]
+  /** First syncs that wrote no opening balance because the account already
+   *  had history. Informational. See api/simplefin.ts. */
+  anchors_skipped_for_history?: string[]
   error: string | null
   global_used: number | null
   global_remaining: number | null

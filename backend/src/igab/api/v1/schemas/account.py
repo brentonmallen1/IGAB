@@ -96,18 +96,23 @@ class AccountResponse(ApiModel):
     #: the sync decides on the same rule whether a run is degraded
     #: (domain.bank_balance).
     bank_drift: Decimal | None = None
-    #: Why the two figures differ: "agree" | "unposted" | "stale" |
-    #: "unexplained", or null when the bank has reported nothing. The whole
-    #: point of the banner — only "unexplained" means rows may be missing,
-    #: and the other two used to be reported as if they did.
+    #: Why the two figures differ: "agree" | "in_review" | "unposted" |
+    #: "stale" | "unexplained", or null when the bank has reported nothing.
+    #: The whole point of the banner — only "unexplained" means rows may be
+    #: missing, and the others used to be reported as if they did.
     bank_drift_reason: str | None = None
-    #: The part of `bank_drift` that `bank_unposted_cleared` does not account
-    #: for. Signed, same frame as `bank_drift`.
+    #: The part of `bank_drift` that `bank_unposted_cleared` and
+    #: `bank_in_review` do not account for. Signed, same frame as
+    #: `bank_drift`.
     bank_drift_unexplained: Decimal | None = None
     #: Cleared money the bank has not posted against — the ledger running
     #: ahead of the feed, which is the ordinary result of ticking a hold the
     #: bank's own site already shows as posted.
     bank_unposted_cleared: Decimal | None = None
+    #: Cleared money a pending review holds beside the bank's own copy — the
+    #: ledger counting a row twice until the review queue is answered
+    #: (txn_filters.IN_REVIEW_CLEARED).
+    bank_in_review: Decimal | None = None
     #: Whether the sync would call this gap a fault. Served rather than
     #: re-derived from `bank_drift_reason` and `last_reconciled_at` on the
     #: client, because the sync decides it (domain.bank_balance) and a page

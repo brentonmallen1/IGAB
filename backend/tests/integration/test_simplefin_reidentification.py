@@ -452,7 +452,12 @@ async def test_an_unreconciled_account_off_from_the_bank_is_not_a_fault(db_sessi
 
 async def test_a_first_sync_anchors_before_it_judges_drift(db_session):
     """The opening-balance anchor closes the gap a 90-day window cannot
-    carry; a fresh account must not be flagged for its own pre-history."""
+    carry; a fresh account must not be flagged for its own pre-history.
+
+    Fresh is load-bearing: the register holds nothing before the window, so
+    the anchor is owed. An account that already held older rows gets no
+    anchor and its gap IS reported — see
+    test_simplefin_sync.test_a_reconciled_account_with_history_reports_its_gap_as_drift."""
     services, budget, account, conn = await _setup(db_session)
     account.last_reconciled_at = datetime.now(UTC)
     await db_session.flush()

@@ -251,6 +251,82 @@ class TestWhatTheAccountPageIsServed:
         unposted = await services.account_repo.get_unposted_cleared(account.id)
         assert unposted == UNPOSTED_TOTAL
 
+    async def test_a_deleted_row_is_no_longer_called_unposted(self, db_session):
+        """A slice of the cleared balance must be over the cleared balance's
+        rows. A deleted row keeps its bank id as a tombstone, and the sum
+        went on explaining a gap the cleared balance no longer contained."""
+        services, budget, account, conn = await _setup(db_session)
+        svc = _service(services, _holds(), balances={ACCT: Decimal("0.00")})
+        with PATCH_DECRYPT:
+            await svc.sync(conn.id, budget.id)
+        await _tick_cleared(services, budget, account.id)
+        first = next(r for r in await _live_rows(db_session, account.id) if r.sync_id == "hold-0")
+        await services.transactions.delete(budget.id, first.id)
+
+        assert await services.account_repo.get_unposted_cleared(account.id) == Decimal(HOLDS[1][0])
+
+    async def test_the_review_queue_is_served_on_every_surface(self, db_session, api_client):
+        """The account page, the account list and the health badge all read
+        one gathering of the facts (`AccountRepository.drift_for`), so none
+        of them can call the queue's doubled row a fault the others explain.
+
+        A reconciled Harborstone Checking whose sync queued a $64.20 bank
+        copy beside the person's own cleared row, and whose bank also holds
+        $10.00 the register does not: the queue is named, and only the
+        $10.00 is news."""
+        from igab.db.models import TransactionMatch
+        from igab.services.transaction_service import TransactionCreate
+
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(
+            db_session, budget, "Harborstone Checking", simplefin_account_id=ACCT
+        )
+        conn = await create_simplefin_connection(db_session, api_client.test_user)
+        services = make_services(db_session)
+        own = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=account.id,
+                date=TODAY - timedelta(days=200),
+                amount=Decimal("-64.20"),
+                payee_name="Sapphire Pharmacy",
+                cleared="cleared",
+            ),
+        )
+        await _reconcile(db_session, account, Decimal("-64.20"))
+        posted = bank_txn("rx-1", "-64.20", TODAY - timedelta(days=1), payee="SPH RX", posted=True)
+        svc = _service(services, [posted], balances={ACCT: Decimal("-54.20")})
+        with PATCH_DECRYPT:
+            await svc.sync(conn.id, budget.id)
+        # The ladder would not reach back 200 days, so the pair is queued as
+        # the matching service's own review would queue it.
+        bank_copy = next(r for r in await _live_rows(db_session, account.id) if r.sync_id)
+        db_session.add(
+            TransactionMatch(
+                synced_transaction_id=bank_copy.id,
+                manual_transaction_id=own.id,
+                confidence_score=Decimal("0.60"),
+            )
+        )
+        await db_session.flush()
+
+        one = (await api_client.get(f"/api/v1/accounts/{account.id}")).json()
+        [listed] = [
+            a
+            for a in (await api_client.get(f"/api/v1/{budget.id}/accounts")).json()
+            if a["id"] == str(account.id)
+        ]
+        for served in (one, listed):
+            assert Decimal(str(served["bank_in_review"])) == Decimal("-64.20")
+            assert Decimal(str(served["bank_drift_unexplained"])) == Decimal("10.00")
+            assert served["bank_drift_reason"] == "unexplained"
+            assert served["bank_drift_is_fault"] is True
+
+        health = (await api_client.get(f"/api/v1/{budget.id}/simplefin/sync-runs/health")).json()
+        [entry] = health["balance_drift"]
+        assert Decimal(str(entry["in_review"])) == Decimal("-64.20")
+        assert Decimal(str(entry["unexplained_amount"])) == Decimal("10.00")
+
     async def test_a_hand_typed_row_is_never_called_unposted(self, db_session):
         """`sync_id IS NOT NULL` is what keeps the figure honest: an old
         cleared row is indistinguishable from one the bank has not posted."""

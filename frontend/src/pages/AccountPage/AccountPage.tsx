@@ -285,6 +285,7 @@ export function AccountPage() {
                   drift: account.bank_drift,
                   unexplained: account.bank_drift_unexplained ?? account.bank_drift,
                   unposted: account.bank_unposted_cleared ?? 0,
+                  inReview: account.bank_in_review ?? 0,
                   reason: account.bank_drift_reason ?? 'unexplained',
                   isFault: account.bank_drift_is_fault,
                   asOf: account.simplefin_balance_date

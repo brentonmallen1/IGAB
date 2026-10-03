@@ -25,6 +25,7 @@ const facts = (over: Partial<DriftFacts> = {}): DriftFacts => ({
   drift: 120,
   unexplained: 120,
   unposted: 0,
+  inReview: 0,
   reason: 'unexplained',
   isFault: true,
   asOf: null,
@@ -64,6 +65,54 @@ describe('the ledger is ahead of the feed', () => {
 
   it('reads calm, not as a fault', () => {
     expect(bankDriftNotice(unposted, money)?.tone).toBe('calm')
+  })
+})
+
+describe('the review queue holds a doubled row', () => {
+  // A first sync over a migrated history wrote the bank's copy of a $64.20
+  // pharmacy charge beside the person's own and asked whether they are one
+  // purchase. Until that is answered the ledger counts it twice, so the bank
+  // reports $64.20 MORE than the cleared balance here — on a reconciled
+  // account, the shape that used to read as missing rows.
+  const inReview = facts({
+    reported: 8420,
+    drift: 64.2,
+    unexplained: 0,
+    inReview: -64.2,
+    reason: 'in_review',
+    isFault: false,
+  })
+
+  it('names the queue, which is where the person closes it', () => {
+    const notice = bankDriftNotice(inReview, money)
+    expect(notice?.text).toContain('$64.20 of cleared spending is waiting for review')
+    expect(notice?.text).toContain('answer the review queue')
+  })
+
+  it('never sends the user to refetch', () => {
+    expect(bankDriftNotice(inReview, money)?.text).not.toContain('90 days')
+  })
+
+  it('reads calm, not as a fault', () => {
+    expect(bankDriftNotice(inReview, money)?.tone).toBe('calm')
+  })
+
+  it('names the queue inside an otherwise unexplained gap', () => {
+    /** $64.20 is the queue; $55.80 is not, and that part is still news. */
+    const notice = bankDriftNotice(facts({ inReview: -64.2, unexplained: 55.8 }), money)
+    expect(notice?.text).toContain('$64.20 is waiting in the review queue')
+    expect(notice?.text).toContain('$55.80 is unaccounted for')
+    expect(notice?.text).toContain('fetch the last 90 days again')
+  })
+
+  it('names both explained parts when both are present', () => {
+    const notice = bankDriftNotice(
+      facts({ unposted: -95, inReview: -64.2, unexplained: 25 }),
+      money
+    )
+    expect(notice?.text).toContain('$95.00 of that is cleared spending the bank has not posted')
+    expect(notice?.text).toContain('$64.20 is waiting in the review queue')
+    expect(notice?.text).toContain('$25.00 is unaccounted for')
   })
 })
 

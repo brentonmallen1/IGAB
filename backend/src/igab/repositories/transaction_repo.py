@@ -1578,6 +1578,21 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return result.scalar_one_or_none()
 
+    async def has_rows_before(self, account_id: uuid.UUID, before: date) -> bool:
+        """Whether the account holds any balance row dated before `before`.
+
+        Asked of a first sync's fetch window: an account with rows older than
+        the window already has a past — a YNAB migration, history typed by
+        hand — and is never given an opening anchor (see
+        `domain.bank_balance.anchor_verdict`).
+        """
+        result = await self.session.execute(
+            select(Transaction.id)
+            .where(Transaction.account_id == account_id, BALANCE_ROW, Transaction.date < before)
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def find_similar_transactions(
         self,
         account_id: uuid.UUID,

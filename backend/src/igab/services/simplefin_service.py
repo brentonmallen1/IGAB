@@ -16,11 +16,11 @@ from igab.db.models import Account, SimpleFINConnection, Transaction
 from igab.domain.bank_balance import (
     DriftExplanation,
     anchor_verdict,
-    as_of_date,
     describe_drift,
     describe_refused_anchor,
+    describe_skipped_anchor,
     drift_is_a_fault,
-    explain_drift,
+    drift_record,
 )
 from igab.domain.bank_identity import (
     FeedAccount,
@@ -125,6 +125,17 @@ class _Tally:
     created_this_run: list[tuple[Transaction, FeedRecord]] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _AnchorOutcome:
+    """What a first sync's opening anchor came to for one account."""
+
+    row: Transaction | None = None
+    #: One sentence for the fault line — the run is degraded by it.
+    refusal: str | None = None
+    #: One sentence for the run result — informational, never a fault.
+    skipped_for_history: str | None = None
+
+
 def _fault_summary(
     audit: LinkAudit,
     errors: list[SimpleFINError],
@@ -166,20 +177,8 @@ def _balances_agree(reported: Decimal | None, ledger: Decimal | None) -> bool | 
 
 
 def _drift_records(drifts: list[tuple[Account, DriftExplanation]]) -> list[dict]:
-    """The drift list as the run record, the result and the health check carry it."""
-    return [
-        {
-            "account_id": str(account.id),
-            "account_name": account.name,
-            "bank_balance": str(drift.reported),
-            "ledger_cleared_balance": str(drift.ledger_cleared),
-            # What the user would have to go and find, once the rows the
-            # bank simply has not posted yet are taken out of the gap.
-            "unexplained_amount": str(drift.unexplained),
-            "unposted_cleared": str(drift.unposted_cleared),
-        }
-        for account, drift in drifts
-    ]
+    """The drift list as the run record and the result carry it."""
+    return [drift_record(account.id, account.name, drift) for account, drift in drifts]
 
 
 class RateLimitError(IGABError):
@@ -262,6 +261,9 @@ class SimpleFINService:
                     "bank_errors": result.get("bank_errors") or [],
                     "balance_drift": result.get("balance_drift") or [],
                     "refused_anchors": result.get("refused_anchors") or [],
+                    "anchors_skipped_for_history": (
+                        result.get("anchors_skipped_for_history") or []
+                    ),
                 }
             )
         return {**totals, "skip_reasons": dict(skip_reasons), "connections": outcomes}
@@ -593,6 +595,17 @@ class SimpleFINService:
                 continue
             prepared.append((account, _feed_record(t)))
 
+        # Which first-sync accounts already have a past: rows dated before the
+        # window. Asked before any feed row lands, so nothing this run writes
+        # can count as the account's own history. Those accounts are never
+        # anchored — see `domain.bank_balance.anchor_verdict`.
+        prior_history = {
+            account.id
+            for account in targets
+            if account.id in first_sync_ids
+            and await self.txn_repo.has_rows_before(account.id, since.date())
+        }
+
         # How a posting reaches the row it belongs to, in order:
         #   1. Same bank id — the identity path. Most banks keep the id from
         #      pending to posted, so this is the main road, and it involves no
@@ -687,9 +700,11 @@ class SimpleFINService:
         # imported rows starts thousands short on a carried-balance card.
         # One uncategorized "Starting Balance" row closes the gap: on a cash
         # account it lands in Ready to Assign, on a card it shows as
-        # Uncovered — exactly where pre-history debt belongs.
+        # Uncovered — exactly where pre-history debt belongs. An account that
+        # already had a past gets no anchor; the run says so instead.
         anchored = 0
         refused_anchors: list[str] = []
+        anchors_skipped_for_history: list[str] = []
         for account in targets:
             reported = feed_data.balances.get(account.simplefin_account_id or "")
             if reported is None:
@@ -705,11 +720,15 @@ class SimpleFINService:
                 ),
             )
             if account.id in first_sync_ids:
-                anchor, refusal = await self._anchor_opening_balance(budget_id, account, reported)
-                if anchor is not None:
+                outcome = await self._anchor_opening_balance(
+                    budget_id, account, reported, holds_prior_history=account.id in prior_history
+                )
+                if outcome.row is not None:
                     anchored += 1
-                elif refusal is not None:
-                    refused_anchors.append(refusal)
+                if outcome.refusal is not None:
+                    refused_anchors.append(outcome.refusal)
+                if outcome.skipped_for_history is not None:
+                    anchors_skipped_for_history.append(outcome.skipped_for_history)
 
         # Two legs of one movement arrive on two accounts with ordinary bank
         # payees and nothing linking them. Pair them now, while it is still
@@ -723,32 +742,30 @@ class SimpleFINService:
         # Does the ledger now agree with the bank? Asked after every row is
         # in, and only of accounts the user reconciles — see
         # domain.bank_balance for why a mortgage's drift is not a fault.
+        #
+        # Deliberately measured AFTER the anchor, which makes a written
+        # anchor's unexplained drift zero by construction (`anchor_ledger` is
+        # the cleared ledger less exactly what drift already explains). That
+        # is not the blind spot it looks like: the anchor is a legitimate
+        # explanation of the gap — pre-window history a 90-day feed cannot
+        # carry — and measuring before it would flag every first sync of an
+        # account that had any. The gaps that are NOT explained are an anchor
+        # that was refused, reported as its own fault above, and an account
+        # skipped for its history, which this check is left free to report.
         drifts: list[tuple[Account, DriftExplanation]] = []
         ledger_cleared: dict[uuid.UUID, Decimal] = {}
-        for account in targets:
-            sf_id = account.simplefin_account_id or ""
-            reported = feed_data.balances.get(sf_id)
-            if reported is None:
+        reported_on = [
+            account
+            for account in targets
+            if feed_data.balances.get(account.simplefin_account_id or "") is not None
+        ]
+        explanations = await self.account_repo.drift_for(reported_on)
+        for account in reported_on:
+            explanation = explanations[account.id]
+            if explanation is None:
                 continue
-            cleared_total = await self.account_repo.get_cleared_balance(account.id)
-            ledger_cleared[account.id] = cleared_total
-            # Deliberately measured AFTER the anchor, which makes a written
-            # anchor's drift zero by construction. That is not the blind spot
-            # it looks like: the anchor is a legitimate explanation of the
-            # gap — pre-window history a 90-day feed cannot carry — and
-            # measuring before it would flag every first sync of an account
-            # that had any. The gap that is NOT explained is an anchor that
-            # was refused, and that is reported as its own fault above.
-            explanation = explain_drift(
-                reported,
-                cleared_total,
-                unposted_cleared=await self.account_repo.get_unposted_cleared(account.id),
-                balance_as_of=as_of_date(feed_data.balance_dates.get(sf_id)),
-                newest_cleared_on=await self.account_repo.get_newest_cleared_on(account.id),
-            )
-            if explanation is not None and drift_is_a_fault(
-                explanation, reconciled=account.last_reconciled_at is not None
-            ):
+            ledger_cleared[account.id] = explanation.ledger_cleared
+            if drift_is_a_fault(explanation, reconciled=account.last_reconciled_at is not None):
                 drifts.append((account, explanation))
 
         # Update per-account sync state — for the accounts this feed actually
@@ -794,6 +811,7 @@ class SimpleFINService:
             ledger_cleared=ledger_cleared,
             drifts=drifts,
             refused_anchors=refused_anchors,
+            anchors_skipped_for_history=anchors_skipped_for_history,
             fault=fault,
             change_batch_id=run_batch_id,
             counts={
@@ -836,6 +854,7 @@ class SimpleFINService:
             "removed_pending": removed_pending,
             "anchored": anchored,
             "refused_anchors": refused_anchors,
+            "anchors_skipped_for_history": anchors_skipped_for_history,
             "paired": paired,
             "pairs_for_review": pairs_for_review,
             "orphaned_links": [
@@ -1076,6 +1095,7 @@ class SimpleFINService:
         ledger_cleared: dict[uuid.UUID, Decimal],
         drifts: list[tuple[Account, DriftExplanation]],
         refused_anchors: list[str],
+        anchors_skipped_for_history: list[str],
         fault: str | None,
         change_batch_id: uuid.UUID | None,
         counts: dict[str, int],
@@ -1148,6 +1168,7 @@ class SimpleFINService:
             ],
             balance_drift=_drift_records(drifts),
             refused_anchors=list(refused_anchors),
+            anchors_skipped_for_history=list(anchors_skipped_for_history),
             change_batch_id=change_batch_id,
             skip_reasons=skip_reasons,
             accounts=per_account,
@@ -1248,30 +1269,47 @@ class SimpleFINService:
         return len(confident), len(review)
 
     async def _anchor_opening_balance(
-        self, budget_id: uuid.UUID, account: Account, reported: Decimal
-    ) -> tuple[Transaction | None, str | None]:
+        self,
+        budget_id: uuid.UUID,
+        account: Account,
+        reported: Decimal,
+        *,
+        holds_prior_history: bool,
+    ) -> _AnchorOutcome:
         """One row that makes the ledger equal what the bank says — first
-        sync only.
+        sync only, and only for an account with no past here.
 
         The fetch window is 90 days and later syncs never reach further
         back, so everything older lives only in the reported balance. Dated
         the day before the oldest imported row (history genuinely starts
-        there), reconciled (the bank itself is the source), and
-        uncategorized on purpose — the reconciliation adjustment's rule:
-        on a cash account the gap belongs in Ready to Assign, on a card it
-        is pre-history debt and shows as Uncovered. Through the service, so
-        it is change-logged and undoable.
+        there) and uncategorized on purpose — the reconciliation
+        adjustment's rule: on a cash account the gap belongs in Ready to
+        Assign, on a card it is pre-history debt and shows as Uncovered.
+        Through the service, so it is change-logged and undoable.
 
-        Returns (row, refusal). Both None means the ledger already agreed,
-        which is the ordinary no-op. A refusal is a gap this row would have
-        written that does not have the shape of pre-window history — see
-        `domain.bank_balance.anchor_verdict`. It is reported rather than
-        written, because the drift check that would otherwise catch it is
-        disarmed by this very row.
+        Cleared, not reconciled. It used to be written reconciled, which made
+        it undeletable — and the one time it was wrong (sized against
+        duplicates queued for review) the person could neither remove it nor
+        see why it was there. The bank is its source, which is what cleared
+        means; reconciled is the person's own sign-off, and theirs to give.
+
+        Measured on `txn_filters.anchor_ledger`, the same cleared ledger the
+        drift check reads less the slices drift already explains, so a
+        written anchor leaves nothing unexplained behind it.
+
+        At most one of the outcome's fields is set; none means the ledger
+        already agreed, the ordinary no-op. A refusal is a gap this row would
+        have written that does not have the shape of pre-window history; it
+        is reported rather than written, because the drift check that would
+        otherwise catch it is disarmed by this very row. A skip for history
+        is reported too, informationally, and leaves the drift check armed.
         """
-        ledger = Decimal(str(await self.account_repo.get_balance(account.id)))
+        ledger = await self.account_repo.get_anchor_ledger(account.id, today_utc())
         verdict = anchor_verdict(
-            reported, ledger, is_liability=account.classification == LIABILITY_CLASSIFICATION
+            reported,
+            ledger,
+            is_liability=account.classification == LIABILITY_CLASSIFICATION,
+            holds_prior_history=holds_prior_history,
         )
         if verdict.refused:
             logger.warning(
@@ -1281,9 +1319,13 @@ class SimpleFINService:
                 reported,
                 ledger,
             )
-            return None, describe_refused_anchor(account.name, verdict, reported, ledger)
+            return _AnchorOutcome(
+                refusal=describe_refused_anchor(account.name, verdict, reported, ledger)
+            )
+        if verdict.skipped_for_history:
+            return _AnchorOutcome(skipped_for_history=describe_skipped_anchor(account.name))
         if not verdict.should_write:
-            return None, None
+            return _AnchorOutcome()
         gap = verdict.gap
         oldest = await self.txn_repo.get_oldest_cleared_date_for_account(account.id)
         anchor_date = oldest - timedelta(days=1) if oldest is not None else today_utc()
@@ -1296,12 +1338,12 @@ class SimpleFINService:
                 payee_name=STARTING_BALANCE_PAYEE,
                 category_id=None,
                 memo="Anchors this account to the balance your bank reported",
-                cleared="reconciled",
+                cleared="cleared",
                 approved=True,
                 auto_categorize=False,
             ),
         )
-        return created, None
+        return _AnchorOutcome(row=created)
 
     async def _import_feed_row(
         self, budget_id: uuid.UUID, account: Account, feed: FeedRecord
