@@ -1121,7 +1121,8 @@ export function CreditCardsSection({
                         })
                       }
                       onPeekCategory={(categoryId, categoryName) =>
-                        setPeek({ kind: 'category', categoryId, categoryName })
+                        // "Rode on this card in {month}" explains one month.
+                        setPeek({ kind: 'category', categoryId, categoryName, month })
                       }
                       onTarget={() =>
                         setTargetFor({ categoryId: card.category_id as string, name: card.name })

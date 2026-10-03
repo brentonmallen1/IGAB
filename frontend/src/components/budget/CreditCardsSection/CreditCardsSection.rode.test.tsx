@@ -161,10 +161,12 @@ describe('an opened card', () => {
     // The list gives way to the envelope's transactions rather than stacking.
     expect(screen.queryByRole('dialog', { name: /^Rode on/ })).toBeNull()
     expect(screen.getByTestId('peek')).toBeInTheDocument()
+    // On the month the ride is about: the envelope's rows that month.
     expect(peeked.scope).toEqual({
       kind: 'category',
       categoryId: 'c-dining',
       categoryName: 'Dining',
+      month: '2026-08-01',
     })
   })
 })

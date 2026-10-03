@@ -10,14 +10,17 @@ import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { Transaction } from '../../../types'
 import './TransactionsPeekModal.css'
 import { openAccounts } from '../../../utils/accountLists'
+import { wholeMonthWindow } from '../../../utils/dateWindow'
 
 const RECENT_LIMIT = 10
 const ALL_LIMIT = 1000
 
 /** What the peek is about: one category across accounts (the grid's
- *  Activity click), or one account whole (the cards strip's Set aside). */
+ *  Activity click), or one account whole (the cards strip's Set aside).
+ *  A category scope with a `month` ("YYYY-MM-01") opens on that month's
+ *  rows — the ones the Activity figure that was clicked counts. */
 export type PeekScope =
-  | { kind: 'category'; categoryId: string; categoryName: string }
+  | { kind: 'category'; categoryId: string; categoryName: string; month?: string }
   | { kind: 'account'; accountId: string; accountName: string }
 
 interface Props {
@@ -50,14 +53,19 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   const [showAll, setShowAll] = useState(false)
   const navigate = useNavigate()
   const setTransactionSearch = useUIStore((s) => s.setTransactionSearch)
-  const { formatMoney, formatMoneyOrDash, formatDate } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatDate, formatMonth } = useFormatters()
 
+  // The whole month, not "so far": Activity counts a future-dated row later
+  // this month, so the list behind the number has to show it too.
+  const month = scope.kind === 'category' ? scope.month : undefined
+  const monthRange = month && !showAll ? wholeMonthWindow(month) : null
   const { data, isPending } = useTransactionsPeek(
     budgetId,
     scope.kind === 'category'
       ? { categoryId: scope.categoryId, accountId: accountFilter || null }
       : { accountId: scope.accountId },
-    showAll ? ALL_LIMIT : RECENT_LIMIT
+    showAll || monthRange ? ALL_LIMIT : RECENT_LIMIT,
+    monthRange
   )
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: payees = [] } = usePayees(budgetId)
@@ -103,7 +111,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
           <span id="category-txns-title" className="category-txns__title">
             {scope.kind === 'category' ? scope.categoryName : scope.accountName}
             <span className="category-txns__subtitle">
-              {showAll ? 'All transactions' : 'Recent transactions'}
+              {showAll ? 'All transactions' : month ? formatMonth(month) : 'Recent transactions'}
             </span>
           </span>
           <div className="category-txns__header-actions">
@@ -226,7 +234,17 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
             Open in Transactions
           </button>
           <span className="category-txns__footer-spacer" />
-          {totalCount > transactions.length ? (
+          {monthRange ? (
+            // The month is all here; older rows are what "all" adds, and the
+            // month's count says nothing about how many of those there are.
+            <button
+              type="button"
+              className="category-txns__footer-btn category-txns__footer-btn--primary"
+              onClick={() => setShowAll(true)}
+            >
+              Load all transactions
+            </button>
+          ) : totalCount > transactions.length ? (
             <button
               type="button"
               className="category-txns__footer-btn category-txns__footer-btn--primary"

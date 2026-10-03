@@ -49,15 +49,24 @@ export function monthsAgoStartISO(monthsBack: number): string {
   return toISODate(new Date(now.getFullYear(), now.getMonth() - monthsBack, 1))
 }
 
+/** A month, the 1st through its last day — unclamped. The window a budget
+ * month's Activity counts: a future-dated row later this month is in it.
+ * Takes "YYYY-MM" or any date inside the month. */
+export function wholeMonthWindow(month: string): { start: string; end: string } {
+  const [y, m] = month.split('-').map(Number)
+  return {
+    start: toISODate(new Date(y, m - 1, 1)),
+    end: toISODate(new Date(y, m, 0)), // day 0 of next month = last of this
+  }
+}
+
 /** Full window of a month, end clamped to today (report queries never run
  * past today, so panel totals must not either). Takes "YYYY-MM" or any date
  * inside the month — the server's month fields arrive as "YYYY-MM-01". */
 export function monthWindow(month: string): { start: string; end: string } {
-  const [y, m] = month.split('-').map(Number)
-  const start = toISODate(new Date(y, m - 1, 1))
-  const lastDay = toISODate(new Date(y, m, 0)) // day 0 of next month = last of this
+  const { start, end } = wholeMonthWindow(month)
   const t = today()
-  return { start, end: lastDay < t ? lastDay : t }
+  return { start, end: end < t ? end : t }
 }
 
 /** "This month so far": the 1st through today — the date picker's "This Month

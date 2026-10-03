@@ -274,7 +274,12 @@ export const CategoryRow = memo(function CategoryRow({
       {showTxnList && (
         <TransactionsPeekModal
           budgetId={budgetId}
-          scope={{ kind: 'category', categoryId: category.id, categoryName: category.name }}
+          scope={{
+            kind: 'category',
+            categoryId: category.id,
+            categoryName: category.name,
+            month,
+          }}
           onClose={() => setShowTxnList(false)}
           onAddTransaction={() => {
             setShowTxnList(false)

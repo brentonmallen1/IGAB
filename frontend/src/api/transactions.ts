@@ -219,16 +219,21 @@ export function useBudgetTransactions(
 export function useTransactionsPeek(
   budgetId: string | null,
   scope: { categoryId?: string | null; accountId?: string | null },
-  limit: number
+  limit: number,
+  window: { start: string; end: string } | null = null
 ) {
   const { categoryId = null, accountId = null } = scope
   return useQuery({
-    queryKey: [ROOT.transactionsPeek, budgetId, categoryId, accountId, limit],
+    queryKey: [ROOT.transactionsPeek, budgetId, categoryId, accountId, limit, window],
     queryFn: async () => {
       const params: Record<string, unknown> = categoryId
         ? { category_ids: categoryId, scope: 'leaf', limit }
         : { scope: 'parent', limit }
       if (accountId) params.account_ids = accountId
+      if (window) {
+        params.start_date = window.start
+        params.end_date = window.end
+      }
       // Only the account scope: a running total across accounts is not a
       // balance of anything, and the server refuses it there anyway.
       if (accountId && !categoryId) params.running_balance = true
