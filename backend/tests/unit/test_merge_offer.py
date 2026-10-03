@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from igab.domain.merging import MergeSide, may_offer_merge
+from igab.domain.merging import MergeSide, choose_survivor, may_offer_merge
 
 CASES = json.loads(
     (Path(__file__).resolve().parents[3] / "shared" / "merge_cases.json").read_text()
@@ -59,3 +59,19 @@ def test_the_register_never_offers_what_the_server_refuses(case):
     fails on both sides."""
     if case["register_offers"]:
         assert case["server_accepts"], case["note"]
+
+
+@pytest.mark.parametrize(
+    "case", [c for c in CASES if c["register_offers"]], ids=lambda c: c["note"]
+)
+def test_kept_is_the_server_survivor(case):
+    """`kept` is who survives whatever the user picks; null means the pick is
+    honoured. The merge preview locks its Keep badge from the same field."""
+    a, b = _side(case["a"], "side-a"), _side(case["b"], "side-b")
+    if case["kept"] is None:
+        assert choose_survivor(a, b, a.id)[0] is a and choose_survivor(a, b, b.id)[0] is b
+        return
+    kept = a if case["kept"] == "a" else b
+    for requested in (None, a.id, b.id):
+        assert choose_survivor(a, b, requested)[0] is kept, case["note"]
+        assert choose_survivor(b, a, requested)[0] is kept, case["note"]

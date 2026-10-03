@@ -500,19 +500,141 @@ async def test_merge_used_to_leave_the_survivor_uncleared_after_a_posted_bank_lo
     )
 
 
-async def test_merge_refuses_a_structured_loser(db_session):
-    services, budget, checking = await _setup(db_session)
-    reconciled = await _bank_row(
-        db_session, budget, checking, amount="-88.00", cleared="reconciled"
-    )
-    parent = await _split(
-        services, budget, checking, "-88.00", [("-50.00", None), ("-38.00", None)]
+async def _groceries_and_misc(db_session, budget):
+    group = await create_category_group(db_session, budget, "Everyday")
+    return (
+        await create_category(db_session, budget, group, "Groceries"),
+        await create_category(db_session, budget, group, "Misc"),
     )
 
-    with pytest.raises(InvariantViolation, match="merge away a split"):
-        await services.transactions.merge(budget.id, [reconciled.id, parent.id])
+
+async def _reconciled_bank_row_and_scanned_split(db_session, services, budget, checking):
+    """The bank row was reconciled before the receipt was itemised by hand."""
+    groceries, misc = await _groceries_and_misc(db_session, budget)
+    bank = await _bank_row(
+        db_session,
+        budget,
+        checking,
+        amount="-88.00",
+        cleared="reconciled",
+        category=misc,
+    )
+    parent = await _split(
+        services,
+        budget,
+        checking,
+        "-88.00",
+        [("-50.00", groceries.id), ("-38.00", misc.id)],
+    )
+    return bank, parent, groceries, misc
+
+
+async def test_merge_used_to_refuse_a_split_losing_to_a_reconciled_row(db_session):
+    """The refusal told the user to unreconcile a row the statement vouched
+    for. Now the reconciled row takes the lines and becomes the split."""
+    services, budget, checking = await _setup(db_session)
+    bank, parent, groceries, misc = await _reconciled_bank_row_and_scanned_split(
+        db_session, services, budget, checking
+    )
+    bank_day = TODAY - timedelta(days=2)
+    bank.date = bank_day
+    await db_session.flush()
+
+    survivor = await services.transactions.merge(budget.id, [bank.id, parent.id])
+
+    assert survivor.id == bank.id
+    assert survivor.is_split and survivor.category_id is None, "the lines carry the categories"
+    assert survivor.cleared == "reconciled" and survivor.amount == Decimal("-88.00")
     await db_session.refresh(parent)
+    assert parent.is_deleted
+    lines = await services.transaction_repo.get_splits(bank.id)
+    assert sorted((line.amount, line.category_id) for line in lines) == sorted(
+        [(Decimal("-50.00"), groceries.id), (Decimal("-38.00"), misc.id)]
+    )
+    assert all(line.cleared == "reconciled" and line.date == bank_day for line in lines), (
+        "lines share their new parent's cleared state and date"
+    )
+    assert await services.transaction_repo.get_splits(parent.id) == []
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_the_review_queue_accept_takes_in_the_split_too(db_session):
+    """The duplicate review's Merge is the same merge; it used to fail with
+    nothing on screen."""
+    services, budget, checking = await _setup(db_session)
+    bank, parent, *_ = await _reconciled_bank_row_and_scanned_split(
+        db_session, services, budget, checking
+    )
+    await _accept(services, bank, parent)
+    await db_session.refresh(bank)
+    assert bank.is_split and len(await services.transaction_repo.get_splits(bank.id)) == 2
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_a_split_that_does_not_add_up_to_the_reconciled_row_is_refused(db_session):
+    services, budget, checking = await _setup(db_session)
+    groceries, misc = await _groceries_and_misc(db_session, budget)
+    bank = await create_transaction(
+        db_session, budget, checking, "-90.00", TODAY, cleared="reconciled"
+    )
+    parent = await _split(
+        services, budget, checking, "-88.00", [("-50.00", groceries.id), ("-38.00", misc.id)]
+    )
+
+    with pytest.raises(InvariantViolation, match="identical amounts"):
+        await services.transactions.merge(budget.id, [bank.id, parent.id])
+    await db_session.refresh(parent)
+    await db_session.refresh(bank)
+    assert not parent.is_deleted and not bank.is_split
+
+
+async def test_undo_hands_the_lines_back(db_session):
+    services, budget, checking = await _setup(db_session)
+    bank, parent, groceries, misc = await _reconciled_bank_row_and_scanned_split(
+        db_session, services, budget, checking
+    )
+    await services.transactions.merge(budget.id, [bank.id, parent.id])
+
+    batch_id = await _batch_of(db_session, budget.id, bank.id)
+    await UndoService(db_session).undo_batch(budget.id, batch_id)
+    await db_session.refresh(bank)
+    await db_session.refresh(parent)
+    assert not bank.is_split and bank.category_id == misc.id and bank.cleared == "reconciled"
     assert not parent.is_deleted
+    lines = await services.transaction_repo.get_splits(parent.id)
+    assert len(lines) == 2 and all(line.cleared == "uncleared" for line in lines)
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_merge_still_refuses_a_split_into_another_structure(db_session):
+    services, budget, checking = await _setup(db_session)
+    savings = await create_account(db_session, budget, "Savings")
+    reconciled_split = await _split(
+        services,
+        budget,
+        checking,
+        "-88.00",
+        [("-50.00", None), ("-38.00", None)],
+        cleared="reconciled",
+    )
+    other_split = await _split(
+        services, budget, checking, "-88.00", [("-60.00", None), ("-28.00", None)]
+    )
+    with pytest.raises(InvariantViolation, match="another split or a transfer"):
+        await services.transactions.merge(budget.id, [reconciled_split.id, other_split.id])
+
+    leg = await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY,
+            amount=Decimal("-88.00"),
+            cleared="reconciled",
+            transfer_account_id=savings.id,
+        ),
+    )
+    with pytest.raises(InvariantViolation, match="another split or a transfer"):
+        await services.transactions.merge(budget.id, [leg.id, other_split.id])
 
 
 async def test_merge_refuses_the_flat_row_as_survivor_over_a_split_parent(db_session):

@@ -836,6 +836,15 @@ class UndoService(UndoRestores):
         """
         if not (isinstance(entity, Transaction) and entity.cleared == ClearedStatus.RECONCILED):
             return frozenset()
+        # A split line this step moved between parents (a merge handing a
+        # receipt's lines to the reconciled bank row) took the new parent's
+        # cleared state and date with it. Undo takes it back to the parent it
+        # came from, and the mirror there — not the reconciled one — is what
+        # its fields must match. A line is not money: its parent carries it.
+        before_parent = (change.before or {}).get("parent_transaction_id")
+        after_parent = (change.after or {}).get("parent_transaction_id")
+        if before_parent and after_parent and before_parent != after_parent:
+            return frozenset()
 
         def typed(snap: dict[str, Any] | None) -> dict[str, Any]:
             return {

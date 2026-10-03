@@ -17,9 +17,9 @@ import type { Transaction } from '../../types'
  * and the modal swallowed the refusal — a duplicate of a reconciled row
  * could not be merged and nothing said why.
  *
- * Two clauses here are deliberately stricter than the server; see
+ * One clause here is deliberately stricter than the server; see
  * `_deliberate_divergence` in the fixture. Offerability is not survivorship:
- * which row survives stays the server's decision.
+ * which row survives stays the server's decision (see `lockedSurvivor`).
  */
 export function mayOfferMerge(a: Transaction, b: Transaction): boolean {
   if (a.id === b.id) return false
@@ -28,11 +28,12 @@ export function mayOfferMerge(a: Transaction, b: Transaction): boolean {
   if (a.account_id !== b.account_id) return false
   // The statement vouched for both, so neither may be the one that goes.
   if (a.cleared === 'reconciled' && b.cleared === 'reconciled') return false
-  // Stricter than the server, on purpose: it would keep the split or the
-  // leg and merge the plain row away, but the preview shows two plain rows
-  // becoming one and cannot show what happens to a split's lines or a
+  // One split folds into the other row; two would leave one set of lines
+  // with nowhere to go.
+  if (a.is_split && b.is_split) return false
+  // Stricter than the server, on purpose: it would keep the leg and merge
+  // the plain row away, but the preview cannot show what happens to a
   // transfer's partner.
-  if (a.is_split || b.is_split) return false
   if (a.transfer_id || b.transfer_id) return false
   if (a.parent_transaction_id || b.parent_transaction_id) return false
   // Two bank records with two different ids are two real transactions the
@@ -40,4 +41,19 @@ export function mayOfferMerge(a: Transaction, b: Transaction): boolean {
   // them, and this is the clause that was missing.
   if (a.sync_id && b.sync_id && a.sync_id !== b.sync_id) return false
   return true
+}
+
+/**
+ * The row the server keeps whatever the user picks, or null when the pick is
+ * theirs: reconciled first, then a split or transfer leg. The first two rules
+ * of `choose_survivor` (backend domain/merging.py) — the preview has to lock
+ * its Keep badge before any request, so it holds a copy, pinned by `kept` in
+ * `shared/merge_cases.json` on both sides.
+ */
+export function lockedSurvivor(a: Transaction, b: Transaction): Transaction | null {
+  const reconciledA = a.cleared === 'reconciled'
+  if (reconciledA !== (b.cleared === 'reconciled')) return reconciledA ? a : b
+  const structuredA = a.is_split || !!a.transfer_id
+  if (structuredA !== (b.is_split || !!b.transfer_id)) return structuredA ? a : b
+  return null
 }

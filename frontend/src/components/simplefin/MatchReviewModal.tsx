@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react'
+import { apiErrorMessage } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
@@ -311,6 +312,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
     return i >= 0 ? i : 0
   })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
   const acceptMatch = useAcceptMatch()
   const rejectMatch = useRejectMatch()
   const deciding = acceptMatch.isPending || rejectMatch.isPending
@@ -333,7 +335,18 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
 
   async function decide(accept: boolean) {
     const id = current.id
-    await (accept ? acceptMatch : rejectMatch).mutateAsync(id)
+    // A refused accept used to reject the awaited promise with nothing
+    // catching it: the button did nothing and nothing said why. The refusal
+    // is the one thing the user needs to read.
+    setError(null)
+    try {
+      await (accept ? acceptMatch : rejectMatch).mutateAsync(id)
+    } catch (err) {
+      setError(
+        apiErrorMessage(err, accept ? 'These could not be merged' : 'Could not keep these separate')
+      )
+      return
+    }
     handleDismiss(id)
   }
 
@@ -354,12 +367,16 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
       // in a settings dialog.
       footer={
         <div className="dialog-actions">
+          {error && <span className="dialog-form__error">{error}</span>}
           {pending.length > 1 && (
             <>
               <button
                 type="button"
                 className="dialog-btn dialog-btn--secondary match-modal__nav-btn"
-                onClick={() => setIdx((i) => Math.max(0, i - 1))}
+                onClick={() => {
+                  setError(null)
+                  setIdx((i) => Math.max(0, i - 1))
+                }}
                 disabled={idx === 0}
                 aria-label="Previous match"
               >
@@ -368,7 +385,10 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
               <button
                 type="button"
                 className="dialog-btn dialog-btn--secondary match-modal__nav-btn"
-                onClick={() => setIdx((i) => Math.min(pending.length - 1, i + 1))}
+                onClick={() => {
+                  setError(null)
+                  setIdx((i) => Math.min(pending.length - 1, i + 1))
+                }}
                 disabled={idx === pending.length - 1}
                 aria-label="Next match"
               >

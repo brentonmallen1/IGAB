@@ -19,10 +19,15 @@ Precedence for the survivor:
    category and memo are the user's choices; the bank row's are descriptors.
 5. **The older row.**
 
-A merge is refused when the loser would be structured (the pair cannot be
-collapsed without losing something), when both are reconciled, when a split
-line is involved, when the rows sit in different accounts, or when they
-carry different bank identities.
+A reconciled plain row that outranks a split takes the split in: the lines
+move onto the reconciled row, which becomes the split. That is the bank row
+meeting the receipt someone itemised before the statement arrived — refusing
+it left the user one choice, unreconcile a row the statement vouched for.
+
+A merge is refused when the loser is structured and the survivor cannot take
+its structure (a transfer leg anywhere, or two splits), when both are
+reconciled, when a split line is involved, when the rows sit in different
+accounts, or when they carry different bank identities.
 
 Pure: takes plain slices of the two rows, returns the verdict. Amounts are
 not judged here — whether the survivor may take the loser's amount is the
@@ -110,10 +115,10 @@ def survivor_violation(
         if survivor.reconciled:
             return "The reconciled transaction must be kept as the survivor"
         return "A split transaction or transfer must be kept as the survivor"
-    if deleted.is_split:
+    if deleted.is_split and survivor.structured:
         return (
-            "Cannot merge away a split transaction; unreconcile the other row "
-            "so the split can be kept, or reject the match"
+            "Cannot merge a split into another split or a transfer; "
+            "delete the one you don't want instead"
         )
     if deleted.transfer_id is not None:
         return "Cannot merge away a transfer; reject the match or delete the transfer instead"

@@ -1476,6 +1476,17 @@ class TransactionService:
             # balance by it.
             raise InvariantViolation("Only transactions with identical amounts can be merged")
 
+        # A split losing to a reconciled plain row: the survivor takes the
+        # lines and becomes the split (survivor_violation has refused every
+        # survivor that could not). The lines must add up to the amount the
+        # statement vouched for — that amount cannot move.
+        adopting = deleted.is_split
+        if adopting and updates.get("amount", survivor.amount) != deleted.amount:
+            raise InvariantViolation(
+                f"The split's lines add up to {abs(deleted.amount):.2f}, but the reconciled "
+                f"transaction is {abs(survivor.amount):.2f}; edit the split to match first"
+            )
+
         # Identity and import metadata the survivor lacks.
         if not survivor.import_id and deleted.import_id:
             updates["import_id"] = deleted.import_id
@@ -1507,6 +1518,9 @@ class TransactionService:
             updates["memo"] = deleted.memo
         elif deleted.memo and survivor.memo and deleted.memo != survivor.memo:
             updates["memo"] = f"{survivor.memo} — {deleted.memo}"
+        if adopting:
+            updates["is_split"] = True
+            updates["category_id"] = None
         if survivor.transfer_id is None:
             if survivor.category_id is None and deleted.category_id and not survivor.is_split:
                 updates["category_id"] = deleted.category_id
@@ -1543,6 +1557,19 @@ class TransactionService:
             await self.transaction_repo.refresh(survivor)
             await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
             await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
+            # After the survivor's record, so undo (LIFO) hands the lines back
+            # before the survivor stops being a split. Lines share their
+            # parent's date and cleared state, as _mirror_children keeps them.
+            if adopting:
+                for line in await self.transaction_repo.get_splits(deleted.id):
+                    line_before = snapshot("transaction", line)
+                    moved = await self.transaction_repo.update(
+                        line.id,
+                        parent_transaction_id=survivor.id,
+                        date=survivor.date,
+                        cleared=survivor.cleared,
+                    )
+                    await self._record_txn(moved, "update", before=line_before)
         return survivor
 
     async def _partner_on_budget_via_payee(self, payee: Payee | None) -> bool | None:

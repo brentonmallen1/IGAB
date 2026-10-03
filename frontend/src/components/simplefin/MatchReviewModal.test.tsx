@@ -70,4 +70,18 @@ describe('MatchReviewModal', () => {
     expect(api.reject).toHaveBeenCalledWith('a')
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
+
+  it('shows a refused accept instead of doing nothing, and stays on the match', async () => {
+    const onClose = vi.fn()
+    api.accept.mockImplementationOnce(() =>
+      Promise.reject({
+        isAxiosError: true,
+        response: { status: 400, data: { detail: 'Transactions must be in the same account' } },
+      })
+    )
+    render(<MatchReviewModal matches={[match('a')]} budgetId="b1" onClose={onClose} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Accept link' }))
+    expect(await screen.findByText('Transactions must be in the same account')).toBeTruthy()
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })
