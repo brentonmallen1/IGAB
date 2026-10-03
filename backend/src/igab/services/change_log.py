@@ -60,6 +60,7 @@ from igab.db.models import (
     new_uuid,
 )
 from igab.domain.payee_names import samples_from_legacy
+from igab.domain.projected_interest import PROJECTION_ORIGIN
 
 ENTITY_MODELS: dict[str, type] = {
     "transaction": Transaction,
@@ -149,6 +150,9 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "sync_source",
         "created_via",
         "scheduled_transaction_id",
+        # Restored with the row so undoing a retire or a decline puts the
+        # projection back as a projection, not as an ordinary interest row.
+        "projected_interest_month",
         "linked_transaction_id",
         "link_confidence",
         "has_sync_source",
@@ -396,9 +400,11 @@ def source_for(created_via: str | None) -> str:
     """The change-log `source` a row's origin implies.
 
     `created_via` is where the row came from (domain: manual | import | sync
-    | scheduled | ai_receipt | ai_nl); `source` is who acted, as Activity
-    renders it. One mapping, so a sync-created row can no longer be logged
-    as a manual entry — which every one of them was, before this existed.
+    | scheduled | projection | ai_receipt | ai_nl); `source` is who acted, as
+    Activity renders it. One mapping, so a sync-created row can no longer be
+    logged as a manual entry — which every one of them was, before this
+    existed. A projected interest row is the app's own writing (`system`),
+    so a bare ⌘Z never lands on one; it leaves with the payment's batch.
     """
     if created_via is None:
         return "manual"
@@ -406,7 +412,7 @@ def source_for(created_via: str | None) -> str:
         return "ai"
     if created_via == "import":
         return "import"
-    if created_via in ("sync", "scheduled"):
+    if created_via in ("sync", "scheduled", PROJECTION_ORIGIN):
         return "system"
     return "manual"
 

@@ -26,7 +26,7 @@ from igab.domain.matching import (
 )
 from igab.integrations.simplefin.client import SimpleFINFeed
 
-from .session_stubs import writable_session
+from .session_stubs import without_projected_interest, writable_session
 
 # ─── Import ID Generation Tests ──────────────────────────────────────────────
 
@@ -300,12 +300,14 @@ class TestHistoricalCategoryInference:
         category_repo = MagicMock()
         payee_repo = MagicMock()
 
-        return TransactionService(
-            session=session,
-            transaction_repo=txn_repo,
-            account_repo=account_repo,
-            category_repo=category_repo,
-            payee_repo=payee_repo,
+        return without_projected_interest(
+            TransactionService(
+                session=session,
+                transaction_repo=txn_repo,
+                account_repo=account_repo,
+                category_repo=category_repo,
+                payee_repo=payee_repo,
+            )
         )
 
     async def test_uses_most_recent_category_when_available(self, mock_service):
@@ -505,12 +507,14 @@ class TestSimpleFINSyncDeduplication:
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
         # The posting rule is written by TransactionService; bind the real
         # writer to this test's mocked repo so txn_repo.update stays observable.
-        real = TransactionService(
-            session=AsyncMock(),
-            transaction_repo=svc.txn_repo,
-            account_repo=AsyncMock(),
-            category_repo=AsyncMock(),
-            payee_repo=AsyncMock(),
+        real = without_projected_interest(
+            TransactionService(
+                session=AsyncMock(),
+                transaction_repo=svc.txn_repo,
+                account_repo=AsyncMock(),
+                category_repo=AsyncMock(),
+                payee_repo=AsyncMock(),
+            )
         )
         svc.txn_service.apply_bank_posting = real.apply_bank_posting
         svc.txn_service.release_bank_link = real.release_bank_link

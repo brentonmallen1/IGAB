@@ -60,6 +60,7 @@ from igab.services.liability_service import (
     LiabilityService,
     liability_terms_check,
 )
+from igab.services.projected_interest import ProjectedInterest
 from igab.utils.clock import recorded_on, today_utc
 
 router = APIRouter(route_class=CommitRoute)
@@ -120,6 +121,26 @@ async def _get_owned_liability(
     if liability is None or liability.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Liability not found")
     return liability
+
+
+#: The terms a loan's projected interest rows are written from. A change to
+#: any of them changes what the loan's months should carry.
+_PROJECTION_TERMS = ("interest_rate", "promo_end_date", "linked_account_id")
+
+
+async def _settle_projections(
+    liability_repo: LiabilityRepository,
+    recorder: ChangeRecorder,
+    account_ids: list[uuid.UUID | None],
+) -> None:
+    """Re-plan the projected interest of every account named — the one a
+    liability now projects for, and the one it stopped projecting for —
+    inside the caller's batch, so undoing the terms change undoes the rows
+    it wrote or retired (services/projected_interest.py)."""
+    await liability_repo.session.flush()
+    projected = ProjectedInterest(liability_repo.session, recorder)
+    for account_id in dict.fromkeys(a for a in account_ids if a is not None):
+        await projected.settle_account(account_id)
 
 
 async def _validate_linked_account(
@@ -244,6 +265,7 @@ async def _liability_out(
         recent_interest_average=status_.average_interest,
         estimated_interest_this_month=status_.estimated_interest_this_month,
         balance_with_estimate=status_.balance_with_estimate,
+        projected_interest_this_month=status_.projected_interest_this_month,
         uncounted_deposits=status_.uncounted_deposits,
         implied_term_months=terms.implied_term_months,
         implied_never_pays_off=terms.implied_never_pays_off,
@@ -381,6 +403,7 @@ async def create_liability(
                 action="create",
                 after=snapshot("liability_snapshot", seeded),
             )
+        await _settle_projections(liability_repo, recorder, [liability.linked_account_id])
         # The liability records last: ⌘Z's toast names a batch's newest row,
         # and "create liability" is what the person did.
         await recorder.record(
@@ -465,17 +488,24 @@ async def update_liability(
             detail="A managed liability's balance comes from its account — unlink it first",
         )
 
-    liability = await liability_repo.update(liability.id, **changes)
-    after = snapshot("liability", liability)
-    if snapshots_match(after, before):  # non-empty diff — something changed
-        await recorder.record(
-            budget_id=budget_id,
-            entity_type="liability",
-            entity_id=liability.id,
-            action="update",
-            before=before,
-            after=after,
-        )
+    previous_account_id = liability.linked_account_id
+    with recorder.batch():
+        liability = await liability_repo.update(liability.id, **changes)
+        after = snapshot("liability", liability)
+        diff = snapshots_match(after, before)
+        if set(diff) & set(_PROJECTION_TERMS):
+            await _settle_projections(
+                liability_repo, recorder, [previous_account_id, liability.linked_account_id]
+            )
+        if diff:  # non-empty diff — something changed
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="liability",
+                entity_id=liability.id,
+                action="update",
+                before=before,
+                after=after,
+            )
     return await _liability_out(liability, liability_service, category_repo, today=today_utc())
 
 
@@ -544,6 +574,7 @@ async def delete_liability(
             before=snapshot("liability", liability),
         )
         await liability_repo.soft_delete(liability.id)
+        await _settle_projections(liability_repo, recorder, [liability.linked_account_id])
 
 
 @router.post(

@@ -761,7 +761,9 @@ async def test_undo_newer_never_splits_a_batch(db_session):
         budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-7.00"))
     )
     changes = await changes_for(db_session, budget.id, "transaction")
-    pair = [c for c in changes if c.batch_id is not None]
+    # Every create is a batch now (a loan payment's projected interest joins
+    # it), so the transfer's pair is the rows sharing the first one's batch.
+    pair = [c for c in changes if c.batch_id == changes[0].batch_id]
     assert len(pair) == 2
 
     undo = UndoService(db_session)

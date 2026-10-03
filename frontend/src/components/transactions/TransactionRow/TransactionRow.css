@@ -651,3 +651,8 @@
 .txn-status-icon--scheduled {
   color: var(--text-muted);
 }
+
+/* Projected interest the app wrote from a loan's terms — provenance too. */
+.txn-status-icon--projected {
+  color: var(--text-muted);
+}

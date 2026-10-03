@@ -384,15 +384,22 @@ export function LiabilityPage() {
             it to the balance itself would leave a figure that agrees with
             the source and matches no register — and would be reconciled
             twice the moment the real row arrives. The server suppresses it
-            for any month that already carries a posted charge. */}
+            for any month that already carries a posted charge.
+            A projected interest row is the other case: the app wrote this
+            month's charge into the register from the terms, so it is IN the
+            balance already, and the line says which part is the app's
+            projection rather than the lender's own row. The server never
+            serves both at once — a projection suppresses the estimate. */}
         <MetricCard
           variant="raised"
           label="Current Balance"
           value={formatMoney(liability.current_balance)}
           sub={
-            liability.estimated_interest_this_month !== null
-              ? `+${formatMoney(liability.estimated_interest_this_month)} interest this month (estimated, not yet posted)`
-              : undefined
+            liability.projected_interest_this_month !== null
+              ? `includes ${formatMoney(liability.projected_interest_this_month)} projected interest this month — replaced when the lender posts its own`
+              : liability.estimated_interest_this_month !== null
+                ? `+${formatMoney(liability.estimated_interest_this_month)} interest this month (estimated, not yet posted)`
+                : undefined
           }
           accent
         />

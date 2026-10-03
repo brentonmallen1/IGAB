@@ -737,6 +737,15 @@ class Transaction(Base):
         # Serves the register's per-account date-ordered scans; its leading
         # account_id also covers the FK's referential-integrity checks
         Index("ix_transactions_account_date", "account_id", "date"),
+        # One LIVE projected interest row per loan and month. Tombstones (a
+        # declined month: deleted, month kept) sit outside it on purpose.
+        Index(
+            "uq_transactions_account_projected_interest_month",
+            "account_id",
+            "projected_interest_month",
+            unique=True,
+            postgresql_where=text("projected_interest_month IS NOT NULL AND NOT is_deleted"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -829,6 +838,20 @@ class Transaction(Base):
     # every path that enters a row from a schedule must stamp it, or the
     # projection books that bill twice.
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # The month (its first day) this row is the app's PROJECTION of a loan's
+    # interest charge for — written from the terms on file by
+    # services/projected_interest.py, because a lender's interest is a
+    # separate payee-less outflow nothing else writes. NULL on every other
+    # row. Three states, read through txn_filters.PROJECTED_INTEREST_ROW:
+    # - live + month: a projection, replaced (retired) when the lender's own
+    #   row arrives;
+    # - deleted + month: a TOMBSTONE — the person declined that month, and it
+    #   is never projected again;
+    # - month NULL: an ordinary row. Editing a projection's amount, date,
+    #   cleared state or account adopts it as real
+    #   (domain.projected_interest.adopts_projection); the app's own retire
+    #   clears the month as it deletes, so a retire is never a tombstone.
+    projected_interest_month: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), index=True

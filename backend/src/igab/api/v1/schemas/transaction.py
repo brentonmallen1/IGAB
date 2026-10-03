@@ -182,6 +182,11 @@ class TransactionResponse(ApiModel):
     #: The schedule this row was entered from, or None. Declared without a
     #: default so the key always serializes.
     scheduled_transaction_id: uuid.UUID | None
+    #: The month this row is the app's projection of a loan's interest for —
+    #: written from the terms on file and replaced when the lender's own row
+    #: arrives — or None for every other row. Declared without a default so
+    #: the key always serializes. See `Transaction.projected_interest_month`.
+    projected_interest_month: datetime.date | None
     has_sync_source: bool
     latitude: float | None = None
     longitude: float | None = None

@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from igab.services.transaction_service import TransactionCreate, TransactionService
 
-from ..session_stubs import writable_session
+from ..session_stubs import without_projected_interest, writable_session
 
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
@@ -62,6 +62,7 @@ class MockTransaction:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     budget_id: uuid.UUID = BUDGET_ID
     account_id: uuid.UUID = ACCOUNT_ID
+    date: date = date(2026, 1, 15)
     category_id: uuid.UUID | None = None
     payee_id: uuid.UUID | None = None
     cleared: str = "uncleared"
@@ -110,12 +111,14 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     session.execute = _stub.execute
     session.scalar = _stub.scalar
 
-    return TransactionService(
-        session=session,
-        transaction_repo=txn_repo,
-        account_repo=account_repo,
-        category_repo=category_repo,
-        payee_repo=payee_repo,
+    return without_projected_interest(
+        TransactionService(
+            session=session,
+            transaction_repo=txn_repo,
+            account_repo=account_repo,
+            category_repo=category_repo,
+            payee_repo=payee_repo,
+        )
     )
 
 

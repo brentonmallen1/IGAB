@@ -30,7 +30,7 @@ import pytest
 from igab.domain.exceptions import InvariantViolation
 from igab.services.transaction_service import TransactionService, TransactionUpdate
 
-from ..session_stubs import writable_session
+from ..session_stubs import without_projected_interest, writable_session
 
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -56,6 +56,7 @@ class MockTransaction:
     parent_transaction_id: uuid.UUID | None = None
     is_split: bool = False
     is_deleted: bool = False
+    projected_interest_month: "date | None" = None
 
 
 def make_service(txn: MockTransaction) -> TransactionService:
@@ -80,12 +81,14 @@ def make_service(txn: MockTransaction) -> TransactionService:
     account_repo = MagicMock()
     account_repo.get_or_raise = AsyncMock(return_value=MagicMock(on_budget=True))
     session = writable_session()
-    return TransactionService(
-        session=session,
-        transaction_repo=txn_repo,
-        account_repo=account_repo,
-        category_repo=MagicMock(),
-        payee_repo=MagicMock(),
+    return without_projected_interest(
+        TransactionService(
+            session=session,
+            transaction_repo=txn_repo,
+            account_repo=account_repo,
+            category_repo=MagicMock(),
+            payee_repo=MagicMock(),
+        )
     )
 
 
@@ -268,12 +271,14 @@ class TestDeleteNonReconciled:
         txn_repo.soft_delete = AsyncMock()
         txn_repo.get_splits = AsyncMock(return_value=[child1, child2])
 
-        svc = TransactionService(
-            session=AsyncMock(),
-            transaction_repo=txn_repo,
-            account_repo=MagicMock(),
-            category_repo=MagicMock(),
-            payee_repo=MagicMock(),
+        svc = without_projected_interest(
+            TransactionService(
+                session=AsyncMock(),
+                transaction_repo=txn_repo,
+                account_repo=MagicMock(),
+                category_repo=MagicMock(),
+                payee_repo=MagicMock(),
+            )
         )
         await svc.delete(BUDGET_ID, parent.id)
 

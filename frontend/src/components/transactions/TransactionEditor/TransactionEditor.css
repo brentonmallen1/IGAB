@@ -186,6 +186,21 @@
   font-size: var(--font-size-xs);
 }
 
+/* A projected interest row: the app wrote it from the loan's terms, and
+   says so. Body colour on chrome — it explains the row; it is not a warning
+   and not the accent's meaningful state. */
+.txn-editor__projection-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-bottom: 1px solid var(--edge);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--surface-chrome);
+  flex-shrink: 0;
+}
+
 .txn-editor__ai-banner-link {
   color: inherit;
   font-weight: 600;

@@ -1010,3 +1010,38 @@ describe('TransactionEditor starting and stopping a split', () => {
     )
   })
 })
+
+/**
+ * A projected interest row (the server wrote it from the loan's terms) says
+ * what it is in the editor, before anyone edits it — which edits make it the
+ * person's own, and that deleting it skips the month. An ordinary row says
+ * nothing.
+ */
+describe('a projected interest row', () => {
+  const projection = {
+    id: 't30',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -120,
+    category_id: null,
+    payee_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: null,
+    is_split: false,
+    sync_id: null,
+    parent_transaction_id: null,
+    projected_interest_month: '2030-01-01',
+  } as unknown as Transaction
+
+  it('carries the note', () => {
+    renderEditor({ transaction: projection })
+    expect(screen.getByRole('note')).toHaveTextContent(/Projected interest/)
+    expect(screen.getByRole('note')).toHaveTextContent(/makes it yours/)
+  })
+
+  it('an ordinary row carries none', () => {
+    renderEditor({ transaction: { ...projection, projected_interest_month: null } })
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+})
