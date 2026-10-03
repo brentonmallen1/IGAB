@@ -128,11 +128,12 @@ class UndoService(UndoRestores):
         self.repo = ChangeLogRepository(session)
 
     async def undo_latest(self, budget_id: uuid.UUID) -> tuple[ChangeLog, BatchUndo]:
-        """Undo the newest live MANUAL change — the server side of ⌘Z —
-        returning the candidate (for the toast) and everything undone (its
-        whole batch, if it had one). Selection is `latest_live_manual`'s;
-        see its docstring for why the client no longer picks."""
-        candidate = await self.repo.latest_live_manual(budget_id)
+        """Undo the newest live change the person made — the server side of
+        ⌘Z — returning the candidate (for the toast) and everything undone
+        (its whole batch, if it had one). Selection is
+        `latest_live_undoable`'s; see its docstring for what is skipped and
+        why the client no longer picks."""
+        candidate = await self.repo.latest_live_undoable(budget_id)
         if candidate is None:
             raise UndoConflict("Nothing to undo")
         undone = await self.undo_change(budget_id, candidate.id)

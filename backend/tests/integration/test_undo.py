@@ -1122,6 +1122,102 @@ async def test_csv_reimport_after_dedup_records_no_batch(api_client, db_session)
     assert len(changes) == 1
 
 
+async def _import_csv(api_client, budget, account, csv: str):
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/import/csv",
+        params={"account_id": str(account.id)},
+        files={"file": ("txns.csv", csv.encode(), "text/csv")},
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+async def _live_rows(db_session, account) -> list[Transaction]:
+    result = await db_session.execute(
+        select(Transaction).where(
+            Transaction.account_id == account.id, Transaction.is_deleted.is_(False)
+        )
+    )
+    return list(result.scalars())
+
+
+_TWO_ROWS = "Date,Payee,Amount\n2026-01-05,Coffee,-4.50\n2026-01-06,Store,-30.00\n"
+
+
+async def test_cmd_z_after_a_csv_import_undoes_the_import(api_client, db_session):
+    """⌘Z used to skip import rows and take back whatever came BEFORE the
+    import — here, the hand-typed row."""
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget)
+    services = make_services(db_session)
+    typed = await _make_txn(services, budget, account, "-12.00")
+    await db_session.flush()
+    await _import_csv(api_client, budget, account, _TWO_ROWS)
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert resp.status_code == 200
+    assert len(resp.json()["undone_change_ids"]) == 2
+
+    live = await _live_rows(db_session, account)
+    assert [t.id for t in live] == [typed.id]
+
+
+async def test_cmd_z_after_an_import_then_an_edit_takes_back_the_edit_first(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget)
+    services = make_services(db_session)
+    await _import_csv(api_client, budget, account, _TWO_ROWS)
+    coffee = next(t for t in await _live_rows(db_session, account) if t.amount == money("-4.50"))
+    await services.transactions.update(budget.id, coffee.id, TransactionUpdate(memo="oat milk"))
+    await db_session.flush()
+
+    first = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert first.status_code == 200
+    await db_session.refresh(coffee)
+    assert coffee.memo is None
+    assert len(await _live_rows(db_session, account)) == 2
+
+    second = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert second.status_code == 200
+    assert await _live_rows(db_session, account) == []
+
+
+@pytest.mark.parametrize("background", ["system", "ai"])
+async def test_a_background_write_after_an_import_is_not_what_cmd_z_takes(
+    api_client, db_session, background
+):
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget)
+    await _import_csv(api_client, budget, account, _TWO_ROWS)
+    landed = await create_transaction(db_session, budget, account, "-33.00", JAN)
+    db_session.add(
+        ChangeLog(
+            budget_id=budget.id,
+            entity_type="transaction",
+            entity_id=landed.id,
+            action="create",
+            after={"amount": "-33.00"},
+            source=background,
+        )
+    )
+    await db_session.flush()
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert resp.status_code == 200
+
+    assert [t.id for t in await _live_rows(db_session, account)] == [landed.id]
+
+
+async def test_import_change_rows_carry_the_acting_user(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget)
+    await _import_csv(api_client, budget, account, _TWO_ROWS)
+
+    changes = await changes_for(db_session, budget.id, "transaction", "import")
+    assert len(changes) == 2
+    assert all(c.user_id == api_client.test_user.id for c in changes)
+
+
 # ─── API: /changes listing and error shapes ───────────────────────────────────
 
 
