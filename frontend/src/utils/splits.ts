@@ -32,7 +32,7 @@
  * function sees the value. Do not widen this module to four decimal places
  * to close that gap; the rounding is upstream.
  */
-import { centsToInputString, expressionToCents } from './amountExpression'
+import { centsToInputString, expressionToCents, toAmountInput } from './amountExpression'
 
 /**
  * May a line be removed from a split of `count` lines?
@@ -111,7 +111,7 @@ export function draftsFromLines(
   return lines.map((line) => ({
     tempId: line.id,
     serverId: line.id,
-    amount: String(Math.abs(Number(line.amount))),
+    amount: toAmountInput(line.amount),
     categoryId: line.category_id,
     memo: line.memo ?? '',
   }))

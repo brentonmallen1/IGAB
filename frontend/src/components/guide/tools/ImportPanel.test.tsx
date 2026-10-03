@@ -119,7 +119,7 @@ describe('ImportPanel', () => {
     await userEvent.click(screen.getByText('Monthly Bills'))
     await userEvent.click(screen.getByRole('button', { name: /add 2 categories/i }))
     const items = onImport.mock.calls[0][0] as { name: string; amount: string }[]
-    expect(items.find((i) => i.name === 'Rent')!.amount).toBe('1200')
+    expect(items.find((i) => i.name === 'Rent')!.amount).toBe('1200.00')
     expect(items.find((i) => i.name === 'Electric')!.amount).toBe('')
   })
 

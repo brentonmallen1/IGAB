@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   centsToInputString,
+  toAmountInput,
   evaluateExpressionCents,
   expressionToCents,
   isAmountExpression,
@@ -168,11 +169,25 @@ describe('expressionToCents — typed text, not a canonical string', () => {
 })
 
 describe('centsToInputString', () => {
-  it('renders whole dollars compactly and cents at two places', () => {
-    expect(centsToInputString(55000)).toBe('550')
+  it('always writes two decimals — "12.5" in a split line was the bug', () => {
+    expect(centsToInputString(1250)).toBe('12.50')
+    expect(centsToInputString(55000)).toBe('550.00')
     expect(centsToInputString(1649)).toBe('16.49')
     expect(centsToInputString(-1234)).toBe('-12.34')
-    expect(centsToInputString(0)).toBe('0')
+    expect(centsToInputString(0)).toBe('0.00')
+  })
+})
+
+describe('toAmountInput', () => {
+  it('seeds a box with the magnitude at two decimals, from a number or an API string', () => {
+    expect(toAmountInput(-12.5)).toBe('12.50')
+    expect(toAmountInput('-197.6800')).toBe('197.68')
+    expect(toAmountInput(40)).toBe('40.00')
+    expect(toAmountInput(0.1 + 0.2)).toBe('0.30')
+  })
+
+  it('leaves the box empty rather than writing NaN', () => {
+    expect(toAmountInput('not a number')).toBe('')
   })
 })
 

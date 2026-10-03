@@ -65,8 +65,8 @@ import { entryStarted, STARTED_ENTRY_NOTE, type EntryFields } from './entryStart
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
-import { fromCents, parseApiDecimal } from '../../../utils/money'
-import { expressionToCents } from '../../../utils/amountExpression'
+import { fromCents } from '../../../utils/money'
+import { expressionToCents, toAmountInput } from '../../../utils/amountExpression'
 import {
   canRemoveSplitLine,
   checkSplit,
@@ -165,12 +165,12 @@ export function TransactionEditor({
   const [outflow, setOutflow] = useState(() => {
     if (!transaction) return ''
     if (transaction.amount >= 0) return ''
-    return String(Math.abs(transaction.amount))
+    return toAmountInput(transaction.amount)
   })
   const [inflow, setInflow] = useState(() => {
     if (!transaction) return ''
     if (transaction.amount < 0) return ''
-    return String(transaction.amount)
+    return toAmountInput(transaction.amount)
   })
   // What the two boxes say, read once and used everywhere — the save, the
   // split remainder, the similar-rows lookup and the AI hint. Null means
@@ -386,7 +386,7 @@ export function TransactionEditor({
         const cat = categoryForLabel(line.category, fileable, groupNames)
         return {
           tempId: randomUUID(),
-          amount: Math.abs(parseApiDecimal(line.amount)).toFixed(2),
+          amount: toAmountInput(line.amount),
           categoryId: cat?.id ?? null,
           memo: '',
         }

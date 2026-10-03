@@ -6,7 +6,7 @@ import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
-import { expressionToCents } from '../../../utils/amountExpression'
+import { expressionToCents, toAmountInput } from '../../../utils/amountExpression'
 import type { Category } from '../../../types'
 import type { ReactNode } from 'react'
 import './MoveMoneyPopover.css'
@@ -61,7 +61,7 @@ export function MoveMoneyForm({
   const { data: history = [] } = useMoveHistory(budgetId, month, true)
 
   const [otherId, setOtherId] = useState<string>(TBA)
-  const [amount, setAmount] = useState(() => (prefill ?? Math.abs(available)).toFixed(2))
+  const [amount, setAmount] = useState(() => toAmountInput(prefill ?? available))
   const [error, setError] = useState<string | null>(null)
 
   const otherCategories = categories.filter((c) => c.is_assignable && c.id !== category.id)

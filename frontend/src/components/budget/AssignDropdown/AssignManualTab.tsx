@@ -5,7 +5,7 @@ import { useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
-import { expressionToCents } from '../../../utils/amountExpression'
+import { expressionToCents, toAmountInput } from '../../../utils/amountExpression'
 import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
 
 interface Props {
@@ -23,7 +23,7 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const moveMoney = useMoveMoney(budgetId)
 
-  const [amount, setAmount] = useState(() => (tba > 0 ? tba.toFixed(2) : ''))
+  const [amount, setAmount] = useState(() => (tba > 0 ? toAmountInput(tba) : ''))
   const [categoryId, setCategoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
