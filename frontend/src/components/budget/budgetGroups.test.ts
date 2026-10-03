@@ -175,10 +175,10 @@ describe("no surface offers a card's envelope", () => {
     })
   }
 
-  const readsTheHelper = [
-    'BudgetFilterModal/BudgetFilterModal.tsx',
-    'BudgetViewModal/BudgetViewModal.tsx',
-  ]
+  // A view arranges the grid, which never draws a card section row. A filter
+  // is different since the section began answering it: the filter modal
+  // offers card envelopes on purpose (pinned below).
+  const readsTheHelper = ['BudgetViewModal/BudgetViewModal.tsx']
   for (const file of readsTheHelper) {
     it(`${file} filters through renderableCategories`, () => {
       const source = readFileSync(resolve(__dirname, file), 'utf8')
@@ -187,6 +187,14 @@ describe("no surface offers a card's envelope", () => {
       expect(source).not.toMatch(/in_card_section/)
     })
   }
+
+  it('the filter modal offers the card section, so a filter can name a card', () => {
+    const source = readFileSync(
+      resolve(__dirname, 'BudgetFilterModal/BudgetFilterModal.tsx'),
+      'utf8'
+    )
+    expect(source).not.toMatch(/renderableCategories\(/)
+  })
 
   it('the report picker leaves out card envelopes and keeps Interest & fees', () => {
     // It asks where money was spent, not what the grid draws — so the card's
@@ -235,7 +243,7 @@ describe('budgetPageRowIds — what the filter bar chips count', () => {
 
   it('counts the section envelope beside the grid rows', () => {
     expect([
-      ...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionEnvelopeId: 'interest' }),
+      ...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionIds: ['interest'] }),
     ]).toEqual(['rent', 'groceries', 'interest'])
   })
 
@@ -244,14 +252,21 @@ describe('budgetPageRowIds — what the filter bar chips count', () => {
     const ids = budgetPageRowIds({
       gridIds: grid,
       viewIds: new Set(['rent']),
-      sectionEnvelopeId: 'interest',
+      sectionIds: ['interest'],
     })
     expect([...ids]).toEqual(['rent', 'interest'])
   })
 
-  it('with no section envelope drawn, only the grid', () => {
+  it('counts each card line by its envelope, since a filter now draws them', () => {
     expect([
-      ...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionEnvelopeId: null }),
-    ]).toEqual(['rent', 'groceries'])
+      ...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionIds: ['card-visa', 'interest'] }),
+    ]).toEqual(['rent', 'groceries', 'card-visa', 'interest'])
+  })
+
+  it('with no section envelope drawn, only the grid', () => {
+    expect([...budgetPageRowIds({ gridIds: grid, viewIds: null, sectionIds: [] })]).toEqual([
+      'rent',
+      'groceries',
+    ])
   })
 })

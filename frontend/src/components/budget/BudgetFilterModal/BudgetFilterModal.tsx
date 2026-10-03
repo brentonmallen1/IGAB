@@ -4,7 +4,7 @@ import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useCreateTag, useTags } from '../../../api/tags'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
 import { TagChip } from '../../common/TagChip'
-import { renderableCategories, renderableGroups } from '../budgetGroups'
+import { renderableGroups } from '../budgetGroups'
 import {
   useBudgetFilters,
   useCreateBudgetFilter,
@@ -34,11 +34,12 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   // rows, so offering its category here was a checkbox that changed nothing.
   const groups = useMemo(() => renderableGroups(allGroups), [allGroups])
   // Hidden categories are offered here on purpose — a filter may name one.
-  // A card's envelope is different: it is never a grid row, so
-  // there is nothing to filter it into or out of. The same rule the grid
-  // draws by, from the same place, or "Credit Card Payments" appears here
-  // as a group of checkboxes that change nothing.
-  const categories = useMemo(() => renderableCategories(allCategories), [allCategories])
+  // So are the Credit cards section's envelopes: each card's line and
+  // Interest & fees answer an active filter by their envelope (BudgetTable's
+  // `sectionRowMatch`). They were left out while the section ignored
+  // filters, when a checked card changed nothing — and a filter then could
+  // not say "these cards", only "every card, always".
+  const categories = allCategories
   const createFilter = useCreateBudgetFilter(budgetId)
   const updateFilter = useUpdateBudgetFilter(budgetId)
   const deleteFilter = useDeleteBudgetFilter(budgetId)

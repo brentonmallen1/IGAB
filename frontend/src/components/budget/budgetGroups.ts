@@ -98,26 +98,29 @@ export function drawnCardSectionEnvelope<T extends CategoryPlacement & CategoryL
 
 /**
  * Every envelope row the budget page draws — the grid's rows, narrowed by an
- * active view, plus the Credit cards section's own envelope (Interest & fees).
+ * active view, plus the Credit cards section's rows: each card line (by its
+ * envelope) and the section's own envelope (Interest & fees).
  *
  * What the filter bar's chips count ("Overspent 3", "Underfunded 2"). A chip's
- * count and the rows clicking it shows must be one set, and Interest & fees is
- * a row like any other: red, it is in the served `total_overspent` and in
- * Cover Overspent, so a chip that left it out would say 2 over three red rows.
- * A view does not reach it — a view arranges the grid, and the section is not
- * the grid — so it is counted whatever view is active.
+ * count and the rows clicking it shows must be one set. Interest & fees is a
+ * row like any other: red, it is in the served `total_overspent` and in Cover
+ * Overspent, so a chip that left it out would say 2 over three red rows. Card
+ * lines joined when filters began to reach them: a card's envelope below zero
+ * is overspent the same way, and once the chip draws its line it has to count
+ * it. A view does not reach the section — a view arranges the grid, and the
+ * section is not the grid — so its rows are counted whatever view is active.
  */
 export function budgetPageRowIds({
   gridIds,
   viewIds,
-  sectionEnvelopeId,
+  sectionIds,
 }: {
   gridIds: ReadonlySet<string>
   viewIds: ReadonlySet<string> | null
-  sectionEnvelopeId: string | null
+  sectionIds: readonly string[]
 }): Set<string> {
   const ids = new Set([...gridIds].filter((id) => !viewIds || viewIds.has(id)))
-  if (sectionEnvelopeId) ids.add(sectionEnvelopeId)
+  for (const id of sectionIds) ids.add(id)
   return ids
 }
 
