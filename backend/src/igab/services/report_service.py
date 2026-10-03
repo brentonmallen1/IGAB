@@ -531,9 +531,14 @@ class ReportService:
         cutoffs = [min(day, today) for day in as_of]
         accounts = (
             await self.session.execute(
-                select(
-                    Account.id, Account.name, Account.account_type, Account.classification
-                ).where(Account.budget_id == budget_id, LIVE_ACCOUNT)
+                select(Account.id, Account.name, Account.account_type, Account.classification)
+                .where(Account.budget_id == budget_id, LIVE_ACCOUNT)
+                # The sidebar's order. Each point lists its accounts in this
+                # order and the chart stacks them so; with no ORDER BY, editing
+                # an account moved its row in the heap and re-stacked the chart
+                # (and failed test_moving_the_start_date_moves_no_budget_figure
+                # whenever the planner chose a seq scan).
+                .order_by(Account.sort_order, Account.name, Account.id)
             )
         ).all()
         balances = await self.accounts.balances_through(budget_id, cutoffs)

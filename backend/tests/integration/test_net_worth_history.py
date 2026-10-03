@@ -163,3 +163,43 @@ class TestNetWorthHistory:
             Decimal("-8000.00"),
         ]
         assert all(p["accounts"] == [] for p in points)
+
+
+class TestAccountOrder:
+    async def test_each_point_lists_accounts_in_sidebar_order_after_an_edit(self, db_session):
+        """The chart stacks accounts in the order each point lists them, and
+        that order came from a query with no ORDER BY. Editing an account
+        writes a new heap tuple, so a sequential scan returned it last: the
+        stack re-ordered, and test_moving_the_start_date_moves_no_budget_figure
+        failed in CI whenever the planner chose that scan. Forced here."""
+        from sqlalchemy import text
+
+        budget = await _budget(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        savings = await create_account(db_session, budget, "Savings")
+        checking.sort_order, savings.sort_order = 0, 1
+        for account in (checking, savings):
+            await create_transaction(
+                db_session, budget, account, "100.00", MONTH_START - timedelta(days=40)
+            )
+        await db_session.flush()
+        await db_session.execute(text("SET LOCAL enable_indexscan = off"))
+        await db_session.execute(text("SET LOCAL enable_bitmapscan = off"))
+
+        def order(points) -> list[str]:
+            return [a["account_name"] for a in points[-1]["accounts"]]
+
+        report = ReportService(db_session)
+        assert order(await report.net_worth_history(budget.id, months=3)) == [
+            "Checking",
+            "Savings",
+        ]
+        # Any write gives the row a new tuple, at the heap's end.
+        await db_session.execute(
+            text("UPDATE accounts SET updated_at = now() WHERE id = :id"), {"id": checking.id}
+        )
+        await db_session.flush()
+        assert order(await report.net_worth_history(budget.id, months=3)) == [
+            "Checking",
+            "Savings",
+        ]
