@@ -56,6 +56,24 @@ describe('transactionDisplayPayee', () => {
     ).toBe('—')
   })
 
+  it('names a split leg by the served payee of record, not —', () => {
+    // The budget's Activity peek drew '—' beside the Groceries share of a
+    // wholesale-club receipt: the leg has no payee, its parent does.
+    const leg = {
+      payee_id: null,
+      payee_of_record_id: 'p-grocer',
+      transfer_id: null,
+      counterpart_account_id: null,
+    }
+    expect(transactionDisplayPayee(leg, payees, accounts)).toBe('Corner Grocer')
+  })
+
+  it('still reads payee_id for a row shape without the served field', () => {
+    expect(transactionDisplayPayee({ payee_id: 'p-grocer' }, payees, accounts)).toBe(
+      'Corner Grocer'
+    )
+  })
+
   it('works without an account map (loading, or callers without one)', () => {
     const txn = { payee_id: 'p-to-savings', transfer_id: 't2', counterpart_account_id: 'a-savings' }
     expect(transactionDisplayPayee(txn, payees)).toBe('Transfer : Savings')

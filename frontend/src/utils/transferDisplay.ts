@@ -7,10 +7,16 @@
  * account the transfer payee names). Every register/list payee cell renders
  * through here; the per-site `transfer_id ? 'Transfer'` rules this replaces
  * are what made linked legs lose their destination.
+ *
+ * Everyone else is named by the served `payee_of_record_id`, so a split leg
+ * (which has no payee of its own) reads as the shop its parent names instead
+ * of "—". The `?? payee_id` covers callers holding a row shape that predates
+ * the field; where it is served it already is payee_id when one exists.
  */
 export function transactionDisplayPayee(
   txn: {
     payee_id: string | null
+    payee_of_record_id?: string | null
     transfer_id?: string | null
     counterpart_account_id?: string | null
   },
@@ -23,7 +29,8 @@ export function transactionDisplayPayee(
   // The server's counterpart wins over the payee text: after a retarget the
   // link is truth and a stale payee is exactly what this must not echo.
   if (counterpartName) return `Transfer : ${counterpartName}`
-  const payeeName = txn.payee_id ? payeeMap.get(txn.payee_id) : undefined
+  const payeeId = txn.payee_of_record_id ?? txn.payee_id
+  const payeeName = payeeId ? payeeMap.get(payeeId) : undefined
   if (payeeName) return payeeName
   // A transfer whose destination we can't name (account list still loading,
   // payee missing) — say what it is rather than pretending it has no payee.

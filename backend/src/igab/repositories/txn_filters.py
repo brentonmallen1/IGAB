@@ -36,7 +36,7 @@ from sqlalchemy import (
     select,
     true,
 )
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import InstrumentedAttribute, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
@@ -766,12 +766,32 @@ def join_split_parent(stmt: Select) -> Select:
     return stmt.outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
 
 
+def _payee_of_record(parent_payee: ColumnElement | InstrumentedAttribute) -> ColumnElement:
+    """The one statement of the rule; the two spellings below differ only in
+    how they reach the parent row."""
+    return func.coalesce(Transaction.payee_id, parent_payee)
+
+
 #: Payee of record for a leaf row: its own, falling back to its split parent's.
 #: Splits are one trip to the shop with the legs itemised, so the parent names
 #: where the money went — but the legs are what carry categories, and therefore
 #: classes. Reading the parent row instead would classify the whole basket by
 #: its net sign, counting a savings-tagged leg as spending.
-PAYEE_OF_RECORD = func.coalesce(Transaction.payee_id, SPLIT_PARENT.payee_id)
+PAYEE_OF_RECORD = _payee_of_record(SPLIT_PARENT.payee_id)
+
+_parent = aliased(Transaction)
+
+#: `PAYEE_OF_RECORD` without the join, for `with_expression`, which loads onto
+#: rows selected by statements that never joined `SPLIT_PARENT`. Served as
+#: `payee_of_record_id`: a split leg carries no payee of its own, so a list of
+#: legs (the budget's Activity peek, a report drill) drew "—" for a basket the
+#: register names plainly.
+PAYEE_OF_RECORD_ID = _payee_of_record(
+    select(_parent.payee_id)
+    .where(_parent.id == Transaction.parent_transaction_id)
+    .correlate(Transaction)
+    .scalar_subquery()
+)
 
 
 def in_category_scope(category_ids) -> ColumnElement[bool]:

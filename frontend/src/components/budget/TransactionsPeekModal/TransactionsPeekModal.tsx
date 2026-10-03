@@ -79,7 +79,8 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
 
   function openInRegister(t: Transaction) {
     onClose()
-    navigate(`/accounts/${t.account_id}?highlight=${t.id}`)
+    // The register lists parents only: a split leg is found by its parent row.
+    navigate(`/accounts/${t.account_id}?highlight=${t.parent_transaction_id ?? t.id}`)
   }
 
   function openInTransactions() {

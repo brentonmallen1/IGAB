@@ -145,7 +145,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
                     <td className="ddp__date">{t.date}</td>
                     <td>{accountName.get(t.account_id) ?? ''}</td>
                     <td>
-                      {t.payee_id || t.counterpart_account_id
+                      {t.payee_of_record_id || t.counterpart_account_id
                         ? transactionDisplayPayee(t, payeeName, accountName)
                         : ''}
                     </td>

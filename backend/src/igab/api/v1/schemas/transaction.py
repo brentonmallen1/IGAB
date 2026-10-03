@@ -162,6 +162,11 @@ class TransactionResponse(ApiModel):
     #: raising like needs_category does. test_transfer_counterpart.py sweeps
     #: the serializing paths for exactly that gap.
     counterpart_account_id: uuid.UUID | None
+    #: `payee_id`, or for a split leg its parent's payee — the leg itself has
+    #: none. Server-computed (`PAYEE_OF_RECORD_ID` in txn_filters.py) because
+    #: a list of legs does not carry their parents. No default, like
+    #: counterpart_account_id; test_split_leg_payee.py sweeps the paths.
+    payee_of_record_id: uuid.UUID | None
     memo: str | None
     cleared: str
     approved: bool
