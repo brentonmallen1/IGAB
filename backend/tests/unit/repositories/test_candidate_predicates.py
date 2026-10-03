@@ -54,6 +54,21 @@ async def test_posted_feed_widens_candidates_to_provisionally_linked_rows():
     assert "cleared IN ('pending', 'uncleared')" in sql
 
 
+async def test_a_bank_file_may_claim_a_row_in_any_bank_state():
+    """The CSV import's pool: a file is a second witness, and a row the sync
+    already linked is the row a statement line most often describes."""
+    repo = _repo()
+    await repo.find_existing_match_candidates(
+        MagicMock(), Decimal("-1"), date(2026, 7, 1), any_bank_state=True
+    )
+    sql = _sql(repo)
+    assert "sync_id IS NULL" not in sql
+    assert "bank_posted_date IS NULL" not in sql
+    # Still only live parent rows (txn_filters.MATCHABLE_ROW).
+    assert "is_deleted = 0" in sql
+    assert "parent_transaction_id IS NULL" in sql
+
+
 async def test_stale_provisional_links_are_uncleared_user_rows_only():
     repo = _repo()
     await repo.find_stale_provisional_links(MagicMock(), "simplefin", None, {"t-live"})

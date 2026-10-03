@@ -37,6 +37,12 @@ The rule, by what the row is:
 
 Keys equal to the row's current value are dropped, so a second sync of a
 posted record writes nothing.
+
+One variation, by where the record came from: a bank file the person
+imported (`FeedRecord.source is None`) writes everything above except the
+feed link itself — `sync_source` and `has_sync_source`. The file is the
+bank's word about the row, so it clears it and leaves provenance; it is not a
+feed, and nothing will ever report against that link again.
 """
 
 from dataclasses import dataclass
@@ -98,7 +104,9 @@ class FeedRecord:
     payee: str | None
     description: str | None
     sync_id: str | None
-    source: str = "simplefin"
+    #: The feed that reported it. None for a bank file the person imported —
+    #: see the module docstring.
+    source: str | None = "simplefin"
 
     @classmethod
     def from_transaction(cls, txn: Any) -> "FeedRecord":
@@ -145,11 +153,10 @@ def posting_updates(row: RowState, feed: FeedRecord, *, confirmed: bool) -> Outc
     """What changes on `row` given `feed`. `confirmed` is True only on an
     accepted review — the one path that may apply a changed amount to a
     user-entered row."""
-    updates: dict[str, Any] = {
-        "sync_source": feed.source,
-        "has_sync_source": True,
-        "bank_amount": feed.amount,
-    }
+    updates: dict[str, Any] = {"bank_amount": feed.amount}
+    if feed.source is not None:
+        updates["sync_source"] = feed.source
+        updates["has_sync_source"] = True
     if feed.sync_id is not None:
         updates["sync_id"] = feed.sync_id
     # Only when the feed has one: an absent value must not blank a recorded one.

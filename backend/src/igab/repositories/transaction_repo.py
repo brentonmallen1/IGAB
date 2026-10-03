@@ -57,6 +57,7 @@ from igab.repositories.txn_filters import (
     IN_SINKING_FUND,
     LEAF,
     LOAN_PAYMENT_ROW,
+    MATCHABLE_ROW,
     NEEDS_CATEGORY,
     NOT_DELETED,
     NOT_RECONCILED,
@@ -75,6 +76,7 @@ from igab.repositories.txn_filters import (
     USER_ENTERED,
     in_category_scope,
     join_split_parent,
+    on_alias,
     orphaned_link,
     search_matches,
     sync_created_pending,
@@ -1593,9 +1595,8 @@ class TransactionRepository(BaseRepository[Transaction]):
             Transaction.account_id == account_id,
             Transaction.amount == amount,
             Transaction.date.between(date_low, date_high),
-            Transaction.cleared != "reconciled",
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.parent_transaction_id.is_(None),
+            NOT_RECONCILED,
+            MATCHABLE_ROW,
         )
         if exclude_id is not None:
             q = q.where(Transaction.id != exclude_id)
@@ -1628,8 +1629,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             Transaction.amount == amount,
             Transaction.date.between(date_low, date_high),
             USER_ENTERED,
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.parent_transaction_id.is_(None),
+            MATCHABLE_ROW,
         )
         if exclude_id is not None:
             q = q.where(Transaction.id != exclude_id)
@@ -1644,17 +1644,27 @@ class TransactionRepository(BaseRepository[Transaction]):
         self, budget_id: uuid.UUID, import_ids: list[str]
     ) -> set[str]:
         """Return the subset of import_ids that already exist in the database."""
-        found: set[str] = set()
+        return set(await self.get_ids_by_import_id(budget_id, import_ids))
+
+    async def get_ids_by_import_id(
+        self, budget_id: uuid.UUID, import_ids: list[str]
+    ) -> dict[str, uuid.UUID]:
+        """The live row holding each of `import_ids` that one does, by import id.
+
+        The CSV planner needs the row, not just the fact: a row a file line
+        is already imported as is that line's, and no other line of the file
+        may claim it as a match."""
+        found: dict[str, uuid.UUID] = {}
         for i in range(0, len(import_ids), self._IMPORT_ID_CHUNK):
             chunk = import_ids[i : i + self._IMPORT_ID_CHUNK]
             result = await self.session.execute(
-                select(Transaction.import_id).where(
+                select(Transaction.import_id, Transaction.id).where(
                     Transaction.budget_id == budget_id,
                     Transaction.import_id.in_(chunk),
-                    Transaction.is_deleted == False,  # noqa: E712
+                    NOT_DELETED,
                 )
             )
-            found.update(row[0] for row in result.all() if row[0])
+            found.update({row[0]: row[1] for row in result.all() if row[0]})
         return found
 
     async def find_existing_match_candidates(
@@ -1668,11 +1678,20 @@ class TransactionRepository(BaseRepository[Transaction]):
         include_provisional: bool = False,
         orphaned_feed_sync_ids: Collection[str] | None = None,
         orphaned_since: date | None = None,
+        any_bank_state: bool = False,
     ) -> list[tuple[Transaction, str | None]]:
         """Return (Transaction, payee_name) candidates matching by exact amount and date window.
 
-        Used to detect duplicates during sync for transactions without import_id.
+        The candidate pool for the dedup ladder (domain.matching.decide_match).
         Caller is responsible for scoring and selecting the best match.
+        any_bank_state: offer every matchable row in the window whatever its
+        bank link — the CSV import's pool. The two callers differ on purpose.
+        A feed record must not claim a row another feed record already owns:
+        that row's link is the feed's own identity, and taking it would merge
+        two bank records into one. A bank file has no identity to collide —
+        it is a second witness to what the feed already reported, and a row
+        the sync linked is exactly the row a file line most often describes.
+        When set, the state options below are ignored.
         exclude_ids: rows already claimed earlier in the same sync run — filtered
         before LIMIT so consumption can't starve the candidate pool.
         include_provisional: also offer PROVISIONALLY_LINKED rows (see
@@ -1697,12 +1716,15 @@ class TransactionRepository(BaseRepository[Transaction]):
         # row the bank itself posted is compared on the bank's own date and
         # gets a tight one (see txn_filters.ADOPTION_DATE_WINDOW_DAYS).
         typed_window = Transaction.date.between(date_low, date_high)
-        states = [and_(BANK_UNLINKED, typed_window)]
-        if include_provisional:
-            states.append(and_(PROVISIONALLY_LINKED, typed_window))
-        if orphaned_feed_sync_ids and orphaned_since is not None:
-            states.append(orphaned_link(orphaned_feed_sync_ids, orphaned_since, txn_date))
-        linked = or_(*states) if len(states) > 1 else states[0]
+        if any_bank_state:
+            linked = typed_window
+        else:
+            states = [and_(BANK_UNLINKED, typed_window)]
+            if include_provisional:
+                states.append(and_(PROVISIONALLY_LINKED, typed_window))
+            if orphaned_feed_sync_ids and orphaned_since is not None:
+                states.append(orphaned_link(orphaned_feed_sync_ids, orphaned_since, txn_date))
+            linked = or_(*states) if len(states) > 1 else states[0]
         query = (
             select(Transaction, Payee.name)
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
@@ -1710,8 +1732,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
                 linked,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
+                MATCHABLE_ROW,
             )
             # Nearest-first, so the LIMIT can't evict the true match when many
             # same-amount rows crowd the window (daily coffee, weekly fill-ups).
@@ -1726,23 +1747,6 @@ class TransactionRepository(BaseRepository[Transaction]):
         if exclude_ids:
             query = query.where(Transaction.id.notin_(list(exclude_ids)))
         result = await self.session.execute(query)
-        return [(row[0], row[1]) for row in result.all()]
-
-    async def get_all_with_payee_for_account(
-        self,
-        account_id: uuid.UUID,
-    ) -> list[tuple[Transaction, str | None]]:
-        """Return all non-deleted parent transactions with their payee names for an account."""
-        result = await self.session.execute(
-            select(Transaction, Payee.name)
-            .outerjoin(Payee, Transaction.payee_id == Payee.id)
-            .where(
-                Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-            )
-            .order_by(Transaction.date.desc())
-        )
         return [(row[0], row[1]) for row in result.all()]
 
     async def find_duplicate_candidate_pairs(
@@ -1775,16 +1779,14 @@ class TransactionRepository(BaseRepository[Transaction]):
                     other.amount == Transaction.amount,
                     other.id > Transaction.id,
                     other.date.between(Transaction.date - window, Transaction.date + window),
-                    other.is_deleted == False,  # noqa: E712
-                    other.parent_transaction_id.is_(None),
+                    on_alias(MATCHABLE_ROW, other),
                 ),
             )
             .outerjoin(payee_a, Transaction.payee_id == payee_a.id)
             .outerjoin(payee_b, other.payee_id == payee_b.id)
             .where(
                 Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
+                MATCHABLE_ROW,
                 # A merge must keep the structured row (split parent or
                 # transfer leg), so a pair where BOTH sides are structured can
                 # never be accepted — don't offer it for review at all.

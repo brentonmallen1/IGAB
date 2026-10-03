@@ -106,9 +106,27 @@
 .csv-import__tag {
   padding: 1px 6px;
   border-radius: var(--border-radius-sm);
-  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+/* Already here: the overlap working as expected — quiet. */
+.csv-import__tag--here {
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+}
+
+/* A row already here that the file confirms: it will be marked cleared. */
+.csv-import__tag--clear {
+  background: color-mix(in srgb, var(--color-positive) 16%, transparent);
+}
+
+/* Written, and asked about: the one outcome that needs a person later. */
+.csv-import__tag--review {
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+}
+
+.csv-import__review-count strong {
+  color: var(--color-warning);
 }
 
 .csv-import__muted {

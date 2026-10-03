@@ -5,6 +5,7 @@ import { useAccounts } from '../../api/accounts'
 import { importCsv, type CsvImportResult } from '../../api/imports'
 import { invalidateAfterImport } from '../../api/invalidateAfterImport'
 import { useUndoToast } from '../../utils/toastUndo'
+import { resultMessage } from '../../utils/csvImportOutcome'
 import './ImportPage.css'
 import { Surface } from '../../components/common/Surface'
 
@@ -32,11 +33,8 @@ export function ImportPage() {
       const result = await importCsv(budgetId, csvAccountId, file)
       setCsvResult(result)
       if (csvFileRef.current) csvFileRef.current.value = ''
-      if (result.batch_id && result.imported > 0) {
-        notify(`Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`, {
-          batch: result.batch_id,
-        })
-      }
+      // A batch whenever anything changed — rows written or rows cleared.
+      if (result.batch_id) notify(resultMessage(result), { batch: result.batch_id })
       invalidateAfterImport(qc, budgetId)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Import failed'
@@ -102,7 +100,7 @@ export function ImportPage() {
             </button>
             {csvResult && (
               <div className="import-result import-result--success">
-                Imported {csvResult.imported} transactions
+                {resultMessage(csvResult)}
                 {csvResult.skipped ? `, ${csvResult.skipped} skipped` : ''}
               </div>
             )}

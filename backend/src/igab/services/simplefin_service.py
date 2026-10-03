@@ -33,9 +33,14 @@ from igab.domain.enums import SkipReason
 from igab.domain.exceptions import IGABError
 from igab.domain.matching import (
     DATE_WINDOW_DAYS,
-    best_payee_similarity,
-    date_proximity,
-    payee_similarity,
+    DEDUP_DATE_WINDOW_DAYS,
+    DEDUP_TIGHT_DATE_DAYS,
+    MatchCandidate,
+    MatchDecision,
+    decide_match,
+    dedup_payee_score,
+    dedup_score,
+    settles_in_strict_pass,
 )
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.domain.sync_window import SyncWindow, live_window
@@ -68,81 +73,11 @@ logger = logging.getLogger(__name__)
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BASE_DELAY = 2.0  # seconds, doubles each attempt
 
-DEDUP_AUTO_MATCH_THRESHOLD = 0.80
-# How far to search for exact-amount candidates. Wide enough to cover
-# settlement lag: a payment the user dates when initiated can post a week+
-# later (observed: credit-card payment dated 6/15, posted 6/22).
-DEDUP_DATE_WINDOW_DAYS = 10
-# Auto-matching is confined to this radius (the date-proximity score curve is
-# anchored here too). Beyond it, exact amount + similar payee is as likely a
-# recurring charge as a settlement-lagged duplicate — those candidates only
-# ever reach the review queue.
-DEDUP_AUTO_DATE_MAX_DAYS = 5
-# Exact amount + a date this tight is near-certain identity regardless of payee
-# (bank descriptors rarely resemble user-renamed payees).
-DEDUP_TIGHT_DATE_DAYS = 1
-# Payee-similarity margin that resolves a same-day tie between candidates.
-DEDUP_TIEBREAK_MARGIN = 0.10
 # A user row whose pending bank link vanished is offered for review against a
 # posted row this run created when it scores at least this. Review only,
 # never auto: the amounts differ by construction (an equal amount would have
 # matched in the loop), so a human confirms the tip or the settled hold.
 STALE_LINK_REVIEW_THRESHOLD = 0.5
-
-
-#: What a missing payee counts for here. Neutral rather than zero: a SimpleFIN
-#: row often arrives before its payee is resolved, and scoring it zero would
-#: stop it deduplicating against a row it genuinely matches. Safe because
-#: 0.2 (max date) + 0.8 x 0.5 = 0.6, below the 0.80 auto threshold — a
-#: payee-less pair can never auto-merge on date evidence alone. Pinned in
-#: test_matching_scores.py.
-_UNKNOWN_PAYEE_SCORE = 0.5
-
-
-def _payee_similarity(a: str | None, b: str | None) -> float:
-    return payee_similarity(a, b, unknown=_UNKNOWN_PAYEE_SCORE)
-
-
-def _date_proximity_score(synced: date, existing: date) -> float:
-    return date_proximity(synced, existing, window_days=DEDUP_AUTO_DATE_MAX_DAYS)
-
-
-def _dedup_score(payee_score: float, synced_date: date, existing_date: date) -> float:
-    # Amount already exact. Date is weighted low because banks post 2-5 days
-    # after YNAB records the due date. Payee carries most of the signal.
-    # Weights: date 20%, payee 80%
-    return round(_date_proximity_score(synced_date, existing_date) * 0.2 + payee_score * 0.8, 4)
-
-
-def _calculate_dedup_score(
-    synced_payee: str | None,
-    synced_date: date,
-    existing_payee: str | None,
-    existing_date: date,
-) -> float:
-    return _dedup_score(_payee_similarity(synced_payee, existing_payee), synced_date, existing_date)
-
-
-def _comparable_date(txn: Transaction) -> date:
-    """The date to compare a row against a feed record on.
-
-    The bank's own posting date when the row has one, because the feed
-    record's date is a bank date too and the two are then the same kind of
-    fact. A row a person typed has no posting date and is compared on the
-    date they entered — which is why the two can sit days apart and still be
-    one transaction.
-
-    Without this, a row whose bank posted it on the 25th but which the user
-    dated the 16th scored as nine days distant from its own re-issued
-    posting, missed the auto threshold, and was written again as a duplicate.
-    """
-    return txn.bank_posted_date or txn.date
-
-
-def _row_payee_strings(txn: Transaction, payee_name: str | None) -> list[str | None]:
-    """Every string a row keeps for its merchant — the user's payee and the
-    bank's own pending strings. See domain.matching.best_payee_similarity."""
-    return [payee_name, txn.bank_payee, txn.import_description]
 
 
 def _feed_record(t: dict) -> FeedRecord:
@@ -166,91 +101,6 @@ def _feed_record(t: dict) -> FeedRecord:
         description=t.get("description") or None,
         sync_id=sync_id,
     )
-
-
-#: Below this, a candidate that carries the bank's OWN descriptor contradicts
-#: the feed's rather than merely differing from it, and the structural
-#: shortcut (same amount, a day apart, nothing else nearby) may not take it
-#: unasked: "BIGGBY COFFEE" and "HOME DEPOT" are two purchases, and merging
-#: them loses one. A row a person typed is judged as before — their "Rent"
-#: never resembles the bank's "CHECK 1234", and that pair is one payment.
-#: The floor applies only where both sides are the bank's words. Two
-#: unrelated descriptors score around 0.3 on shared punctuation and store
-#: numbers alone; the same merchant under two spellings scores above 0.9.
-DEDUP_STRUCTURAL_MIN_PAYEE = 0.5
-
-
-@dataclass(frozen=True)
-class _MatchDecision:
-    action: Literal["auto", "review", "create"]
-    candidate: Transaction | None = None
-    score: float = 0.0
-    #: Days between the feed record and the candidate's comparable date.
-    days: int = 0
-
-
-def _decide_match(
-    synced_payee: str | None,
-    txn_date: date,
-    is_posted: bool,
-    candidates: list[tuple[Transaction, str | None]],
-) -> _MatchDecision:
-    """Decide how an incoming bank transaction relates to existing rows.
-
-    Candidates already share the exact amount within the date window. The
-    ladder: payee-driven auto-match on combined score, then structural
-    auto-match (≤1 day, posted rows only — pending amounts are provisional),
-    then review. A candidate is never silently ignored: an unmatched
-    exact-amount neighbor left behind is how duplicate rows are born.
-    """
-    if not candidates:
-        return _MatchDecision("create")
-
-    scored = []
-    for txn, payee_name in candidates:
-        similarity = best_payee_similarity(
-            _row_payee_strings(txn, payee_name), synced_payee, unknown=_UNKNOWN_PAYEE_SCORE
-        )
-        against = _comparable_date(txn)
-        scored.append(
-            (
-                txn,
-                similarity,
-                abs((txn_date - against).days),
-                _dedup_score(similarity, txn_date, against),
-                bool(txn.bank_payee or txn.import_description),
-            )
-        )
-
-    best = max(scored, key=lambda s: s[3])
-    if best[3] >= DEDUP_AUTO_MATCH_THRESHOLD:
-        if best[2] <= DEDUP_AUTO_DATE_MAX_DAYS:
-            return _MatchDecision("auto", best[0], best[3], best[2])
-        # A candidate this strong but this distant (long settlement? weekly
-        # recurring charge?) makes every structural shortcut below unsafe —
-        # a human sorts it out.
-        return _MatchDecision("review", best[0], best[3], best[2])
-
-    if is_posted:
-        near = [s for s in scored if s[2] <= DEDUP_TIGHT_DATE_DAYS]
-        if len(near) == 1:
-            txn, similarity, days, score, bank_words = near[0]
-            # Same amount, a day apart, nothing else in reach — near-certain
-            # identity, unless the bank's own descriptor on the row says
-            # otherwise (see DEDUP_STRUCTURAL_MIN_PAYEE).
-            if bank_words and similarity < DEDUP_STRUCTURAL_MIN_PAYEE:
-                return _MatchDecision("review", txn, score, days)
-            return _MatchDecision("auto", txn, score, days)
-        if len(near) > 1:
-            # Same-amount, same-day rows (recurring purchases, split legs):
-            # payee similarity is the only disambiguator left. A clear winner
-            # takes the match; a near-tie goes to human review over a guess.
-            near.sort(key=lambda s: (-s[1], s[2]))
-            if near[0][1] - near[1][1] >= DEDUP_TIEBREAK_MARGIN:
-                return _MatchDecision("auto", near[0][0], near[0][3], near[0][2])
-            return _MatchDecision("review", near[0][0], near[0][3], near[0][2])
-
-    return _MatchDecision("review", best[0], best[3], best[2])
 
 
 @dataclass
@@ -1075,12 +925,19 @@ class SimpleFINService:
             orphaned_feed_sync_ids=feed_ids,
             orphaned_since=since_date,
         )
-        decision = _decide_match(feed.payee, feed.date, feed.posted, candidates)
-        if strict and not (decision.action == "auto" and decision.days == 0):
+        rows = {txn.id: txn for txn, _ in candidates}
+        decision = decide_match(
+            feed.payee,
+            feed.date,
+            feed.posted,
+            [MatchCandidate.from_row(txn, payee_name) for txn, payee_name in candidates],
+        )
+        if strict and not settles_in_strict_pass(decision):
             return False
+        candidate = rows.get(decision.candidate_id) if decision.candidate_id else None
 
-        if decision.action == "auto" and decision.candidate is not None:
-            best_match = decision.candidate
+        if decision.action == "auto" and candidate is not None:
+            best_match = candidate
             # A candidate that already carries a (now retired) bank id is
             # being re-identified, not cleared: `posting_updates` writes the
             # new `sync_id` as provenance, which a reconciled row accepts
@@ -1100,7 +957,7 @@ class SimpleFINService:
                 # Candidates share the feed's exact amount, so this cannot
                 # happen today. If it ever does, the review queue is the
                 # honest fallback — never a silent row beside a linked one.
-                decision = _MatchDecision("review", best_match, decision.score, decision.days)
+                decision = MatchDecision("review", best_match.id, decision.score, decision.days)
             else:
                 if "cleared" in outcome.updates:
                     tally.cleared += 1
@@ -1118,17 +975,17 @@ class SimpleFINService:
             return True
         tally.consumed_ids.add(new_txn.id)
         tally.created_this_run.append((new_txn, feed))
-        if decision.action == "review" and decision.candidate is not None:
+        if decision.action == "review" and decision.candidate_id is not None:
             if self.matching_service is not None:
                 await self.matching_service.match_repo.create(
                     synced_transaction_id=new_txn.id,
-                    manual_transaction_id=decision.candidate.id,
+                    manual_transaction_id=decision.candidate_id,
                     confidence_score=decision.score,
                 )
                 # One review claim per candidate per run: a second identical
                 # feed row must queue against a different existing row, or
                 # import clean.
-                tally.consumed_ids.add(decision.candidate.id)
+                tally.consumed_ids.add(decision.candidate_id)
                 tally.review_queued += 1
         elif self.matching_service is not None:
             await self.matching_service.try_match(new_txn)
@@ -1536,14 +1393,17 @@ class SimpleFINService:
         if row.payee_id:
             payee = await self.matching_service.payee_repo.get(row.payee_id)
             payee_name = payee.name if payee is not None else None
-        names = _row_payee_strings(row, payee_name)
+        candidate = MatchCandidate.from_row(row, payee_name)
+        # A provisional link has no bank posting date by definition
+        # (txn_filters.PROVISIONALLY_LINKED), so this is the row's own date.
+        against = candidate.comparable_date
 
         best: tuple[float, Transaction] | None = None
         for txn, feed in fresh:
-            if txn.id == row.id or abs((feed.date - row.date).days) > DEDUP_TIGHT_DATE_DAYS:
+            if txn.id == row.id or abs((feed.date - against).days) > DEDUP_TIGHT_DATE_DAYS:
                 continue
-            similarity = best_payee_similarity(names, feed.payee, unknown=_UNKNOWN_PAYEE_SCORE)
-            score = _dedup_score(similarity, feed.date, row.date)
+            similarity = dedup_payee_score(candidate.payee_strings, feed.payee)
+            score = dedup_score(similarity, feed.date, against)
             if score >= STALE_LINK_REVIEW_THRESHOLD and (best is None or score > best[0]):
                 best = (score, txn)
         if best is None:

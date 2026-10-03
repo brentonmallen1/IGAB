@@ -1218,6 +1218,92 @@ async def test_import_change_rows_carry_the_acting_user(api_client, db_session):
     assert all(c.user_id == api_client.test_user.id for c in changes)
 
 
+async def _ladder_import(api_client, db_session):
+    """A CSV import that does all three things an import can: clears a row
+    it matched, writes a new one, and writes one it queues for review."""
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget, "Harborstone Checking")
+    grocer = await create_payee(db_session, budget, "Trader Joe's")
+    card = await create_payee(db_session, budget, "Sapphire Visa")
+    matched = await create_transaction(
+        db_session, budget, account, "-84.12", date(2026, 1, 3), payee=grocer, cleared="uncleared"
+    )
+    payment = await create_transaction(
+        db_session, budget, account, "-250.00", date(2026, 1, 10), payee=card, cleared="uncleared"
+    )
+    await db_session.flush()
+    csv = (
+        "Date,Payee,Amount\n"
+        "2026-01-04,TRADER JOE'S #552 SEATTLE WA,-84.12\n"
+        "2026-01-12,ACH WEB PMT,-250.00\n"
+        "2026-01-20,COSTCO WHSE #0001,-212.37\n"
+    )
+    body = await _import_csv(api_client, budget, account, csv)
+    assert (body["imported"], body["confirmed"], body["review"]) == (2, 1, 1)
+    return budget, account, matched, payment, body
+
+
+async def _pending_review_rows(db_session) -> list:
+    from igab.db.models import TransactionMatch
+
+    await db_session.flush()
+    result = await db_session.execute(
+        select(TransactionMatch).where(TransactionMatch.status == "pending")
+    )
+    return list(result.scalars())
+
+
+async def test_undoing_a_csv_import_unclears_what_it_matched_and_drops_its_reviews(
+    api_client, db_session
+):
+    budget, account, matched, payment, body = await _ladder_import(api_client, db_session)
+    await db_session.refresh(matched)
+    assert matched.cleared == "cleared"
+    assert len(await _pending_review_rows(db_session)) == 1
+    # One batch: the rows, the clearing and the review pair, all as the
+    # person's own act.
+    batch = [
+        c for c in await changes_for(db_session, budget.id) if str(c.batch_id) == body["batch_id"]
+    ]
+    assert {(c.entity_type, c.action) for c in batch} == {
+        ("transaction", "import"),
+        ("transaction", "update"),
+        ("transaction_match", "create"),
+    }
+    assert {c.source for c in batch} == {"import"}
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/batch/{body['batch_id']}/undo")
+    assert resp.status_code == 200, resp.text
+
+    await db_session.refresh(matched)
+    assert matched.cleared == "uncleared"
+    assert matched.bank_payee is None
+    assert matched.bank_posted_date is None
+    assert {t.id for t in await _live_rows(db_session, account)} == {matched.id, payment.id}
+    assert await _pending_review_rows(db_session) == []
+    listed = await api_client.get(f"/api/v1/simplefin/matches?budget_id={budget.id}")
+    assert listed.json() == []
+
+
+async def test_cmd_z_takes_back_a_matching_csv_import_and_redo_restores_it(api_client, db_session):
+    budget, account, matched, _payment, _body = await _ladder_import(api_client, db_session)
+
+    undo = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert undo.status_code == 200, undo.text
+    await db_session.refresh(matched)
+    assert matched.cleared == "uncleared"
+    assert len(await _live_rows(db_session, account)) == 2
+    assert await _pending_review_rows(db_session) == []
+
+    redo = await api_client.post(f"/api/v1/{budget.id}/changes/redo")
+    assert redo.status_code == 200, redo.text
+    await db_session.refresh(matched)
+    assert matched.cleared == "cleared"
+    assert len(await _live_rows(db_session, account)) == 4
+    listed = await api_client.get(f"/api/v1/simplefin/matches?budget_id={budget.id}")
+    assert len(listed.json()) == 1
+
+
 # ─── API: /changes listing and error shapes ───────────────────────────────────
 
 

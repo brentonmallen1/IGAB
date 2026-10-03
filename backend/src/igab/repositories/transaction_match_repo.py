@@ -1,9 +1,38 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from igab.db.models import TransactionMatch
+from igab.db.models import Transaction, TransactionMatch
+from igab.repositories.txn_filters import NOT_DELETED, on_alias
+
+_manual = aliased(Transaction)
+
+
+def _pending_live_pairs(scope: ColumnElement[bool]) -> Select[tuple[TransactionMatch]]:
+    """Pending matches whose two rows both still exist, oldest first.
+
+    Both sides, not just the synced one. Undoing the import or sync that
+    queued a pair deletes the row it created and leaves the match row behind;
+    a review item for a row that is gone is a question nobody can answer, and
+    accepting it only ever rejected it. The deleted side may come back (redo
+    restores it), so the match is left pending rather than rejected — it is
+    simply not offered while either row is gone. `scope` filters on the
+    synced row (`Transaction`).
+    """
+    return (
+        select(TransactionMatch)
+        .join(Transaction, TransactionMatch.synced_transaction_id == Transaction.id)
+        .join(_manual, TransactionMatch.manual_transaction_id == _manual.id)
+        .where(
+            scope,
+            TransactionMatch.status == "pending",
+            NOT_DELETED,
+            on_alias(NOT_DELETED, _manual),
+        )
+        .order_by(TransactionMatch.created_at)
+    )
 
 
 class TransactionMatchRepository:
@@ -35,30 +64,12 @@ class TransactionMatchRepository:
         return result.scalar_one_or_none()
 
     async def get_pending_for_budget(self, budget_id: uuid.UUID) -> list[TransactionMatch]:
-        from igab.db.models import Transaction
-
-        result = await self.session.execute(
-            select(TransactionMatch)
-            .join(Transaction, TransactionMatch.synced_transaction_id == Transaction.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                TransactionMatch.status == "pending",
-            )
-            .order_by(TransactionMatch.created_at)
-        )
+        result = await self.session.execute(_pending_live_pairs(Transaction.budget_id == budget_id))
         return list(result.scalars().all())
 
     async def get_pending_for_account(self, account_id: uuid.UUID) -> list[TransactionMatch]:
-        from igab.db.models import Transaction
-
         result = await self.session.execute(
-            select(TransactionMatch)
-            .join(Transaction, TransactionMatch.synced_transaction_id == Transaction.id)
-            .where(
-                Transaction.account_id == account_id,
-                TransactionMatch.status == "pending",
-            )
-            .order_by(TransactionMatch.created_at)
+            _pending_live_pairs(Transaction.account_id == account_id)
         )
         return list(result.scalars().all())
 

@@ -3,10 +3,18 @@ import { apiClient } from './client'
 import { ROOT } from './queryKeys'
 
 export interface CsvImportResult {
+  /** Rows written: new lines and lines queued for review. */
   imported: number
+  /** Unreadable lines plus lines already imported under the same identity. */
   skipped: number
   errors: string[]
-  /** Change-log batch id for undo (null if nothing was imported). */
+  /** Lines the bank-match ladder found already here. */
+  matched: number
+  /** Of `matched`, the rows this import marked cleared. */
+  confirmed: number
+  /** Lines written and queued for review against a row they may duplicate. */
+  review: number
+  /** Change-log batch id for undo (null if the import changed nothing). */
   batch_id: string | null
 }
 
@@ -187,9 +195,17 @@ export interface CsvPreviewRow {
   payee: string
   memo: string | null
   category: string | null
-  /** Already in this account. The reason the preview exists. */
-  duplicate: boolean
+  /** What the import will do with this line (backend services/csv_import.py).
+   *  Already being here is the reason the preview exists. */
+  outcome: CsvOutcome
+  /** A `matched` line that will mark its row cleared. */
+  confirms: boolean
 }
+
+/** `new`: nothing like it here. `already_imported`: same import identity.
+ *  `matched`: the bank-match ladder is sure a row already here is this line.
+ *  `review`: written, and queued for review against a row it may duplicate. */
+export type CsvOutcome = 'new' | 'already_imported' | 'matched' | 'review'
 
 export interface CsvPreview {
   headers: string[]
@@ -197,7 +213,12 @@ export interface CsvPreview {
   date_format: string | null
   total_rows: number
   new_rows: number
+  /** Lines already imported under the same identity. */
   duplicate_rows: number
+  matched_rows: number
+  /** Of `matched_rows`, the rows the import will mark cleared. */
+  confirmed_rows: number
+  review_rows: number
   skipped: { line: number; reason: string }[]
   sample: CsvPreviewRow[]
 }
