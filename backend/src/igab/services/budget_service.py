@@ -1683,7 +1683,7 @@ class BudgetService:
             "average_spent": history.average_spent,
             "reset": Decimal("0"),
         }
-        amount = amount_map.get(action, Decimal("0"))
+        amount = amount_map[action]  # the request schema closes the set
         await self.set_assignment(budget_id, category_id, month, amount)
 
     async def move_money(

@@ -40,6 +40,7 @@ HISTORY_STRATEGIES = (
 )
 ASSIGN_STRATEGIES = (
     "underfunded",
+    "target_amount",
     *HISTORY_STRATEGIES,
     "reduce_overfunded",
     "reset_available",
@@ -253,85 +254,151 @@ class AssignService:
             target, assigned=assigned, available=available, month=ctx.month
         )
 
-    def _build_preview(self, ctx: _AssignContext, strategy: str) -> AssignPreview:
-        total_needed: Decimal | None = None
-        items: list[AssignPreviewItem] = []
+    def _target_assigned(self, ctx: _AssignContext, category_id: uuid.UUID) -> Decimal | None:
+        """What "target amounts" sets a category's assigned to, or None
+        without a target (`TargetService.target_assigned`)."""
+        target = ctx.targets.get(category_id)
+        if target is None:
+            return None
+        bal = ctx.balances.get(category_id)
+        return self.target_service.target_assigned(
+            target,
+            assigned=bal.assigned if bal else ZERO,
+            available=bal.available if bal else ZERO,
+            month=ctx.month,
+        )
 
+    async def set_to_targets(
+        self, budget_id: uuid.UUID, month: date, category_ids: list[uuid.UUID]
+    ) -> None:
+        """The inspector's per-category "Target amount": the dropdown's
+        `target_amount` strategy, for the selected categories only. A
+        category without a target is left alone."""
+        ctx = await self._gather(budget_id, month)
+        wanted = set(category_ids)
+        for cat in ctx.eligible:
+            if cat.id not in wanted:
+                continue
+            new = self._target_assigned(ctx, cat.id)
+            bal = ctx.balances.get(cat.id)
+            if new is not None and new != (bal.assigned if bal else ZERO):
+                await self.budget_service.set_assignment(budget_id, cat.id, ctx.month, new)
+
+    def _underfunded_items(self, ctx: _AssignContext) -> tuple[list[AssignPreviewItem], Decimal]:
+        """Fill-to-target, pro-rated within TBA; and the unclamped need."""
+        shortfalls: dict[uuid.UUID, Decimal] = {}
+        for cat in ctx.eligible:
+            target = ctx.targets.get(cat.id)
+            bal = ctx.balances.get(cat.id)
+            if target is None or bal is None:
+                continue
+            needed = self.target_service.calculate_needed(
+                target, bal.assigned, bal.available, month=ctx.month
+            )
+            if needed > ZERO:
+                shortfalls[cat.id] = needed
+        proposed = distribute_fill(shortfalls, ctx.summary.to_be_assigned)
+        name_map = {c.id: c.name for c in ctx.eligible}
+        items = []
+        for cat_id in shortfalls:
+            bal = ctx.balances[cat_id]
+            delta = proposed[cat_id]
+            # Zero-delta rows stay visible in the preview: they show what
+            # a too-small TBA couldn't reach.
+            items.append(
+                AssignPreviewItem(
+                    category_id=cat_id,
+                    category_name=name_map[cat_id],
+                    current_assigned=bal.assigned,
+                    new_assigned=bal.assigned + delta,
+                    delta=delta,
+                )
+            )
+        return items, sum(shortfalls.values(), ZERO)
+
+    def _new_assigned(
+        self,
+        ctx: _AssignContext,
+        strategy: str,
+        cat: Category,
+        current: Decimal,
+        available: Decimal,
+    ) -> Decimal | None:
+        """A SET strategy's figure for one category; None leaves it alone."""
+        if strategy == "target_amount":
+            # Every targeted envelope reads what its target asks this month,
+            # over-assigned ones included. Not pro-rated — unlike Underfunded
+            # it may assign past TBA, and the preview's TBA-after says so.
+            return self._target_assigned(ctx, cat.id)
+        return strategy_new_assigned(
+            strategy,
+            current,
+            available,
+            ctx.histories[cat.id],
+            self._duty_for(ctx, cat.id, current, available),
+        )
+
+    def _set_items(self, ctx: _AssignContext, strategy: str) -> list[AssignPreviewItem]:
+        items = []
+        for cat in ctx.eligible:
+            bal = ctx.balances.get(cat.id)
+            current = bal.assigned if bal else ZERO
+            available = bal.available if bal else ZERO
+            new = self._new_assigned(ctx, strategy, cat, current, available)
+            if new is None or new == current:
+                continue
+            items.append(
+                AssignPreviewItem(
+                    category_id=cat.id,
+                    category_name=cat.name,
+                    current_assigned=current,
+                    new_assigned=new,
+                    delta=new - current,
+                )
+            )
+        return items
+
+    def _headline(
+        self, ctx: _AssignContext, strategy: str, to_assign: Decimal, to_return: Decimal
+    ) -> Decimal:
+        """The figure the dropdown row shows for a strategy."""
         if strategy == "underfunded":
-            shortfalls: dict[uuid.UUID, Decimal] = {}
-            for cat in ctx.eligible:
-                target = ctx.targets.get(cat.id)
-                bal = ctx.balances.get(cat.id)
-                if target is None or bal is None:
-                    continue
-                needed = self.target_service.calculate_needed(
-                    target, bal.assigned, bal.available, month=ctx.month
-                )
-                if needed > ZERO:
-                    shortfalls[cat.id] = needed
-            proposed = distribute_fill(shortfalls, ctx.summary.to_be_assigned)
-            total_needed = sum(shortfalls.values(), ZERO)
-            name_map = {c.id: c.name for c in ctx.eligible}
-            for cat_id in shortfalls:
-                bal = ctx.balances[cat_id]
-                delta = proposed[cat_id]
-                # Zero-delta rows stay visible in the preview: they show what
-                # a too-small TBA couldn't reach.
-                items.append(
-                    AssignPreviewItem(
-                        category_id=cat_id,
-                        category_name=name_map[cat_id],
-                        current_assigned=bal.assigned,
-                        new_assigned=bal.assigned + delta,
-                        delta=delta,
-                    )
-                )
-        else:
-            if strategy not in ASSIGN_STRATEGIES:
-                raise ValueError(f"Unknown assign strategy: {strategy}")
+            return to_assign
+        if strategy == "target_amount" or strategy in HISTORY_STRATEGIES:
+            # The YNAB-style headline: the total the strategy would leave
+            # assigned across the categories it governs, unchanged ones
+            # included — every eligible one for history, the targeted ones
+            # for target amounts.
+            total = ZERO
             for cat in ctx.eligible:
                 bal = ctx.balances.get(cat.id)
                 current = bal.assigned if bal else ZERO
                 available = bal.available if bal else ZERO
-                new = strategy_new_assigned(
-                    strategy,
-                    current,
-                    available,
-                    ctx.histories[cat.id],
-                    self._duty_for(ctx, cat.id, current, available),
-                )
-                if new is None or new == current:
-                    continue
-                items.append(
-                    AssignPreviewItem(
-                        category_id=cat.id,
-                        category_name=cat.name,
-                        current_assigned=current,
-                        new_assigned=new,
-                        delta=new - current,
-                    )
-                )
+                if strategy == "target_amount":
+                    new = self._target_assigned(ctx, cat.id)
+                    if new is None:
+                        continue
+                else:
+                    new = strategy_new_assigned(strategy, current, available, ctx.histories[cat.id])
+                total += new if new is not None else current
+            return total
+        # Resets: net amount returned to TBA.
+        return to_return - to_assign
+
+    def _build_preview(self, ctx: _AssignContext, strategy: str) -> AssignPreview:
+        if strategy not in ASSIGN_STRATEGIES:
+            raise ValueError(f"Unknown assign strategy: {strategy}")
+        total_needed: Decimal | None = None
+        if strategy == "underfunded":
+            items, total_needed = self._underfunded_items(ctx)
+        else:
+            items = self._set_items(ctx, strategy)
 
         items.sort(key=lambda i: (-abs(i.delta), i.category_name))
         to_assign = sum((i.delta for i in items if i.delta > ZERO), ZERO)
         to_return = sum((-i.delta for i in items if i.delta < ZERO), ZERO)
         affected_count = sum(1 for i in items if i.delta != ZERO)
-
-        if strategy == "underfunded":
-            total_amount = to_assign
-        elif strategy in HISTORY_STRATEGIES:
-            # The YNAB-style headline: the total the strategy would leave
-            # assigned across every eligible category (unchanged ones included).
-            total_amount = ZERO
-            for cat in ctx.eligible:
-                bal = ctx.balances.get(cat.id)
-                current = bal.assigned if bal else ZERO
-                available = bal.available if bal else ZERO
-                new = strategy_new_assigned(strategy, current, available, ctx.histories[cat.id])
-                total_amount += new if new is not None else current
-        else:
-            # Resets: net amount returned to TBA.
-            total_amount = to_return - to_assign
+        total_amount = self._headline(ctx, strategy, to_assign, to_return)
 
         # What each touched envelope would hold afterwards. `available` moves
         # with `assigned` one for one, which is the same relation

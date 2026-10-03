@@ -78,6 +78,9 @@ class Operation:
 OPERATIONS: tuple[Operation, ...] = (
     Operation("cover_overspent", may_push_red=False, clears_red=True),
     Operation("underfunded", may_push_red=False),
+    # Sets assigned to the target's ask, down as well as up — but a pullback is
+    # bounded by what the envelope still holds, so never into the red.
+    Operation("target_amount", may_push_red=False),
     Operation("reduce_overfunded", may_push_red=False),
     Operation("reset_available", may_push_red=False),
     Operation("reset_assigned", may_push_red=True),

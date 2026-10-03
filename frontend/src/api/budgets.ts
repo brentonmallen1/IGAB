@@ -227,6 +227,7 @@ export function useSetAssignment(budgetId: string) {
                 // those always exist server-side before they can be assigned.
                 is_card_payment: false,
                 needed_this_month: null,
+                target_assigned: null,
                 // Nothing repaid: this row is an assignment the user just
                 // made, not a card inflow the exposure walk had to split.
                 repaid_uncovered_debt: 0,

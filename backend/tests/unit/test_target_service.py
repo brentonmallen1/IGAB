@@ -322,3 +322,48 @@ class TestValidate:
             TargetService.validate("monthly_funding", None, check_after_day=0, weekday=None)
         with pytest.raises(InvariantViolation):
             TargetService.validate("weekly_funding", None, check_after_day=None, weekday=7)
+
+
+class TestTargetAssigned:
+    """What Auto-assign's "target amounts" sets a category's assigned to.
+
+    A SET, not a top-up: a paced target reads its month's ask even when that
+    is below what was assigned. Only an undated savings balance is topped up
+    and never lowered — it has no monthly figure, only a balance to reach.
+    """
+
+    def ask(self, target, assigned, available, *, month=MAY):
+        svc = TargetService(MagicMock())
+        return svc.target_assigned(
+            target, assigned=Decimal(assigned), available=Decimal(available), month=month
+        )
+
+    def test_monthly_reads_the_amount_up_or_down(self):
+        t = make_target("monthly_funding", "500.00")
+        assert self.ask(t, "100.00", "100.00") == Decimal("500.00")
+        assert self.ask(t, "650.00", "650.00") == Decimal("500.00"), "over-assigned comes down"
+
+    def test_weekly_counts_the_weekdays_in_the_month(self):
+        t = make_target("weekly_funding", "50.00", weekday=FRIDAY)
+        assert self.ask(t, "0", "0", month=MAY) == Decimal("250.00")
+        assert self.ask(t, "0", "0", month=JUNE) == Decimal("200.00")
+
+    def test_dated_savings_reads_the_months_pace_in_cents(self):
+        # 1000 to go from an opening of 0, over months_between(MAY, Aug 1).
+        t = make_target("savings_balance", "1000.00", date(2026, 8, 1))
+        months = months_between(MAY, date(2026, 8, 1))
+        expected = (Decimal("1000.00") / months).quantize(Decimal("0.01"))
+        assert self.ask(t, "0", "0") == expected
+        assert self.ask(t, "0", "0").as_tuple().exponent == -2
+
+    def test_undated_savings_tops_up_to_the_balance(self):
+        t = make_target("savings_balance", "1000.00")
+        assert self.ask(t, "100.00", "600.00") == Decimal("500.00"), "100 + the 400 short"
+        assert self.ask(t, "100.00", "1200.00") == Decimal("100.00"), "never lowered"
+
+    def test_lowering_stops_at_what_the_envelope_still_holds(self):
+        # Target 100, assigned 160, 140 spent: 20 left. Taking 60 would leave
+        # it 40 red; it gives back the 20.
+        t = make_target("monthly_funding", "100.00")
+        assert self.ask(t, "160.00", "20.00") == Decimal("140.00")
+        assert self.ask(t, "160.00", "-5.00") == Decimal("160.00"), "already red: nothing to take"

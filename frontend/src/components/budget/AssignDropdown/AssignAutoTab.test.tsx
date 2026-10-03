@@ -10,6 +10,7 @@ function totals(
 ): AssignStrategyTotalsResponse {
   const strategies = [
     'underfunded',
+    'target_amount',
     'last_month_assigned',
     'last_month_spent',
     'average_assigned',
@@ -90,5 +91,12 @@ describe('AssignAutoTab', () => {
   it('does not explain when targets genuinely need money', () => {
     setup(totals({ total_overspent: 50, total_overspent_credit: 50 }, 200), 1)
     expect(screen.queryByText(/isn't a target shortfall/)).toBeNull()
+  })
+
+  it('offers Target Amounts beside Underfunded, and picks it', () => {
+    const { onPickStrategy } = setup(totals())
+    const row = screen.getByRole('button', { name: /Target Amounts/ })
+    fireEvent.click(row)
+    expect(onPickStrategy).toHaveBeenCalledWith('target_amount')
   })
 })
