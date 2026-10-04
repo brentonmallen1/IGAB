@@ -51,7 +51,12 @@ async def test_the_setting_reads_anchored_with_the_import_month(db_session, api_
     b = await build_anchored_budget(db_session, api_client.test_user)
     resp = await api_client.get(f"/api/v1/budgets/{b.budget.id}/history")
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"mode": "anchored", "import_month": JUL.isoformat()}
+    # Built the way an older import was: an anchor, but no stored YNAB months.
+    assert resp.json() == {
+        "mode": "anchored",
+        "import_month": JUL.isoformat(),
+        "keeps_history": False,
+    }
 
 
 async def test_rederived_reads_exactly_the_unanchored_walk(db_session, api_client):
@@ -128,7 +133,7 @@ async def test_undo_switches_back(db_session, api_client):
 async def test_a_budget_never_imported_has_no_setting(db_session, api_client):
     budget = await create_budget(db_session, api_client.test_user)
     resp = await api_client.get(f"/api/v1/budgets/{budget.id}/history")
-    assert resp.json() == {"mode": "anchored", "import_month": None}
+    assert resp.json() == {"mode": "anchored", "import_month": None, "keeps_history": False}
     refused = await _set(api_client, budget.id, "rederived")
     assert refused.status_code == 409
     await db_session.refresh(budget)
@@ -163,3 +168,4 @@ async def test_an_import_can_choose_to_rederive(db_session, api_client, tmp_path
         history = (await api_client.get(f"/api/v1/budgets/{budget_id}/history")).json()
         assert history["mode"] == mode
         assert history["import_month"] == AUG.isoformat(), "the anchor is written either way"
+        assert history["keeps_history"] is True, "so are YNAB's figures for earlier months"

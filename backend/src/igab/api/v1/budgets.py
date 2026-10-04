@@ -53,6 +53,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.import_anchor_repo import ImportAnchorRepository
 from igab.repositories.import_mapping_repo import ImportMappingRepository
+from igab.repositories.import_plan_repo import ImportPlanRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
@@ -585,6 +586,11 @@ class BudgetHistory(BaseModel):
     #: is on; None for a budget never anchored at import, which has no
     #: setting to offer.
     import_month: datetime.date | None
+    #: Whether the import kept YNAB's own figures for the months before it
+    #: (`ImportPlanMonth`), so they can be looked at read-only without
+    #: re-deriving anything. False for an import made before the figures were
+    #: kept: the warning about re-deriving must not offer a view it lacks.
+    keeps_history: bool
 
 
 class BudgetHistoryUpdate(BaseModel):
@@ -595,6 +601,7 @@ async def _history(session: AsyncSession, budget: Budget) -> BudgetHistory:
     return BudgetHistory(
         mode=HistoryMode(budget.history_mode),
         import_month=await ImportAnchorRepository(session).import_month(budget.id),
+        keeps_history=await ImportPlanRepository(session).earliest_month(budget.id) is not None,
     )
 
 

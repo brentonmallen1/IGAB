@@ -49,7 +49,7 @@ import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatMonth, formatTimeWithOptions } from '../../utils/dates'
 import { useFormatters } from '../../hooks/useFormatters'
 import { wishlistToggleOutcome } from './wishlistToggle'
-import { historyModeToggleOutcome } from './historyModeToggle'
+import { historyModeToggleOutcome } from '../../utils/historyModeToggle'
 import { useUIStore } from '../../stores/uiStore'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
 import { apiErrorMessage } from '../../api/client'
@@ -183,6 +183,7 @@ export function SettingsPage() {
     const mode = await historyModeToggleOutcome(editable, {
       confirm: confirmAsync,
       importMonth: formatMonth(history.import_month),
+      keepsHistory: history.keeps_history,
     })
     if (mode) setHistory.mutate(mode)
   }
@@ -333,7 +334,7 @@ export function SettingsPage() {
                     desc={
                       history.mode === 'rederived'
                         ? `On: IGAB works out every month from your first transaction, so earlier months are editable. Its figures won't match YNAB's. Turn off to start from YNAB's figures in ${formatMonth(history.import_month)} again.`
-                        : `Off: your budget starts in ${formatMonth(history.import_month)} from YNAB's own figures, and earlier months are history. Turn on to have IGAB work out every month so you can edit them — the figures will then stop matching YNAB.`
+                        : `Off (recommended): your budget starts in ${formatMonth(history.import_month)} from YNAB's own figures${history.keeps_history ? ', and earlier months can be viewed read-only as YNAB showed them' : ', and earlier months are history'}. Turn on only if you need to edit them — IGAB then works out every month itself and its figures stop matching YNAB.`
                     }
                     checked={history.mode === 'rederived'}
                     disabled={setHistory.isPending}

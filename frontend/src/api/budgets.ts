@@ -419,6 +419,9 @@ export interface ImportHistoryMonth {
 export interface BudgetHistory {
   mode: HistoryMode
   import_month: string | null
+  /** The import kept YNAB's figures for earlier months, viewable read-only
+   *  (server: `BudgetHistory.keeps_history`). False for older imports. */
+  keeps_history: boolean
 }
 
 /** 'anchored': the budget starts at the import month from YNAB's figures.

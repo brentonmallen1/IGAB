@@ -54,7 +54,8 @@ import {
   type Disposition,
 } from './accountMapping'
 import { MappingNotes } from './MappingNotes'
-import { parseLocalDate } from '../../utils/dates'
+import { formatMonth, parseLocalDate } from '../../utils/dates'
+import { historyModeToggleOutcome } from '../../utils/historyModeToggle'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -129,6 +130,16 @@ export function BudgetSelectorPage() {
   // Where the imported budget's math starts — offered only when the export can
   // be anchored (`previewAnchorMonth`), and changeable later in Settings.
   const [historyMode, setHistoryMode] = useState<HistoryMode>('anchored')
+  // Picking the editable option asks first, with the same warning Settings
+  // gives — a fresh import always keeps YNAB's figures for earlier months.
+  async function chooseRederived(anchorMonth: string) {
+    const mode = await historyModeToggleOutcome(true, {
+      confirm: confirmAsync,
+      importMonth: formatMonth(anchorMonth),
+      keepsHistory: true,
+    })
+    if (mode) setHistoryMode(mode)
+  }
   // Rows dated after today — upcoming transactions, not register history.
   const [previewHeldOut, setPreviewHeldOut] = useState(0)
   const [snapshotPreview, setSnapshotPreview] = useState<SnapshotInspection | null>(null)
@@ -603,10 +614,10 @@ export function BudgetSelectorPage() {
                           onChange={() => setHistoryMode('anchored')}
                         />
                         <span>
-                          <strong>Start where YNAB left off</strong>
+                          <strong>Start where YNAB left off (recommended)</strong>
                           <small>
-                            Recommended. Matches YNAB from the first day; earlier months stay in the
-                            register and reports.
+                            Matches YNAB from day one. You can still page back through earlier
+                            months read-only, as YNAB showed them.
                           </small>
                         </span>
                       </label>
@@ -617,14 +628,16 @@ export function BudgetSelectorPage() {
                           type="radio"
                           name="history-mode"
                           checked={historyMode === 'rederived'}
-                          onChange={() => setHistoryMode('rederived')}
+                          onChange={() => void chooseRederived(previewAnchorMonth)}
                         />
                         <span>
                           <strong>Work out every month</strong>
                           <small>
-                            Earlier months become editable, but IGAB&apos;s figures won&apos;t match
-                            YNAB&apos;s and card reserves can drift. You can change this later in
-                            Settings.
+                            Only choose this if you need to change months before the import. IGAB
+                            recalculates your whole history under its own rules, so envelopes, card
+                            reserves and Ready to Assign won&apos;t match YNAB — and differences on
+                            this budget are expected, not bugs. If you&apos;re not sure, keep the
+                            default; you can switch later in Settings.
                           </small>
                         </span>
                       </label>

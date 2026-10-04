@@ -124,7 +124,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     group: 'this-budget',
     description:
       'The budget you have open: its name, when a month’s money is expected, and how its numbers are written everywhere they appear.',
-    keywords: 'name currency number date time format funding day',
+    keywords:
+      'name currency number date time format funding day import ynab history past earlier months before edit',
   },
   {
     id: 'accounts',
