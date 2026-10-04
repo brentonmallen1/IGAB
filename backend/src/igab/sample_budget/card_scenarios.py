@@ -32,6 +32,7 @@ from decimal import Decimal
 from typing import Literal
 
 from igab.domain.cards import AnchorOpenings, SetAsideState
+from igab.domain.dates import budget_month
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.sample_budget.spec import (
     BOTH_TIERS,
@@ -93,6 +94,12 @@ class CardEvent:
     kind: EventKind
     amount: Decimal
     category: str | None = None
+    #: A late arrival: dated in an anchored scenario's B−1 but reaching the
+    #: register after the import — a charge that cleared late, or one typed
+    #: in afterwards. Written with `created_via='manual'`, so it counts in B
+    #: (`txn_filters.LATE_ARRIVAL`); every other event is history the anchor
+    #: already describes. Valid only where `CardScenario` says so.
+    late: bool = False
 
     def __post_init__(self) -> None:
         if self.amount <= ZERO:
@@ -106,6 +113,17 @@ class CardEvent:
         """The first of the month this event falls in."""
         year, month = shift_months(anchor, self.when.months_ago)
         return date(year, month, 1)
+
+    def counts_in(self, today: date, scenario: "CardScenario") -> date:
+        """The month this event counts in for budget math — its own month,
+        or the import month for a late arrival. Through the pure twin of the
+        served bucket (`domain.dates.budget_month`), so the walk here and the
+        SQL the summary runs cannot disagree about a late row."""
+        opening = None
+        if scenario.import_anchor is not None:
+            year, month = shift_months(today, scenario.import_anchor.months_ago + 1)
+            opening = date(year, month, 1)
+        return budget_month(self.month(today), anchor_month=opening, late_eligible=self.late)
 
     def signed(self) -> Decimal:
         """What this event does to the CARD's balance. 0 for assignments and
@@ -303,6 +321,22 @@ class CardScenario:
     #: is worth showing too.
     bill_due: BillDue | None = None
 
+    def __post_init__(self) -> None:
+        for e in self.events:
+            if not e.late:
+                continue
+            # A late arrival is a register row dated in B−1 of an anchored
+            # budget — anywhere else the flag would claim a rule that cannot
+            # fire, and the scenario would assert nothing about it.
+            if self.import_anchor is None:
+                raise ValueError(f"{self.slug}: a late event needs an import anchor")
+            if e.when.months_ago != self.import_anchor.months_ago + 1:
+                raise ValueError(f"{self.slug}: a late event is dated in B−1")
+            # A card row: the card is what came with the import. A late
+            # cash row would land on an account no scenario marks so.
+            if e.kind not in ("spend", "charge", "refund", "deposit"):
+                raise ValueError(f"{self.slug}: a late {e.kind!r} is not a row on the card")
+
     @property
     def payment_category(self) -> str:
         """The card's own envelope. Named after the card, as the app does."""
@@ -361,7 +395,7 @@ def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
     card = scenario.card
 
     for event in scenario.events:
-        month = event.month(today)
+        month = event.counts_in(today, scenario)
         category = event.category or ""
         if event.kind == "fund":
             _bump(assignments.setdefault(category, {}), month, event.amount)
@@ -414,8 +448,11 @@ def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
             reserve_by_card={card: ia.reserve},
             uncovered_by_card={card: ia.uncovered},
         )
+        # By the bucket the walk uses: a late arrival counts in B, so it is
+        # not part of the balance the card arrived with.
         pre_anchor = scenario.opening + sum(
-            (e.signed() for e in scenario.events if e.month(today) < boundary), ZERO
+            (e.signed() for e in scenario.events if e.counts_in(today, scenario) < boundary),
+            ZERO,
         )
         opening_credit = max(ZERO, pre_anchor)
         # Unclaimed rows are not a reserve leg, so the walk never sees them:
@@ -470,7 +507,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
     # The month ledger, summed straight off the events — deliberately a
     # different path from the SQL (`card_month_flows`) the served figure
     # takes, so the two check each other through the shared expectations.
-    month_events = [e for e in scenario.events if e.month(today) == month]
+    month_events = [e for e in scenario.events if e.counts_in(today, scenario) == month]
     charged = sum((e.amount for e in month_events if e.kind in ("spend", "charge")), ZERO)
     inflows = sum((e.amount for e in month_events if e.kind in ("refund", "pay", "deposit")), ZERO)
     paid = sum((e.amount for e in month_events if e.kind == "pay"), ZERO)
@@ -1878,11 +1915,68 @@ ANCHORED_NEGATIVE_OPENING = CardScenario(
 )
 
 
+ANCHORED_LATE_CHARGE = CardScenario(
+    slug="anchored-late-charge",
+    title="A charge from before the import that cleared after it",
+    story=(
+        "An import early in a month leaves the month before's stragglers "
+        "outside the anchor: YNAB's B−1 figures never saw a charge that "
+        "cleared on the 4th dated the 28th, and the walks start at B. Before "
+        "the late-arrival rule the walk dropped it with every other pre-B "
+        "row, so the envelope that paid for it never reserved and the 60 "
+        "read as uncovered debt. A row dated in B−1 that arrived after the "
+        "import, on a card that came with it, now counts in B "
+        "(`txn_filters.LATE_ARRIVAL`): B's Dining funds it and the reserve "
+        "holds it, exactly as if it had been dated the 1st of B."
+    ),
+    card="Thornbury Card",
+    short="Thornbury",
+    opening=_d("0"),
+    import_anchor=CardAnchor(
+        months_ago=2,
+        reserve=_d("0"),
+        uncovered=_d("0"),
+        available=(("Thornbury Dining", _d("0")),),
+    ),
+    events=(
+        # B−1, the 28th: typed in after the import. Not history — the late
+        # flag writes it as a manual row on a card that came with the import.
+        CardEvent(RelDate(3, 28), "spend", _d("60"), "Thornbury Dining", late=True),
+        # B: Dining is funded, and pays for the late charge.
+        _fund(2, "100", "Thornbury Dining"),
+    ),
+    tiers=("full",),
+    expect=ExpectedPosition(
+        balance=_d("-60"),
+        # B's Dining covered the 60, so the reserve holds it. Without the
+        # rule: set aside 0, uncovered 60 — the behaviour under test.
+        set_aside=_d("60"),
+        uncovered=_d("0"),
+        riding=_d("0"),
+        imported_riding=_d("0"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("0"),
+        reserve_discrepancy=_d("0"),
+    ),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "A charge dated the month before the import cleared after it, or was entered late."
+        ),
+        reads="It counts in the import month: that month's envelope pays for it and the card "
+        "sets the money aside.",
+        todo="Nothing. The import month lists it as arriving from before the budget started.",
+    ),
+)
+
 ANCHORED_SCENARIOS: tuple[CardScenario, ...] = (
     ANCHORED_IMPORT,
     ANCHORED_IN_CREDIT,
     ANCHORED_CREDIT_SPENT_DOWN,
     ANCHORED_NEGATIVE_OPENING,
+    ANCHORED_LATE_CHARGE,
 )
 
 
@@ -1953,6 +2047,7 @@ def to_spec_elements(
                     payee=_payee_for(event, scenario),
                     amount=event.signed(),
                     category=event.category,
+                    created_via="manual" if event.late else None,
                     tiers=scenario.tiers,
                 )
             )
@@ -1993,6 +2088,9 @@ def to_spec_elements(
             scenario.card,
             "credit_card",
             sort_order=sort_order,
+            # An anchored card came with the import — the condition a late
+            # arrival on it needs (`Account.from_import`).
+            from_import=scenario.import_anchor is not None,
             tiers=scenario.tiers,
         ),
         payment_category=CategorySpec(

@@ -14,6 +14,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransactionRow } from './TransactionRow'
 import type { Transaction } from '../../../types'
+import { makeTransaction } from '../../../test-utils/factories'
 
 vi.mock('../../../api/transactions', () => ({
   useUpdateTransaction: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -34,24 +35,7 @@ vi.mock('./RowAttachmentButton', () => ({ RowAttachmentButton: () => null }))
 vi.mock('../../simplefin/BankRecordIcon', () => ({ BankRecordIcon: () => null }))
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
-  return {
-    id: 't1',
-    budget_id: 'b1',
-    account_id: 'a1',
-    date: '2026-08-02',
-    amount: -12.5,
-    payee_id: null,
-    category_id: null,
-    memo: null,
-    cleared: 'uncleared',
-    approved: true,
-    created_via: null,
-    is_split: false,
-    transfer_id: null,
-    has_sync_source: false,
-    needs_category: false,
-    ...overrides,
-  } as unknown as Transaction
+  return makeTransaction(overrides)
 }
 
 /** The payee column renders "Transfer : …" and an em dash of its own, so every

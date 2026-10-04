@@ -34,7 +34,9 @@ def upgrade() -> None:
     """Upgrade schema."""
     # Nullable on purpose: an account whose frame has never been observed
     # syncs verbatim, which is exactly its behaviour before this column.
-    op.add_column("accounts", sa.Column("simplefin_sign_frame", sa.String(length=10), nullable=True))
+    op.add_column(
+        "accounts", sa.Column("simplefin_sign_frame", sa.String(length=10), nullable=True)
+    )
 
     op.add_column(
         "sync_runs",

@@ -27,6 +27,17 @@ from typing import Any
 
 _CENTS = Decimal("0.01")
 
+#: `Transaction.created_via` on every row the YNAB importer writes. Not the CSV
+#: importer's 'import': a YNAB row is one the import anchor's figures already
+#: describe, so it is never a late arrival (`txn_filters.LATE_ARRIVAL`), and a
+#: CSV file run after the import is exactly one. Split legs and transfer legs
+#: made from a row inherit its stamp, so the marker follows the money.
+YNAB_ORIGIN = "ynab"
+
+#: Every `created_via` that means "a file import put this row here" — the one
+#: answer for the change log's source (`change_log.source_for`).
+FILE_IMPORT_ORIGINS = frozenset({"import", YNAB_ORIGIN})
+
 
 def generate_import_id(account_id: uuid.UUID, txn_date: date, amount: Decimal, payee: str) -> str:
     """Stable identity for an imported row: same transaction, same id.

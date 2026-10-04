@@ -54,6 +54,9 @@ from igab.api.v1.schemas.category import (
     FutureOverspendPreviewRequest,
     FutureOverspendPreviewResponse,
     FutureOverspendWarningOut,
+    ImportHistoryMonthResponse,
+    ImportHistoryRowOut,
+    LateArrivalOut,
     MoveMoneyRequest,
     OverspentLastMonthItem,
     RecentPayeeResponse,
@@ -722,6 +725,36 @@ async def get_card_timeline(
     )
 
 
+@router.get("/{budget_id}/months/{month}/history", response_model=ImportHistoryMonthResponse)
+async def get_import_history_month(
+    budget_id: BudgetAccess,
+    month: date,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+) -> ImportHistoryMonthResponse:
+    """A month before the import month, as YNAB displayed it — the Budget
+    page's read-only view. 404 where there is none: no anchor in force, a
+    month from the import on, or an import that kept no figures for it."""
+    history = await budget_service.import_history(budget_id, month)
+    if history is None:
+        raise HTTPException(status_code=404, detail="No imported history for this month")
+    return ImportHistoryMonthResponse(
+        month=history.month,
+        import_month=history.import_month,
+        history_starts=history.history_starts,
+        rows=[
+            ImportHistoryRowOut(
+                category_group=r.category_group,
+                category=r.category,
+                category_id=r.category_id,
+                assigned=r.assigned,
+                activity=r.activity,
+                available=r.available,
+            )
+            for r in history.rows
+        ],
+    )
+
+
 @router.get("/{budget_id}/months/{month}", response_model=BudgetMonthResponse)
 async def get_budget_month(
     budget_id: BudgetAccess,
@@ -764,6 +797,19 @@ async def get_budget_month(
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
         anchor_month=summary.anchor_month,
+        late_arrivals=[
+            LateArrivalOut(
+                transaction_id=a.transaction_id,
+                date=a.date,
+                amount=a.amount,
+                account_id=a.account_id,
+                category_id=a.category_id,
+                payee_id=a.payee_id,
+            )
+            for a in summary.late_arrivals
+        ],
+        read_only=summary.read_only,
+        history_starts=summary.history_starts,
         cards=[CardStatusOut.from_status(c) for c in summary.cards],
         category_balances=[
             CategoryBalance(

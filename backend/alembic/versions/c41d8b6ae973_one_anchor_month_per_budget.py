@@ -71,8 +71,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE import_anchors DROP CONSTRAINT ex_import_anchor_one_month_per_budget"
-    )
+    op.execute("ALTER TABLE import_anchors DROP CONSTRAINT ex_import_anchor_one_month_per_budget")
     # btree_gist is left in place: dropping an extension another table may have
     # started using is not this migration's call.

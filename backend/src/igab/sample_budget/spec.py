@@ -56,6 +56,9 @@ class AccountSpec:
     opening_balance: Decimal = Decimal("0")
     sort_order: int = 0
     is_closed: bool = False
+    #: The account came with a YNAB import (`Account.from_import`) — set on an
+    #: anchored scenario's card, the only place a late arrival can be shown.
+    from_import: bool = False
     tiers: tuple[str, ...] = BOTH_TIERS
 
 
@@ -170,6 +173,10 @@ class OneOffTxn:
     category: str | None = None
     memo: str | None = None
     splits: tuple[SplitLine, ...] = ()
+    #: `Transaction.created_via`. None — the generator's default, which the
+    #: late-arrival rule reads as history — except on an anchored scenario's
+    #: late event, written as a row typed in after the import.
+    created_via: str | None = None
     tiers: tuple[str, ...] = BOTH_TIERS
 
 

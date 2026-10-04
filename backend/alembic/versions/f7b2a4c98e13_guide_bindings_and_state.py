@@ -40,10 +40,17 @@ def upgrade() -> None:
         sa.Column("amount", sa.Numeric(19, 4), nullable=True),
         sa.Column("as_of", sa.Date(), nullable=True),
         sa.Column("note", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.UniqueConstraint(
-            "budget_id", "concept_key", "entity_type", "entity_id",
+            "budget_id",
+            "concept_key",
+            "entity_type",
+            "entity_id",
             name="uq_guide_binding_concept_entity",
         ),
     )
@@ -64,7 +71,9 @@ def upgrade() -> None:
         ),
         sa.Column("key", sa.String(60), nullable=False),
         sa.Column("value", postgresql.JSONB(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.UniqueConstraint("budget_id", "key", name="uq_guide_state_budget_key"),
     )
     op.create_index("ix_guide_state_budget_id", "guide_state", ["budget_id"])

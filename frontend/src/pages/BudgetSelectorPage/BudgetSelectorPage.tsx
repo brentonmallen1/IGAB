@@ -21,6 +21,7 @@ import {
   usePreviewBudgetImport,
   useRenameBudget,
   useDeleteBudget,
+  type HistoryMode,
   type SampleTier,
   type YnabAccountPreview,
   type YnabAccountTypeChoice,
@@ -53,7 +54,8 @@ import {
   type Disposition,
 } from './accountMapping'
 import { MappingNotes } from './MappingNotes'
-import { parseLocalDate } from '../../utils/dates'
+import { formatMonth, parseLocalDate } from '../../utils/dates'
+import { historyModeToggleOutcome } from '../../utils/historyModeToggle'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -125,6 +127,19 @@ export function BudgetSelectorPage() {
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
   // B for the file being previewed — see YnabPreviewResult.anchor_month.
   const [previewAnchorMonth, setPreviewAnchorMonth] = useState<string | null>(null)
+  // Where the imported budget's math starts — offered only when the export can
+  // be anchored (`previewAnchorMonth`), and changeable later in Settings.
+  const [historyMode, setHistoryMode] = useState<HistoryMode>('anchored')
+  // Picking the editable option asks first, with the same warning Settings
+  // gives — a fresh import always keeps YNAB's figures for earlier months.
+  async function chooseRederived(anchorMonth: string) {
+    const mode = await historyModeToggleOutcome(true, {
+      confirm: confirmAsync,
+      importMonth: formatMonth(anchorMonth),
+      keepsHistory: true,
+    })
+    if (mode) setHistoryMode(mode)
+  }
   // Rows dated after today — upcoming transactions, not register history.
   const [previewHeldOut, setPreviewHeldOut] = useState(0)
   const [snapshotPreview, setSnapshotPreview] = useState<SnapshotInspection | null>(null)
@@ -274,6 +289,7 @@ export function BudgetSelectorPage() {
         name: importName.trim(),
         file,
         accountTypes: accountChoices,
+        historyMode: previewAnchorMonth ? historyMode : undefined,
       })
       // One line, and then the review. Everything this used to say — the
       // parity check against the export's own figures, which plan rows were
@@ -296,6 +312,7 @@ export function BudgetSelectorPage() {
   function resetImportPreview() {
     setPreviewAccounts(null)
     setPreviewAnchorMonth(null)
+    setHistoryMode('anchored')
     setSnapshotPreview(null)
     setAccountChoices({})
     setImportError(null)
@@ -584,6 +601,48 @@ export function BudgetSelectorPage() {
                       </p>
                     )}
                   </Surface>
+                  {previewAnchorMonth && (
+                    <fieldset className="sample-tier history-choice">
+                      <legend className="history-choice__legend">Months before the import</legend>
+                      <label
+                        className={`sample-tier__option ${historyMode === 'anchored' ? 'sample-tier__option--active' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="history-mode"
+                          checked={historyMode === 'anchored'}
+                          onChange={() => setHistoryMode('anchored')}
+                        />
+                        <span>
+                          <strong>Start where YNAB left off (recommended)</strong>
+                          <small>
+                            Matches YNAB from day one. You can still page back through earlier
+                            months read-only, as YNAB showed them.
+                          </small>
+                        </span>
+                      </label>
+                      <label
+                        className={`sample-tier__option ${historyMode === 'rederived' ? 'sample-tier__option--active' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="history-mode"
+                          checked={historyMode === 'rederived'}
+                          onChange={() => void chooseRederived(previewAnchorMonth)}
+                        />
+                        <span>
+                          <strong>Work out every month</strong>
+                          <small>
+                            Only choose this if you need to change months before the import. IGAB
+                            recalculates your whole history under its own rules, so envelopes, card
+                            reserves and Ready to Assign won&apos;t match YNAB — and differences on
+                            this budget are expected, not bugs. If you&apos;re not sure, keep the
+                            default; you can switch later in Settings.
+                          </small>
+                        </span>
+                      </label>
+                    </fieldset>
+                  )}
                   <div className="ynab-mapping__heading">
                     <span className="selector-field__label" id="ynab-accounts-label">
                       Accounts

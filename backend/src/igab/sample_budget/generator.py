@@ -26,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
 from igab.domain.cards import card_funding, card_position, card_reserve
 from igab.domain.carryover import available_at, available_through, sum_through
+from igab.domain.dates import add_months, budget_month, month_start
+from igab.domain.import_identity import YNAB_ORIGIN
 from igab.domain.payment_due import validate_payment_due
 from igab.domain.schedule import first_occurrence_after, validate_schedule
 from igab.repositories.account_repo import AccountRepository
@@ -84,6 +86,17 @@ class SampleResult:
     liabilities: int = 0
     filters: int = 0
     starred_reports: int = 0
+
+
+def _anchor_opening_month(spec, anchor: date) -> date | None:
+    """B−1 for a spec holding anchored scenarios, else None — the one place
+    the generator derives it, for the anchor rows it writes and the month it
+    buckets late arrivals against. One budget has one anchor month."""
+    months = {sc.import_anchor.months_ago for sc in spec.card_scenarios if sc.import_anchor}
+    if not months:
+        return None
+    assert len(months) == 1, f"one budget has one anchor month, got {sorted(months)}"
+    return add_months(add_months(month_start(anchor), -months.pop()), -1)
 
 
 class SampleBudgetGenerator:
@@ -178,6 +191,7 @@ class SampleBudgetGenerator:
                 sort_order=acct.sort_order,
                 is_closed=acct.is_closed,
                 counts_toward_emergency_fund=acct.counts_toward_emergency_fund,
+                from_import=acct.from_import,
                 **apply_type(type_row, acct.on_budget, acct.counts_as_savings),
             )
             if acct.counts_toward_emergency_fund:
@@ -191,16 +205,14 @@ class SampleBudgetGenerator:
         so a demoed anchor is one an import could have produced. One anchor
         per budget, asserted."""
         from igab.domain.cards import AnchorOpenings
-        from igab.domain.dates import add_months, month_start
+        from igab.domain.dates import add_months
         from igab.repositories.import_anchor_repo import anchor_rows
 
         anchored = [sc for sc in spec.card_scenarios if sc.import_anchor is not None]
-        if not anchored:
+        opening_month = _anchor_opening_month(spec, anchor)
+        if opening_month is None:
             return None
-        months = {sc.import_anchor.months_ago for sc in anchored}
-        assert len(months) == 1, f"one budget has one anchor month, got {sorted(months)}"
-        boundary = add_months(month_start(anchor), -months.pop())
-        opening_month = add_months(boundary, -1)
+        boundary = add_months(opening_month, 1)
         available: dict[uuid.UUID, Decimal] = {}
         reserve: dict[uuid.UUID, Decimal] = {}
         uncovered: dict[uuid.UUID, Decimal] = {}
@@ -466,6 +478,7 @@ class SampleBudgetGenerator:
         is_split: bool = False,
         parent_id: uuid.UUID | None = None,
         cleared: str | None = None,
+        created_via: str | None = None,
     ) -> dict:
         return {
             "id": uuid.uuid4(),
@@ -482,6 +495,7 @@ class SampleBudgetGenerator:
             "is_deleted": False,
             "transfer_id": None,
             "parent_transaction_id": parent_id,
+            "created_via": created_via,
         }
 
     def _build_transaction_rows(self, anchor: date) -> tuple[list[dict], list[dict]]:
@@ -625,6 +639,7 @@ class SampleBudgetGenerator:
                     payee=o.payee,
                     memo=o.memo,
                     is_split=True,
+                    created_via=o.created_via,
                 )
                 rows.append(parent)
                 for line in o.splits:
@@ -639,6 +654,7 @@ class SampleBudgetGenerator:
                             memo=line.memo,
                             parent_id=parent["id"],
                             cleared=parent["cleared"],
+                            created_via=o.created_via,
                         )
                     )
             else:
@@ -651,6 +667,7 @@ class SampleBudgetGenerator:
                         payee=o.payee,
                         category=o.category,
                         memo=o.memo,
+                        created_via=o.created_via,
                     )
                 )
 
@@ -705,12 +722,27 @@ class SampleBudgetGenerator:
         spec = self.spec
         months = [date(*shift_months(anchor, n), 1) for n in range(spec.months_of_history, -1, -1)]
         current_month = months[-1]
+        # The month each row counts in, the way the served walks bucket it
+        # (`txn_filters.BUDGET_MONTH`, through its pure twin): a late arrival
+        # on an anchored scenario's card counts in the import month, every
+        # other row in its own. Checking against calendar months would fail
+        # the very scenario that demos the rule.
+        opening_month = _anchor_opening_month(spec, anchor)
+        imported_ids = {a.id for a in self._accounts.values() if a.from_import}
+
+        def row_month(r: dict) -> date:
+            return budget_month(
+                r["date"],
+                anchor_month=opening_month,
+                late_eligible=(r.get("created_via") or YNAB_ORIGIN) != YNAB_ORIGIN
+                and r["account_id"] in imported_ids,
+            )
 
         def activity_by_month(rows: list[dict], category_id: uuid.UUID) -> dict[date, Decimal]:
             out: dict[date, Decimal] = {}
             for r in rows:
                 if r["category_id"] == category_id and not r["is_split"]:
-                    key = r["date"].replace(day=1)
+                    key = row_month(r)
                     out[key] = out.get(key, _ZERO) + r["amount"]
             return out
 
@@ -820,7 +852,7 @@ class SampleBudgetGenerator:
                         and not r["is_split"]
                         and r["account_id"] in card_ids
                     ):
-                        key = r["date"].replace(day=1)
+                        key = row_month(r)
                         per = by_card.setdefault(r["account_id"], {})
                         per[key] = per.get(key, _ZERO) - r["amount"]
                 for card_id, outflows in by_card.items():
@@ -847,7 +879,7 @@ class SampleBudgetGenerator:
                 and partner["account_id"] in cash_ids
                 and leg["amount"] > 0
             ):
-                key = leg["date"].replace(day=1)
+                key = row_month(leg)
                 per = payments.setdefault(leg["account_id"], {})
                 per[key] = per.get(key, _ZERO) + leg["amount"]
                 paid_leg_ids.add(leg["id"])
@@ -940,7 +972,7 @@ class SampleBudgetGenerator:
                 for r in inserted
                 if r["account_id"] == card_id
                 and not r["is_split"]
-                and r["date"].replace(day=1) == current_month
+                and row_month(r) == current_month
                 and r.get("cleared") != "pending"
             ]
             charged = -sum((r["amount"] for r in month_rows if r["amount"] < _ZERO), _ZERO)

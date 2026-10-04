@@ -10,6 +10,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransactionRow } from './TransactionRow'
 import type { Transaction } from '../../../types'
+import { makeTransaction } from '../../../test-utils/factories'
 
 vi.mock('../../../api/transactions', () => ({
   useUpdateTransaction: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -32,23 +33,7 @@ vi.mock('../../simplefin/BankRecordIcon', () => ({ BankRecordIcon: () => null })
 const MARKER = 'Extracted from an image by AI — needs review'
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
-  return {
-    id: 't1',
-    budget_id: 'b1',
-    account_id: 'a1',
-    date: '2026-08-02',
-    amount: -12.5,
-    payee_id: null,
-    category_id: null,
-    memo: null,
-    cleared: 'uncleared',
-    approved: false,
-    created_via: 'ai_receipt',
-    is_split: false,
-    transfer_id: null,
-    has_sync_source: false,
-    ...overrides,
-  } as unknown as Transaction
+  return makeTransaction({ approved: false, created_via: 'ai_receipt', ...overrides })
 }
 
 function renderRow(t: Transaction) {

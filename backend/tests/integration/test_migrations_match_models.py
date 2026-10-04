@@ -15,6 +15,8 @@ catches is one nothing else can see.
 import os
 import subprocess
 import uuid
+from datetime import date
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
@@ -386,5 +388,111 @@ def test_migration_rolls_overdue_schedules_forward_without_posting(scratch_dbs):
 
         _run_migrations(database)
         assert_rolled()  # nothing is overdue the second time round
+    finally:
+        engine.dispose()
+
+
+def test_migration_marks_ynab_rows_and_imported_accounts(scratch_dbs):
+    """Migration 1255a89c2bec over an anchored budget and an unanchored one.
+
+    The anchored budget's account and anchor are written in one transaction,
+    as the importer writes them, so they share `now()`; an account added later
+    is not from the import. Only an 'import' row with no batch id on a budget
+    with an anchor becomes 'ynab' — a CSV row keeps its batch and its word, and
+    an unanchored budget changes not at all. Then down and up again."""
+    from sqlalchemy import insert, text
+
+    from .emergency_fund_adoption_cases import _account, _t, insert_budget
+
+    before = "f4a7c2d91b3e"
+    database, _ = scratch_dbs
+    _run_migrations(database, before)
+    engine = create_engine(_url(database))
+
+    def txn(conn, budget_id, account_id, origin, batch=None):
+        return conn.execute(
+            insert(_t("transactions"))
+            .values(
+                budget_id=budget_id,
+                account_id=account_id,
+                date=date(2026, 6, 10),
+                amount=Decimal("-10.00"),
+                created_via=origin,
+                import_batch_id=batch,
+            )
+            .returning(_t("transactions").c.id)
+        ).scalar_one()
+
+    def origin(conn, tid):
+        return conn.execute(
+            text("SELECT created_via FROM transactions WHERE id = :i"), {"i": tid}
+        ).scalar_one()
+
+    def imported(conn, aid):
+        return conn.execute(
+            text("SELECT from_import FROM accounts WHERE id = :i"), {"i": aid}
+        ).scalar_one()
+
+    try:
+        with engine.begin() as conn:
+            anchored = insert_budget(conn, "Anchored")
+            came = _account(
+                conn,
+                anchored,
+                "Harborstone Checking",
+                key="checking",
+                on_budget=True,
+                counts_as_savings=False,
+            )
+            conn.execute(
+                insert(_t("import_anchors")).values(
+                    budget_id=anchored,
+                    month=date(2026, 6, 1),
+                    kind="uncovered",
+                    account_id=came,
+                    amount=Decimal("1"),
+                )
+            )
+            ynab = txn(conn, anchored, came, "import")
+            csv = txn(conn, anchored, came, "import", batch=uuid.uuid4())
+            typed = txn(conn, anchored, came, "manual")
+        with engine.begin() as conn:
+            later = _account(
+                conn,
+                anchored,
+                "Cascade Point HYSA",
+                key="savings",
+                on_budget=True,
+                counts_as_savings=True,
+            )
+            plain = insert_budget(conn, "Unanchored")
+            other = _account(
+                conn,
+                plain,
+                "Sapphire Checking",
+                key="checking",
+                on_budget=True,
+                counts_as_savings=False,
+            )
+            unanchored_import = txn(conn, plain, other, "import")
+
+        def assert_marked():
+            with engine.connect() as conn:
+                assert origin(conn, ynab) == "ynab"
+                assert origin(conn, csv) == "import"
+                assert origin(conn, typed) == "manual"
+                assert origin(conn, unanchored_import) == "import"
+                assert imported(conn, came) is True
+                assert imported(conn, later) is False
+                assert imported(conn, other) is False
+
+        _run_migrations(database)
+        assert_marked()
+
+        _run_migrations(database, before, command="downgrade")
+        with engine.connect() as conn:
+            assert origin(conn, ynab) == "import"
+        _run_migrations(database)
+        assert_marked()
     finally:
         engine.dispose()

@@ -19,7 +19,13 @@ depends_on: str | Sequence[str] | None = None
 #: (table, columns, old constraint, live index, name column length).
 #: The length is what the downgrade's collision rename has to fit inside.
 _TABLES = (
-    ("accounts", ["budget_id", "name"], "uq_account_budget_name", "uq_account_budget_name_live", 100),
+    (
+        "accounts",
+        ["budget_id", "name"],
+        "uq_account_budget_name",
+        "uq_account_budget_name_live",
+        100,
+    ),
     ("payees", ["budget_id", "name"], "uq_payee_budget_name", "uq_payee_budget_name_live", 255),
     (
         "category_groups",

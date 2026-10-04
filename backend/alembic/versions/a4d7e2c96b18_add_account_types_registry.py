@@ -124,10 +124,16 @@ def upgrade() -> None:
         sa.Column("is_system", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.UniqueConstraint("budget_id", "key", name="uq_account_type_budget_key"),
     )
@@ -176,9 +182,7 @@ def upgrade() -> None:
     )
 
     # Link every account to its type row, then lock the column down
-    op.add_column(
-        "accounts", sa.Column("account_type_id", sa.UUID(as_uuid=True), nullable=True)
-    )
+    op.add_column("accounts", sa.Column("account_type_id", sa.UUID(as_uuid=True), nullable=True))
     conn.execute(
         sa.text(
             """

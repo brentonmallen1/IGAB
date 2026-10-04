@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransactionRow } from './TransactionRow'
 import type { Transaction } from '../../../types'
 import { PROJECTED_INTEREST_LABEL } from '../../../utils/projectedInterest'
+import { makeTransaction } from '../../../test-utils/factories'
 
 vi.mock('../../../api/transactions', () => ({
   useUpdateTransaction: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -32,25 +33,14 @@ vi.mock('./RowAttachmentButton', () => ({ RowAttachmentButton: () => null }))
 vi.mock('../../simplefin/BankRecordIcon', () => ({ BankRecordIcon: () => null }))
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
-  return {
-    id: 't1',
-    budget_id: 'b1',
+  return makeTransaction({
     account_id: 'loan',
     date: '2026-03-15',
     amount: -120,
-    payee_id: null,
-    category_id: null,
-    memo: null,
-    cleared: 'uncleared',
-    approved: true,
     created_via: 'projection',
-    is_split: false,
-    transfer_id: null,
-    has_sync_source: false,
-    needs_category: false,
     projected_interest_month: '2026-03-01',
     ...overrides,
-  } as unknown as Transaction
+  })
 }
 
 // Every prop but the transaction is held stable across renders, so a

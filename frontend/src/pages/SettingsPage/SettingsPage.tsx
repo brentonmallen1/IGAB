@@ -23,7 +23,12 @@ import {
 } from '../../api/guide'
 import { useLiabilities } from '../../api/liabilities'
 import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
-import { useBudgets, useUpdateBudget } from '../../api/budgets'
+import {
+  useBudgetHistory,
+  useBudgets,
+  useSetBudgetHistory,
+  useUpdateBudget,
+} from '../../api/budgets'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
 import { ArrowRight, HelpCircle } from 'lucide-react'
@@ -41,9 +46,10 @@ import { ViewportPanel } from '../../components/settings/ViewportPanel/ViewportP
 import { SettingsToggle } from '../../components/settings/SettingsToggle/SettingsToggle'
 import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/ImportReviewButton'
 import { formatMoneyWithOptions } from '../../utils/money'
-import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
+import { formatDateWithOptions, formatMonth, formatTimeWithOptions } from '../../utils/dates'
 import { useFormatters } from '../../hooks/useFormatters'
 import { wishlistToggleOutcome } from './wishlistToggle'
+import { historyModeToggleOutcome } from '../../utils/historyModeToggle'
 import { useUIStore } from '../../stores/uiStore'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
 import { apiErrorMessage } from '../../api/client'
@@ -168,6 +174,19 @@ export function SettingsPage() {
   const { data: me } = useCurrentUser()
 
   const currentBudget = budgets?.find((b) => b.id === budgetId)
+  // Only an imported budget has history to re-derive (`import_month` null
+  // otherwise), so the switch shows only there.
+  const { data: history } = useBudgetHistory(budgetId)
+  const setHistory = useSetBudgetHistory(budgetId)
+  async function handleHistoryToggle(editable: boolean) {
+    if (!history?.import_month) return
+    const mode = await historyModeToggleOutcome(editable, {
+      confirm: confirmAsync,
+      importMonth: formatMonth(history.import_month),
+      keepsHistory: history.keeps_history,
+    })
+    if (mode) setHistory.mutate(mode)
+  }
 
   const guideOverview = useGuideOverview(budgetId)
   const setGuidePrefs = useSetGuidePreferences(budgetId ?? '')
@@ -306,6 +325,23 @@ export function SettingsPage() {
                   </select>
                 </div>
               </div>
+
+              {history?.import_month && (
+                <div className="settings-subsection">
+                  <div className="settings-subsection__title">Import</div>
+                  <SettingsToggle
+                    label="Edit months before the import"
+                    desc={
+                      history.mode === 'rederived'
+                        ? `On: IGAB works out every month from your first transaction, so earlier months are editable. Its figures won't match YNAB's. Turn off to start from YNAB's figures in ${formatMonth(history.import_month)} again.`
+                        : `Off (recommended): your budget starts in ${formatMonth(history.import_month)} from YNAB's own figures${history.keeps_history ? ', and earlier months can be viewed read-only as YNAB showed them' : ', and earlier months are history'}. Turn on only if you need to edit them — IGAB then works out every month itself and its figures stop matching YNAB.`
+                    }
+                    checked={history.mode === 'rederived'}
+                    disabled={setHistory.isPending}
+                    onChange={(on) => void handleHistoryToggle(on)}
+                  />
+                </div>
+              )}
 
               <div className="settings-subsection">
                 <div className="settings-subsection__title">Display Formats</div>

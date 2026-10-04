@@ -67,8 +67,16 @@ INDEXES: list[tuple[str, str, list[str]]] = [
     ("ix_budget_view_categories_category_id", "budget_view_categories", ["category_id"]),
     ("ix_simplefin_connections_user_id", "simplefin_connections", ["user_id"]),
     ("ix_import_batches_budget_id", "import_batches", ["budget_id"]),
-    ("ix_transaction_matches_synced_transaction_id", "transaction_matches", ["synced_transaction_id"]),
-    ("ix_transaction_matches_manual_transaction_id", "transaction_matches", ["manual_transaction_id"]),
+    (
+        "ix_transaction_matches_synced_transaction_id",
+        "transaction_matches",
+        ["synced_transaction_id"],
+    ),
+    (
+        "ix_transaction_matches_manual_transaction_id",
+        "transaction_matches",
+        ["manual_transaction_id"],
+    ),
     ("ix_transaction_attachments_transaction_id", "transaction_attachments", ["transaction_id"]),
     ("ix_ai_jobs_transaction_id", "ai_jobs", ["transaction_id"]),
     ("ix_ai_jobs_attachment_id", "ai_jobs", ["attachment_id"]),

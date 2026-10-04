@@ -52,6 +52,7 @@ LEDGER_TABLES: tuple[str, ...] = (
     "budget_assignments",
     "scheduled_transactions",
     "import_anchors",
+    "import_plan_months",
     "import_batches",
 )
 

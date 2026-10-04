@@ -32,7 +32,12 @@ from igab.domain.carryover import (
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
 # is how the shadowing bug in report_service started.
-from igab.domain.dates import add_months, complete_month_window, month_starts
+from igab.domain.dates import (
+    add_months,
+    complete_month_window,
+    month_is_editable,
+    month_starts,
+)
 from igab.domain.dates import month_end as _month_end
 from igab.domain.dates import month_start as _month_start
 from igab.domain.exceptions import InvariantViolation
@@ -48,6 +53,7 @@ from igab.repositories.import_anchor_repo import (
     ImportAnchorRepository,
     category_opening,
 )
+from igab.repositories.import_plan_repo import ImportPlanRepository
 from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot
@@ -388,6 +394,56 @@ class BudgetSummary:
     #: The client clamps month navigation here; months before it live in the
     #: register and reports only.
     anchor_month: date | None = None
+    #: On the import month only: the late arrivals counted in it — rows dated
+    #: in the month before that reached IGAB after the import
+    #: (`txn_filters.LATE_ARRIVAL`). Listed so the page can say which money
+    #: arrived from before the budget started, instead of an envelope moving
+    #: for no visible reason. Empty on every other month.
+    late_arrivals: list["LateArrival"] = field(default_factory=list)
+    #: The month is before the import month of an anchored budget: its plan
+    #: is YNAB's, shown read-only (`domain.dates.month_is_editable` — the
+    #: rule the server refuses writes on, served so the client never compares
+    #: months itself).
+    read_only: bool = False
+    #: The first month whose YNAB figures the import kept
+    #: (`db.models.ImportPlanMonth`) — how far back the read-only months go.
+    #: None on a budget with no anchor in force or an import that kept none.
+    history_starts: date | None = None
+
+
+@dataclass(frozen=True)
+class ImportHistoryRow:
+    """One category of a read-only month, as YNAB displayed it."""
+
+    category_group: str
+    category: str
+    category_id: uuid.UUID | None
+    assigned: Decimal
+    activity: Decimal | None
+    available: Decimal | None
+
+
+@dataclass(frozen=True)
+class ImportHistoryMonth:
+    """A month before the import month, as YNAB had it — never a walk."""
+
+    month: date
+    import_month: date
+    history_starts: date
+    rows: list[ImportHistoryRow]
+
+
+@dataclass(frozen=True)
+class LateArrival:
+    """One late arrival, as the import month lists it: the row's own facts,
+    for the client to name from the lists it already holds."""
+
+    transaction_id: uuid.UUID
+    date: date
+    amount: Decimal
+    account_id: uuid.UUID
+    category_id: uuid.UUID | None
+    payee_id: uuid.UUID | None
 
 
 @dataclass
@@ -763,7 +819,10 @@ class BudgetService:
         so a $100 card charge refunded to the envelope read $100 there and $0
         on the page; Category History did the same with its activity too.
 
-        Months before an import anchor are walked back from YNAB's figure
+        Months before an import anchor read YNAB's own Available where the
+        import kept it (`db.models.ImportPlanMonth`) — the figure the Budget
+        page's read-only months show, so the two never disagree — and are
+        walked back from YNAB's figure where it did not
         (`domain.carryover.back_derived_balances`). Read through the anchored
         walk alone they were all zero: a flat line that jumped to the whole
         balance at the import.
@@ -798,6 +857,12 @@ class BudgetService:
         starts = [first_of_month(first_txn)] if first_txn else []
         starts += [min(a.month for a in every_assignment)] if every_assignment else []
         earliest = min(starts) if starts else None
+        plans = self._plan_repo()
+        ynab_available = (
+            await plans.available_before(budget_id, walk.anchor.month)
+            if walk.anchor is not None and plans is not None
+            else {}
+        )
 
         out: dict[uuid.UUID, EnvelopeSeries] = {}
         for cid in category_ids:
@@ -826,16 +891,21 @@ class BudgetService:
                 recovered, stopped = back_derived_balances(
                     opening, cat_assigned, cat_activity, earliest
                 )
-            # A stop before the first month asked for leaves nothing missing.
-            if stopped is not None and stopped < firsts[0]:
+            # YNAB's own figure where the import kept it; the walk back
+            # where it did not.
+            kept = ynab_available.get(cid, {})
+            available = [
+                available_at(series, m)
+                if opening is None or m >= opening[0]
+                else kept.get(m, recovered.get(m))
+                for m in firsts
+            ]
+            # A stop before the first month asked for leaves nothing missing,
+            # and neither does one every missing month of which YNAB filled.
+            if stopped is not None and (stopped < firsts[0] or None not in available):
                 stopped = None
             out[cid] = EnvelopeSeries(
-                available=[
-                    available_at(series, m)
-                    if opening is None or m >= opening[0]
-                    else recovered.get(m)
-                    for m in firsts
-                ],
+                available=available,
                 assigned=[cat_assigned.get(m, zero) for m in firsts],
                 activity=[cat_activity.get(m, zero) - repaid.get(m, zero) for m in firsts],
                 unrecovered_through=stopped,
@@ -1101,11 +1171,22 @@ class BudgetService:
             # is spelled `owed_by_card` and assigned straight to `balance`,
             # and a map whose name says owed but whose values say balance is
             # a sign error waiting for its second reader.
+            #
+            # Summed by the reserve's own bucket (`BUDGET_MONTH`) through
+            # B−1, not by date: a late charge dated in B−1 counts in B, where
+            # its reservation is. Read by date it would also come off the
+            # opening credit, and a card imported in credit would then report
+            # that charge as drift forever.
             balance_at_anchor: dict[uuid.UUID, Decimal] = {}
             if walk.anchor is not None:
-                balance_at_anchor = await self.account_repo.card_balances(
-                    budget_id, _month_end(walk.anchor.openings.opening_month)
+                opening_month = walk.anchor.openings.opening_month
+                by_month = await self.account_repo.card_balances_by_month(
+                    budget_id, _month_end(opening_month)
                 )
+                balance_at_anchor = {
+                    card: sum((v for m, v in months.items() if m <= opening_month), zero)
+                    for card, months in by_month.items()
+                }
             # The card's own ledger for the viewed month, beside the reserve's
             # legs: what a person charged, and how far the debt actually moved.
             # Every leg above is a lifetime `sum_through`, so nothing here is
@@ -1370,6 +1451,19 @@ class BudgetService:
         overspent_last_month = await self._overspent_last_month(
             budget_id, categories, system_group_ids, funding, cards, month_start
         )
+        late_arrivals: list[LateArrival] = []
+        if walk.anchor is not None and month_start == walk.anchor.month:
+            late_arrivals = [
+                LateArrival(
+                    transaction_id=row.id,
+                    date=row.date,
+                    amount=row.amount,
+                    account_id=row.account_id,
+                    category_id=row.category_id,
+                    payee_id=row.payee_of_record_id,
+                )
+                for row in await self.transaction_repo.late_arrivals(budget_id)
+            ]
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
@@ -1385,6 +1479,11 @@ class BudgetService:
             category_balances=balances,
             cards=cards,
             anchor_month=walk.anchor.month if walk.anchor is not None else None,
+            late_arrivals=late_arrivals,
+            read_only=not month_is_editable(
+                month_start, import_month=walk.anchor.month if walk.anchor is not None else None
+            ),
+            history_starts=await self._history_starts(budget_id, walk.anchor),
         )
 
     async def _raw_balances(
@@ -1602,6 +1701,7 @@ class BudgetService:
     ) -> None:
         await self._require_envelope(budget_id, category_id)
         month_start = first_of_month(month)
+        await self._require_editable_month(budget_id, month_start)
         assignment = await self.assignment_repo.get_or_create(
             budget_id=budget_id,
             category_id=category_id,
@@ -1686,6 +1786,63 @@ class BudgetService:
         amount = amount_map[action]  # the request schema closes the set
         await self.set_assignment(budget_id, category_id, month, amount)
 
+    def _plan_repo(self) -> ImportPlanRepository | None:
+        """The import's stored YNAB months, read through the anchor
+        repository's session — they exist only where an anchor does."""
+        return ImportPlanRepository(self.anchor_repo.session) if self.anchor_repo else None
+
+    async def _history_starts(self, budget_id: uuid.UUID, anchor) -> date | None:
+        if anchor is None or (plans := self._plan_repo()) is None:
+            return None
+        return await plans.earliest_month(budget_id)
+
+    async def import_history(self, budget_id: uuid.UUID, month: date) -> ImportHistoryMonth | None:
+        """A month before the import month of an anchored budget, as YNAB
+        displayed it — or None where there is no such month to show: no
+        anchor in force, a month from the import on, or an import that kept
+        no figures for it. Income rows are left out; they hold no money."""
+        month_start = first_of_month(month)
+        anchor = await self._budget_anchor(budget_id)
+        plans = self._plan_repo()
+        if anchor is None or plans is None or month_start >= anchor.month:
+            return None
+        stored = await plans.month(budget_id, month_start)
+        starts = await plans.earliest_month(budget_id)
+        if not stored or starts is None:
+            return None
+        return ImportHistoryMonth(
+            month=month_start,
+            import_month=anchor.month,
+            history_starts=starts,
+            rows=[
+                ImportHistoryRow(
+                    category_group=r.category_group,
+                    category=r.category,
+                    category_id=r.category_id,
+                    assigned=r.assigned,
+                    activity=r.activity,
+                    available=r.available,
+                )
+                for r in stored
+                if not r.income
+            ],
+        )
+
+    async def _require_editable_month(self, budget_id: uuid.UUID, month_start: date) -> None:
+        """Refuse a plan write before the import month of an anchored budget —
+        `domain.dates.month_is_editable`, the one rule. Undo restores rows
+        directly and never comes through here: putting back what was there is
+        not a new plan."""
+        anchor = await self._budget_anchor(budget_id)
+        import_month = anchor.month if anchor is not None else None
+        if not month_is_editable(month_start, import_month=import_month):
+            assert import_month is not None
+            label = import_month.strftime("%B %Y")
+            raise InvariantViolation(
+                f"Months before {label} show YNAB's own figures and can't be changed here. "
+                "To edit them, turn on Edit months before the import in Settings."
+            )
+
     async def move_money(
         self,
         budget_id: uuid.UUID,
@@ -1706,6 +1863,7 @@ class BudgetService:
             raise InvariantViolation("Choose two different envelopes")
 
         month_start = first_of_month(month)
+        await self._require_editable_month(budget_id, month_start)
 
         # Asymmetric on purpose: leaving is always allowed, entering is not.
         # Both used to run the same check, which is how money could be moved

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Archive, FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
@@ -11,10 +11,13 @@ import { ManageViewsModal } from '../../components/budget/ManageViewsModal/Manag
 import { ManageFiltersModal } from '../../components/budget/ManageFiltersModal/ManageFiltersModal'
 import { MultiMonthSheet } from '../../components/budget/MultiMonthSheet/MultiMonthSheet'
 import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
+import { LateArrivalsNote } from '../../components/budget/LateArrivalsNote/LateArrivalsNote'
+import { ImportHistoryView } from '../../components/budget/ImportHistoryView/ImportHistoryView'
 import { ImportReviewGate } from '../../components/imports/ImportReviewDialog/ImportReviewGate'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import { useAppStore } from '../../stores/appStore'
+import { useImportHistoryBounds } from './useImportHistoryBounds'
 import { useUIStore } from '../../stores/uiStore'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
@@ -39,21 +42,11 @@ export function BudgetPage() {
   const setBudgetId = useAppStore((s) => s.setCurrentBudgetId)
   const month = useAppStore((s) => s.selectedMonth)
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
-  const setBudgetAnchorMonth = useAppStore((s) => s.setBudgetAnchorMonth)
   // React Query dedupes this against the children's own month reads; the page
-  // needs it to sync the anchor clamp into the store (one rule, every
-  // navigation surface) and to label the boundary.
+  // needs it to sync the month bounds into the store (one rule, every
+  // navigation surface), to label the boundary, and to know a read-only month.
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const anchorMonth = budgetMonth?.anchor_month ?? null
-  useEffect(() => {
-    setBudgetAnchorMonth(anchorMonth)
-    return () => setBudgetAnchorMonth(null)
-  }, [anchorMonth, setBudgetAnchorMonth])
-  useEffect(() => {
-    // A persisted month from before the anchor (or another budget) clamps
-    // forward the moment the anchor is known.
-    if (anchorMonth && month < anchorMonth) setSelectedMonth(anchorMonth)
-  }, [anchorMonth, month, setSelectedMonth])
+  const { anchorMonth, showHistory } = useImportHistoryBounds(budgetMonth, month)
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
@@ -183,15 +176,24 @@ export function BudgetPage() {
           envelopes and card reserves here begin from YNAB&apos;s own figures for the month before.
         </p>
       )}
-      <TbaHero budgetId={budgetId} month={month} />
-      <div className="budget-page__body">
-        <div
-          className={`budget-page__table-container ${selectedCount > 0 ? 'budget-page__table-container--with-bar' : ''}`}
-        >
-          <BudgetTable />
-        </div>
-        {selectedCategoryIds.size > 0 && !isMobile && <CategoryInspector budgetId={budgetId} />}
-      </div>
+      {anchorMonth === month && budgetMonth && (
+        <LateArrivalsNote budgetId={budgetId} month={month} arrivals={budgetMonth.late_arrivals} />
+      )}
+      {showHistory && anchorMonth ? (
+        <ImportHistoryView budgetId={budgetId} month={month} importMonth={anchorMonth} />
+      ) : (
+        <>
+          <TbaHero budgetId={budgetId} month={month} />
+          <div className="budget-page__body">
+            <div
+              className={`budget-page__table-container ${selectedCount > 0 ? 'budget-page__table-container--with-bar' : ''}`}
+            >
+              <BudgetTable />
+            </div>
+            {selectedCategoryIds.size > 0 && !isMobile && <CategoryInspector budgetId={budgetId} />}
+          </div>
+        </>
+      )}
 
       {isMobile && (
         <BottomSheet

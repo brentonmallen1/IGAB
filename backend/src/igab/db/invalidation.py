@@ -23,10 +23,11 @@ no hook. Listeners are registered on the Session class at import time;
 active.
 """
 
-from sqlalchemy import delete, event
+from sqlalchemy import delete, event, inspect
 from sqlalchemy.orm import ORMExecuteState, Session
 
 from igab.db.models import (
+    Budget,
     BudgetAssignment,
     BudgetSnapshotMeta,
     Category,
@@ -60,6 +61,13 @@ def _invalidate_on_flush(session: Session, flush_context: object, instances: obj
         if isinstance(obj, _WATCHED) and session.is_modified(obj, include_collections=False):
             _invalidate(session)
             return
+        if isinstance(obj, Budget) and inspect(obj).attrs.history_mode.history.has_changes():
+            # The history-mode switch decides whether the anchor is read at
+            # all (`import_anchor_repo.ANCHOR_IN_FORCE`) — the cache built
+            # under one mode is wrong under the other. Only that column: a
+            # rename moves no figure.
+            _invalidate(session)
+            return
 
 
 @event.listens_for(Session, "do_orm_execute")
@@ -69,6 +77,10 @@ def _invalidate_on_execute(state: ORMExecuteState) -> None:
     mapper = state.bind_mapper
     # bind_mapper is None for plain Table statements (e.g. tag association
     # tables) — none of those feed the summary.
-    if mapper is None or not issubclass(mapper.class_, _WATCHED):
+    if mapper is None:
         return
-    _invalidate(state.session)
+    # A core UPDATE of a budget row may carry `history_mode` (an undo's field
+    # restore, say), and its columns are not cheap to read back out of the
+    # statement — budget rows change rarely enough to invalidate on any.
+    if issubclass(mapper.class_, _WATCHED) or (state.is_update and mapper.class_ is Budget):
+        _invalidate(state.session)

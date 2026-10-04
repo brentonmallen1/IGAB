@@ -87,6 +87,15 @@ class Budget(Base):
     #: paychecks does not want every envelope red on the 2nd. A target may
     #: override it with its own `check_after_day`.
     funding_day: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    #: `domain.enums.HistoryMode`: whether an imported budget's walks start
+    #: from its import anchor ('anchored') or re-derive every month
+    #: ('rederived'). Meaningless on a budget with no anchor rows, where both
+    #: read the same. Read through `repositories.import_anchor_repo.
+    #: ANCHOR_IN_FORCE` and nowhere else, so every anchor reader flips
+    #: together. Server default only, like `Account.from_import`.
+    history_mode: Mapped[str] = mapped_column(
+        String(20), server_default=text("'anchored'"), nullable=False
+    )
     #: What an import decided, as it decided it. A YNAB import always creates
     #: exactly one budget (the route 409s on a name clash), so this is 1:1 and
     #: needs no table of its own.
@@ -385,6 +394,19 @@ class Account(Base):
     #: cannot be corrected, and it is UTC where transaction dates are local,
     #: which puts a midnight boundary between them.
     budget_start_date: Mapped[date | None] = mapped_column(Date)
+    #: The account came in with a YNAB import, so the import anchor's figures
+    #: already describe its history. Only such an account can carry a late
+    #: arrival (`txn_filters.LATE_ARRIVAL`): a row dated in the anchor month
+    #: that reached IGAB after the import counts in the import month. An
+    #: account linked afterwards brings its bank history as opening position
+    #: — its Starting Balance already nets those rows — so counting them in
+    #: an envelope would charge the budget twice. Set once, by the importer;
+    #: never edited.
+    #:
+    #: Server default only, no Python default: an INSERT that never names the
+    #: column must still work against a schema from before it existed (the
+    #: migration tests build old rows from these very tables).
+    from_import: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -822,7 +844,9 @@ class Transaction(Base):
     # Bank sync deduplication (SimpleFIN, future: Plaid, etc.)
     sync_id: Mapped[str | None] = mapped_column(String(255))
     sync_source: Mapped[str | None] = mapped_column(String(50))
-    # Where the row came from: 'manual' | 'import' | 'sync' | 'scheduled' |
+    # Where the row came from: 'manual' | 'import' (a CSV file) | 'ynab' (the
+    # YNAB import — the rows its anchor already describes, which is why it
+    # is told apart from a CSV: `txn_filters.LATE_ARRIVAL`) | 'sync' | 'scheduled' |
     # 'ai_receipt' | 'ai_nl'. Set by TransactionService.create (and the bulk
     # importers), never accepted from a client. NULL means "unknown" — rows
     # written before this was stamped. It cannot be backfilled: a hand-typed
@@ -881,6 +905,19 @@ class Transaction(Base):
     #: which `TransactionResponse` rejects — a path that forgets fails loudly
     #: instead of quietly reporting everything as filed.
     needs_category: Mapped[bool] = query_expression()
+
+    #: The month this row counts in for budget math — `txn_filters.BUDGET_MONTH`,
+    #: its own month except a late arrival, which counts in the import month.
+    #: And whether it counts before the import month on an anchored budget
+    #: (`PREDATES_IMPORT`), where editing it moves no envelope.
+    #:
+    #: Computed, not columns: both turn on the budget's import anchor and the
+    #: account's `from_import`, which change without this row being touched.
+    #: Populated only through `TransactionRepository.with_computed`; required
+    #: on `TransactionResponse`, so a path that forgets raises instead of
+    #: telling the register a late row counts in its own month.
+    counts_in_month: Mapped[_PyDate] = query_expression()
+    predates_import: Mapped[bool] = query_expression()
 
     #: The account on the other side of this transfer, or None for a plain
     #: transaction. The rule is `COUNTERPART_ACCOUNT_ID`
@@ -1169,6 +1206,49 @@ class ImportAnchor(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ImportPlanMonth(Base):
+    """One Plan.csv row of a YNAB import, exactly as YNAB displayed it.
+
+    Written once by the importer, never edited, never read by any walk. It is
+    what the Budget page shows for a month before the import month — YNAB's
+    own Assigned, Activity and Available, read-only — so looking back never
+    re-derives the history the anchor exists to retire. That makes it
+    deliberate duplication of the pre-import rows in `budget_assignments`:
+    those feed IGAB's arithmetic, these are the record of what YNAB said, and
+    they are allowed to differ wherever the export did.
+
+    Kept by name as well as by id: a plan row whose category never reached
+    the import, or was deleted since, still shows under the names YNAB gave
+    it (`category_id` is SET NULL, not CASCADE). `position` is YNAB's own
+    display order within the month. Budget-owned like `ImportAnchor`, so
+    delete cascades it and snapshots carry it.
+    """
+
+    __tablename__ = "import_plan_months"
+    __table_args__ = (Index("ix_import_plan_months_budget_month", "budget_id", "month"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+    )
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    category_group: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(255), nullable=False)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+    )
+    #: YNAB's inflow group — income, which holds no money. Kept like every
+    #: other row, and left out of the months the Budget page shows. Decided at
+    #: import, where YNAB's names are known (`importer.map_ynab_names`).
+    income: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    assigned: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    #: None where the export's cell was blank or unreadable — advisory figures
+    #: are dropped rather than invented (`YNABPlanRow`).
+    activity: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    available: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
 
 
 # ─── Scheduled Transactions ───────────────────────────────────────────────────

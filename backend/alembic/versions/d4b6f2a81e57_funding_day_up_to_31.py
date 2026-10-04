@@ -29,9 +29,7 @@ def upgrade() -> None:
     op.drop_constraint("ck_budgets_funding_day", "budgets", type_="check")
     op.create_check_constraint("ck_budgets_funding_day", "budgets", "funding_day BETWEEN 1 AND 31")
 
-    op.drop_constraint(
-        "ck_category_targets_check_after_day", "category_targets", type_="check"
-    )
+    op.drop_constraint("ck_category_targets_check_after_day", "category_targets", type_="check")
     op.create_check_constraint(
         "ck_category_targets_check_after_day",
         "category_targets",
@@ -43,14 +41,10 @@ def downgrade() -> None:
     """Lossy: a day above 28 has to become one, and 28 is the honest choice —
     it is the last day every month has, which is what the old bound meant."""
     op.execute("UPDATE budgets SET funding_day = 28 WHERE funding_day > 28")
-    op.execute(
-        "UPDATE category_targets SET check_after_day = 28 WHERE check_after_day > 28"
-    )
+    op.execute("UPDATE category_targets SET check_after_day = 28 WHERE check_after_day > 28")
     op.drop_constraint("ck_budgets_funding_day", "budgets", type_="check")
     op.create_check_constraint("ck_budgets_funding_day", "budgets", "funding_day BETWEEN 1 AND 28")
-    op.drop_constraint(
-        "ck_category_targets_check_after_day", "category_targets", type_="check"
-    )
+    op.drop_constraint("ck_category_targets_check_after_day", "category_targets", type_="check")
     op.create_check_constraint(
         "ck_category_targets_check_after_day",
         "category_targets",

@@ -35,6 +35,11 @@ const EXPECTED_ROOTS = [
   'scheduled-transactions',
   'guide',
   'wishlist',
+  // Both follow the history mode, which a restore replaces and the history
+  // switch flips through this same sweep.
+  'card-timeline',
+  'budget-history',
+  'import-history-month',
 ]
 
 describe('invalidateAfterImport', () => {

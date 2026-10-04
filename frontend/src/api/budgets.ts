@@ -390,6 +390,79 @@ export function useUpdateBudget() {
   })
 }
 
+/** One category of a read-only month, as YNAB displayed it (server:
+ *  `ImportHistoryRowOut`). Names are YNAB's own; `category_id` is null for a
+ *  category that never reached the import or was deleted since. */
+export interface ImportHistoryRow {
+  category_group: string
+  category: string
+  category_id: string | null
+  assigned: number
+  /** Null where the export's cell was blank or unreadable. */
+  activity: number | null
+  available: number | null
+}
+
+/** A month before the import month, as YNAB displayed it (server:
+ *  `ImportHistoryMonthResponse`). Read-only, and not a budget month: there is
+ *  no Ready to Assign and no card position in it. */
+export interface ImportHistoryMonth {
+  month: string
+  import_month: string
+  history_starts: string
+  rows: ImportHistoryRow[]
+}
+
+/** An imported budget's history setting (server: `BudgetHistory`,
+ *  `Budget.history_mode`). `import_month` is B whichever mode is on — null on
+ *  a budget never anchored at import, which has no setting to offer. */
+export interface BudgetHistory {
+  mode: HistoryMode
+  import_month: string | null
+  /** The import kept YNAB's figures for earlier months, viewable read-only
+   *  (server: `BudgetHistory.keeps_history`). False for older imports. */
+  keeps_history: boolean
+}
+
+/** 'anchored': the budget starts at the import month from YNAB's figures.
+ *  'rederived': every month is worked out by IGAB and editable. */
+export type HistoryMode = 'anchored' | 'rederived'
+
+export function useBudgetHistory(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.budgetHistory, budgetId],
+    queryFn: () => apiClient.get<BudgetHistory>(`/budgets/${budgetId}/history`).then((r) => r.data),
+    enabled: !!budgetId,
+  })
+}
+
+/** A read-only month before the import, as YNAB displayed it. Asked only for
+ *  a month the server called read-only and within `history_starts`. Written
+ *  once at import and never edited, so it never goes stale on its own. */
+export function useImportHistoryMonth(budgetId: string | null, month: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [ROOT.importHistoryMonth, budgetId, month],
+    queryFn: () =>
+      apiClient.get<ImportHistoryMonth>(`/${budgetId}/months/${month}/history`).then((r) => r.data),
+    enabled: !!budgetId && enabled,
+    staleTime: Infinity,
+  })
+}
+
+export function useSetBudgetHistory(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (mode: HistoryMode) =>
+      apiClient.put<BudgetHistory>(`/budgets/${budgetId}/history`, { mode }).then((r) => r.data),
+    // Every envelope, card and report figure moves with the mode — the same
+    // reach as an import, so the same sweep rather than a second, shorter list.
+    onSuccess: (history) => {
+      qc.setQueryData([ROOT.budgetHistory, budgetId], history)
+      return invalidateAfterImport(qc, budgetId)
+    },
+  })
+}
+
 export function useDeleteBudget() {
   const qc = useQueryClient()
   return useMutation({
@@ -577,10 +650,14 @@ export function useImportYnabAsBudget() {
       name,
       file,
       accountTypes,
+      historyMode,
     }: {
       name: string
       file: File
       accountTypes?: Record<string, YnabAccountTypeChoice>
+      /** Offered on the preview when the export can be anchored; the server
+       *  defaults to 'anchored' and ignores it on an export it cannot anchor. */
+      historyMode?: HistoryMode
     }) => {
       const formData = new FormData()
       formData.append('name', name)
@@ -588,6 +665,7 @@ export function useImportYnabAsBudget() {
       if (accountTypes && Object.keys(accountTypes).length > 0) {
         formData.append('account_types', JSON.stringify(accountTypes))
       }
+      if (historyMode) formData.append('history_mode', historyMode)
       return apiClient
         .post<YnabImportBudgetResult>('/budgets/import-ynab', formData)
         .then((r) => r.data)

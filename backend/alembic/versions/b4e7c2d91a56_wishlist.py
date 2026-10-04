@@ -45,8 +45,12 @@ def upgrade() -> None:
         ),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("sort_order", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
     )
     op.create_index("ix_wishlist_projects_budget_id", "wishlist_projects", ["budget_id"])
     op.create_index("ix_wishlist_projects_category_id", "wishlist_projects", ["category_id"])
@@ -82,8 +86,12 @@ def upgrade() -> None:
         sa.Column("cooling_until", sa.Date(), nullable=True),
         sa.Column("last_affirmed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("done_at", sa.Date(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
     )
     op.create_index("ix_wishlist_items_budget_id", "wishlist_items", ["budget_id"])
     op.create_index("ix_wishlist_items_project_id", "wishlist_items", ["project_id"])

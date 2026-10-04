@@ -1,0 +1,79 @@
+/* The import month's late arrivals: provenance, quiet like the anchor note
+   above it — an explanation, not a warning. */
+.late-arrivals {
+  margin: 0 0 var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-raised);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.late-arrivals__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+}
+
+.late-arrivals__head > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.late-arrivals__lead {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.late-arrivals__dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.late-arrivals__dismiss:hover {
+  color: var(--text-primary);
+}
+
+.late-arrivals__details > summary {
+  margin-top: var(--spacing-xs);
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.late-arrivals__list {
+  margin: var(--spacing-xs) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.late-arrivals__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--spacing-sm);
+  padding: 2px 0;
+  color: var(--text-primary);
+}
+
+.late-arrivals__payee,
+.late-arrivals__category {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.late-arrivals__date,
+.late-arrivals__category {
+  color: var(--text-secondary);
+}
+
+.late-arrivals__amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

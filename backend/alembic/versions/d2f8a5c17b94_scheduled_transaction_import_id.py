@@ -28,9 +28,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "scheduled_transactions", sa.Column("import_id", sa.String(255), nullable=True)
-    )
+    op.add_column("scheduled_transactions", sa.Column("import_id", sa.String(255), nullable=True))
     op.create_index(
         "uq_scheduled_transactions_budget_import_id",
         "scheduled_transactions",
@@ -41,7 +39,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "uq_scheduled_transactions_budget_import_id", table_name="scheduled_transactions"
-    )
+    op.drop_index("uq_scheduled_transactions_budget_import_id", table_name="scheduled_transactions")
     op.drop_column("scheduled_transactions", "import_id")

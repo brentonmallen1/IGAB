@@ -43,9 +43,7 @@ def upgrade() -> None:
         "budgets",
         sa.Column("funding_day", sa.Integer(), nullable=False, server_default="1"),
     )
-    op.create_check_constraint(
-        "ck_budgets_funding_day", "budgets", "funding_day BETWEEN 1 AND 28"
-    )
+    op.create_check_constraint("ck_budgets_funding_day", "budgets", "funding_day BETWEEN 1 AND 28")
     op.add_column("category_targets", sa.Column("check_after_day", sa.Integer(), nullable=True))
     op.create_check_constraint(
         "ck_category_targets_check_after_day",
@@ -72,9 +70,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.add_column(
-        "category_targets", sa.Column("repeat_frequency", sa.String(20), nullable=True)
-    )
+    op.add_column("category_targets", sa.Column("repeat_frequency", sa.String(20), nullable=True))
     op.drop_constraint("ck_category_targets_weekday", "category_targets", type_="check")
     op.drop_column("category_targets", "weekday")
     op.drop_constraint("ck_category_targets_check_after_day", "category_targets", type_="check")

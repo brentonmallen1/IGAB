@@ -61,6 +61,8 @@ export const ROOT = {
   budgetTransactions: 'budget-transactions',
   budgetViews: 'budgetViews',
   budgets: 'budgets',
+  budgetHistory: 'budget-history',
+  importHistoryMonth: 'import-history-month',
   categories: 'categories',
   categoryArchivePreview: 'categoryArchivePreview',
   categoryClassification: 'categoryClassification',

@@ -125,6 +125,7 @@ import { TransactionEditor } from './TransactionEditor'
 import type { Transaction } from '../../../types'
 import type { AIJob } from '../../../api/aiJobs'
 import { splitField } from '../SplitSheet/splitSheetTestUtils'
+import { makeTransaction } from '../../../test-utils/factories'
 
 function renderEditor(props: Partial<Parameters<typeof TransactionEditor>[0]> = {}) {
   // The api/* hooks are mocked, but useToastUndo reaches the real
@@ -246,7 +247,7 @@ describe('TransactionEditor future-overspend gate (B1)', () => {
   })
 
   it('includes a reversal probe when editing, so only the net change counts', async () => {
-    const txn = {
+    const txn = makeTransaction({
       id: 't1',
       account_id: 'acc-1',
       date: '2030-01-10',
@@ -256,7 +257,7 @@ describe('TransactionEditor future-overspend gate (B1)', () => {
       memo: null,
       cleared: 'uncleared',
       transfer_id: null,
-    } as unknown as Transaction
+    })
     renderEditor({ transaction: txn, accountId: null })
 
     fireEvent.change(amountInputs()[0], { target: { value: '50' } })
@@ -331,7 +332,7 @@ describe('TransactionEditor split-mode validation', () => {
  * destroyed without a word.
  */
 describe('TransactionEditor unreadable amount', () => {
-  const row = {
+  const row = makeTransaction({
     id: 't20',
     account_id: 'acc-1',
     date: '2030-01-10',
@@ -344,7 +345,7 @@ describe('TransactionEditor unreadable amount', () => {
     is_split: false,
     sync_id: null,
     parent_transaction_id: null,
-  } as unknown as Transaction
+  })
 
   beforeEach(() => {
     createMutate.mockClear()
@@ -378,14 +379,14 @@ describe('TransactionEditor unreadable amount', () => {
   it('leaves a $0 stub saveable, because zero is a real amount', () => {
     // The receipt worker files one when a scan exhausts its retries; it is
     // reviewed to fix the payee, not the amount.
-    renderEditor({ transaction: { ...row, amount: 0 } as unknown as Transaction })
+    renderEditor({ transaction: makeTransaction({ ...row, amount: 0 }) })
     expect(screen.queryByText(/isn’t an amount yet/)).toBeNull()
     expect(submitButton('Save')).toBeEnabled()
   })
 })
 
 describe('TransactionEditor classification note', () => {
-  const savedTxn = {
+  const savedTxn = makeTransaction({
     id: 't-1',
     account_id: 'acc-1',
     date: '2030-01-10',
@@ -395,7 +396,7 @@ describe('TransactionEditor classification note', () => {
     memo: null,
     cleared: 'uncleared',
     transfer_id: null,
-  } as unknown as Transaction
+  })
 
   beforeEach(() => {
     classificationData = undefined
@@ -432,7 +433,7 @@ describe('TransactionEditor classification note', () => {
  * unreachable.
  */
 describe('TransactionEditor transfers', () => {
-  const linkedLeg = {
+  const linkedLeg = makeTransaction({
     id: 't-xfer',
     account_id: 'acc-1',
     date: '2026-08-20',
@@ -443,14 +444,14 @@ describe('TransactionEditor transfers', () => {
     cleared: 'uncleared',
     transfer_id: 't-far',
     counterpart_account_id: 'acc-2',
-  } as unknown as Transaction
+  })
 
   /** The importer's leftovers: transfer-shaped, but never linked. */
-  const orphanLeg = {
+  const orphanLeg = makeTransaction({
     ...linkedLeg,
     id: 't-orphan',
     transfer_id: null,
-  } as unknown as Transaction
+  })
 
   beforeEach(() => {
     updateMutate.mockClear()
@@ -580,7 +581,7 @@ describe('TransactionEditor on a reconciled transaction', () => {
   // Reconciliation locks the money (backend domain/reconciliation.py): the
   // amount, date and cleared state are shown locked and never sent; the
   // bookkeeping — memo, category, payee — still saves.
-  const reconciled = {
+  const reconciled = makeTransaction({
     id: 't9',
     account_id: 'acc-1',
     date: '2030-01-10',
@@ -591,7 +592,7 @@ describe('TransactionEditor on a reconciled transaction', () => {
     cleared: 'reconciled',
     transfer_id: null,
     is_split: false,
-  } as unknown as Transaction
+  })
 
   beforeEach(() => {
     updateMutate.mockClear()
@@ -628,7 +629,7 @@ describe('TransactionEditor on a reconciled transaction', () => {
  * and that what leaves the editor says "move" in the way PATCH understands.
  */
 describe('TransactionEditor account picker', () => {
-  const row = {
+  const row = makeTransaction({
     id: 't10',
     account_id: 'acc-1',
     date: '2030-01-10',
@@ -641,7 +642,7 @@ describe('TransactionEditor account picker', () => {
     is_split: false,
     sync_id: null,
     parent_transaction_id: null,
-  } as unknown as Transaction
+  })
 
   beforeEach(() => {
     updateMutate.mockClear()
@@ -784,7 +785,7 @@ describe('TransactionEditor account picker', () => {
  * button to the full-screen viewer now; the side-by-side pane is desktop-only.
  */
 describe('TransactionEditor reviewing a scanned receipt', () => {
-  const scanned = {
+  const scanned = makeTransaction({
     id: 't-ai',
     account_id: 'acc-1',
     date: '2030-01-10',
@@ -796,7 +797,7 @@ describe('TransactionEditor reviewing a scanned receipt', () => {
     transfer_id: null,
     is_split: false,
     created_via: 'ai_receipt',
-  } as unknown as Transaction
+  })
   const job = {
     id: 'job-1',
     kind: 'receipt',
@@ -967,7 +968,7 @@ describe('TransactionEditor splitting on a phone', () => {
       { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
     ]
     renderEditor({
-      transaction: {
+      transaction: makeTransaction({
         id: 't11',
         account_id: 'acc-1',
         date: '2030-01-10',
@@ -978,7 +979,7 @@ describe('TransactionEditor splitting on a phone', () => {
         cleared: 'uncleared',
         transfer_id: null,
         is_split: true,
-      } as unknown as Transaction,
+      }),
       accountId: 'acc-1',
     })
     const row = screen.getByRole('button', { name: 'Edit split' })
@@ -1018,7 +1019,7 @@ describe('TransactionEditor starting and stopping a split', () => {
  * nothing.
  */
 describe('a projected interest row', () => {
-  const projection = {
+  const projection = makeTransaction({
     id: 't30',
     account_id: 'acc-1',
     date: '2030-01-10',
@@ -1032,7 +1033,7 @@ describe('a projected interest row', () => {
     sync_id: null,
     parent_transaction_id: null,
     projected_interest_month: '2030-01-01',
-  } as unknown as Transaction
+  })
 
   it('carries the note', () => {
     renderEditor({ transaction: projection })

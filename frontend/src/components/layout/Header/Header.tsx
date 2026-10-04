@@ -13,6 +13,7 @@ import {
   Sun,
 } from 'lucide-react'
 import {
+  monthFloor,
   useAppStore,
   PALETTES,
   getPaletteForTheme,
@@ -32,7 +33,7 @@ import './Header.css'
 export function Header() {
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
-  const budgetAnchorMonth = useAppStore((s) => s.budgetAnchorMonth)
+  const floor = useAppStore(monthFloor)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const toggleThemeMode = useAppStore((s) => s.toggleThemeMode)
@@ -101,11 +102,11 @@ export function Header() {
             className="header__month-btn"
             onClick={() => setSelectedMonth(addMonths(selectedMonth, -1))}
             aria-label="Previous month"
-            // The store clamps anyway (one rule); disabling says so.
-            disabled={!!budgetAnchorMonth && selectedMonth <= budgetAnchorMonth}
+            // The store clamps anyway (one rule, `monthFloor`); disabling says so.
+            disabled={!!floor && selectedMonth <= floor}
             title={
-              budgetAnchorMonth && selectedMonth <= budgetAnchorMonth
-                ? 'Your budget starts here. Earlier months are in each account\u2019s register and in Reports.'
+              floor && selectedMonth <= floor
+                ? 'Your budget\u2019s history starts here. Earlier months are in each account\u2019s register and in Reports.'
                 : undefined
             }
           >

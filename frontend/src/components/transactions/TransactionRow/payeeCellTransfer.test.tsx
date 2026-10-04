@@ -14,6 +14,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransactionRow } from './TransactionRow'
 import type { Account, Payee, Transaction } from '../../../types'
+import { makeTransaction } from '../../../test-utils/factories'
 
 const updateMutate = vi.fn()
 vi.mock('../../../api/transactions', () => ({
@@ -45,24 +46,7 @@ const payees = [
 ] as unknown as Payee[]
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
-  return {
-    id: 't1',
-    budget_id: 'b1',
-    account_id: 'a1',
-    date: '2026-09-08',
-    amount: -17.09,
-    payee_id: null,
-    category_id: null,
-    memo: null,
-    cleared: 'uncleared',
-    approved: true,
-    created_via: null,
-    is_split: false,
-    transfer_id: null,
-    has_sync_source: false,
-    needs_category: false,
-    ...overrides,
-  } as unknown as Transaction
+  return makeTransaction({ date: '2026-09-08', amount: -17.09, ...overrides })
 }
 
 function openPayeeCell(t: Transaction, onMakeTransfer = vi.fn()) {

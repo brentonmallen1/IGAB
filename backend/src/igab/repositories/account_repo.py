@@ -19,6 +19,7 @@ from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     BALANCE_ROW,
+    BUDGET_MONTH,
     CARD_ACCOUNT,
     CASH_ACCOUNT,
     CLEARED,
@@ -405,14 +406,16 @@ class AccountRepository(BaseRepository[Account]):
         `card_position` at a month is meaningless against today's balance.
         Same predicates and same bound as `card_balances`, grouped by month
         instead of summed, so the series always totals that figure.
+
+        Grouped by `BUDGET_MONTH`, the bucket the reserve's legs use: a late
+        charge dated in the anchor month counts in the import month on both
+        sides of the row, or the timeline would show B's reservations beside
+        a balance that moved a month earlier. Summing the months through B−1
+        is also how the reserve identity reads a card's balance at the anchor
+        (`BudgetService.get_budget_summary`'s `balance_at_anchor`).
         """
-        month = func.date_trunc("month", Transaction.date)
-        result = await self.session.execute(
-            select(
-                Transaction.account_id,
-                month.label("month"),
-                func.coalesce(func.sum(Transaction.amount), 0),
-            )
+        rows = (
+            select(Transaction.account_id, Transaction.amount, BUDGET_MONTH.label("month"))
             .select_from(Transaction)
             .join(Account, Account.id == Transaction.account_id)
             .where(
@@ -421,14 +424,16 @@ class AccountRepository(BaseRepository[Account]):
                 BALANCE_ROW,
                 not_future(as_of),
             )
-            .group_by(Transaction.account_id, month)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(
+                rows.c.account_id, rows.c.month, func.coalesce(func.sum(rows.c.amount), 0)
+            ).group_by(rows.c.account_id, rows.c.month)
         )
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for account_id, month_value, total in result.all():
-            month_start = (
-                month_value.date() if hasattr(month_value, "date") else month_value
-            ).replace(day=1)
-            out.setdefault(account_id, {})[month_start] = Decimal(str(total))
+            out.setdefault(account_id, {})[month_value] = Decimal(str(total))
         return out
 
     async def card_month_flows(
@@ -480,7 +485,10 @@ class AccountRepository(BaseRepository[Account]):
                 CARD_ACCOUNT,
                 NOT_DELETED,
                 PARENT_ROW,
-                Transaction.date >= month_start,
+                # The month's own rows by the reserve's bucket — a late charge
+                # dated in the anchor month is charged in the import month,
+                # where its reservation is (`txn_filters.BUDGET_MONTH`).
+                BUDGET_MONTH == month_start,
                 not_future(month_end),
             )
             .group_by(Transaction.account_id)
