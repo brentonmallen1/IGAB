@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { FONT_SCALES, useAppStore } from './appStore'
+import { FONT_SCALES, monthFloor, useAppStore } from './appStore'
 import { PERSIST_KEYS } from './persistKeys'
 
 describe('font scale migration', () => {
@@ -120,5 +120,36 @@ describe('the import-anchor month clamp', () => {
     useAppStore.getState().setBudgetAnchorMonth('2026-08-01')
     useAppStore.getState().clearCurrentBudget()
     expect(useAppStore.getState().budgetAnchorMonth).toBeNull()
+  })
+
+  it('floors at the first month of YNAB’s kept figures, where the import has them', () => {
+    // The months from there to the anchor are shown read-only.
+    useAppStore.getState().setBudgetAnchorMonth('2026-08-01')
+    useAppStore.getState().setBudgetHistoryStarts('2026-06-01')
+    useAppStore.getState().setSelectedMonth('2026-07-01')
+    expect(useAppStore.getState().selectedMonth).toBe('2026-07-01')
+    useAppStore.getState().setSelectedMonth('2026-01-01')
+    expect(useAppStore.getState().selectedMonth).toBe('2026-06-01')
+    useAppStore.getState().setBudgetHistoryStarts(null)
+  })
+
+  it('drops the history floor with the budget, and never persists it', () => {
+    useAppStore.getState().setBudgetHistoryStarts('2026-06-01')
+    const stored = JSON.parse(localStorage.getItem(PERSIST_KEYS.app) ?? '{"state":{}}')
+    expect(stored.state).not.toHaveProperty('budgetHistoryStarts')
+    useAppStore.getState().setCurrentBudgetId('budget-c')
+    expect(useAppStore.getState().budgetHistoryStarts).toBeNull()
+  })
+})
+
+describe('monthFloor', () => {
+  it('is the history start, else the anchor, else none', () => {
+    expect(monthFloor({ budgetAnchorMonth: '2026-08-01', budgetHistoryStarts: '2026-06-01' })).toBe(
+      '2026-06-01'
+    )
+    expect(monthFloor({ budgetAnchorMonth: '2026-08-01', budgetHistoryStarts: null })).toBe(
+      '2026-08-01'
+    )
+    expect(monthFloor({ budgetAnchorMonth: null, budgetHistoryStarts: null })).toBeNull()
   })
 })

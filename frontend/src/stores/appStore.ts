@@ -178,6 +178,12 @@ interface AppState {
    *  `setSelectedMonth` clamps against it, so every navigation surface —
    *  header arrows, shortcuts, swipe — obeys one rule. */
   budgetAnchorMonth: string | null
+  /** The first month the open budget's import kept YNAB's own figures for
+   *  (server: BudgetMonthResponse.history_starts). Months from here up to the
+   *  anchor are shown read-only, so navigation floors here instead of at the
+   *  anchor — see `monthFloor`. Null where there is no such history; synced
+   *  by BudgetPage like the anchor, and never persisted. */
+  budgetHistoryStarts: string | null
   autoOpenLastBudget: boolean
   /** Accounts this device filed a transaction into, most recent first.
    *  Read only through `utils/accountLists.recentAccounts`, which every
@@ -198,12 +204,23 @@ interface AppState {
   clearCurrentBudget: () => void
   setSelectedMonth: (month: string) => void
   setBudgetAnchorMonth: (month: string | null) => void
+  setBudgetHistoryStarts: (month: string | null) => void
   setAutoOpenLastBudget: (val: boolean) => void
   /** Remember that a transaction was just filed into this account. */
   noteAccountUsed: (id: string) => void
   setLocationEnabled: (val: boolean) => void
   togglePrivacyMode: () => void
   setViewportRuler: (on: boolean) => void
+}
+
+/** The earliest month the budget page can show: the first month of YNAB's
+ *  kept figures (read-only) where the import has them, else the anchor, else
+ *  none. The one rule — the store's clamp and the header's disabled arrow
+ *  both read it. */
+export function monthFloor(
+  s: Pick<AppState, 'budgetAnchorMonth' | 'budgetHistoryStarts'>
+): string | null {
+  return s.budgetHistoryStarts ?? s.budgetAnchorMonth
 }
 
 export const useAppStore = create<AppState>()(
@@ -214,6 +231,7 @@ export const useAppStore = create<AppState>()(
       currentBudgetId: null,
       selectedMonth: currentMonthStart(),
       budgetAnchorMonth: null,
+      budgetHistoryStarts: null,
       autoOpenLastBudget: true,
       recentAccountIds: [],
       locationEnabled: false,
@@ -243,19 +261,19 @@ export const useAppStore = create<AppState>()(
         set((state) =>
           state.currentBudgetId === id
             ? { currentBudgetId: id }
-            : { currentBudgetId: id, budgetAnchorMonth: null }
+            : { currentBudgetId: id, budgetAnchorMonth: null, budgetHistoryStarts: null }
         ),
-      clearCurrentBudget: () => set({ currentBudgetId: null, budgetAnchorMonth: null }),
+      clearCurrentBudget: () =>
+        set({ currentBudgetId: null, budgetAnchorMonth: null, budgetHistoryStarts: null }),
       setSelectedMonth: (month) =>
-        set((state) => ({
-          // Months before the anchor live in the register and reports only —
-          // there is no budget month to show there.
-          selectedMonth:
-            state.budgetAnchorMonth && month < state.budgetAnchorMonth
-              ? state.budgetAnchorMonth
-              : month,
-        })),
+        set((state) => {
+          // Before the floor there is no budget month to show: the anchor, or
+          // the first month of YNAB's kept figures where the import has them.
+          const floor = monthFloor(state)
+          return { selectedMonth: floor && month < floor ? floor : month }
+        }),
       setBudgetAnchorMonth: (month) => set({ budgetAnchorMonth: month }),
+      setBudgetHistoryStarts: (month) => set({ budgetHistoryStarts: month }),
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
       noteAccountUsed: (id) =>
         set((s) => ({

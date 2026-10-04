@@ -555,6 +555,14 @@ export interface BudgetMonth {
    *  after the import and count here (server: `LATE_ARRIVAL`). Empty on every
    *  other month. */
   late_arrivals: LateArrival[]
+  /** Before the import month of an anchored budget: the plan is YNAB's and
+   *  read-only. Served (`month_is_editable`, which the server refuses writes
+   *  on) — never compare months against `anchor_month` here. */
+  read_only: boolean
+  /** The first month the import kept YNAB's own figures for; the read-only
+   *  months run from here to the anchor (`useImportHistoryMonth`). Null where
+   *  there are none, and then navigation stops at `anchor_month`. */
+  history_starts: string | null
   category_balances: CategoryBalance[]
   /** The budget's cards — empty when it has none. The cards section draws
    *  exactly this and computes nothing. */

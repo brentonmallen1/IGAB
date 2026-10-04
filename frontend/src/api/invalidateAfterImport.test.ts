@@ -39,6 +39,7 @@ const EXPECTED_ROOTS = [
   // switch flips through this same sweep.
   'card-timeline',
   'budget-history',
+  'import-history-month',
 ]
 
 describe('invalidateAfterImport', () => {

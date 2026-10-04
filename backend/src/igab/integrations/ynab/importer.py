@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Account, Category, CategoryGroup
+from igab.db.models import Account, Category, CategoryGroup, ImportPlanMonth
 from igab.domain.dates import add_months
 from igab.domain.enums import AccountClassification
 from igab.domain.import_identity import YNAB_ORIGIN, disambiguate_in_batch, generate_import_id
@@ -22,6 +22,7 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.import_anchor_repo import ImportAnchorRepository, anchor_rows
+from igab.repositories.import_plan_repo import ImportPlanRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.repositories.tag_repo import seed_system_tags
@@ -299,6 +300,7 @@ class YNABImporter:
         await self._import_held_out(budget, payee_map, result)
         await self._import_assignments(budget, result)
         await self._write_anchor(budget, result)
+        await self._store_plan_months(budget)
         return result
 
     async def _seed_arrangement(self, budget: YNABBudget, result: ImportResult) -> None:
@@ -978,23 +980,11 @@ class YNABImporter:
         # after the card the way YNAB names them. Only an entry whose card
         # was skipped, never imported, or is not on budget has nowhere to go;
         # those are counted, not silently dropped.
-        linked_by_name = {}
-        for name, account in self._account_cache.items():
-            if account.on_budget and account.classification == "liability":
-                linked = await self.category_repo.get_by_linked_account(account.id)
-                if linked is not None:
-                    # `name` is already an account_key. YNAB names the reserve
-                    # category exactly after the card, so the entry's category
-                    # is normalized the same way to meet it.
-                    linked_by_name[name] = linked
+        linked_by_name = await self._card_reserves_by_name()
 
         for entry in budget.budget_entries:
             if is_credit_card_payments_group(entry.category_group):
-                # A card's reserve by the card's name first; otherwise the
-                # group's one ordinary envelope, Interest & fees.
-                linked = linked_by_name.get(
-                    account_key(entry.category)
-                ) or await self._interest_envelope(entry.category)
+                linked = await self._credit_card_payments_category(entry.category, linked_by_name)
                 if linked is None:
                     result.credit_card_payment_assignments_skipped += 1
                     result.credit_card_payment_reserves_skipped += entry.assigned
@@ -1019,6 +1009,93 @@ class YNABImporter:
                 result.assignments_imported += 1
             except Exception as e:
                 result.errors.append(f"Assignment {entry.month} {entry.category}: {e}")
+
+    async def _card_reserves_by_name(self) -> dict[str, Category]:
+        """Each imported on-budget card's own envelope, by the card's
+        `account_key` — where a "Credit Card Payments" plan row's money goes."""
+        linked_by_name: dict[str, Category] = {}
+        for name, account in self._account_cache.items():
+            if account.on_budget and account.classification == "liability":
+                linked = await self.category_repo.get_by_linked_account(account.id)
+                if linked is not None:
+                    # `name` is already an account_key. YNAB names the reserve
+                    # category exactly after the card, so the entry's category
+                    # is normalized the same way to meet it.
+                    linked_by_name[name] = linked
+        return linked_by_name
+
+    async def _credit_card_payments_category(
+        self, category_name: str, linked_by_name: dict[str, Category]
+    ) -> Category | None:
+        """A "Credit Card Payments" row's envelope: the card's reserve by the
+        card's name first; otherwise the group's one ordinary envelope,
+        Interest & fees; None for a card that never arrived on budget."""
+        return linked_by_name.get(account_key(category_name)) or await self._interest_envelope(
+            category_name
+        )
+
+    async def _plan_category_resolver(self):
+        """The one map from a plan row's (group, category) to the envelope it
+        names, once the import has made every category — for the anchor and
+        the stored plan months alike. Two spellings of it disagreed in the
+        first draft of each, the way every copy in this repo has.
+
+        None for a row in a system group (income holds no money: an opening
+        there would invent an envelope the summary excludes) and for one
+        whose category never reached the import. A "Credit Card Payments"
+        row resolves to its card's envelope or Interest & fees.
+        """
+        linked_by_name = await self._card_reserves_by_name()
+        by_name: dict[tuple[str, str], uuid.UUID] = {
+            (group_name, category.name): category.id
+            for category, group_name in await self.category_repo.get_all_with_group_names(
+                self.budget_id, include_archived=True
+            )
+        }
+        system_groups = {
+            g.name for g in await self.category_group_repo.get_all(self.budget_id) if g.is_system
+        }
+
+        async def resolve(group: str, name: str) -> uuid.UUID | None:
+            if group in system_groups:
+                return None
+            if is_credit_card_payments_group(group):
+                envelope = await self._credit_card_payments_category(name, linked_by_name)
+                return envelope.id if envelope is not None else None
+            return by_name.get((group, name))
+
+        return resolve
+
+    async def _store_plan_months(self, budget: YNABBudget) -> None:
+        """Every Plan.csv row, as YNAB displayed it (`db.models.ImportPlanMonth`)
+        — what the Budget page shows, read-only, for a month before the import
+        month. Never read by a walk."""
+        if not budget.plan_rows:
+            return
+        resolve = await self._plan_category_resolver()
+        positions: dict[date, int] = {}
+        rows: list[ImportPlanMonth] = []
+        for row in budget.plan_rows:
+            month = row.month.replace(day=1)
+            position = positions.get(month, 0)
+            positions[month] = position + 1
+            # Stored under YNAB's own names, resolved under IGAB's.
+            group, name = map_ynab_names(row.category_group, row.category)
+            rows.append(
+                ImportPlanMonth(
+                    budget_id=self.budget_id,
+                    month=month,
+                    position=position,
+                    category_group=row.category_group,
+                    category=row.category,
+                    category_id=await resolve(group, name),
+                    income=group == _SYSTEM_INCOME_GROUP,
+                    assigned=row.assigned,
+                    activity=row.activity,
+                    available=row.available,
+                )
+            )
+        await ImportPlanRepository(self.session).bulk_create(rows)
 
     async def _write_anchor(self, budget: YNABBudget, result: ImportResult) -> None:
         """Record YNAB's own displayed position at the boundary — the import's
@@ -1073,26 +1150,17 @@ class YNABImporter:
             tracking_accounts=tracking,
         )
 
-        rows = await self.category_repo.get_all_with_group_names(
-            self.budget_id, include_archived=True
-        )
-        by_name: dict[tuple[str, str], uuid.UUID] = {}
-        system_groups = {
-            g.name for g in await self.category_group_repo.get_all(self.budget_id) if g.is_system
-        }
-        for category, group_name in rows:
-            by_name[(group_name, category.name)] = category.id
-
+        resolve = await self._plan_category_resolver()
         available: dict[uuid.UUID, Decimal] = {}
         for (group, name), amount in seed.available.items():
-            if group in system_groups:
-                # Income categories hold no money; an opening there would
-                # invent an envelope the summary deliberately excludes.
+            if is_credit_card_payments_group(group):
+                # A card's position seeds through its reserve and uncovered
+                # legs below, never as a category opening.
                 continue
-            category_id = by_name.get((group, name))
+            category_id = await resolve(group, name)
             if category_id is None:
-                # A plan row whose category never reached the import — the
-                # parity block reports these as unmatched.
+                # Income (no money to open), or a plan row whose category
+                # never reached the import — the parity block reports those.
                 continue
             available[category_id] = amount
         zero = Decimal("0")

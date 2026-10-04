@@ -1,0 +1,72 @@
+/* A read-only month before the import: YNAB's own figures. Quiet like the
+   anchor note — history, not a warning — and dense like the budget grid. */
+.import-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.import-history__banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.import-history__banner > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.import-history__status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.import-history__table-wrap {
+  overflow-x: auto;
+}
+
+.import-history__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.import-history__table th,
+.import-history__table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: left;
+  font-weight: normal;
+  border-bottom: 1px solid var(--edge);
+}
+
+.import-history__table thead th {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--surface-chrome);
+}
+
+.import-history__group th,
+.import-history__group td {
+  font-weight: 600;
+  background: var(--surface-sunken);
+}
+
+.import-history__category {
+  padding-left: calc(var(--spacing-sm) * 2);
+}
+
+.import-history__table .import-history__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.import-history__num--negative {
+  color: var(--color-negative);
+}

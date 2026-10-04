@@ -62,6 +62,8 @@ export function invalidateAfterImport(qc: QueryClient, budgetId: string | null):
     // everything an import does, so it sweeps through here too.
     [ROOT.cardTimeline],
     [ROOT.budgetHistory],
+    // YNAB's kept months: written once per import, replaced by a restore.
+    [ROOT.importHistoryMonth],
     ...(budgetId
       ? [
           ['guide', budgetId],

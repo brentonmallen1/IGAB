@@ -42,6 +42,21 @@ def month_end(d: date) -> date:
     return d.replace(day=calendar.monthrange(d.year, d.month)[1])
 
 
+def month_is_editable(month: date, *, import_month: date | None) -> bool:
+    """Whether a month's plan can be written: every month of a budget with no
+    anchor in force, and from the import month on of one that has.
+
+    Before the import month an anchored budget shows YNAB's own figures,
+    read-only (`db.models.ImportPlanMonth`); its arithmetic starts at B, so an
+    assignment written there would move nothing anyone could see — and would
+    reappear, uninvited, if the budget were switched to re-derive its history.
+    `import_month` is B when the anchor is in force (`BudgetAnchor.month`),
+    None otherwise. The server refuses on it; the client is served the answer
+    (`BudgetMonthResponse.read_only`) rather than comparing months itself.
+    """
+    return import_month is None or month_start(month) >= import_month
+
+
 def budget_month(day: date, *, anchor_month: date | None, late_eligible: bool) -> date:
     """The month a row counts in for budget math — its own month, except a
     late arrival, which counts in the import month.

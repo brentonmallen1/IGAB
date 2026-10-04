@@ -84,7 +84,11 @@ class TestEveryTableIsClassified:
         # digits of each card that pays from an account, for receipt scans.
         # Cascades on budget delete; carried by snapshots, like the account's
         # own `account_number_last4`.
-        assert counted[Scope.OWNED] == 32
+        # 33: `import_plan_months` joined (2026-10-04) — YNAB's own figures for
+        # every month of an import, which the Budget page shows read-only
+        # before the import month. Carried by snapshots (a restore without
+        # them loses the read-only history) and cascaded by budget delete.
+        assert counted[Scope.OWNED] == 33
         # 12: `asset_value_snapshots` rides in as its child, and
         # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
         # scoped through its filter like `budget_filter_categories`.

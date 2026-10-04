@@ -390,6 +390,29 @@ export function useUpdateBudget() {
   })
 }
 
+/** One category of a read-only month, as YNAB displayed it (server:
+ *  `ImportHistoryRowOut`). Names are YNAB's own; `category_id` is null for a
+ *  category that never reached the import or was deleted since. */
+export interface ImportHistoryRow {
+  category_group: string
+  category: string
+  category_id: string | null
+  assigned: number
+  /** Null where the export's cell was blank or unreadable. */
+  activity: number | null
+  available: number | null
+}
+
+/** A month before the import month, as YNAB displayed it (server:
+ *  `ImportHistoryMonthResponse`). Read-only, and not a budget month: there is
+ *  no Ready to Assign and no card position in it. */
+export interface ImportHistoryMonth {
+  month: string
+  import_month: string
+  history_starts: string
+  rows: ImportHistoryRow[]
+}
+
 /** An imported budget's history setting (server: `BudgetHistory`,
  *  `Budget.history_mode`). `import_month` is B whichever mode is on — null on
  *  a budget never anchored at import, which has no setting to offer. */
@@ -407,6 +430,19 @@ export function useBudgetHistory(budgetId: string | null) {
     queryKey: [ROOT.budgetHistory, budgetId],
     queryFn: () => apiClient.get<BudgetHistory>(`/budgets/${budgetId}/history`).then((r) => r.data),
     enabled: !!budgetId,
+  })
+}
+
+/** A read-only month before the import, as YNAB displayed it. Asked only for
+ *  a month the server called read-only and within `history_starts`. Written
+ *  once at import and never edited, so it never goes stale on its own. */
+export function useImportHistoryMonth(budgetId: string | null, month: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [ROOT.importHistoryMonth, budgetId, month],
+    queryFn: () =>
+      apiClient.get<ImportHistoryMonth>(`/${budgetId}/months/${month}/history`).then((r) => r.data),
+    enabled: !!budgetId && enabled,
+    staleTime: Infinity,
   })
 }
 

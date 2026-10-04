@@ -745,6 +745,28 @@ class LateArrivalOut(ApiModel):
     payee_id: uuid.UUID | None
 
 
+class ImportHistoryRowOut(ApiModel):
+    category_group: str
+    category: str
+    category_id: uuid.UUID | None
+    assigned: Decimal
+    #: None where the export's cell was blank or unreadable.
+    activity: Decimal | None
+    available: Decimal | None
+
+
+class ImportHistoryMonthResponse(ApiModel):
+    """A month before the import month, as YNAB displayed it
+    (`services.budget_service.ImportHistoryMonth`). Read-only and never a
+    walk: there is no Ready to Assign and no card position, because YNAB's
+    export carries neither per month and IGAB does not re-derive them."""
+
+    month: datetime.date
+    import_month: datetime.date
+    history_starts: datetime.date
+    rows: list[ImportHistoryRowOut]
+
+
 class BudgetMonthResponse(ApiModel):
     month: datetime.date
     to_be_assigned: Decimal
@@ -793,6 +815,15 @@ class BudgetMonthResponse(ApiModel):
     #: IGAB after the import and count here (`txn_filters.LATE_ARRIVAL`).
     #: Empty on every other month.
     late_arrivals: list[LateArrivalOut] = []
+    #: Before the import month of an anchored budget: the plan is YNAB's and
+    #: read-only (`domain.dates.month_is_editable`, which the server refuses
+    #: writes on). Required, like every served rule: a path that forgot must
+    #: fail rather than offer an editor the server will refuse.
+    read_only: bool
+    #: How far back the read-only months go — the first month the import kept
+    #: YNAB's figures for (`GET .../months/{month}/history`). None where there
+    #: are none to show, and then navigation stops at `anchor_month`.
+    history_starts: datetime.date | None
     category_balances: list[CategoryBalance]
     #: The budget's cards — balance / set aside / uncovered (domain/cards.py).
     #: Empty when the budget has none; the budget page draws its cards
