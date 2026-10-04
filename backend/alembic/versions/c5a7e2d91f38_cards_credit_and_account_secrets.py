@@ -53,7 +53,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["budget_id"], ["budgets.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint("budget_id", "recorded_on", "bureau", name="uq_credit_score_day_bureau"),
+        sa.UniqueConstraint(
+            "budget_id", "recorded_on", "bureau", name="uq_credit_score_day_bureau"
+        ),
     )
     op.create_index("ix_credit_scores_budget_id", "credit_scores", ["budget_id"])
 

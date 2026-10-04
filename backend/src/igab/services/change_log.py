@@ -319,6 +319,9 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "time_format",
         "funding_day",
         "import_reviewed_at",
+        # The history-mode switch, so ⌘Z puts a budget back on the figures it
+        # had; db/invalidation clears the snapshot cache on the way back too.
+        "history_mode",
     ),
     "guide_state": (),
     "guide_binding": (),

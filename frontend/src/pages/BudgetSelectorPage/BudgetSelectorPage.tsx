@@ -21,6 +21,7 @@ import {
   usePreviewBudgetImport,
   useRenameBudget,
   useDeleteBudget,
+  type HistoryMode,
   type SampleTier,
   type YnabAccountPreview,
   type YnabAccountTypeChoice,
@@ -125,6 +126,9 @@ export function BudgetSelectorPage() {
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
   // B for the file being previewed — see YnabPreviewResult.anchor_month.
   const [previewAnchorMonth, setPreviewAnchorMonth] = useState<string | null>(null)
+  // Where the imported budget's math starts — offered only when the export can
+  // be anchored (`previewAnchorMonth`), and changeable later in Settings.
+  const [historyMode, setHistoryMode] = useState<HistoryMode>('anchored')
   // Rows dated after today — upcoming transactions, not register history.
   const [previewHeldOut, setPreviewHeldOut] = useState(0)
   const [snapshotPreview, setSnapshotPreview] = useState<SnapshotInspection | null>(null)
@@ -274,6 +278,7 @@ export function BudgetSelectorPage() {
         name: importName.trim(),
         file,
         accountTypes: accountChoices,
+        historyMode: previewAnchorMonth ? historyMode : undefined,
       })
       // One line, and then the review. Everything this used to say — the
       // parity check against the export's own figures, which plan rows were
@@ -296,6 +301,7 @@ export function BudgetSelectorPage() {
   function resetImportPreview() {
     setPreviewAccounts(null)
     setPreviewAnchorMonth(null)
+    setHistoryMode('anchored')
     setSnapshotPreview(null)
     setAccountChoices({})
     setImportError(null)
@@ -584,6 +590,46 @@ export function BudgetSelectorPage() {
                       </p>
                     )}
                   </Surface>
+                  {previewAnchorMonth && (
+                    <fieldset className="sample-tier history-choice">
+                      <legend className="history-choice__legend">Months before the import</legend>
+                      <label
+                        className={`sample-tier__option ${historyMode === 'anchored' ? 'sample-tier__option--active' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="history-mode"
+                          checked={historyMode === 'anchored'}
+                          onChange={() => setHistoryMode('anchored')}
+                        />
+                        <span>
+                          <strong>Start where YNAB left off</strong>
+                          <small>
+                            Recommended. Matches YNAB from the first day; earlier months stay in the
+                            register and reports.
+                          </small>
+                        </span>
+                      </label>
+                      <label
+                        className={`sample-tier__option ${historyMode === 'rederived' ? 'sample-tier__option--active' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="history-mode"
+                          checked={historyMode === 'rederived'}
+                          onChange={() => setHistoryMode('rederived')}
+                        />
+                        <span>
+                          <strong>Work out every month</strong>
+                          <small>
+                            Earlier months become editable, but IGAB&apos;s figures won&apos;t match
+                            YNAB&apos;s and card reserves can drift. You can change this later in
+                            Settings.
+                          </small>
+                        </span>
+                      </label>
+                    </fieldset>
+                  )}
                   <div className="ynab-mapping__heading">
                     <span className="selector-field__label" id="ynab-accounts-label">
                       Accounts

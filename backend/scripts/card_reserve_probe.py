@@ -865,9 +865,16 @@ _SQL_BUDGET_MONTH = (
     "CASE WHEN COALESCE(t.created_via, 'ynab') <> 'ynab'"
     " AND EXISTS (SELECT 1 FROM accounts fa WHERE fa.id = t.account_id AND fa.from_import)"
     " AND date_trunc('month', t.date)::date = ("
-    "   SELECT ia.month FROM import_anchors ia WHERE ia.budget_id = t.budget_id LIMIT 1)"
+    "   SELECT ia.month FROM import_anchors ia WHERE ia.budget_id = t.budget_id"
+    "   {anchor_in_force} LIMIT 1)"
     " THEN (date_trunc('month', t.date) + interval '1 month')::date"
     f" ELSE {_SQL_MONTH} END"
+)
+#: import_anchor_repo.ANCHOR_IN_FORCE, on a schema with `budgets.history_mode`:
+#: a re-derived budget keeps its anchor rows and reads none of them.
+_SQL_ANCHOR_IN_FORCE = (
+    " AND EXISTS (SELECT 1 FROM budgets hb WHERE hb.id = ia.budget_id"
+    " AND hb.history_mode = 'anchored')"
 )
 
 #: Probe-only, no repository original: how each (category, card) pair's
@@ -1008,12 +1015,23 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             # The month bucket this deployment's walks use: the late-arrival
             # bucket where the schema knows which accounts came with an
             # import, the calendar month on one that predates it.
-            month_sql = (
-                _SQL_BUDGET_MONTH
-                if await scalar(
-                    "SELECT EXISTS (SELECT 1 FROM information_schema.columns"
-                    " WHERE table_name = 'accounts' AND column_name = 'from_import')"
+            async def has_column(table: str, column: str) -> bool:
+                return bool(
+                    await scalar(
+                        "SELECT EXISTS (SELECT 1 FROM information_schema.columns"
+                        " WHERE table_name = :t AND column_name = :c)",
+                        t=table,
+                        c=column,
+                    )
                 )
+
+            # Whether this deployment can re-derive an imported budget's history
+            # (`budgets.history_mode`) — and if it can, whether this one does.
+            mode_aware = await has_column("budgets", "history_mode")
+            anchor_in_force = _SQL_ANCHOR_IN_FORCE if mode_aware else ""
+            month_sql = (
+                _SQL_BUDGET_MONTH.format(anchor_in_force=anchor_in_force)
+                if await has_column("accounts", "from_import")
                 else _SQL_MONTH
             )
 
@@ -1216,7 +1234,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             try:
                 anchor_rows = await rows(
                     "SELECT month, kind, category_id, account_id, amount"
-                    " FROM import_anchors WHERE budget_id = :b",
+                    " FROM import_anchors ia WHERE budget_id = :b" + anchor_in_force,
                     b=budget_id,
                 )
             except Exception:

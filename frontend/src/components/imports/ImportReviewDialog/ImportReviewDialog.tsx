@@ -51,6 +51,7 @@ import {
 import './ImportReviewDialog.css'
 import { closedAccounts } from '../../../utils/accountLists'
 import { parseLocalDate } from '../../../utils/dates'
+import { useBudgetHistory } from '../../../api/budgets'
 
 /**
  * What the import decided, and a chance to change it.
@@ -210,7 +211,7 @@ export function ImportReviewDialog({
     >
       <StepRail steps={steps} current={stepIndex} onPick={setStepIndex} />
 
-      {step === 'summary' && summary && <SummaryStep summary={summary} />}
+      {step === 'summary' && summary && <SummaryStep summary={summary} budgetId={budgetId} />}
       {step === 'upcoming' && summary && (
         <UpcomingStep summary={summary} budgetId={budgetId} onNavigate={onClose} />
       )}
@@ -580,7 +581,10 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SummaryStep({ summary }: { summary: YnabImportResult }) {
+function SummaryStep({ summary, budgetId }: { summary: YnabImportResult; budgetId: string }) {
+  // The live setting, not the import's record of itself: the person may have
+  // chosen to work out every month, at import or since.
+  const { data: history } = useBudgetHistory(budgetId)
   const { formatMoney } = useFormatters()
   const reserves = parseApiDecimal(summary.credit_card_payment_reserves_skipped)
   const repairable = repairableTransferLegs(summary)
@@ -619,6 +623,7 @@ function SummaryStep({ summary }: { summary: YnabImportResult }) {
           parity={summary.parity}
           anchoredAt={summary.anchored_at}
           anchorSkippedReason={summary.anchor_skipped_reason}
+          rederived={history?.mode === 'rederived'}
         />
       )}
 
@@ -669,10 +674,13 @@ function ParityBlock({
   parity,
   anchoredAt,
   anchorSkippedReason,
+  rederived = false,
 }: {
   parity: NonNullable<YnabImportResult['parity']>
   anchoredAt?: string | null
   anchorSkippedReason?: string | null
+  /** The budget now works out every month itself (`Budget.history_mode`). */
+  rederived?: boolean
 }) {
   const { formatMoney, formatDate } = useFormatters()
   const igab = parseApiDecimal(parity.igab_ready_to_assign)
@@ -697,7 +705,11 @@ function ParityBlock({
   const notes = [
     // Absent keys (pre-feature summaries) render nothing — see YnabImportResult.
     anchorMonthLabel &&
+      !rederived &&
       `Envelopes and card reserves start from YNAB's own position at the month before ${anchorMonthLabel}; the figures above compare that handoff, and earlier months live in the register and reports.`,
+    anchorMonthLabel &&
+      rederived &&
+      `The figures above compare the handoff at ${anchorMonthLabel}, but this budget now works out every month from your first transaction, so its numbers are expected to differ from YNAB's. Settings switches it back to YNAB's figures.`,
     !anchoredAt &&
       anchorSkippedReason &&
       `This import could not be anchored (${anchorSkippedReason}) — envelope history was re-derived from the transactions instead.`,

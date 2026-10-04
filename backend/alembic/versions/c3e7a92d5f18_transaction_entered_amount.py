@@ -26,9 +26,7 @@ def upgrade() -> None:
     can say "amount updated from X" instead of the row silently changing.
     Schema only.
     """
-    op.add_column(
-        "transactions", sa.Column("entered_amount", sa.Numeric(19, 4), nullable=True)
-    )
+    op.add_column("transactions", sa.Column("entered_amount", sa.Numeric(19, 4), nullable=True))
 
 
 def downgrade() -> None:

@@ -28,11 +28,24 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Category, ImportAnchor
+from igab.db.models import Budget, Category, ImportAnchor
 from igab.domain.cards import AnchorOpenings
 from igab.domain.dates import add_months
+from igab.domain.enums import HistoryMode
 
 ZERO = Decimal("0")
+
+#: The anchor row's budget reads its anchor: `Budget.history_mode` is
+#: 'anchored'. A re-derived budget keeps its rows — switching back must find
+#: them — and every reader asks through this, so the walks, the clamp, the
+#: late-arrival rule (`txn_filters.IMPORT_ANCHOR_MONTH`), hygiene and the
+#: export all flip together. Correlated on `ImportAnchor`.
+ANCHOR_IN_FORCE = (
+    select(Budget.id)
+    .where(Budget.id == ImportAnchor.budget_id, Budget.history_mode == HistoryMode.ANCHORED)
+    .correlate(ImportAnchor)
+    .exists()
+)
 
 
 @dataclass(frozen=True)
@@ -127,15 +140,33 @@ class ImportAnchorRepository:
         Memoized for the request: `get_budget_summary` alone asks through the
         card walk, the snapshot rebuild and the timeline, and the answer
         cannot change under a session that only ever writes anchors at import.
+        (Nor under the history-mode switch: it is its own request, and no
+        reader shares a repository across it.)
+
+        None too when the budget's `history_mode` is 'rederived' — the rows
+        stay, unread (`ANCHOR_IN_FORCE`).
         """
         if budget_id in self._by_budget:
             return self._by_budget[budget_id]
         result = await self.session.execute(
-            select(ImportAnchor).where(ImportAnchor.budget_id == budget_id)
+            select(ImportAnchor).where(ImportAnchor.budget_id == budget_id, ANCHOR_IN_FORCE)
         )
         anchor = _assemble(list(result.scalars()))
         self._by_budget[budget_id] = anchor
         return anchor
+
+    async def import_month(self, budget_id: uuid.UUID) -> date | None:
+        """B for a budget that was anchored at import — whether or not the
+        anchor is read now — or None for one that never was.
+
+        The one reader that ignores `history_mode`, deliberately: the switch
+        itself needs to know there is an anchor to switch back to, and its
+        warning names the month edits before which are ignored again.
+        """
+        opening = await self.session.scalar(
+            select(ImportAnchor.month).where(ImportAnchor.budget_id == budget_id).limit(1)
+        )
+        return add_months(opening, 1) if opening is not None else None
 
     async def get_for_category(self, category_id: uuid.UUID) -> tuple[date, Decimal] | None:
         """One category's carryover seed, for callers holding no budget id.
@@ -150,7 +181,7 @@ class ImportAnchorRepository:
             result = await self.session.execute(
                 select(ImportAnchor)
                 .join(Category, Category.budget_id == ImportAnchor.budget_id)
-                .where(Category.id == category_id)
+                .where(Category.id == category_id, ANCHOR_IN_FORCE)
             )
             rows = list(result.scalars())
             anchor = _assemble(rows)

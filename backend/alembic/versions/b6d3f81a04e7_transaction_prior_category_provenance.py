@@ -40,9 +40,7 @@ def upgrade() -> None:
         ondelete="SET NULL",
     )
     # Undo looks rows up by exactly this column.
-    op.create_index(
-        "ix_transactions_prior_category_id", "transactions", ["prior_category_id"]
-    )
+    op.create_index("ix_transactions_prior_category_id", "transactions", ["prior_category_id"])
 
 
 def downgrade() -> None:

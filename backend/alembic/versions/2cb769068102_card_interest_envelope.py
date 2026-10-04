@@ -71,7 +71,9 @@ def upgrade() -> None:
             "   COALESCE((SELECT MAX(g2.sort_order) + 1 FROM category_groups g2"
             "     WHERE g2.budget_id = b.id AND g2.is_deleted = false), 0), false"
             " FROM budgets b"
-            " WHERE " + _HAS_CARD.format(budget="b.id") + " AND NOT EXISTS (SELECT 1 FROM category_groups g"
+            " WHERE "
+            + _HAS_CARD.format(budget="b.id")
+            + " AND NOT EXISTS (SELECT 1 FROM category_groups g"
             "   WHERE g.budget_id = b.id AND g.name = :group AND g.is_deleted = false)"
         ),
         {"group": GROUP_NAME},
@@ -85,7 +87,9 @@ def upgrade() -> None:
             "   AND c2.is_deleted = false AND c2.system_key IS NULL"
             "   AND c2.linked_account_id IS NULL AND c2.linked_liability_id IS NULL"
             "   AND lower(c2.name) IN :adoptable"
-            "   AND " + _HAS_CARD.format(budget="c2.budget_id") + "   AND NOT "
+            "   AND "
+            + _HAS_CARD.format(budget="c2.budget_id")
+            + "   AND NOT "
             + _HAS_KEYED.format(budget="c2.budget_id")
             + "   ORDER BY c2.budget_id, c2.sort_order, c2.created_at) pick"
             " WHERE c.id = pick.id"
@@ -103,7 +107,9 @@ def upgrade() -> None:
             "   false, false"
             " FROM category_groups g"
             " WHERE g.name = :group AND g.is_deleted = false"
-            " AND " + _HAS_CARD.format(budget="g.budget_id") + " AND NOT "
+            " AND "
+            + _HAS_CARD.format(budget="g.budget_id")
+            + " AND NOT "
             + _HAS_KEYED.format(budget="g.budget_id")
             # A live row of that exact name the adopt step could not take (a
             # card named "Interest & fees") would collide on the group's name

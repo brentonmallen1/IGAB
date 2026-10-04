@@ -443,6 +443,21 @@
   margin-bottom: var(--spacing-md);
 }
 
+/* The import preview's history choice: the sample-tier radios, in a fieldset
+   with its own small legend. */
+.history-choice {
+  margin: var(--spacing-sm) 0 0;
+  padding: 0;
+  border: none;
+}
+
+.history-choice__legend {
+  margin-bottom: var(--spacing-xs);
+  padding: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
 .sample-tier__option {
   display: flex;
   align-items: flex-start;

@@ -45,9 +45,7 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("category_id", "month", name="uq_snapshot_category_month"),
     )
-    op.create_index(
-        "ix_snapshot_budget_month", "category_month_snapshots", ["budget_id", "month"]
-    )
+    op.create_index("ix_snapshot_budget_month", "category_month_snapshots", ["budget_id", "month"])
     op.create_table(
         "budget_snapshot_meta",
         sa.Column(

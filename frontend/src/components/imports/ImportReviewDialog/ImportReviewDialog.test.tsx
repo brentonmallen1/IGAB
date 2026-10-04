@@ -91,6 +91,12 @@ const suggestions = [
   { category_id: 'rent', system_key: 'essential', matched_on: 'Rent', applied_on_import: false },
 ]
 
+// The budget's live history setting; a test that re-derives says so.
+const history = vi.hoisted(() => ({ mode: 'anchored' as 'anchored' | 'rederived' }))
+vi.mock('../../../api/budgets', () => ({
+  useBudgetHistory: () => ({ data: { mode: history.mode, import_month: '2026-08-01' } }),
+}))
+
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: categories }),
   useCategoryGroups: () => ({ data: groups }),
@@ -493,6 +499,17 @@ describe('the anchor note', () => {
     open({ parity: parity(), anchored_at: '2026-08-01' })
     expect(screen.getByText(/start from YNAB's own position/)).toBeInTheDocument()
     expect(screen.getByText(/August 2026/)).toBeInTheDocument()
+  })
+
+  it('says the figures will differ once the budget works out every month', () => {
+    history.mode = 'rederived'
+    try {
+      open({ parity: parity(), anchored_at: '2026-08-01' })
+      expect(screen.queryByText(/start from YNAB's own position/)).not.toBeInTheDocument()
+      expect(screen.getByText(/now works out every month/)).toBeInTheDocument()
+    } finally {
+      history.mode = 'anchored'
+    }
   })
 
   it('says why an import could not anchor', () => {

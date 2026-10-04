@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import Annotated, Literal
 
@@ -35,6 +36,7 @@ from igab.dependencies import (
     get_transaction_repo,
     get_transaction_service,
 )
+from igab.domain.enums import HistoryMode
 from igab.domain.snapshot_format import MANIFEST_MEMBER, is_snapshot_manifest
 
 # Canonical result schema lives with the import endpoints — a local copy here
@@ -49,6 +51,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.import_anchor_repo import ImportAnchorRepository
 from igab.repositories.import_mapping_repo import ImportMappingRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
@@ -214,6 +217,10 @@ async def import_ynab_as_budget(
     name: Annotated[str, Form()],
     file: UploadFile = File(...),
     account_types: Annotated[str | None, Form()] = None,
+    #: Chosen on the preview screen: start where YNAB left off (the default)
+    #: or re-derive every month. The anchor is written either way, so the
+    #: setting can be switched later (`Budget.history_mode`).
+    history_mode: Annotated[HistoryMode, Form()] = HistoryMode.ANCHORED,
     session: AsyncSession = Depends(get_session),
     account_repo: AccountRepository = Depends(get_account_repo),
     mapping_repo: ImportMappingRepository = Depends(get_import_mapping_repo),
@@ -283,6 +290,13 @@ async def import_ynab_as_budget(
         skip_accounts=form.skip_accounts,
         anchor=result.anchored_at,
     )
+
+    # The person's choice, applied after the parity check: parity measures
+    # the import against the export at the handoff, which is the anchor's
+    # question whichever mode the budget then runs in. Only an anchored
+    # import has a choice to apply — a register-only file has no anchor.
+    if result.anchored_at is not None:
+        budget.history_mode = history_mode.value
 
     # So the next import of a file carrying these names arrives already
     # answered -- see db.models.ImportAccountMapping.
@@ -561,6 +575,80 @@ async def update_budget(
             after=after,
         )
     return BudgetResponse.model_validate(budget)
+
+
+class BudgetHistory(BaseModel):
+    """An imported budget's history setting (`Budget.history_mode`)."""
+
+    mode: HistoryMode
+    #: B — the month the import's anchor starts the walks at, whichever mode
+    #: is on; None for a budget never anchored at import, which has no
+    #: setting to offer.
+    import_month: datetime.date | None
+
+
+class BudgetHistoryUpdate(BaseModel):
+    mode: HistoryMode
+
+
+async def _history(session: AsyncSession, budget: Budget) -> BudgetHistory:
+    return BudgetHistory(
+        mode=HistoryMode(budget.history_mode),
+        import_month=await ImportAnchorRepository(session).import_month(budget.id),
+    )
+
+
+@router.get("/budgets/{budget_id}/history", response_model=BudgetHistory)
+async def get_budget_history(
+    budget_id: BudgetAccess,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BudgetHistory:
+    budget = await session.get(Budget, budget_id)
+    if budget is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    return await _history(session, budget)
+
+
+@router.put("/budgets/{budget_id}/history", response_model=BudgetHistory)
+async def set_budget_history(
+    budget_id: BudgetAccess,
+    body: BudgetHistoryUpdate,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BudgetHistory:
+    """Switch an imported budget between its anchor and re-derived history.
+
+    Refused on a budget with no anchor rows: both modes would read the same,
+    and a setting that does nothing is one nobody can trust. Change-logged
+    like any budget setting, so ⌘Z switches back.
+    """
+    budget = await session.get(Budget, budget_id)
+    if budget is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    current = await _history(session, budget)
+    if current.import_month is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This budget was not imported from YNAB, so it has no import month to start from."
+            ),
+        )
+    if current.mode == body.mode:
+        return current
+    before = snapshot("budget", budget)
+    budget.history_mode = body.mode.value
+    await session.flush()
+    recorder = ChangeRecorder(session)
+    recorder.actor_user_id = current_user.id
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="budget",
+        entity_id=budget_id,
+        action="update",
+        before=before,
+        after=snapshot("budget", budget),
+    )
+    return await _history(session, budget)
 
 
 @router.delete("/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)

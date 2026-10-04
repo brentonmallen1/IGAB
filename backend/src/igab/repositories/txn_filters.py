@@ -64,6 +64,7 @@ from igab.repositories.category_filters import (
     SPENDABLE,
     tagged_category_ids,
 )
+from igab.repositories.import_anchor_repo import ANCHOR_IN_FORCE
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -633,11 +634,13 @@ AFTER_BUDGET_START = (
 )
 
 #: The row's budget's import anchor month, B−1 (`ImportAnchor.month`), or NULL
-#: when no anchor is in force. Every anchor row of a budget carries the same
-#: month (`ex_import_anchor_one_month_per_budget`), so any one answers.
+#: when no anchor is in force — none written, or the budget re-derives its
+#: history (`import_anchor_repo.ANCHOR_IN_FORCE`). Every anchor row of a budget
+#: carries the same month (`ex_import_anchor_one_month_per_budget`), so any
+#: one answers.
 IMPORT_ANCHOR_MONTH = (
     select(ImportAnchor.month)
-    .where(ImportAnchor.budget_id == Transaction.budget_id)
+    .where(ImportAnchor.budget_id == Transaction.budget_id, ANCHOR_IN_FORCE)
     .limit(1)
     .correlate(Transaction)
     .scalar_subquery()

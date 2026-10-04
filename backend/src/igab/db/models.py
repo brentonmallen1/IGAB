@@ -87,6 +87,15 @@ class Budget(Base):
     #: paychecks does not want every envelope red on the 2nd. A target may
     #: override it with its own `check_after_day`.
     funding_day: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    #: `domain.enums.HistoryMode`: whether an imported budget's walks start
+    #: from its import anchor ('anchored') or re-derive every month
+    #: ('rederived'). Meaningless on a budget with no anchor rows, where both
+    #: read the same. Read through `repositories.import_anchor_repo.
+    #: ANCHOR_IN_FORCE` and nowhere else, so every anchor reader flips
+    #: together. Server default only, like `Account.from_import`.
+    history_mode: Mapped[str] = mapped_column(
+        String(20), server_default=text("'anchored'"), nullable=False
+    )
     #: What an import decided, as it decided it. A YNAB import always creates
     #: exactly one budget (the route 409s on a name clash), so this is 1:1 and
     #: needs no table of its own.

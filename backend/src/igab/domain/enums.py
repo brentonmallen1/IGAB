@@ -109,3 +109,21 @@ class SkipReason(StrEnum):
     #: a deletion is a decision, and the feed repeating itself is not new
     #: evidence. Undo the delete to have it back.
     DELETED_BY_USER = "deleted_by_user"
+
+
+class HistoryMode(StrEnum):
+    """How an imported budget treats the months before its import
+    (`Budget.history_mode`).
+
+    `ANCHORED` — the default: the walks start at the import month from YNAB's
+    own figures (db.models.ImportAnchor), so the budget opens on the numbers
+    the person just left, and earlier months are history.
+    `REDERIVED` — the anchor rows are kept but not read: every month is
+    re-derived from the first transaction under IGAB's rules and is editable.
+    Its figures will not match YNAB's, which is the point the setting's
+    warning makes. Switching back restores the anchored figures exactly,
+    because nothing about the anchor was ever deleted.
+    """
+
+    ANCHORED = "anchored"
+    REDERIVED = "rederived"

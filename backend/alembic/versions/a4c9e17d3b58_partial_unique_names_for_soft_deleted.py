@@ -56,9 +56,7 @@ def downgrade() -> None:
             """
         )
     op.drop_index("uq_budget_view_budget_name_live", table_name="budget_views")
-    op.create_unique_constraint(
-        "uq_budget_view_budget_name", "budget_views", ["budget_id", "name"]
-    )
+    op.create_unique_constraint("uq_budget_view_budget_name", "budget_views", ["budget_id", "name"])
     op.drop_index("uq_budget_filter_budget_name_live", table_name="budget_filters")
     op.create_unique_constraint(
         "uq_budget_filter_budget_name", "budget_filters", ["budget_id", "name"]

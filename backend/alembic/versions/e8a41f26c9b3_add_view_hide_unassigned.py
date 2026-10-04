@@ -26,9 +26,7 @@ def upgrade() -> None:
     """
     op.add_column(
         "budget_views",
-        sa.Column(
-            "hide_unassigned", sa.Boolean(), nullable=False, server_default=sa.false()
-        ),
+        sa.Column("hide_unassigned", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
 
 

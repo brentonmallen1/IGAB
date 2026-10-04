@@ -21,6 +21,9 @@ import { ROOT } from './queryKeys'
  * schedules, so those roots live here rather than in a second, shorter list
  * at the new call site.
  *
+ * The history-mode switch reuses this sweep: re-deriving a budget's months
+ * moves every figure an import does.
+ *
  * `refetchType: 'all'` on the keys a navigation lands on next: invalidation
  * alone only refetches ACTIVE queries, and right after an import the user is
  * usually navigating — the budget selector after a budget import was the
@@ -54,6 +57,11 @@ export function invalidateAfterImport(qc: QueryClient, budgetId: string | null):
     [ROOT.budgetFilters],
     [ROOT.budgetViews],
     [ROOT.scheduledTransactions],
+    // Both follow the budget's history mode, which a restore replaces and the
+    // history switch (`useSetBudgetHistory`) flips — that switch reaches
+    // everything an import does, so it sweeps through here too.
+    [ROOT.cardTimeline],
+    [ROOT.budgetHistory],
     ...(budgetId
       ? [
           ['guide', budgetId],
