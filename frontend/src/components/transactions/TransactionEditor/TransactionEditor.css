@@ -189,7 +189,8 @@
 /* A projected interest row: the app wrote it from the loan's terms, and
    says so. Body colour on chrome — it explains the row; it is not a warning
    and not the accent's meaningful state. */
-.txn-editor__projection-note {
+/* A provenance note under the header: what this row is, before anyone edits it. */
+.txn-editor__note {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-sm);

@@ -158,12 +158,17 @@ async def test_categorized_transfer_leg_imports_categorized_unlinked(db_session)
     await assert_financial_invariants(db_session, budget.id)
 
 
-async def test_imported_rows_are_stamped_import(db_session):
+async def test_imported_rows_are_stamped_ynab(db_session):
     """The bulk insert path bypasses TransactionService.create, so it stamps
-    its own origin — flat rows, split parents and split lines alike."""
+    its own origin — flat rows, split parents and split lines alike.
+
+    'ynab', not the CSV importer's 'import': a YNAB row is one the import
+    anchor already describes, so it can never be a late arrival
+    (`txn_filters.LATE_ARRIVAL`). Its accounts are marked as having come with
+    the import for the same rule."""
     from sqlalchemy import select
 
-    from igab.db.models import Transaction
+    from igab.db.models import Account, Transaction
 
     services = make_services(db_session)
     user = await create_user(db_session)
@@ -180,7 +185,13 @@ async def test_imported_rows_are_stamped_import(db_session):
         .scalars()
         .all()
     )
-    assert rows and all(r.created_via == "import" for r in rows)
+    assert rows and all(r.created_via == "ynab" for r in rows)
+    accounts = (
+        (await db_session.execute(select(Account).where(Account.budget_id == budget.id)))
+        .scalars()
+        .all()
+    )
+    assert accounts and all(a.from_import for a in accounts)
 
 
 async def test_same_day_duplicate_rows_both_import(db_session):

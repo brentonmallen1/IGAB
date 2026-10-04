@@ -23,7 +23,10 @@ export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
   const enteredByUser =
     transaction.created_via != null &&
     transaction.created_via !== 'sync' &&
-    transaction.created_via !== 'import'
+    // A file import: 'import' is a CSV, 'ynab' the YNAB import (backend
+    // `import_identity.FILE_IMPORT_ORIGINS`).
+    transaction.created_via !== 'import' &&
+    transaction.created_via !== 'ynab'
   const bankPayee = transaction.bank_payee ?? transaction.import_description
   const lines = [
     enteredByUser

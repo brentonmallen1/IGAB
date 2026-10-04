@@ -507,6 +507,17 @@ export interface RodeCategory {
   amount: number
 }
 
+/** A late arrival the import month lists (server: `LateArrivalOut`). The
+ *  client names it from the account, category and payee lists it holds. */
+export interface LateArrival {
+  transaction_id: string
+  date: string
+  amount: number
+  account_id: string
+  category_id: string | null
+  payee_id: string | null
+}
+
 export interface BudgetMonth {
   month: string
   to_be_assigned: number
@@ -540,6 +551,10 @@ export interface BudgetMonth {
    *  clamps here; months before it live in the register and reports only —
    *  never request or derive a pre-anchor budget month. */
   anchor_month: string | null
+  /** On the import month only: rows dated in the month before that arrived
+   *  after the import and count here (server: `LATE_ARRIVAL`). Empty on every
+   *  other month. */
+  late_arrivals: LateArrival[]
   category_balances: CategoryBalance[]
   /** The budget's cards — empty when it has none. The cards section draws
    *  exactly this and computes nothing. */
@@ -601,6 +616,15 @@ export interface Transaction {
    * as unfiled under a badge that counted 3.
    */
   needs_category: boolean
+  /** The month this row counts in for budget math, first-of-month ISO date.
+   *  Its own month, except a late arrival — dated in the month before an
+   *  import, arriving after it — which counts in the import month. Server
+   *  home: `BUDGET_MONTH` (backend txn_filters.py); never derive it here. */
+  counts_in_month: string
+  /** The row counts before the import month of an anchored budget: its
+   *  money is inside YNAB's starting figures, so editing it moves no
+   *  envelope. Server home: `PREDATES_IMPORT` (backend txn_filters.py). */
+  predates_import: boolean
   /** The account on the other side of a transfer, or null for a plain
    *  transaction. Server-computed — COUNTERPART_ACCOUNT_ID in backend
    *  txn_filters.py — because a linked leg's payee can be null or wrong.

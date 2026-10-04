@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, Category, CategoryGroup
 from igab.domain.dates import add_months
 from igab.domain.enums import AccountClassification
-from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.domain.import_identity import YNAB_ORIGIN, disambiguate_in_batch, generate_import_id
 from igab.domain.import_mapping import account_key, suggest_counts_as_savings
 from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction, anchor_month, plan_boundary
@@ -370,6 +370,7 @@ class YNABImporter:
                 budget_id=self.budget_id,
                 name=name,
                 is_closed=key in self.close_accounts,
+                from_import=True,
                 **apply_type(type_row, on_budget, counts_as_savings),
             )
             # Importing a budget with a mortgage is the scenario the loan
@@ -635,7 +636,7 @@ class YNABImporter:
                         "cleared": txn.cleared,
                         "approved": True,
                         "is_split": True,
-                        "created_via": "import",
+                        "created_via": YNAB_ORIGIN,
                         "is_deleted": False,
                         "transfer_id": None,
                         "parent_transaction_id": None,
@@ -661,7 +662,7 @@ class YNABImporter:
                                 "cleared": txn.cleared,
                                 "approved": True,
                                 "is_split": False,
-                                "created_via": "import",
+                                "created_via": YNAB_ORIGIN,
                                 "is_deleted": False,
                                 "transfer_id": None,
                                 "parent_transaction_id": parent_row["id"],
@@ -703,7 +704,7 @@ class YNABImporter:
                     "cleared": txn.cleared,
                     "approved": True,
                     "is_split": False,
-                    "created_via": "import",
+                    "created_via": YNAB_ORIGIN,
                     "is_deleted": False,
                     "transfer_id": None,
                     "parent_transaction_id": None,

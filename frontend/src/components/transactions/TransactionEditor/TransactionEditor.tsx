@@ -7,6 +7,11 @@ import {
 } from '../transferConversion'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { PROJECTED_INTEREST_NOTE } from '../../../utils/projectedInterest'
+import {
+  countsInAnotherMonth,
+  lateArrivalNote,
+  PREDATES_IMPORT_NOTE,
+} from '../../../utils/lateArrival'
 import { AccountField } from './AccountField'
 import { accountLockReason, categoryDropNote } from './accountMove'
 import { editorAmount } from './editorAmount'
@@ -25,6 +30,8 @@ import {
   ReceiptText,
   Lock,
   Percent,
+  CalendarArrowUp,
+  History,
 } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
@@ -700,9 +707,25 @@ export function TransactionEditor({
         {/* A projected interest row says what it is before anyone edits it:
             which edits make it theirs, and that deleting it skips the month. */}
         {isEdit && transaction?.projected_interest_month && (
-          <div className="txn-editor__projection-note" role="note">
+          <div className="txn-editor__note" role="note">
             <Percent size={13} aria-hidden />
             <span>{PROJECTED_INTEREST_NOTE}</span>
+          </div>
+        )}
+        {/* Around an import: a late arrival counts in the import month, and a
+            row from before it moves no envelope however it is edited. Both
+            served (`counts_in_month`, `predates_import`); said here so an edit
+            that does nothing to an envelope does not look as if it did. */}
+        {isEdit && transaction && countsInAnotherMonth(transaction) && (
+          <div className="txn-editor__note" role="note">
+            <CalendarArrowUp size={13} aria-hidden />
+            <span>{lateArrivalNote(transaction.counts_in_month)}</span>
+          </div>
+        )}
+        {isEdit && transaction?.predates_import && (
+          <div className="txn-editor__note" role="note">
+            <History size={13} aria-hidden />
+            <span>{PREDATES_IMPORT_NOTE}</span>
           </div>
         )}
 

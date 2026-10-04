@@ -96,6 +96,9 @@ async def apply_card_scenario(
     cache = categories if categories is not None else {}
 
     card = await create_account(session, budget, scenario.card, account_type="credit_card")
+    # An anchored card came with the import, as the generator writes it
+    # (`to_spec_elements`) — the condition a late event on it needs.
+    card.from_import = scenario.import_anchor is not None
     await ensure_payment_category(session, card)
     await session.flush()
     # The one envelope a scenario names that is not its own: the app made it
@@ -122,6 +125,9 @@ async def apply_card_scenario(
 
     for event in scenario.events:
         when = event.when.resolve(anchor)
+        # A late event is a row typed in after the import; every other row is
+        # left unstamped, which the late-arrival rule reads as history.
+        origin = "manual" if event.late else None
         if event.kind == "fund":
             category = await _category(session, budget, group, event.category or "", cache)
             await _assign(session, budget, category, when.replace(day=1), event.amount)
@@ -132,7 +138,9 @@ async def apply_card_scenario(
         elif event.kind in ("spend", "refund"):
             category = await _category(session, budget, group, event.category or "", cache)
             amount = -event.amount if event.kind == "spend" else event.amount
-            await create_transaction(session, budget, card, amount, when, category=category)
+            await create_transaction(
+                session, budget, card, amount, when, category=category, created_via=origin
+            )
         elif event.kind == "cash_spend":
             # On the CASH account, filed to the envelope. Reaches the card not
             # at all: it is here so a running tab's Available can be honest
@@ -144,9 +152,9 @@ async def apply_card_scenario(
         elif event.kind == "charge":
             # Filed nowhere — `deposit` in the other direction. The row exists
             # on the card and touches no envelope, which is the whole point.
-            await create_transaction(session, budget, card, -event.amount, when)
+            await create_transaction(session, budget, card, -event.amount, when, created_via=origin)
         elif event.kind == "deposit":
-            await create_transaction(session, budget, card, event.amount, when)
+            await create_transaction(session, budget, card, event.amount, when, created_via=origin)
         elif event.kind == "pay":
             await session.flush()
             await create_card_payment(services, budget, cash_account, card, event.amount, when)

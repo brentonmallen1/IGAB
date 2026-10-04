@@ -153,6 +153,14 @@ class TransactionResponse(ApiModel):
     #: here rather than reach the register as a quiet False. See
     #: `Transaction.needs_category` and `NEEDS_CATEGORY`.
     needs_category: bool
+    #: The month this row counts in for budget math, and whether that is before
+    #: the import month of an anchored budget (where editing it moves no
+    #: envelope). Server-computed (`BUDGET_MONTH`, `PREDATES_IMPORT` in
+    #: txn_filters.py) and required, like needs_category: a late arrival
+    #: counts in the month after its date, and a path that forgot the loader
+    #: must raise rather than say it counts in its own.
+    counts_in_month: datetime.date
+    predates_import: bool
     #: The account on the other side of a transfer, or None for a plain
     #: transaction. Server-computed (`COUNTERPART_ACCOUNT_ID` in
     #: txn_filters.py) because a linked leg's payee can be null or wrong and

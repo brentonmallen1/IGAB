@@ -23,6 +23,7 @@ from typing import Any, Protocol
 
 from sqlalchemy import (
     Boolean,
+    Date,
     Select,
     String,
     and_,
@@ -32,6 +33,7 @@ from sqlalchemy import (
     false,
     func,
     inspect,
+    literal_column,
     not_,
     or_,
     select,
@@ -44,6 +46,7 @@ from sqlalchemy.sql.util import ClauseAdapter
 from igab.db.models import (
     Account,
     Category,
+    ImportAnchor,
     Payee,
     Transaction,
     TransactionAttachment,
@@ -52,6 +55,7 @@ from igab.db.models import (
 from igab.domain.account_types import CASH_ACCOUNT_TYPE_KEYS
 from igab.domain.dates import add_months, month_start
 from igab.domain.enums import ScheduleFrequency
+from igab.domain.import_identity import YNAB_ORIGIN
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES, STARTING_BALANCE_PAYEE
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
@@ -626,6 +630,75 @@ AFTER_BUDGET_START = (
     )
     .correlate(Transaction)
     .exists()
+)
+
+#: The row's budget's import anchor month, B−1 (`ImportAnchor.month`), or NULL
+#: when no anchor is in force. Every anchor row of a budget carries the same
+#: month (`ex_import_anchor_one_month_per_budget`), so any one answers.
+IMPORT_ANCHOR_MONTH = (
+    select(ImportAnchor.month)
+    .where(ImportAnchor.budget_id == Transaction.budget_id)
+    .limit(1)
+    .correlate(Transaction)
+    .scalar_subquery()
+)
+
+_CALENDAR_MONTH = cast(func.date_trunc("month", Transaction.date), Date)
+
+#: A late arrival: a row dated in the anchor month (B−1) that reached IGAB
+#: after the import, on an account that came with it.
+#:
+#: An import early in a month leaves the previous month's stragglers outside
+#: the anchor — a charge that clears on the 4th dated the 28th, or one
+#: somebody types in late. YNAB's B−1 figures never saw them, and the walks
+#: start at B, so they moved cash and nothing else: the money came out of
+#: Ready to Assign instead of its envelope, and a card charge read as
+#: uncovered debt. Counting them in B puts them where the person budgets
+#: without re-deriving any history the anchor exists to retire.
+#:
+#: Each clause keeps out a row the anchor already describes or never owned:
+#: - a YNAB row (`YNAB_ORIGIN`) is in the anchor's figures already; a NULL
+#:   origin predates the stamp and is treated the same, the safe direction;
+#: - an account linked after the import brings its bank history as opening
+#:   position, netted by its Starting Balance (`Account.from_import`);
+#: - only the anchor month: an older straggler stays history, as it was.
+#:
+#: Cheap row-local tests first, so the correlated subqueries run only for the
+#: few rows that pass them.
+LATE_ARRIVAL = and_(
+    func.coalesce(Transaction.created_via, YNAB_ORIGIN) != YNAB_ORIGIN,
+    select(Account.id)
+    .where(Account.id == Transaction.account_id, Account.from_import == True)  # noqa: E712
+    .correlate(Transaction)
+    .exists(),
+    _CALENDAR_MONTH == IMPORT_ANCHOR_MONTH,
+)
+
+#: The month a row counts in for budget math: its own month, or the import
+#: month for a `LATE_ARRIVAL`. The one bucket every envelope, card and
+#: carryover sum groups by (`TransactionRepository`'s monthly sums, the card
+#: timeline, the savings cut, Plan vs Spent), so a late row cannot count in B
+#: for one figure and in B−1 for its neighbour. Pure twin:
+#: `domain.dates.budget_month`.
+#:
+#: **Deliberate divergence:** the spending, essentials and discretionary
+#: reports keep the row's real date — they answer *when* money was spent,
+#: not which month's envelope paid for it. So does every liability sum.
+#: `test_late_arrivals.py` pins both sides.
+BUDGET_MONTH = case(
+    (LATE_ARRIVAL, cast(_CALENDAR_MONTH + literal_column("interval '1 month'"), Date)),
+    else_=_CALENDAR_MONTH,
+)
+
+#: The row counts before the import month on a budget with an anchor in
+#: force — its money is already inside the anchor's figures, so editing it
+#: moves no envelope. False on every unanchored budget (the comparison with a
+#: NULL anchor is NULL, and NULL is not true). Served beside `BUDGET_MONTH`
+#: as `Transaction.predates_import`, so the register can say so instead of
+#: letting a recategorized old row look as if it did something.
+PREDATES_IMPORT = func.coalesce(
+    BUDGET_MONTH < cast(IMPORT_ANCHOR_MONTH + literal_column("interval '1 month'"), Date),
+    false(),
 )
 
 #: The budget's cash: on-budget and not a card. This is the balance term of

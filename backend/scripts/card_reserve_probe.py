@@ -857,6 +857,18 @@ _SQL_ROW_CATEGORY_SPENDABLE = (
     "   SELECT 1 FROM category_groups g WHERE g.id = c.category_group_id AND g.is_system))"
 )
 _SQL_MONTH = "date_trunc('month', t.date)::date"
+#: txn_filters.BUDGET_MONTH: a late arrival — dated in the import anchor month,
+#: not a YNAB row, on an account that came with the import — counts in the
+#: month after. Only on a schema that has `accounts.from_import`; an older
+#: deployment has no late arrivals and keeps `_SQL_MONTH`.
+_SQL_BUDGET_MONTH = (
+    "CASE WHEN COALESCE(t.created_via, 'ynab') <> 'ynab'"
+    " AND EXISTS (SELECT 1 FROM accounts fa WHERE fa.id = t.account_id AND fa.from_import)"
+    " AND date_trunc('month', t.date)::date = ("
+    "   SELECT ia.month FROM import_anchors ia WHERE ia.budget_id = t.budget_id LIMIT 1)"
+    " THEN (date_trunc('month', t.date) + interval '1 month')::date"
+    f" ELSE {_SQL_MONTH} END"
+)
 
 #: Probe-only, no repository original: how each (category, card) pair's
 #: INFLOW rows arrived. 'plain' is a refund/reward/deposit typed straight
@@ -993,6 +1005,18 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             if budget_name is None:
                 raise SystemExit(f"no budget with id {budget_id}")
 
+            # The month bucket this deployment's walks use: the late-arrival
+            # bucket where the schema knows which accounts came with an
+            # import, the calendar month on one that predates it.
+            month_sql = (
+                _SQL_BUDGET_MONTH
+                if await scalar(
+                    "SELECT EXISTS (SELECT 1 FROM information_schema.columns"
+                    " WHERE table_name = 'accounts' AND column_name = 'from_import')"
+                )
+                else _SQL_MONTH
+            )
+
             accounts: dict[str, tuple[str, str]] = {}
             for r in await rows(
                 "SELECT id, name, on_budget, classification FROM accounts"
@@ -1042,7 +1066,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             # TransactionRepository.sum_all_categories_by_month
             activity: dict[str, dict[date, Decimal]] = {}
             for r in await rows(
-                f"SELECT t.category_id, {_SQL_MONTH} AS month, SUM(t.amount) AS total"
+                f"SELECT t.category_id, {month_sql} AS month, SUM(t.amount) AS total"
                 " FROM transactions t"
                 " WHERE t.budget_id = :b AND NOT t.is_deleted AND NOT t.is_split"
                 " AND t.cleared != 'pending'"
@@ -1056,7 +1080,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             # TransactionRepository.sum_credit_outflows_by_category
             outflows: dict[str, dict[str, dict[date, Decimal]]] = {}
             for r in await rows(
-                f"SELECT t.category_id, t.account_id, {_SQL_MONTH} AS month,"
+                f"SELECT t.category_id, t.account_id, {month_sql} AS month,"
                 " SUM(-t.amount) AS outflow FROM transactions t"
                 " WHERE t.budget_id = :b AND NOT t.is_deleted AND NOT t.is_split"
                 " AND t.cleared != 'pending'"
@@ -1075,7 +1099,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             # TransactionRepository.sum_card_payments_by_month
             payments: dict[str, dict[date, Decimal]] = {}
             for r in await rows(
-                f"SELECT t.account_id, {_SQL_MONTH} AS month, SUM(t.amount) AS paid"
+                f"SELECT t.account_id, {month_sql} AS month, SUM(t.amount) AS paid"
                 " FROM transactions t"
                 " WHERE t.budget_id = :b AND NOT t.is_deleted"
                 " AND t.parent_transaction_id IS NULL AND t.cleared != 'pending'"
@@ -1088,7 +1112,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             # TransactionRepository.sum_unclaimed_card_rows (LEAF shape)
             unclaimed: dict[str, dict[date, Decimal]] = {}
             for r in await rows(
-                f"SELECT t.account_id, {_SQL_MONTH} AS month, SUM(t.amount) AS net"
+                f"SELECT t.account_id, {month_sql} AS month, SUM(t.amount) AS net"
                 " FROM transactions t"
                 " WHERE t.budget_id = :b AND NOT t.is_deleted AND NOT t.is_split"
                 " AND t.cleared != 'pending'"
@@ -1104,7 +1128,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             balance_by_card_month: dict[str, dict[date, Decimal]] = {}
             first_charge: dict[str, date] = {}
             for r in await rows(
-                f"SELECT t.account_id, {_SQL_MONTH} AS month, SUM(t.amount) AS net,"
+                f"SELECT t.account_id, {month_sql} AS month, SUM(t.amount) AS net,"
                 " MIN(CASE WHEN t.amount < 0 THEN t.date END) AS first_charge"
                 " FROM transactions t"
                 " WHERE t.budget_id = :b AND NOT t.is_deleted"

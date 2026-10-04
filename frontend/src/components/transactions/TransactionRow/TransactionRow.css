@@ -653,6 +653,7 @@
 }
 
 /* Projected interest the app wrote from a loan's terms — provenance too. */
-.txn-status-icon--projected {
+.txn-status-icon--projected,
+.txn-status-icon--late-arrival {
   color: var(--text-muted);
 }

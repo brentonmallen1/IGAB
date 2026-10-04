@@ -12,6 +12,7 @@ import {
   Pencil,
   Unlock,
   CalendarClock,
+  CalendarArrowUp,
   Percent,
 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
@@ -36,6 +37,7 @@ import { useUndoToast } from '../../../utils/toastUndo'
 import { parseAmountExpressionInput, toAmountInput } from '../../../utils/amountExpression'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { PROJECTED_INTEREST_LABEL } from '../../../utils/projectedInterest'
+import { countsInAnotherMonth, lateArrivalLabel } from '../../../utils/lateArrival'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
@@ -151,6 +153,10 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     // Served; a projection is adopted (month cleared) by an edit that may
     // move no other field this comparator reads, and its badge must go.
     a.projected_interest_month !== b.projected_interest_month ||
+    // Served; a late arrival's month follows the import anchor and the
+    // account, which change with no other field on the row moving.
+    a.counts_in_month !== b.counts_in_month ||
+    a.predates_import !== b.predates_import ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
   )
@@ -538,6 +544,20 @@ export const TransactionRow = memo(function TransactionRow({
               aria-label={PROJECTED_INTEREST_LABEL}
             >
               <Percent size={11} />
+            </span>
+          </Tooltip>
+        )}
+        {/* Dated before the import month, arrived after it: counts in the
+            import month (served `counts_in_month`). Provenance, same weight
+            as the schedule glyph. */}
+        {countsInAnotherMonth(txn) && (
+          <Tooltip content={lateArrivalLabel(txn.counts_in_month)}>
+            <span
+              className="txn-status-icon txn-status-icon--late-arrival"
+              role="img"
+              aria-label={lateArrivalLabel(txn.counts_in_month)}
+            >
+              <CalendarArrowUp size={11} />
             </span>
           </Tooltip>
         )}

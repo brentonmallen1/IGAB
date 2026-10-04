@@ -734,6 +734,17 @@ class OverspentLastMonthItem(ApiModel):
     amount: Decimal
 
 
+class LateArrivalOut(ApiModel):
+    """A late arrival the import month lists — `services.budget_service.LateArrival`."""
+
+    transaction_id: uuid.UUID
+    date: datetime.date
+    amount: Decimal
+    account_id: uuid.UUID
+    category_id: uuid.UUID | None
+    payee_id: uuid.UUID | None
+
+
 class BudgetMonthResponse(ApiModel):
     month: datetime.date
     to_be_assigned: Decimal
@@ -778,6 +789,10 @@ class BudgetMonthResponse(ApiModel):
     #: month navigation here; months before it live in the register and
     #: reports only.
     anchor_month: datetime.date | None = None
+    #: On the import month only: rows dated in the month before that reached
+    #: IGAB after the import and count here (`txn_filters.LATE_ARRIVAL`).
+    #: Empty on every other month.
+    late_arrivals: list[LateArrivalOut] = []
     category_balances: list[CategoryBalance]
     #: The budget's cards — balance / set aside / uncovered (domain/cards.py).
     #: Empty when the budget has none; the budget page draws its cards

@@ -16,7 +16,7 @@
 // TransactionEditor. Those run before imports are bound, so they cannot call
 // an imported factory at all. They still have to gain a served field by hand —
 // which is a limitation of the mock hoisting, not a copy anyone chose.
-import type { Category, CategoryBalance, CategoryGroup } from '../types'
+import type { Category, CategoryBalance, CategoryGroup, Transaction } from '../types'
 import type { Signal } from '../api/guide'
 import type { MembershipCategory } from '../api/tags'
 import type { SignalKey } from '../content/roadmap'
@@ -130,4 +130,35 @@ export function makeMembershipRow(over: Partial<MembershipCategory> = {}): Membe
     savings_mode: null,
     ...over,
   }
+}
+
+/** A register row as the server serves an ordinary one. Served fields default
+ *  the way the server would: `counts_in_month` is the row's own month, and
+ *  nothing predates an import. Five test files each spelled this literal and
+ *  drifted only in the fields they cared about — and a served field added to
+ *  `Transaction` then had to be added five times, or the rows crashed where a
+ *  component read it. */
+export function makeTransaction(over: Partial<Transaction> = {}): Transaction {
+  const date = over.date ?? '2026-08-02'
+  return {
+    id: 't1',
+    budget_id: 'b1',
+    account_id: 'a1',
+    date,
+    amount: -12.5,
+    payee_id: null,
+    category_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    approved: true,
+    created_via: null,
+    is_split: false,
+    transfer_id: null,
+    sync_id: null,
+    has_sync_source: false,
+    needs_category: false,
+    counts_in_month: `${date.slice(0, 7)}-01`,
+    predates_import: false,
+    ...over,
+  } as unknown as Transaction
 }

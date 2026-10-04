@@ -27,7 +27,7 @@ from datetime import date
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup, Transaction
@@ -40,7 +40,7 @@ from igab.repositories.category_filters import (
     IS_SAVINGS_CATEGORY,
     IS_SINKING_FUND,
 )
-from igab.repositories.txn_filters import PLAN_LEDGER_ROW
+from igab.repositories.txn_filters import BUDGET_MONTH, PLAN_LEDGER_ROW
 from igab.services.report_scope import scoped
 
 ZERO = Decimal("0")
@@ -162,7 +162,14 @@ async def plan_ledger(
 
     # Grouped by everything `plan_effect` reads, so each bucket's sum stands
     # for its rows exactly (the rule is linear within a bucket).
-    month_col = func.date_trunc(literal_column("'month'"), Transaction.date)
+    #
+    # By `BUDGET_MONTH`, the envelope's own bucket: a month's activity is
+    # paired with that month's assignment here, and a late arrival dated in
+    # the anchor month is paid for by the import month's envelope. The lower
+    # bound admits it by the same test — for every other row the bucket is
+    # the first of its own month, so `BUDGET_MONTH >= start` never reaches a
+    # row `date >= start` would not.
+    month_col = BUDGET_MONTH
     cls = ACTIVITY_CLASS
     savings = IS_SAVINGS_CATEGORY
     inflow = Transaction.amount > 0
@@ -182,7 +189,7 @@ async def plan_ledger(
         .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
         .where(
             Transaction.budget_id == budget_id,
-            Transaction.date >= start,
+            or_(Transaction.date >= start, BUDGET_MONTH >= start),
             Transaction.date <= end,
             PLAN_LEDGER_ROW,
         )

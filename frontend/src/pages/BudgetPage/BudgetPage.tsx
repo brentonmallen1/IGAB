@@ -11,6 +11,7 @@ import { ManageViewsModal } from '../../components/budget/ManageViewsModal/Manag
 import { ManageFiltersModal } from '../../components/budget/ManageFiltersModal/ManageFiltersModal'
 import { MultiMonthSheet } from '../../components/budget/MultiMonthSheet/MultiMonthSheet'
 import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
+import { LateArrivalsNote } from '../../components/budget/LateArrivalsNote/LateArrivalsNote'
 import { ImportReviewGate } from '../../components/imports/ImportReviewDialog/ImportReviewGate'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
@@ -182,6 +183,9 @@ export function BudgetPage() {
           <Link to="/transactions">the register</Link> and <Link to="/reports">Reports</Link>; the
           envelopes and card reserves here begin from YNAB&apos;s own figures for the month before.
         </p>
+      )}
+      {anchorMonth === month && budgetMonth && (
+        <LateArrivalsNote budgetId={budgetId} month={month} arrivals={budgetMonth.late_arrivals} />
       )}
       <TbaHero budgetId={budgetId} month={month} />
       <div className="budget-page__body">

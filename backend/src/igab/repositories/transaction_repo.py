@@ -18,6 +18,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.orm import with_expression
+from sqlalchemy.sql.selectable import Subquery
 
 from igab.db.models import (
     Category,
@@ -37,6 +38,7 @@ from igab.domain.activity_class import (
     counted_class_filter,
     tier_scope,
 )
+from igab.domain.dates import month_start
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
     IS_CATEGORIZABLE,
@@ -49,12 +51,14 @@ from igab.repositories.txn_filters import (
     AI_NEEDS_REVIEW,
     BALANCE_ROW,
     BANK_UNLINKED,
+    BUDGET_MONTH,
     CARD_PAYMENT_FROM_CASH,
     CASH_FLOW_ROW,
     CLASS_TOTAL_ROW,
     COUNTERPART_ACCOUNT_ID,
     DEBT_INTEREST_ROW,
     IN_SINKING_FUND,
+    LATE_ARRIVAL,
     LEAF,
     LOAN_PAYMENT_ROW,
     MATCHABLE_ROW,
@@ -68,6 +72,7 @@ from igab.repositories.txn_filters import (
     PAYEE_OF_RECORD_ID,
     PLAIN_DEPOSIT_ROW,
     POSTED,
+    PREDATES_IMPORT,
     PROVISIONALLY_LINKED,
     REGISTER_RANK,
     SPENDING_ROW,
@@ -97,6 +102,11 @@ if TYPE_CHECKING:
 #:
 #: Local to this module on purpose: every call site is here, and moving it to
 #: `txn_filters` would widen the rule's footprint for no caller.
+#:
+#: The CALENDAR bucket — for the sums that answer when money moved (cash flow,
+#: liabilities). The envelope, card and carryover sums group by
+#: `txn_filters.BUDGET_MONTH` instead (`by_budget_month`), which moves a late
+#: arrival into the import month.
 TXN_YEAR = cast(func.extract("year", Transaction.date), Integer)
 TXN_MONTH = cast(func.extract("month", Transaction.date), Integer)
 
@@ -104,6 +114,18 @@ TXN_MONTH = cast(func.extract("month", Transaction.date), Integer)
 def month_of(row) -> date:
     """The month a grouped row belongs to, from `TXN_YEAR` / `TXN_MONTH`."""
     return date(row["yr"], row["mo"], 1)
+
+
+def by_budget_month(*columns, where) -> Subquery:
+    """The rows `where` selects, each with its `BUDGET_MONTH` as `month`, as a
+    subquery to group over.
+
+    Grouped from outside rather than by repeating the expression: it carries
+    correlated subqueries, and a GROUP BY Postgres has to match against the
+    select list expression by expression is a fragile thing to lean on for
+    the bucket every envelope sums.
+    """
+    return select(*columns, BUDGET_MONTH.label("month")).where(*where).subquery()
 
 
 class TransactionRepository(BaseRepository[Transaction]):
@@ -128,6 +150,8 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         return stmt.options(
             with_expression(Transaction.needs_category, NEEDS_CATEGORY),
+            with_expression(Transaction.counts_in_month, BUDGET_MONTH),
+            with_expression(Transaction.predates_import, PREDATES_IMPORT),
             with_expression(Transaction.counterpart_account_id, COUNTERPART_ACCOUNT_ID),
             with_expression(Transaction.payee_of_record_id, PAYEE_OF_RECORD_ID),
         )
@@ -583,20 +607,46 @@ class TransactionRepository(BaseRepository[Transaction]):
         envelope's activity and the savings figure's cut
         (`sum_categories_dated_after`) are one row set.
         """
-        result = await self.session.execute(
-            select(
-                TXN_YEAR.label("yr"),
-                TXN_MONTH.label("mo"),
-                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
-            )
-            .where(
+        rows = by_budget_month(
+            Transaction.amount,
+            where=(
                 Transaction.category_id == category_id,
                 CLASS_TOTAL_ROW,
                 Transaction.date <= end_date,
-            )
-            .group_by(TXN_YEAR, TXN_MONTH)
+            ),
         )
-        return {month_of(row): row["total"] for row in result.mappings()}
+        result = await self.session.execute(
+            select(rows.c.month, func.coalesce(func.sum(rows.c.amount), 0).label("total")).group_by(
+                rows.c.month
+            )
+        )
+        return {row["month"]: row["total"] for row in result.mappings()}
+
+    async def late_arrivals(self, budget_id: uuid.UUID) -> list[Transaction]:
+        """The budget's live late arrivals (`txn_filters.LATE_ARRIVAL`), oldest
+        first — the rows its import month lists as having arrived from before
+        the budget started.
+
+        LEAF rows, like every envelope sum: a split's legs are what carry
+        categories, and a parent would list the same money twice. Every
+        on-budget account, not only categorized rows — an unfiled straggler
+        is exactly the one the person needs to see. Loaded with the computed
+        fields, so `payee_of_record_id` names a leg's payee.
+        """
+        result = await self.session.execute(
+            self.with_computed(
+                select(Transaction)
+                .where(
+                    Transaction.budget_id == budget_id,
+                    NOT_DELETED,
+                    LEAF,
+                    ON_BUDGET_ACCOUNT,
+                    LATE_ARRIVAL,
+                )
+                .order_by(Transaction.date, Transaction.id)
+            )
+        )
+        return list(result.scalars().all())
 
     async def count_by_category(self, category_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
         """Live rows filed in each category: {category: count}.
@@ -756,26 +806,18 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         if not category_ids:
             return {}
-        q = (
-            select(
-                Transaction.category_id,
-                TXN_YEAR.label("yr"),
-                TXN_MONTH.label("mo"),
-                func.sum(Transaction.amount).label("total"),
-            )
-            .where(
-                Transaction.category_id.in_(category_ids),
-                CLASS_TOTAL_ROW,
-            )
-            .group_by(Transaction.category_id, TXN_YEAR, TXN_MONTH)
-        )
+        where = [Transaction.category_id.in_(category_ids), CLASS_TOTAL_ROW]
         if end_date is not None:
-            q = q.where(Transaction.date <= end_date)
-        result = await self.session.execute(q)
+            where.append(Transaction.date <= end_date)
+        rows = by_budget_month(Transaction.category_id, Transaction.amount, where=where)
+        result = await self.session.execute(
+            select(
+                rows.c.category_id, rows.c.month, func.sum(rows.c.amount).label("total")
+            ).group_by(rows.c.category_id, rows.c.month)
+        )
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
-            month = month_of(row)
-            out.setdefault(row["category_id"], {})[month] = row["total"]
+            out.setdefault(row["category_id"], {})[row["month"]] = row["total"]
         return out
 
     async def sum_categories_dated_after(
@@ -793,6 +835,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         rows the page's own activity sums (`sum_all_categories_by_month`), so
         the cut removes exactly rows the Available holds. Categories with no
         such rows are absent.
+
+        And only rows in `after`'s own `BUDGET_MONTH`, for the same reason: a
+        late arrival dated in the anchor month counts in the month after it,
+        so the anchor month's Available never held it and its cut must not
+        take it off.
         """
         if not category_ids or through <= after:
             return {}
@@ -804,6 +851,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 CLASS_TOTAL_ROW,
                 Transaction.date > after,
                 Transaction.date <= through,
+                BUDGET_MONTH == month_start(after),
             )
             .group_by(Transaction.category_id)
         )
@@ -855,31 +903,35 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         if not category_ids:
             return {}
-        result = await self.session.execute(
-            select(
-                Transaction.category_id,
-                Transaction.account_id,
-                TXN_YEAR.label("yr"),
-                TXN_MONTH.label("mo"),
-                func.sum(-Transaction.amount).label("outflow"),
-            )
-            .where(
+        rows = by_budget_month(
+            Transaction.category_id,
+            Transaction.account_id,
+            Transaction.amount,
+            where=(
                 Transaction.category_id.in_(category_ids),
                 NOT_DELETED,
                 LEAF,
                 POSTED,
                 ON_CARD_ACCOUNT,
                 Transaction.date <= end_date,
-            )
-            .group_by(Transaction.category_id, Transaction.account_id, TXN_YEAR, TXN_MONTH)
+            ),
+        )
+        result = await self.session.execute(
+            select(
+                rows.c.category_id,
+                rows.c.account_id,
+                rows.c.month,
+                func.sum(-rows.c.amount).label("outflow"),
+            ).group_by(rows.c.category_id, rows.c.account_id, rows.c.month)
         )
         out: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
         for row in result.mappings():
             net = Decimal(str(row["outflow"]))
             if net == 0:
                 continue
-            month = month_of(row)
-            out.setdefault(row["category_id"], {}).setdefault(row["account_id"], {})[month] = net
+            out.setdefault(row["category_id"], {}).setdefault(row["account_id"], {})[
+                row["month"]
+            ] = net
         return out
 
     async def sum_card_payments_by_month(
@@ -900,14 +952,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         `sum_unclaimed_card_rows` instead, which selects on the negation
         of the very same expression.
         """
-        result = await self.session.execute(
-            select(
-                Transaction.account_id,
-                TXN_YEAR.label("yr"),
-                TXN_MONTH.label("mo"),
-                func.sum(Transaction.amount).label("paid"),
-            )
-            .where(
+        rows = by_budget_month(
+            Transaction.account_id,
+            Transaction.amount,
+            where=(
                 Transaction.budget_id == budget_id,
                 NOT_DELETED,
                 PARENT_ROW,
@@ -915,13 +963,16 @@ class TransactionRepository(BaseRepository[Transaction]):
                 ON_CARD_ACCOUNT,
                 CARD_PAYMENT_FROM_CASH,
                 Transaction.date <= end_date,
+            ),
+        )
+        result = await self.session.execute(
+            select(rows.c.account_id, rows.c.month, func.sum(rows.c.amount).label("paid")).group_by(
+                rows.c.account_id, rows.c.month
             )
-            .group_by(Transaction.account_id, TXN_YEAR, TXN_MONTH)
         )
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
-            month = month_of(row)
-            out.setdefault(row["account_id"], {})[month] = Decimal(str(row["paid"]))
+            out.setdefault(row["account_id"], {})[row["month"]] = Decimal(str(row["paid"]))
         return out
 
     async def card_payment_dates(
@@ -1004,24 +1055,23 @@ class TransactionRepository(BaseRepository[Transaction]):
         to a category that exists but cannot release — income, a card's own
         envelope — so such a row reached no term at all.
         """
-        result = await self.session.execute(
-            select(
-                Transaction.account_id,
-                TXN_YEAR.label("yr"),
-                TXN_MONTH.label("mo"),
-                func.sum(Transaction.amount).label("unclaimed"),
-            )
-            .where(
+        rows = by_budget_month(
+            Transaction.account_id,
+            Transaction.amount,
+            where=(
                 Transaction.budget_id == budget_id,
                 UNCLAIMED_CARD_ROW,
                 Transaction.date <= end_date,
-            )
-            .group_by(Transaction.account_id, TXN_YEAR, TXN_MONTH)
+            ),
+        )
+        result = await self.session.execute(
+            select(
+                rows.c.account_id, rows.c.month, func.sum(rows.c.amount).label("unclaimed")
+            ).group_by(rows.c.account_id, rows.c.month)
         )
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
-            month = month_of(row)
-            out.setdefault(row["account_id"], {})[month] = Decimal(str(row["unclaimed"]))
+            out.setdefault(row["account_id"], {})[row["month"]] = Decimal(str(row["unclaimed"]))
         return out
 
     _BULK_CHUNK = 1000  # ~15k params/chunk, well under asyncpg's 32767 limit

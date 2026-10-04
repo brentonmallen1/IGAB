@@ -42,6 +42,27 @@ def month_end(d: date) -> date:
     return d.replace(day=calendar.monthrange(d.year, d.month)[1])
 
 
+def budget_month(day: date, *, anchor_month: date | None, late_eligible: bool) -> date:
+    """The month a row counts in for budget math — its own month, except a
+    late arrival, which counts in the import month.
+
+    The pure twin of `txn_filters.BUDGET_MONTH`, for the layers that run no
+    SQL (the card-scenario walk, the sample generator's own check). The two
+    are irreducible duplication and a differential test holds them together
+    (`tests/integration/test_late_arrivals.py`); this docstring is not the
+    mechanism.
+
+    `anchor_month` is the import anchor's month, B−1 (`ImportAnchor.month`),
+    or None for a budget with no anchor in force — then every row counts in
+    its own month, the byte-identical path. `late_eligible` is "not a YNAB
+    row, on an account that came with the import" — see `LATE_ARRIVAL`.
+    """
+    own = month_start(day)
+    if anchor_month is not None and late_eligible and own == anchor_month:
+        return add_months(own, 1)
+    return own
+
+
 def months_between(start: date, end: date) -> int:
     """Whole months from `start` to `end`, floored at 1.
 

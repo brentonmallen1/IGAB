@@ -388,6 +388,25 @@ class BudgetSummary:
     #: The client clamps month navigation here; months before it live in the
     #: register and reports only.
     anchor_month: date | None = None
+    #: On the import month only: the late arrivals counted in it — rows dated
+    #: in the month before that reached IGAB after the import
+    #: (`txn_filters.LATE_ARRIVAL`). Listed so the page can say which money
+    #: arrived from before the budget started, instead of an envelope moving
+    #: for no visible reason. Empty on every other month.
+    late_arrivals: list["LateArrival"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LateArrival:
+    """One late arrival, as the import month lists it: the row's own facts,
+    for the client to name from the lists it already holds."""
+
+    transaction_id: uuid.UUID
+    date: date
+    amount: Decimal
+    account_id: uuid.UUID
+    category_id: uuid.UUID | None
+    payee_id: uuid.UUID | None
 
 
 @dataclass
@@ -1101,11 +1120,22 @@ class BudgetService:
             # is spelled `owed_by_card` and assigned straight to `balance`,
             # and a map whose name says owed but whose values say balance is
             # a sign error waiting for its second reader.
+            #
+            # Summed by the reserve's own bucket (`BUDGET_MONTH`) through
+            # B−1, not by date: a late charge dated in B−1 counts in B, where
+            # its reservation is. Read by date it would also come off the
+            # opening credit, and a card imported in credit would then report
+            # that charge as drift forever.
             balance_at_anchor: dict[uuid.UUID, Decimal] = {}
             if walk.anchor is not None:
-                balance_at_anchor = await self.account_repo.card_balances(
-                    budget_id, _month_end(walk.anchor.openings.opening_month)
+                opening_month = walk.anchor.openings.opening_month
+                by_month = await self.account_repo.card_balances_by_month(
+                    budget_id, _month_end(opening_month)
                 )
+                balance_at_anchor = {
+                    card: sum((v for m, v in months.items() if m <= opening_month), zero)
+                    for card, months in by_month.items()
+                }
             # The card's own ledger for the viewed month, beside the reserve's
             # legs: what a person charged, and how far the debt actually moved.
             # Every leg above is a lifetime `sum_through`, so nothing here is
@@ -1370,6 +1400,19 @@ class BudgetService:
         overspent_last_month = await self._overspent_last_month(
             budget_id, categories, system_group_ids, funding, cards, month_start
         )
+        late_arrivals: list[LateArrival] = []
+        if walk.anchor is not None and month_start == walk.anchor.month:
+            late_arrivals = [
+                LateArrival(
+                    transaction_id=row.id,
+                    date=row.date,
+                    amount=row.amount,
+                    account_id=row.account_id,
+                    category_id=row.category_id,
+                    payee_id=row.payee_of_record_id,
+                )
+                for row in await self.transaction_repo.late_arrivals(budget_id)
+            ]
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
@@ -1385,6 +1428,7 @@ class BudgetService:
             category_balances=balances,
             cards=cards,
             anchor_month=walk.anchor.month if walk.anchor is not None else None,
+            late_arrivals=late_arrivals,
         )
 
     async def _raw_balances(

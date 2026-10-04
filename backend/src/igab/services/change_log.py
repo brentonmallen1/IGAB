@@ -59,6 +59,7 @@ from igab.db.models import (
     WishlistProject,
     new_uuid,
 )
+from igab.domain.import_identity import FILE_IMPORT_ORIGINS
 from igab.domain.payee_names import samples_from_legacy
 from igab.domain.projected_interest import PROJECTION_ORIGIN
 
@@ -399,8 +400,8 @@ UNDO_KEY_SOURCES = ("manual", "import")
 def source_for(created_via: str | None) -> str:
     """The change-log `source` a row's origin implies.
 
-    `created_via` is where the row came from (domain: manual | import | sync
-    | scheduled | projection | ai_receipt | ai_nl); `source` is who acted, as
+    `created_via` is where the row came from (domain: manual | import | ynab
+    | sync | scheduled | projection | ai_receipt | ai_nl); `source` is who acted, as
     Activity renders it. One mapping, so a sync-created row can no longer be
     logged as a manual entry — which every one of them was, before this
     existed. A projected interest row is the app's own writing (`system`),
@@ -410,7 +411,7 @@ def source_for(created_via: str | None) -> str:
         return "manual"
     if created_via.startswith("ai"):
         return "ai"
-    if created_via == "import":
+    if created_via in FILE_IMPORT_ORIGINS:
         return "import"
     if created_via in ("sync", "scheduled", PROJECTION_ORIGIN):
         return "system"

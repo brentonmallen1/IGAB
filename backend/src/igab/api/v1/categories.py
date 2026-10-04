@@ -54,6 +54,7 @@ from igab.api.v1.schemas.category import (
     FutureOverspendPreviewRequest,
     FutureOverspendPreviewResponse,
     FutureOverspendWarningOut,
+    LateArrivalOut,
     MoveMoneyRequest,
     OverspentLastMonthItem,
     RecentPayeeResponse,
@@ -764,6 +765,17 @@ async def get_budget_month(
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
         anchor_month=summary.anchor_month,
+        late_arrivals=[
+            LateArrivalOut(
+                transaction_id=a.transaction_id,
+                date=a.date,
+                amount=a.amount,
+                account_id=a.account_id,
+                category_id=a.category_id,
+                payee_id=a.payee_id,
+            )
+            for a in summary.late_arrivals
+        ],
         cards=[CardStatusOut.from_status(c) for c in summary.cards],
         category_balances=[
             CategoryBalance(

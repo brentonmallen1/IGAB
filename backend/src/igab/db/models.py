@@ -385,6 +385,19 @@ class Account(Base):
     #: cannot be corrected, and it is UTC where transaction dates are local,
     #: which puts a midnight boundary between them.
     budget_start_date: Mapped[date | None] = mapped_column(Date)
+    #: The account came in with a YNAB import, so the import anchor's figures
+    #: already describe its history. Only such an account can carry a late
+    #: arrival (`txn_filters.LATE_ARRIVAL`): a row dated in the anchor month
+    #: that reached IGAB after the import counts in the import month. An
+    #: account linked afterwards brings its bank history as opening position
+    #: — its Starting Balance already nets those rows — so counting them in
+    #: an envelope would charge the budget twice. Set once, by the importer;
+    #: never edited.
+    #:
+    #: Server default only, no Python default: an INSERT that never names the
+    #: column must still work against a schema from before it existed (the
+    #: migration tests build old rows from these very tables).
+    from_import: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -822,7 +835,9 @@ class Transaction(Base):
     # Bank sync deduplication (SimpleFIN, future: Plaid, etc.)
     sync_id: Mapped[str | None] = mapped_column(String(255))
     sync_source: Mapped[str | None] = mapped_column(String(50))
-    # Where the row came from: 'manual' | 'import' | 'sync' | 'scheduled' |
+    # Where the row came from: 'manual' | 'import' (a CSV file) | 'ynab' (the
+    # YNAB import — the rows its anchor already describes, which is why it
+    # is told apart from a CSV: `txn_filters.LATE_ARRIVAL`) | 'sync' | 'scheduled' |
     # 'ai_receipt' | 'ai_nl'. Set by TransactionService.create (and the bulk
     # importers), never accepted from a client. NULL means "unknown" — rows
     # written before this was stamped. It cannot be backfilled: a hand-typed
@@ -881,6 +896,19 @@ class Transaction(Base):
     #: which `TransactionResponse` rejects — a path that forgets fails loudly
     #: instead of quietly reporting everything as filed.
     needs_category: Mapped[bool] = query_expression()
+
+    #: The month this row counts in for budget math — `txn_filters.BUDGET_MONTH`,
+    #: its own month except a late arrival, which counts in the import month.
+    #: And whether it counts before the import month on an anchored budget
+    #: (`PREDATES_IMPORT`), where editing it moves no envelope.
+    #:
+    #: Computed, not columns: both turn on the budget's import anchor and the
+    #: account's `from_import`, which change without this row being touched.
+    #: Populated only through `TransactionRepository.with_computed`; required
+    #: on `TransactionResponse`, so a path that forgets raises instead of
+    #: telling the register a late row counts in its own month.
+    counts_in_month: Mapped[_PyDate] = query_expression()
+    predates_import: Mapped[bool] = query_expression()
 
     #: The account on the other side of this transfer, or None for a plain
     #: transaction. The rule is `COUNTERPART_ACCOUNT_ID`
