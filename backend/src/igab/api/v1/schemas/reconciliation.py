@@ -19,6 +19,10 @@ class ReconciliationStatusResponse(ApiModel):
     cleared_balance: Decimal
     uncleared_count: int
     pending_count: int = 0
+    #: Cleared rows a pending duplicate review is holding beside the bank's
+    #: copy. Required: finish and the adjustment refuse while it is above
+    #: zero, and a status that forgot it would offer a Finish that 409s.
+    in_review_count: int
 
 
 class ReconciliationSnapshotResponse(ApiModel):

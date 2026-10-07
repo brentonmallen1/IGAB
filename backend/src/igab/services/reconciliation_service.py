@@ -6,15 +6,34 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, ReconciliationSnapshot, Transaction
+from igab.domain.exceptions import IGABError
 from igab.domain.payee_names import RECONCILIATION_ADJUSTMENT_PAYEE
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.repositories.txn_filters import BALANCE_ROW, CLEARED, not_future
+from igab.repositories.txn_filters import BALANCE_ROW, CLEARED, IN_REVIEW_CLEARED, not_future
 from igab.services.change_log import ChangeRecorder, serialize_value, snapshot
 from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
+
+
+class ReconciliationBlocked(IGABError):
+    """Raised when a reconciliation would lock in a cleared balance that a
+    pending duplicate review is counting twice — see `get_status`."""
+
+
+def _refuse_while_in_review(count: int) -> None:
+    if count == 1:
+        raise ReconciliationBlocked(
+            "1 possible duplicate on this account is waiting in review — settle it "
+            "first, or the reconciliation will count it twice."
+        )
+    if count > 1:
+        raise ReconciliationBlocked(
+            f"{count} possible duplicates on this account are waiting in review — settle "
+            "them first, or the reconciliation will count them twice."
+        )
 
 
 class ReconciliationService:
@@ -46,6 +65,17 @@ class ReconciliationService:
         can only reflect what has already happened, so a future-dated cleared
         transaction would skew the cleared balance and manufacture a bogus
         adjustment against the statement.
+
+        `in_review_count` is the cleared rows a pending duplicate review holds
+        beside the bank's own copy (txn_filters.IN_REVIEW_CLEARED — the slice
+        drift reports as `in_review`). While one is open the cleared balance
+        counts that money twice, so reconciling to the bank's statement wrote
+        an adjustment of minus the doubles; accepting the merges afterwards
+        left the ledger short by the same amount, on an account now
+        reconciled — a permanent drift fault. `finish` and `create_adjustment`
+        refuse until the count is zero rather than subtract the slice: the
+        review is what decides which copy is real (a merge keeps the bank's
+        amount), so the honest figure does not exist until it is answered.
         """
         from sqlalchemy import func
 
@@ -83,10 +113,20 @@ class ReconciliationService:
         )
         pending_count = pending_result.scalar_one()
 
+        in_review_result = await self.session.execute(
+            select(func.count(Transaction.id)).where(
+                Transaction.account_id == account_id,
+                IN_REVIEW_CLEARED,
+                not_future(as_of),
+            )
+        )
+        in_review_count = in_review_result.scalar_one()
+
         return {
             "cleared_balance": cleared_balance,
             "uncleared_count": uncleared_count,
             "pending_count": pending_count,
+            "in_review_count": in_review_count,
         }
 
     async def create_adjustment(
@@ -94,8 +134,18 @@ class ReconciliationService:
         account_id: uuid.UUID,
         adjustment_amount: Decimal,
     ) -> Transaction:
-        """Create a cleared adjustment transaction to bring the account into balance."""
+        """Create a cleared adjustment transaction to bring the account into balance.
 
+        Refused while a duplicate review is open, like `finish`: the
+        difference it would cover is the doubled money itself.
+        """
+        status = await self.get_status(account_id)
+        _refuse_while_in_review(status["in_review_count"])
+        return await self._write_adjustment(account_id, adjustment_amount)
+
+    async def _write_adjustment(
+        self, account_id: uuid.UUID, adjustment_amount: Decimal
+    ) -> Transaction:
         account = await self.account_repo.get_or_raise(account_id)
         payee = await self.payee_repo.find_or_create(
             account.budget_id, RECONCILIATION_ADJUSTMENT_PAYEE
@@ -133,8 +183,12 @@ class ReconciliationService:
         the statement. If the recomputed balance still differs, an adjustment
         transaction is created automatically so reconciliation always locks
         an account that agrees with the bank statement.
+
+        Refused, before anything is written, while a duplicate review is
+        holding cleared rows — see `get_status`.
         """
         status = await self.get_status(account_id)
+        _refuse_while_in_review(status["in_review_count"])
         cleared_balance = status["cleared_balance"]
 
         # One batch across both recorders (batch_id is just a column): ⌘Z
@@ -143,7 +197,7 @@ class ReconciliationService:
         with self.transaction_service.changes.batch() as batch_id:
             difference = statement_balance - cleared_balance
             if difference != 0:
-                adjustment = await self.create_adjustment(account_id, difference)
+                adjustment = await self._write_adjustment(account_id, difference)
                 adjustment_transaction_id = adjustment.id
 
             # `_transaction_ids` names exactly the rows about to be locked, so

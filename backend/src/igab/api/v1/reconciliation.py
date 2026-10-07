@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.reconciliation import (
@@ -11,7 +11,7 @@ from igab.api.v1.schemas.reconciliation import (
 )
 from igab.api.v1.schemas.transaction import TransactionResponse
 from igab.dependencies import AccountAccess, CurrentUser, get_reconciliation_service
-from igab.services.reconciliation_service import ReconciliationService
+from igab.services.reconciliation_service import ReconciliationBlocked, ReconciliationService
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -25,8 +25,7 @@ async def reconciliation_status(
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
 ) -> ReconciliationStatusResponse:
-    status = await svc.get_status(account_id)
-    return ReconciliationStatusResponse(**status)
+    return ReconciliationStatusResponse(**await svc.get_status(account_id))
 
 
 @router.post(
@@ -39,7 +38,12 @@ async def finish_reconciliation(
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
 ) -> ReconciliationSnapshotResponse:
-    snapshot = await svc.finish(account_id, body.statement_balance, body.adjustment_transaction_id)
+    try:
+        snapshot = await svc.finish(
+            account_id, body.statement_balance, body.adjustment_transaction_id
+        )
+    except ReconciliationBlocked as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     return ReconciliationSnapshotResponse.model_validate(snapshot)
 
 
@@ -53,7 +57,10 @@ async def create_reconcile_adjustment(
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
 ) -> TransactionResponse:
-    txn = await svc.create_adjustment(account_id, body.adjustment_amount)
+    try:
+        txn = await svc.create_adjustment(account_id, body.adjustment_amount)
+    except ReconciliationBlocked as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)
 
 

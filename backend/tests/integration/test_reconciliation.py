@@ -7,8 +7,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import func, select
 
+from igab.db.models import Account, ReconciliationSnapshot, Transaction, TransactionMatch
 from igab.domain.exceptions import InvariantViolation
+from igab.services.reconciliation_service import ReconciliationBlocked
 from igab.services.transaction_service import TransactionCreate, TransactionUpdate
 from igab.utils.clock import today_utc
 
@@ -459,3 +462,217 @@ class TestTheHeaderAndReconcileDifferOnlyOnFutureRows:
 
         assert snapshot.adjustment_transaction_id is None
         await assert_financial_invariants(db_session, budget.id)
+
+
+class TestReconcileWaitsForTheDuplicateReview:
+    """A reconciliation is refused while a duplicate review holds cleared rows.
+
+    The incident, rescaled: a sync queued the bank's $64.20 copy of a
+    pharmacy purchase beside the person's own cleared row. The cleared
+    balance counted it twice, so reconciling to the bank's $935.80 wrote an
+    adjustment of -$64.20. Accepting the merge then removed the double,
+    leaving the ledger $64.20 short of the bank on an account now reconciled
+    — a drift fault nothing could explain, with advice to refetch 90 days.
+
+    The slice is txn_filters.IN_REVIEW_CLEARED, the same rows drift reports
+    as `in_review`; `get_status` counts it and `finish` and the adjustment
+    refuse until it is zero. Figures are invented.
+    """
+
+    #: The bank's figure: a $1,000.00 paycheck less one $64.20 purchase.
+    BANK = Decimal("935.80")
+    #: What the cleared balance reads while the purchase is counted twice.
+    DOUBLED = Decimal("871.60")
+
+    async def _account_with_paycheck(self, db_session, budget) -> Account:
+        account = await create_account(db_session, budget, "Harborstone Checking")
+        await create_transaction(db_session, budget, account, "1000.00", TODAY, cleared="cleared")
+        return account
+
+    async def _pair(
+        self,
+        db_session,
+        budget,
+        account,
+        *,
+        on: date = TODAY,
+        own_cleared: str = "cleared",
+        bank_copy_deleted: bool = False,
+        sync_id: str = "rx-1",
+    ) -> TransactionMatch:
+        """The person's -64.20 and the bank's queued copy of it."""
+        own = await create_transaction(
+            db_session, budget, account, "-64.20", on, cleared=own_cleared
+        )
+        bank_copy = await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-64.20",
+            TODAY,
+            cleared="cleared",
+            sync_id=sync_id,
+            bank_posted_date=TODAY,
+            is_deleted=bank_copy_deleted,
+        )
+        match = TransactionMatch(
+            synced_transaction_id=bank_copy.id,
+            manual_transaction_id=own.id,
+            confidence_score=Decimal("0.60"),
+            status="pending",
+        )
+        db_session.add(match)
+        await db_session.flush()
+        return match
+
+    async def _row_count(self, db_session, account) -> int:
+        return (
+            await db_session.execute(
+                select(func.count(Transaction.id)).where(Transaction.account_id == account.id)
+            )
+        ).scalar_one()
+
+    async def test_an_open_pair_blocks_finish_and_writes_nothing(self, db_session, api_client):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await self._account_with_paycheck(db_session, budget)
+        await self._pair(db_session, budget, account)
+
+        status = (await api_client.get(f"/api/v1/accounts/{account.id}/reconcile/status")).json()
+        assert status["in_review_count"] == 1
+        # The doubled figure the old finish reconciled against.
+        assert Decimal(str(status["cleared_balance"])) == self.DOUBLED
+
+        r = await api_client.post(
+            f"/api/v1/accounts/{account.id}/reconcile/finish",
+            json={"statement_balance": str(self.BANK)},
+        )
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"] == (
+            "1 possible duplicate on this account is waiting in review — settle it "
+            "first, or the reconciliation will count it twice."
+        )
+
+        assert await self._row_count(db_session, account) == 3, "no adjustment was written"
+        cleared_states = (
+            await db_session.execute(
+                select(Transaction.cleared).where(Transaction.account_id == account.id)
+            )
+        ).scalars()
+        assert set(cleared_states) == {"cleared"}, "nothing was locked"
+        snapshots = await db_session.execute(
+            select(ReconciliationSnapshot.id).where(ReconciliationSnapshot.account_id == account.id)
+        )
+        assert snapshots.first() is None
+        await db_session.refresh(account)
+        assert account.last_reconciled_at is None
+
+    async def test_an_open_pair_blocks_the_adjustment_too(self, db_session, api_client):
+        """The bar's Create adjustment is the same mistake one step earlier:
+        the difference it would cover is the doubled money itself."""
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await self._account_with_paycheck(db_session, budget)
+        await self._pair(db_session, budget, account)
+
+        r = await api_client.post(
+            f"/api/v1/accounts/{account.id}/reconcile/adjustment",
+            json={"adjustment_amount": "64.20"},
+        )
+        assert r.status_code == 409, r.text
+        assert await self._row_count(db_session, account) == 3
+
+    async def test_accepting_the_merge_unblocks_and_leaves_no_drift(self, db_session, api_client):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await self._account_with_paycheck(db_session, budget)
+        account.simplefin_balance = self.BANK
+        match = await self._pair(db_session, budget, account)
+
+        r = await api_client.post(f"/api/v1/simplefin/matches/{match.id}/accept")
+        assert r.status_code in (200, 204), r.text
+
+        status = (await api_client.get(f"/api/v1/accounts/{account.id}/reconcile/status")).json()
+        assert status["in_review_count"] == 0
+        assert Decimal(str(status["cleared_balance"])) == self.BANK
+
+        r = await api_client.post(
+            f"/api/v1/accounts/{account.id}/reconcile/finish",
+            json={"statement_balance": str(self.BANK)},
+        )
+        assert r.status_code == 200, r.text
+        assert Decimal(str(r.json()["adjustment_amount"])) == Decimal("0")
+
+        served = (await api_client.get(f"/api/v1/accounts/{account.id}")).json()
+        assert served["last_reconciled_at"] is not None
+        assert Decimal(str(served["bank_drift"])) == Decimal("0")
+        assert served["bank_drift_is_fault"] is False
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_rejecting_the_pair_also_settles_it(self, db_session):
+        """Rejecting keeps both rows as two real purchases — counted twice on
+        purpose now, so there is nothing left to wait for."""
+        services, budget, _checking = await _setup(db_session)
+        account = await self._account_with_paycheck(db_session, budget)
+        match = await self._pair(db_session, budget, account)
+
+        await services.matching.reject_match(match.id)
+
+        status = await services.reconciliation.get_status(account.id)
+        assert status["in_review_count"] == 0
+        snapshot = await services.reconciliation.finish(account.id, self.DOUBLED)
+        assert snapshot.adjustment_transaction_id is None
+
+    async def test_the_message_counts_every_open_pair(self, db_session):
+        services, budget, _checking = await _setup(db_session)
+        account = await self._account_with_paycheck(db_session, budget)
+        await self._pair(db_session, budget, account, sync_id="rx-1")
+        await self._pair(db_session, budget, account, sync_id="rx-2")
+
+        assert (await services.reconciliation.get_status(account.id))["in_review_count"] == 2
+        with pytest.raises(
+            ReconciliationBlocked,
+            match=(
+                "^2 possible duplicates on this account are waiting in review — settle "
+                "them first, or the reconciliation will count them twice.$"
+            ),
+        ):
+            await services.reconciliation.finish(account.id, self.BANK)
+        with pytest.raises(ReconciliationBlocked):
+            await services.reconciliation.create_adjustment(account.id, Decimal("128.40"))
+
+    async def test_an_uncleared_own_row_does_not_block(self, db_session):
+        """Last week's hand-typed entry, not yet cleared: only the bank's copy
+        is in the cleared balance, so the purchase is counted once already."""
+        services, budget, _checking = await _setup(db_session)
+        account = await self._account_with_paycheck(db_session, budget)
+        await self._pair(db_session, budget, account, own_cleared="uncleared")
+
+        status = await services.reconciliation.get_status(account.id)
+        assert status["in_review_count"] == 0
+        assert status["cleared_balance"] == self.BANK
+        snapshot = await services.reconciliation.finish(account.id, self.BANK)
+        assert snapshot.adjustment_transaction_id is None
+
+    async def test_a_pair_whose_bank_copy_was_deleted_does_not_block(self, db_session):
+        """A deleted bank copy duplicates nothing — the pair is stale."""
+        services, budget, _checking = await _setup(db_session)
+        account = await self._account_with_paycheck(db_session, budget)
+        await self._pair(db_session, budget, account, bank_copy_deleted=True)
+
+        status = await services.reconciliation.get_status(account.id)
+        assert status["in_review_count"] == 0
+        assert status["cleared_balance"] == self.BANK
+        snapshot = await services.reconciliation.finish(account.id, self.BANK)
+        assert snapshot.adjustment_transaction_id is None
+
+    async def test_a_future_dated_own_row_does_not_block(self, db_session):
+        """A statement cannot include a row dated after today, and the cleared
+        balance reconcile reads already leaves it out — see `not_future` — so
+        it doubles nothing the statement is compared with."""
+        services, budget, _checking = await _setup(db_session)
+        account = await self._account_with_paycheck(db_session, budget)
+        await self._pair(db_session, budget, account, on=today_utc() + timedelta(days=5))
+
+        status = await services.reconciliation.get_status(account.id)
+        assert status["in_review_count"] == 0
+        assert status["cleared_balance"] == self.BANK
+        snapshot = await services.reconciliation.finish(account.id, self.BANK)
+        assert snapshot.adjustment_transaction_id is None
