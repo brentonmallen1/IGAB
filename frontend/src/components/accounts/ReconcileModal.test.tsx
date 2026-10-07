@@ -15,11 +15,19 @@ const ui = vi.hoisted(() => ({
   cancelReconciliation: vi.fn(),
 }))
 vi.mock('../../stores/uiStore', () => ({ useUIStore: () => ui }))
+let inReviewCount = 0
 vi.mock('../../api/reconciliation', () => ({
   useReconciliationStatus: () => ({
-    data: { cleared_balance: '1250.00', uncleared_count: 0, pending_count: 0 },
+    data: {
+      cleared_balance: '1250.00',
+      uncleared_count: 0,
+      pending_count: 0,
+      in_review_count: inReviewCount,
+    },
   }),
 }))
+
+const onReviewDuplicates = vi.fn()
 
 beforeEach(async () => {
   await new Promise((r) => setTimeout(r, 0))
@@ -27,16 +35,28 @@ beforeEach(async () => {
   window.history.replaceState(null, '')
   ui.setReconcileStatementBalance.mockClear()
   ui.cancelReconciliation.mockClear()
+  onReviewDuplicates.mockClear()
+  inReviewCount = 0
 })
 
+function renderModal() {
+  render(
+    <ReconcileModal
+      accountId="a1"
+      accountName="Cascade Point HYSA"
+      onReviewDuplicates={onReviewDuplicates}
+    />
+  )
+}
+
 async function answerNo() {
-  render(<ReconcileModal accountId="a1" accountName="Cascade Point HYSA" />)
+  renderModal()
   await userEvent.click(screen.getByRole('button', { name: 'No' }))
 }
 
 describe('ReconcileModal', () => {
   it('takes the cleared balance on Yes', async () => {
-    render(<ReconcileModal accountId="a1" accountName="Cascade Point HYSA" />)
+    renderModal()
     const yes = screen.getByRole('button', { name: 'Yes' })
     expect(yes).toHaveClass('dialog-btn', 'dialog-btn--primary')
     await userEvent.click(yes)
@@ -73,5 +93,39 @@ describe('ReconcileModal', () => {
     await answerNo()
     await userEvent.type(screen.getByLabelText('What does your bank say?'), `${typed}{Enter}`)
     expect(ui.setReconcileStatementBalance).toHaveBeenCalledWith(expected)
+  })
+})
+
+/**
+ * A sync that queues a possible duplicate writes the bank's copy cleared
+ * beside the person's own cleared row, so the balance this modal asks about
+ * counts it twice. Reconciling to the bank anyway wrote an adjustment the
+ * merge then made permanently wrong; the server now refuses, and the modal
+ * says why before the question is answered.
+ */
+describe('ReconcileModal with duplicates waiting in review', () => {
+  it('says nothing about review when none are waiting', () => {
+    renderModal()
+    expect(screen.queryByText(/waiting in review/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /review/i })).not.toBeInTheDocument()
+  })
+
+  it('names one waiting duplicate and opens the review', async () => {
+    inReviewCount = 1
+    renderModal()
+    expect(
+      screen.getByText(/1 possible duplicate is waiting in review, so this balance counts it twice/)
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Review it' }))
+    expect(onReviewDuplicates).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts several in the plural', () => {
+    inReviewCount = 3
+    renderModal()
+    expect(
+      screen.getByText(/3 possible duplicates are waiting in review, so this balance counts them/)
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review them' })).toBeInTheDocument()
   })
 })

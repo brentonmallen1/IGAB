@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
+import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import type {
   SimpleFINConfig,
   SimpleFINConnection,
@@ -505,7 +506,7 @@ export function usePendingMatches(budgetId: string | null) {
   })
 }
 
-export function useAcceptMatch() {
+export function useAcceptMatch(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/accept`),
@@ -514,12 +515,10 @@ export function useAcceptMatch() {
       // Every account's list: the review dialog passes no accountId, and
       // [key, undefined] matches no cached [key, id] — the banner went stale.
       qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
-      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
-      qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
-      // Accepting merges away the duplicate — cleared/working balances change
-      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
-      qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCount] })
-      qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCountAccount] })
+      // Accepting merges two rows into one: a transaction change like any
+      // other. Its hand-kept copy of that list had missed the reconcile
+      // status, whose in_review_count is exactly what a merge settles.
+      void invalidateAfterTransactionChange(qc, { budgetId })
     },
   })
 }
@@ -533,6 +532,9 @@ export function useRejectMatch() {
       // Every account's list: the review dialog passes no accountId, and
       // [key, undefined] matches no cached [key, id] — the banner went stale.
       qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
+      // Rejecting moves no money but closes the pair, and an open pair is
+      // what holds a reconciliation back (`in_review_count`).
+      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus] })
     },
   })
 }

@@ -53,6 +53,29 @@
   color: var(--text-muted);
 }
 
+/* Rows the balance above counts twice: body text, not muted, because it
+   means the number is wrong — not merely incomplete like the line above. */
+.reconcile-modal__in-review {
+  color: var(--text-primary);
+}
+
+.reconcile-modal__review {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.reconcile-modal__review:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--border-radius-sm);
+}
+
 /* The field, its error and the buttons are DialogForm.css. What is ours: the
    answer is centred under the question, drawn at the size of the number it
    is being compared with, and the buttons share the width evenly. */

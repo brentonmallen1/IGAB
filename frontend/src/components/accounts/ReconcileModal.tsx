@@ -15,6 +15,9 @@ import './ReconcileModal.css'
 interface Props {
   accountId: string
   accountName: string
+  /** Opens this account's duplicate review. The reconcile cannot finish
+   * while a pair is open, so the page ends it and shows the queue. */
+  onReviewDuplicates: () => void
 }
 
 /**
@@ -22,7 +25,7 @@ interface Props {
  * IGAB has cleared? Answering it is the whole job of this modal — once a
  * statement balance is set, ReconcileStatusBar takes over and this closes.
  */
-export function ReconcileModal({ accountId, accountName }: Props) {
+export function ReconcileModal({ accountId, accountName, onReviewDuplicates }: Props) {
   const { formatMoney } = useFormatters()
   const { setReconcileStatementBalance, cancelReconciliation } = useUIStore()
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -34,6 +37,7 @@ export function ReconcileModal({ accountId, accountName }: Props) {
 
   const { data: status } = useReconciliationStatus(accountId)
   const clearedBalance = Number(status?.cleared_balance ?? 0)
+  const inReview = status?.in_review_count ?? 0
 
   useEffect(() => {
     if (showInput) inputRef.current?.focus()
@@ -84,6 +88,21 @@ export function ReconcileModal({ accountId, accountName }: Props) {
               .filter(Boolean)
               .join(' · ')}{' '}
             not counted in this balance
+          </p>
+        )}
+
+        {/* The opposite of the line above: rows counted TWICE. A sync wrote
+            the bank's copy beside the person's own cleared row and asked
+            whether they are the same purchase; until that is answered the
+            figure above is too large, and the server will not finish. */}
+        {inReview > 0 && (
+          <p className="reconcile-modal__context reconcile-modal__in-review">
+            {inReview === 1
+              ? '1 possible duplicate is waiting in review, so this balance counts it twice.'
+              : `${inReview} possible duplicates are waiting in review, so this balance counts them twice.`}{' '}
+            <button type="button" className="reconcile-modal__review" onClick={onReviewDuplicates}>
+              {inReview === 1 ? 'Review it' : 'Review them'}
+            </button>
           </p>
         )}
 

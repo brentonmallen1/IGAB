@@ -313,7 +313,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
   })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const acceptMatch = useAcceptMatch()
+  const acceptMatch = useAcceptMatch(budgetId)
   const rejectMatch = useRejectMatch()
   const deciding = acceptMatch.isPending || rejectMatch.isPending
 
