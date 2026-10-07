@@ -21,6 +21,11 @@ import { SettingsToggle } from '../SettingsToggle/SettingsToggle'
  * lives on the System page. (Which budget's accounts sync is decided where
  * the accounts are.)
  */
+/** How full a quota bar is: 0–1, and empty rather than NaN for a zero limit. */
+function usageFraction(used: number, limit: number): number {
+  return limit > 0 ? Math.min(1, used / limit) : 0
+}
+
 export function SimpleFINPanel() {
   const { formatDateTime } = useFormatters()
   const { data: connections } = useSimpleFINConnections()
@@ -62,22 +67,30 @@ export function SimpleFINPanel() {
             <div className="sf-usage">
               <div className="sf-usage__row">
                 <span className="sf-usage__label">Global syncs today</span>
-                <span className="sf-usage__count">{rateLimitStatus.global_used} / 12</span>
+                <span className="sf-usage__count">
+                  {rateLimitStatus.global_used} / {rateLimitStatus.global_limit}
+                </span>
               </div>
               <div className="sf-usage__bar">
                 <div
                   className="sf-usage__fill"
-                  style={{ transform: `scaleX(${Math.min(1, rateLimitStatus.global_used / 12)})` }}
+                  style={{
+                    transform: `scaleX(${usageFraction(rateLimitStatus.global_used, rateLimitStatus.global_limit)})`,
+                  }}
                 />
               </div>
               <div className="sf-usage__row" style={{ marginTop: 6 }}>
                 <span className="sf-usage__label">Account syncs today</span>
-                <span className="sf-usage__count">{rateLimitStatus.account_used} / 12</span>
+                <span className="sf-usage__count">
+                  {rateLimitStatus.account_used} / {rateLimitStatus.account_limit}
+                </span>
               </div>
               <div className="sf-usage__bar">
                 <div
                   className="sf-usage__fill"
-                  style={{ transform: `scaleX(${Math.min(1, rateLimitStatus.account_used / 12)})` }}
+                  style={{
+                    transform: `scaleX(${usageFraction(rateLimitStatus.account_used, rateLimitStatus.account_limit)})`,
+                  }}
                 />
               </div>
               <div className="sf-usage__reset">Resets at midnight UTC</div>

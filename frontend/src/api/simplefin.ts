@@ -450,17 +450,30 @@ export function useUpdateAccountSimpleFINSettings(accountId: string) {
   })
 }
 
+/**
+ * The bank's accounts, for the link picker. Every fetch is a request to the
+ * bridge on the day's all-accounts quota, so a failure is not retried: a 429
+ * means the quota is spent and would only be refused again, and any other
+ * failure still spent a request. The error carries the server's message.
+ */
 export function useSimpleFINRemoteAccounts(connectionId: string | null) {
+  const qc = useQueryClient()
   return useQuery({
     queryKey: [ROOT.simplefinRemoteAccounts, connectionId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ id: string; name: string }[]>(
-        `/simplefin/connections/${connectionId}/accounts`
-      )
-      return data
+      try {
+        const { data } = await apiClient.get<{ id: string; name: string }[]>(
+          `/simplefin/connections/${connectionId}/accounts`
+        )
+        return data
+      } finally {
+        // Counted either way, so the quota bars move with it.
+        qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
+      }
     },
     enabled: !!connectionId,
     staleTime: 60_000,
+    retry: false,
   })
 }
 

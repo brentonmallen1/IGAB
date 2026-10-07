@@ -16,6 +16,10 @@ const updateMutate = vi.hoisted(() => vi.fn((_: unknown) => Promise.resolve({}))
 const account = vi.hoisted(() => ({
   current: {} as Partial<Account>,
 }))
+const sf = vi.hoisted(() => ({
+  connections: [] as { id: string }[],
+  remote: { data: [] as unknown[], isFetching: false, error: null as unknown },
+}))
 
 vi.mock('../../api/accounts', () => ({
   useAccounts: () => ({ data: [account.current] }),
@@ -24,8 +28,8 @@ vi.mock('../../api/accounts', () => ({
 vi.mock('../../api/simplefin', () => {
   const idle = () => ({ mutateAsync: vi.fn(), isPending: false })
   return {
-    useSimpleFINConnections: () => ({ data: [] }),
-    useSimpleFINRemoteAccounts: () => ({ data: [], isFetching: false }),
+    useSimpleFINConnections: () => ({ data: sf.connections }),
+    useSimpleFINRemoteAccounts: () => sf.remote,
     useSimpleFINConfig: () => ({ data: undefined }),
     useLinkSimpleFINAccount: idle,
     useUnlinkSimpleFINAccount: idle,
@@ -67,6 +71,8 @@ beforeEach(async () => {
   await new Promise((r) => setTimeout(r, 0))
   window.history.replaceState(null, '')
   updateMutate.mockClear()
+  sf.connections = []
+  sf.remote = { data: [], isFetching: false, error: null }
   useAppStore.setState({ currentBudgetId: 'b1' })
   account.current = {
     id: 'car',
@@ -203,5 +209,42 @@ describe('AccountSettingsModal budget start', () => {
     render(<AccountSettingsModal accountId="visa" onClose={vi.fn()} />)
     expect(screen.getByText(BUDGET_START_NOTE)).toBeInTheDocument()
     expect(BUDGET_START_NOTE).toContain('nor as income or spending in reports')
+  })
+})
+
+/**
+ * Listing the bank's accounts is a request to the bridge on the day's
+ * all-accounts quota. Refused, the picker used to sit empty with no reason
+ * given; the server's message says the quota is spent and when it resets.
+ */
+describe('AccountSettingsModal link picker', () => {
+  beforeEach(() => {
+    sf.connections = [{ id: 'conn-1' }]
+  })
+
+  it("shows the server's message when the listing is refused", async () => {
+    const detail =
+      'Daily global sync limit of 12 requests reached. Resets at midnight UTC. ' +
+      "Listing the bank's accounts uses the same daily quota as Sync All."
+    sf.remote = {
+      data: [],
+      isFetching: false,
+      error: { response: { status: 429, data: { detail } } },
+    }
+    render(<AccountSettingsModal accountId="car" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Link account…' }))
+    expect(screen.getByText(detail)).toBeInTheDocument()
+  })
+
+  it('says nothing went wrong when nothing did', async () => {
+    sf.remote = {
+      data: [{ id: 'ACT-sapphire', name: 'Sapphire Visa' }],
+      isFetching: false,
+      error: null,
+    }
+    render(<AccountSettingsModal accountId="car" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Link account…' }))
+    expect(screen.getByRole('option', { name: 'Sapphire Visa' })).toBeInTheDocument()
+    expect(document.querySelector('.acct-modal__sf-error')).toBeNull()
   })
 })

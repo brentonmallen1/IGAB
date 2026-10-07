@@ -313,7 +313,7 @@ export function AccountsOverviewPage() {
                 disabled={!canSyncAll}
                 title={
                   rateLimitStatus
-                    ? `Sync all accounts · ${rateLimitStatus.global_remaining}/12 remaining`
+                    ? `Sync all accounts · ${rateLimitStatus.global_remaining}/${rateLimitStatus.global_limit} remaining`
                     : 'Sync all accounts'
                 }
               >
