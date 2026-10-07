@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from igab.db.models import Account, Transaction
 from igab.domain.sync_window import SIMPLEFIN_MAX_WINDOW_DAYS
-from igab.integrations.simplefin.client import SimpleFINError, SimpleFINFeed
+from igab.integrations.simplefin.client import SimpleFINError
 from igab.integrations.simplefin.limits import GLOBAL_DAILY_LIMIT
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_service import TransactionCreate, TransactionUpdate
@@ -32,6 +32,7 @@ from .factories import (
     create_user,
     make_services,
 )
+from .fake_bridge import FakeBridge
 
 OLD_ACCT = "ACT-old"
 NEW_ACCT = "ACT-new"
@@ -42,39 +43,6 @@ BANK_NAME = "HARBORSTONE EVERYDAY CHECKING"
 BANK_NAME_SIMILAR = "HARBORSTONE EVERYDAY CHECKING — Primary"
 
 PATCH_DECRYPT = patch("igab.services.simplefin_service.decrypt", return_value="https://u:p@x.test")
-
-
-class FakeClient:
-    """A bridge that answers from a fixed payload.
-
-    `honour_window` makes it behave like the real one — a row posted before
-    `since` is not returned — which is the only way to test that a window
-    was wide enough. The `since` of every request is kept for the same
-    reason.
-    """
-
-    def __init__(self, payload, names=None, errors=None, balances=None, honour_window=False):
-        self.payload = payload
-        self.names = names or {}
-        self.errors = errors or []
-        self.balances = balances or {}
-        self.honour_window = honour_window
-        self.requests: list[datetime | None] = []
-
-    async def get_feed(self, access_url: str, since=None) -> SimpleFINFeed:
-        self.requests.append(since)
-        rows = self.payload
-        if self.honour_window and since is not None:
-            rows = [t for t in rows if t["posted"] >= since.timestamp()]
-        return SimpleFINFeed(
-            transactions=rows,
-            balances=dict(self.balances),
-            account_names=dict(self.names),
-            errors=list(self.errors),
-        )
-
-    async def get_accounts(self, access_url: str) -> list[dict]:
-        return []
 
 
 def _ts(d: date) -> int:
@@ -137,7 +105,9 @@ def _service(
         txn_service=services.transactions,
         matching_service=services.matching,
     )
-    svc.client = FakeClient(payload, names, errors, balances, honour_window)
+    svc.client = FakeBridge(
+        payload, balances, names=names, errors=errors or (), honour_window=honour_window
+    )
     return svc
 
 
@@ -384,7 +354,7 @@ async def test_an_automatic_relink_asks_for_the_full_window(db_session):
 
     assert len(svc.client.requests) == 2, "fetched once narrow, then again from the floor"
     floor = datetime.now(UTC) - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
-    assert abs((svc.client.requests[1] - floor).total_seconds()) < 60
+    assert abs((svc.client.requests[1].since - floor).total_seconds()) < 60
     assert result["adopted"] == rows_before
     assert result["imported"] == 1, "the missed row arrived in the same run"
     await db_session.refresh(conn)
@@ -832,7 +802,7 @@ async def test_refetch_asks_for_the_full_window_and_duplicates_nothing(db_sessio
         assert body["skip_reasons"] == {"already_posted": len(HISTORY) + 1}
         assert len(await _live_rows(db_session, account.id)) == rows_before
         floor = datetime.now(UTC) - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
-        assert abs((svc.client.requests[-1] - floor).total_seconds()) < 60
+        assert abs((svc.client.requests[-1].since - floor).total_seconds()) < 60
     finally:
         app.dependency_overrides.pop(get_simplefin_service, None)
 
@@ -997,7 +967,7 @@ async def test_a_failed_fetch_is_recorded(db_session):
     svc = _service(services, [])
 
     class Refusing:
-        async def get_feed(self, access_url, since=None):
+        async def get_feed(self, access_url, since=None, account_ids=None):
             raise RuntimeError("bridge unreachable")
 
     svc.client = Refusing()

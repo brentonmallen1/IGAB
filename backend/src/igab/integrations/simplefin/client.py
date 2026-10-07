@@ -1,5 +1,6 @@
 import base64
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -135,10 +136,14 @@ class SimpleFINClient:
             return access_url
 
     async def get_accounts(self, access_url: str) -> list[dict]:
+        """Every account the bridge offers, for choosing which to link.
+        `balances-only=1`: the picker needs names and ids, not transactions."""
         bare_url, auth = _extract_auth(access_url)
         accounts_url = bare_url.rstrip("/") + "/accounts"
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(accounts_url, auth=auth, params={"version": "2"})
+            resp = await client.get(
+                accounts_url, auth=auth, params={"version": "2", "balances-only": "1"}
+            )
             resp.raise_for_status()
             data = resp.json()
             return data.get("accounts", [])
@@ -147,21 +152,29 @@ class SimpleFINClient:
         self,
         access_url: str,
         since: datetime | None = None,
+        account_ids: Sequence[str] | None = None,
     ) -> "SimpleFINFeed":
         """One `/accounts` request: the window's transactions AND each
         account's reported balance. The balance rides in the same response —
         discarding it (as the old `get_transactions` did) is how a first
         sync's 90-day window shipped a ledger thousands short of what the
-        bank said, with nothing anchoring the difference."""
+        bank said, with nothing anchoring the difference.
+
+        `account_ids` narrows the request to those accounts, one `account=`
+        each. The bridge keeps a filtered request on its own quota, apart
+        from all-accounts requests; which one a sync makes is decided in
+        `SimpleFINService.sync`, never here."""
         bare_url, auth = _extract_auth(access_url)
-        params: dict[str, str | int] = {"version": "2", "pending": "1"}
+        # A list of pairs, not a dict: `account` repeats once per id.
+        params: list[tuple[str, str]] = [("version", "2"), ("pending", "1")]
         if since:
-            params["start-date"] = int(since.replace(tzinfo=UTC).timestamp())
+            params.append(("start-date", str(int(since.replace(tzinfo=UTC).timestamp()))))
+        params.extend(("account", account_id) for account_id in account_ids or ())
 
         accounts_url = bare_url.rstrip("/") + "/accounts"
         logger.info("Fetching SimpleFIN transactions from %s with params %s", accounts_url, params)
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.get(accounts_url, auth=auth, params=params)
+            resp = await client.get(accounts_url, auth=auth, params=tuple(params))
             resp.raise_for_status()
             data = resp.json()
 

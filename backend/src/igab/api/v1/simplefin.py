@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 import httpx
@@ -48,7 +49,7 @@ from igab.integrations.simplefin.encryption import (
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
-from igab.services.simplefin_service import SimpleFINService
+from igab.services.simplefin_service import RateLimitError, SimpleFINService
 from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.undo_service import BatchUndo, UndoService
 
@@ -187,7 +188,35 @@ async def get_remote_accounts(
     current_user: CurrentUser,
     svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
 ) -> list[dict]:
-    return await svc.get_remote_accounts(connection_id)
+    """The bank's accounts, for the link picker — a request to the bridge
+    that counts against the all-accounts quota, so it can be refused."""
+    try:
+        return await svc.get_remote_accounts(connection_id)
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"{e} Listing the bank's accounts uses the same daily quota as Sync All.",
+            headers={"Retry-After": str(_seconds_until(e.resets_at))},
+        ) from e
+    except httpx.HTTPError as e:
+        # The request was counted before it was made. A raised error rolls
+        # the session back, which would uncount it — so keep the count, then
+        # say what the bridge did.
+        await svc.session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"SimpleFIN could not list the bank's accounts: {_bridge_failure(e)}",
+        ) from e
+
+
+def _seconds_until(iso: str) -> int:
+    return max(0, int((datetime.fromisoformat(iso) - datetime.now(UTC)).total_seconds()))
+
+
+def _bridge_failure(exc: httpx.HTTPError) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    return type(exc).__name__
 
 
 @router.post("/simplefin/connections/{connection_id}/sync", response_model=SyncResult)
@@ -198,13 +227,7 @@ async def sync_connection(
     budget_id: BudgetAccess,
     account_simplefin_id: str | None = None,
 ) -> SyncResult:
-    sync_type = "account" if account_simplefin_id else "global"
-    result = await svc.sync(
-        connection_id,
-        budget_id,
-        sync_type=sync_type,
-        account_simplefin_id=account_simplefin_id,
-    )
+    result = await svc.sync(connection_id, budget_id, account_simplefin_id=account_simplefin_id)
     return SyncResult(**result)
 
 
@@ -291,10 +314,7 @@ async def refetch_account(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
     await account_repo.update(account_id, last_simplefin_sync_at=None)
     result = await svc.sync(
-        body.connection_id,
-        account.budget_id,
-        sync_type="account",
-        account_simplefin_id=account.simplefin_account_id,
+        body.connection_id, account.budget_id, account_simplefin_id=account.simplefin_account_id
     )
     return SyncResult(**result)
 

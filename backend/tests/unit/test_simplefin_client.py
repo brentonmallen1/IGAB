@@ -139,6 +139,16 @@ class TestGetAccounts:
         assert "Authorization" in request.headers
 
     @respx.mock
+    async def test_asks_for_balances_only(self, client):
+        """The link picker needs names and ids. Ninety days of every account's
+        transactions is the heaviest answer the bridge gives, for nothing."""
+        route = respx.get(ACCOUNTS_URL).mock(return_value=httpx.Response(200, json={}))
+        await client.get_accounts(ACCESS)
+        params = route.calls[0].request.url.params
+        assert params["balances-only"] == "1"
+        assert "account" not in params, "the picker lists every account"
+
+    @respx.mock
     async def test_a_response_with_no_accounts_key_is_an_empty_list(self, client):
         respx.get(ACCOUNTS_URL).mock(return_value=httpx.Response(200, json={}))
         assert await client.get_accounts(ACCESS) == []
@@ -201,6 +211,45 @@ class TestGetFeed:
         assert params["version"] == "2"
         assert params["pending"] == "1"
         assert "start-date" not in params
+
+    @respx.mock
+    async def test_no_account_ids_means_no_account_filter(self, client):
+        route = respx.get(ACCOUNTS_URL).mock(return_value=self._response([]))
+        await client.get_feed(ACCESS, account_ids=None)
+        await client.get_feed(ACCESS, account_ids=[])
+        for call in route.calls:
+            assert "account" not in call.request.url.params
+
+    @respx.mock
+    async def test_one_account_id_is_sent_once(self, client):
+        route = respx.get(ACCOUNTS_URL).mock(return_value=self._response([]))
+        since = datetime(2026, 3, 1, tzinfo=UTC)
+        await client.get_feed(ACCESS, since=since, account_ids=["ACT-sapphire"])
+        params = route.calls[0].request.url.params
+        assert params.get_list("account") == ["ACT-sapphire"]
+        # The filter rides beside the window, not instead of it.
+        assert params["start-date"] == str(int(since.timestamp()))
+        assert params["pending"] == "1"
+        assert params["version"] == "2"
+
+    @respx.mock
+    async def test_several_account_ids_repeat_the_param(self, client):
+        """The protocol's spelling for more than one account: `account=` once
+        per id. A comma-joined value would name one account that does not
+        exist."""
+        route = respx.get(ACCOUNTS_URL).mock(return_value=self._response([]))
+        await client.get_feed(ACCESS, account_ids=["ACT-sapphire", "ACT-harborstone"])
+        params = route.calls[0].request.url.params
+        assert params.get_list("account") == ["ACT-sapphire", "ACT-harborstone"]
+
+    @respx.mock
+    async def test_the_filter_is_in_the_log_line(self, client, caplog):
+        """Which quota a request drew on is visible in the logs, because what
+        the bridge counted is the request it saw."""
+        respx.get(ACCOUNTS_URL).mock(return_value=self._response([]))
+        with caplog.at_level("INFO"):
+            await client.get_feed(ACCESS, account_ids=["ACT-sapphire"])
+        assert "ACT-sapphire" in caplog.text
 
     @respx.mock
     async def test_since_becomes_a_unix_start_date(self, client):

@@ -22,7 +22,6 @@ from sqlalchemy import select
 
 from igab.db.models import ChangeLog, Transaction
 from igab.domain.exceptions import InvariantViolation
-from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_service import SplitSpec, TransactionUpdate
 from igab.services.undo_service import UndoService
@@ -38,20 +37,9 @@ from .factories import (
     create_user,
     make_services,
 )
+from .fake_bridge import FakeBridge
 
 SF_ACCT = "sf-acct-1"
-
-
-class FakeClient:
-    def __init__(self, payload: list[dict], balances: dict[str, Decimal] | None = None):
-        self.payload = payload
-        self.balances = balances or {}
-
-    async def get_feed(self, access_url: str, since=None) -> SimpleFINFeed:
-        return SimpleFINFeed(transactions=self.payload, balances=dict(self.balances))
-
-    async def get_accounts(self, access_url: str) -> list[dict]:
-        return []
 
 
 def _ts(d: date) -> int:
@@ -102,7 +90,7 @@ def _service(
         txn_service=services.transactions,
         matching_service=services.matching,
     )
-    svc.client = FakeClient(payload, balances)
+    svc.client = FakeBridge(payload, balances)
     return svc
 
 
@@ -159,7 +147,7 @@ async def test_pending_to_posted_updates_amount_date_cleared(db_session):
     assert rows[0].cleared == "pending"
     assert await services.account_repo.get_balance(account.id) == Decimal("0")
 
-    svc.client = FakeClient([bank_txn("t-9", "-23.50", post_day, posted=True)])
+    svc.client = FakeBridge([bank_txn("t-9", "-23.50", post_day, posted=True)])
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
@@ -462,7 +450,7 @@ async def test_stale_pending_swept_when_absent_from_feed(db_session):
 
     # Next sync: the auth vanished; a differently-identified posted txn with a
     # different amount appears (classic id-change-at-posting).
-    svc.client = FakeClient([bank_txn("t-new", "-17.00", date.today(), posted=True)])
+    svc.client = FakeBridge([bank_txn("t-new", "-17.00", date.today(), posted=True)])
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
@@ -844,7 +832,7 @@ async def test_identity_path_used_to_skip_an_uncleared_row_forever(db_session):
     svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
     post_day = day + timedelta(days=1)
 
-    svc.client = FakeClient([bank_txn("t-hold", "-50.00", post_day, posted=True)])
+    svc.client = FakeBridge([bank_txn("t-hold", "-50.00", post_day, posted=True)])
     with PATCH_DECRYPT:
         second = await svc.sync(conn.id, budget.id)
 
@@ -872,7 +860,7 @@ async def test_identity_path_used_to_leave_split_children_pending(db_session):
         [SplitSpec(amount=Decimal("-20.00")), SplitSpec(amount=Decimal("-10.00"))],
     )
 
-    svc.client = FakeClient([bank_txn("t-p", "-30.00", day, posted=True)])
+    svc.client = FakeBridge([bank_txn("t-p", "-30.00", day, posted=True)])
     with PATCH_DECRYPT:
         await svc.sync(conn.id, budget.id)
 
@@ -914,7 +902,7 @@ async def test_reidentified_posting_upgrades_the_provisionally_linked_manual_row
     svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
     post_day = day + timedelta(days=1)
 
-    svc.client = FakeClient([bank_txn("t-posted", "-50.00", post_day, posted=True)])
+    svc.client = FakeBridge([bank_txn("t-posted", "-50.00", post_day, posted=True)])
     with PATCH_DECRYPT:
         second = await svc.sync(conn.id, budget.id)
 
@@ -942,7 +930,7 @@ async def test_reidentified_posting_keeps_the_users_category_on_a_bank_pending_r
         budget.id, pending.id, TransactionUpdate(category_id=cat.id, memo="lunch", approved=True)
     )
 
-    svc.client = FakeClient([bank_txn("t-q", "-30.00", day, posted=True)])
+    svc.client = FakeBridge([bank_txn("t-q", "-30.00", day, posted=True)])
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
@@ -994,7 +982,7 @@ async def test_pending_feed_row_never_claims_a_provisionally_linked_row(db_sessi
     services, user, budget, account, conn = await _sync_setup(db_session)
     svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
 
-    svc.client = FakeClient(
+    svc.client = FakeBridge(
         [
             bank_txn("t-hold", "-50.00", day, posted=False),
             bank_txn("t-hold2", "-50.00", day, posted=False),
@@ -1021,7 +1009,7 @@ async def test_manual_row_amount_change_at_posting_queues_review_not_silent_upda
     svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
     post_day = day + timedelta(days=1)
 
-    svc.client = FakeClient([bank_txn("t-hold", "-60.00", post_day, posted=True)])
+    svc.client = FakeBridge([bank_txn("t-hold", "-60.00", post_day, posted=True)])
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
@@ -1046,7 +1034,7 @@ async def test_bank_pending_row_amount_change_at_posting_updates_in_place(db_ses
     svc = _service(services, [bank_txn("t-9", "-20.00", day, posted=False)])
     with PATCH_DECRYPT:
         await svc.sync(conn.id, budget.id)
-    svc.client = FakeClient([bank_txn("t-9", "-23.50", day + timedelta(days=1), posted=True)])
+    svc.client = FakeBridge([bank_txn("t-9", "-23.50", day + timedelta(days=1), posted=True)])
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
@@ -1074,7 +1062,7 @@ async def test_stale_link_with_changed_amount_queues_review(db_session):
     )
     post_day = day + timedelta(days=1)
 
-    svc.client = FakeClient(
+    svc.client = FakeBridge(
         [bank_txn("t-new", "-23.50", post_day, posted=True, payee="STARBUCKS #1234 SEATTLE")]
     )
     with PATCH_DECRYPT:
@@ -1111,7 +1099,7 @@ async def test_stale_link_review_matches_on_the_retained_bank_payee_when_the_use
     await db_session.refresh(manual)
     assert manual.bank_payee == "SQ *BLUE BOTTLE 0042"
 
-    svc.client = FakeClient(
+    svc.client = FakeBridge(
         [bank_txn("t-new", "-23.50", day, posted=True, payee="SQ *BLUE BOTTLE 0042 OAKLAND")]
     )
     with PATCH_DECRYPT:
@@ -1136,7 +1124,7 @@ async def test_same_sync_id_with_changed_amount_never_needs_payee_scoring(db_ses
         bank_payee="X",
         via_feed=False,
     )
-    svc.client = FakeClient(
+    svc.client = FakeBridge(
         [bank_txn("t-hold", "-60.00", day, posted=True, payee="ZZZ ENTIRELY DIFFERENT")]
     )
     with PATCH_DECRYPT:
@@ -1210,7 +1198,7 @@ async def test_sweep_delete_is_undoable(db_session):
     [pending] = await _live_rows(db_session, account.id)
     await services.transactions.update(budget.id, pending.id, TransactionUpdate(memo="filed"))
 
-    svc.client = FakeClient(
+    svc.client = FakeBridge(
         [bank_txn("t-new", "-17.00", date.today(), posted=True, payee="ELSEWHERE")]
     )
     with PATCH_DECRYPT:

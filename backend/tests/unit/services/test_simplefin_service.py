@@ -26,6 +26,7 @@ from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.services.simplefin_service import (
     ACCOUNT_DAILY_LIMIT,
     GLOBAL_DAILY_LIMIT,
+    MAX_RETRY_ATTEMPTS,
     RateLimitError,
     SimpleFINService,
 )
@@ -242,6 +243,13 @@ class TestRateLimitStatus:
         assert status["global_remaining"] == GLOBAL_DAILY_LIMIT
         assert status["can_sync_global"] is True
 
+    def test_status_serves_both_limits(self) -> None:
+        """The client draws "3 / 12" from these. It used to write the 12
+        itself, which is a second copy of a number the service enforces."""
+        status = self._make_svc().get_rate_limit_status(make_connection())
+        assert status["global_limit"] == GLOBAL_DAILY_LIMIT
+        assert status["account_limit"] == ACCOUNT_DAILY_LIMIT
+
 
 # ─── Lookback Calculation ─────────────────────────────────────────────────────
 
@@ -376,7 +384,7 @@ class TestSyncFlow:
             last_request_date=today_utc(),
         )
         svc.repo.get = AsyncMock(return_value=conn)
-        result = await svc.sync(conn.id, uuid.uuid4(), sync_type="global")
+        result = await svc.sync(conn.id, uuid.uuid4())
         assert result["error"] is not None
         assert "limit" in result["error"].lower()
 
@@ -583,6 +591,66 @@ class TestSyncFlow:
             None,
         )
         assert error_call is not None
+
+    def _counted(self, svc: SimpleFINService) -> tuple[int, int]:
+        """(global, account) as the run last wrote them to the connection."""
+        bump = next(
+            c
+            for c in reversed(svc.repo.update.call_args_list)
+            if "global_requests_today" in c.kwargs
+        )
+        return bump.kwargs["global_requests_today"], bump.kwargs["account_requests_today"]
+
+    async def _sync_against(
+        self, get_feed: AsyncMock, account_simplefin_id: str | None = None
+    ) -> tuple[SimpleFINService, dict]:
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        svc.repo.get = AsyncMock(return_value=conn)
+        svc.repo.update = AsyncMock(return_value=conn)
+        svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
+        with (
+            patch.object(svc.client, "get_feed", get_feed),
+            patch("igab.services.simplefin_service.asyncio.sleep", AsyncMock()),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
+        ):
+            result = await svc.sync(
+                conn.id, uuid.uuid4(), account_simplefin_id=account_simplefin_id
+            )
+        return svc, result
+
+    @pytest.mark.asyncio
+    async def test_every_retry_counts_against_the_quota(self) -> None:
+        """Two failures then an answer is three requests the bridge saw."""
+        feed = SimpleFINFeed([], account_names={"sf-acct-1": "Checking"})
+        get_feed = AsyncMock(side_effect=[Exception("503"), Exception("503"), feed])
+        svc, result = await self._sync_against(get_feed)
+        assert result.get("error") is None, result
+        assert get_feed.await_count == 3
+        assert self._counted(svc) == (3, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_fetch_that_fails_outright_still_counts(self) -> None:
+        """The run that gave up used to count nothing, so a bridge that was
+        down all day left the quota looking untouched."""
+        get_feed = AsyncMock(side_effect=Exception("Connection refused"))
+        svc, result = await self._sync_against(get_feed)
+        assert result["error"] == "Connection refused"
+        assert get_feed.await_count == MAX_RETRY_ATTEMPTS
+        assert self._counted(svc) == (MAX_RETRY_ATTEMPTS, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_failed_account_sync_counts_on_the_account_bucket(self) -> None:
+        get_feed = AsyncMock(side_effect=Exception("Connection refused"))
+        svc, result = await self._sync_against(get_feed, account_simplefin_id="sf-acct-1")
+        assert result["error"] == "Connection refused"
+        assert get_feed.await_args is not None
+        assert get_feed.await_args.kwargs["account_ids"] == ["sf-acct-1"]
+        assert self._counted(svc) == (0, MAX_RETRY_ATTEMPTS)
 
     @pytest.mark.asyncio
     async def test_sync_uses_payee_field_over_description(self) -> None:

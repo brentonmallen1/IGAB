@@ -145,7 +145,7 @@ async def process_auto_simplefin_sync() -> None:
                 # imports for the hour, and a failure must say whose it was.
                 for budget in budgets:
                     try:
-                        result = await svc.sync(conn.id, budget.id, sync_type="global")
+                        result = await svc.sync(conn.id, budget.id)
                         await session.commit()
                     except Exception:
                         await session.rollback()
