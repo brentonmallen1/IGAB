@@ -184,6 +184,9 @@ interface UIState {
   transactionSortColumn: TransactionSortColumn
   transactionSortDirection: SortDirection
   transactionSearchQuery: string
+  /** The register draws each split's lines under it. Off by default: most
+   *  registers want one row per bank line. A standing choice, per device. */
+  showSplitLines: boolean
 
   toggleGroupExpanded: (groupId: string) => void
   /** Both scoped to the ids on screen, symmetrically: collapse-all used to
@@ -198,6 +201,7 @@ interface UIState {
   setSidebarWidth: (px: number) => void
   toggleSidebarGroup: (groupId: string) => void
   setBudgetRowMode: (mode: BudgetRowMode) => void
+  setShowSplitLines: (show: boolean) => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
   selectOnlyCategory: (id: string) => void
   selectGroupCategories: (ids: string[]) => void
@@ -296,6 +300,7 @@ export const useUIStore = create<UIState>()(
       chatTabs: [FIRST_CHAT_TAB],
       activeChatTab: FIRST_CHAT_TAB.key,
       budgetRowMode: 'expanded',
+      showSplitLines: false,
       selectedCategoryIds: new Set(),
       categoryInspectorOpen: true,
       inspectorUserClosed: false,
@@ -375,6 +380,7 @@ export const useUIStore = create<UIState>()(
       openMobileInspector: () => set({ mobileInspectorOpen: true }),
       closeMobileInspector: () => set({ mobileInspectorOpen: false }),
       setBudgetRowMode: (mode) => set({ budgetRowMode: mode }),
+      setShowSplitLines: (show) => set({ showSplitLines: show }),
 
       toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
         const { selectedCategoryIds, lastSelectedCategoryId } = get()
@@ -572,6 +578,8 @@ export const useUIStore = create<UIState>()(
         quickFilterOrder: s.quickFilterOrder,
         // Row density is a standing choice, like a filter.
         budgetRowMode: s.budgetRowMode,
+        // So is drawing split lines in the register.
+        showSplitLines: s.showSplitLines,
         // A width someone dragged to is a deliberate choice, like a filter.
         sidebarWidth: s.sidebarWidth,
         // The panel being open, and how wide, are standing choices like the
@@ -613,6 +621,9 @@ export const useUIStore = create<UIState>()(
           ...saved,
           quickFilterOrder: mergeQuickFilterOrder(saved.quickFilterOrder),
           budgetRowMode: normalizeBudgetRowMode(saved.budgetRowMode),
+          // Only a real `true` turns it on: anything else stored there (a
+          // hand-edited value, a future shape) reads as the default, off.
+          showSplitLines: saved.showSplitLines === true,
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
           collapsedGroups: new Set(saved.collapsedGroups ?? []),
           // `?? current.collapsedSections`, not `?? []`: an empty array is a

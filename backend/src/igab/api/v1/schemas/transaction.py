@@ -33,6 +33,21 @@ class ReplaceSplitsRequest(ApiModel):
     splits: list[SplitCreate]
 
 
+#: The most parents one split-lines request may name — the register's own page
+#: cap (`limit` on the budget listing), since the client asks for the split
+#: parents on the page it has loaded.
+MAX_SPLIT_LINE_PARENTS = 5000
+
+
+class SplitLinesRequest(ApiModel):
+    """The split parents whose lines the register wants drawn.
+
+    A body rather than a query string: a page of split ids outgrows the 8 KB
+    request line nginx and uvicorn accept long before it reaches the cap."""
+
+    parent_ids: list[uuid.UUID] = Field(max_length=MAX_SPLIT_LINE_PARENTS)
+
+
 class TransactionCreate(ApiModel):
     account_id: uuid.UUID
     date: datetime.date

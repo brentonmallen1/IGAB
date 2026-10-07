@@ -13,6 +13,8 @@ const base = {
   searchQuery: '',
   onSearchChange: vi.fn(),
   onAdd: vi.fn(),
+  showSplitLines: false,
+  onShowSplitLinesChange: vi.fn(),
 }
 
 describe('RegisterToolbar', () => {
@@ -41,5 +43,31 @@ describe('RegisterToolbar', () => {
     expect(screen.queryByRole('button', { name: /payment/i })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Add Transaction' }))
     expect(onAdd).toHaveBeenCalledOnce()
+  })
+
+  it('toggles split lines: a pressed state, a name that stays put, a tooltip saying what a click does', () => {
+    const onShowSplitLinesChange = vi.fn()
+    const { rerender } = render(
+      <RegisterToolbar {...base} pay={null} onShowSplitLinesChange={onShowSplitLinesChange} />
+    )
+    const toggle = screen.getByRole('button', { name: 'Show split lines' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    expect(toggle).toHaveAttribute('title', 'Show split lines')
+    fireEvent.click(toggle)
+    expect(onShowSplitLinesChange).toHaveBeenLastCalledWith(true)
+
+    rerender(
+      <RegisterToolbar
+        {...base}
+        pay={null}
+        showSplitLines
+        onShowSplitLinesChange={onShowSplitLinesChange}
+      />
+    )
+    const pressed = screen.getByRole('button', { name: 'Show split lines' })
+    expect(pressed).toHaveAttribute('aria-pressed', 'true')
+    expect(pressed).toHaveAttribute('title', 'Hide split lines')
+    fireEvent.click(pressed)
+    expect(onShowSplitLinesChange).toHaveBeenLastCalledWith(false)
   })
 })

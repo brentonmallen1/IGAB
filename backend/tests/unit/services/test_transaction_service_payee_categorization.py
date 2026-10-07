@@ -105,7 +105,7 @@ def make_service(payee: MockPayee | None) -> TransactionService:
 
     session = AsyncMock()
     session.get = AsyncMock(return_value=payee)
-    # require_in_budget runs session.execute(...).scalar_one_or_none(); return a
+    # require_in_budget reads session.execute(...).scalars().all(); return a
     # truthy row so body-supplied ids validate as belonging to the budget.
     _stub = writable_session()
     session.execute = _stub.execute

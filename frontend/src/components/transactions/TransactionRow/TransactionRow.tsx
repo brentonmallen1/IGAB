@@ -50,6 +50,7 @@ import { AccountCell, accountCellLock } from './AccountCell'
 import { payeeOptions } from './rowOptions'
 import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import { mayBecomeTransfer, transferOptionAccountId, transferOptions } from '../transferConversion'
+import { categoryCellAction, categoryCellLabel } from '../categoryCell'
 import type { Transaction, Category, CategoryGroup, Payee, Account } from '../../../types'
 import './TransactionRow.css'
 import { confirmAsync } from '../../../stores/confirmStore'
@@ -233,11 +234,7 @@ export const TransactionRow = memo(function TransactionRow({
 
   const payeeName = transactionDisplayPayee(txn, payeeMap, accountMap)
 
-  const categoryName = txn.is_split
-    ? 'Split Transaction'
-    : txn.category_id
-      ? (categoryMap.get(txn.category_id) ?? '—')
-      : null
+  const categoryLabel = categoryCellLabel(txn, categoryMap, accountOnBudget)
 
   const isEditing = (field: string) =>
     editingField?.transactionId === txn.id && editingField.field === field
@@ -655,15 +652,12 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--category txn-text-clip"
         onClick={() => {
-          if (isMobile || !accountOnBudget) return
-          // A reconciled split's lines are still viewable and editable —
-          // through the editor, which locks the money and nothing else.
-          if (txn.is_split) {
-            if (isReconciled) onEdit(txn)
-            else onStartSplit(txn)
-            return
-          }
-          if (!isReconciled) startEditing(txn.id, 'category')
+          // The rule is categoryCell.ts's; the split lines drawn under this
+          // row open the same way.
+          const action = categoryCellAction(txn, { isMobile, accountOnBudget })
+          if (action === 'edit') onEdit(txn)
+          else if (action === 'split') onStartSplit(txn)
+          else if (action === 'category') startEditing(txn.id, 'category')
         }}
       >
         {isEditing('category') ? (
@@ -679,27 +673,27 @@ export const TransactionRow = memo(function TransactionRow({
             onBlurClose={stopEditing}
             onTabOut={(d) => advance('category', d)}
           />
-        ) : txn.is_split ? (
+        ) : categoryLabel.kind === 'split' ? (
           <Tooltip content="Split — click to view and edit the lines">
             <span className="txn-cell-text txn-split-label">
               <ChevronRight size={11} className="txn-split-label__chevron" aria-hidden />
-              {categoryName}
+              Split Transaction
             </span>
           </Tooltip>
-        ) : categoryName !== null ? (
-          <span className="txn-cell-text">{categoryName}</span>
-        ) : txn.needs_category ? (
+        ) : categoryLabel.kind === 'category' ? (
+          <span className="txn-cell-text">{categoryLabel.name}</span>
+        ) : categoryLabel.kind === 'needs-category' ? (
           // `prior_category_name` is provenance, never a category: this row
           // IS uncategorized and the chip says so. The hint only answers
           // "why did this suddenly need filing?" for rows a category delete
           // emptied — without it they look like a gap the user forgot about.
           <span className="txn-needs-category">
             Needs Category
-            {txn.prior_category_name && (
-              <span className="txn-needs-category__was">was {txn.prior_category_name}</span>
+            {categoryLabel.was && (
+              <span className="txn-needs-category__was">was {categoryLabel.was}</span>
             )}
           </span>
-        ) : accountOnBudget ? (
+        ) : categoryLabel.kind === 'transfer' ? (
           // No category and none needed, on a budget account: the only way
           // that happens is a transfer between two on-budget accounts —
           // internal money movement, not a gap. (The categorized side of a

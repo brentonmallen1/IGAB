@@ -116,3 +116,40 @@ describe('register section folds', () => {
     expect(fresh.collapsedSections.has('pending')).toBe(true)
   })
 })
+
+describe('register split lines', () => {
+  const partialize = () => useUIStore.persist.getOptions().partialize!
+  const merge = () => useUIStore.persist.getOptions().merge!
+
+  it('start hidden — one row per bank line is the default register', () => {
+    expect(useUIStore.getState().showSplitLines).toBe(false)
+    const fresh = merge()({}, useUIStore.getState()) as { showSplitLines: boolean }
+    expect(fresh.showSplitLines).toBe(false)
+  })
+
+  it('survive a reload once switched on', () => {
+    const kept = partialize()({
+      ...useUIStore.getState(),
+      showSplitLines: true,
+    } as never) as Record<string, unknown>
+    expect(kept.showSplitLines).toBe(true)
+    const restored = merge()(kept, useUIStore.getState()) as { showSplitLines: boolean }
+    expect(restored.showSplitLines).toBe(true)
+  })
+
+  it('read anything but a stored true as off', () => {
+    for (const junk of ['true', 1, null, {}]) {
+      const state = merge()({ showSplitLines: junk }, useUIStore.getState()) as {
+        showSplitLines: boolean
+      }
+      expect(state.showSplitLines).toBe(false)
+    }
+  })
+
+  it('take a value rather than toggling', () => {
+    useUIStore.getState().setShowSplitLines(true)
+    expect(useUIStore.getState().showSplitLines).toBe(true)
+    useUIStore.getState().setShowSplitLines(false)
+    expect(useUIStore.getState().showSplitLines).toBe(false)
+  })
+})

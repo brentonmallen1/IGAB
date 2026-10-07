@@ -1,4 +1,11 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import type {
@@ -344,6 +351,44 @@ export function useTransactionSplits(transactionId: string | null, enabled = tru
       return data
     },
     enabled: !!transactionId && enabled,
+    staleTime: 15_000,
+  })
+}
+
+/** Many splits' lines at once, keyed by parent id — the register's "show
+ *  split lines" view, which draws every split on the loaded page. The batch
+ *  form of `useTransactionSplits`, served by the same loader, so the lines the
+ *  register draws are the lines the split editor opens with.
+ *
+ *  **As fresh as the rows they hang under.** `rowsUpdatedAt` is the register
+ *  query's `dataUpdatedAt`, and it is part of the key: every path that
+ *  refreshes the register — a split save, an edit, a delete, undo, a sync, a
+ *  category merge, each with its own invalidation list — refreshes these
+ *  lines too, without a line added to any of those lists. Keyed under
+ *  `transactionSplits` beside the one-split queries, so a sweep of that root
+ *  reaches both. Ids are sorted so the key does not move with the sort order.
+ *
+ *  Sent as a POST because a page of ids outgrows a request line. */
+export function useSplitLinesFor(
+  budgetId: string,
+  parentIds: readonly string[],
+  enabled: boolean,
+  rowsUpdatedAt: number
+) {
+  const ids = useMemo(() => [...parentIds].sort(), [parentIds])
+  return useQuery({
+    queryKey: [ROOT.transactionSplits, 'lines-for', budgetId, ids, rowsUpdatedAt],
+    queryFn: async () => {
+      const { data } = await apiClient.post<Record<string, Transaction[]>>(
+        `/${budgetId}/transactions/split-lines`,
+        { parent_ids: ids }
+      )
+      return data
+    },
+    enabled: enabled && !!budgetId && ids.length > 0,
+    // A new page, or a refreshed register, keeps the lines already drawn on
+    // screen until the next answer lands, rather than collapsing every split.
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
   })
 }
