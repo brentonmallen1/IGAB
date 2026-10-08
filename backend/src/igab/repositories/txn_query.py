@@ -28,7 +28,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -46,7 +46,12 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
 )
-from igab.domain.spending import UNCATEGORIZED
+from igab.domain.spending import (
+    NO_CATEGORY_LABEL,
+    OFF_BUDGET_LABEL,
+    TRANSFER_LABEL,
+    UNCATEGORIZED,
+)
 from igab.repositories.plan_rows import PLAN_SPENT_ROW
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -54,9 +59,11 @@ from igab.repositories.txn_filters import (
     NEEDS_CATEGORY,
     NOT_DELETED,
     NOT_RECONCILED,
+    ON_BUDGET_ACCOUNT,
     PARENT_ROW,
     PAYEE_OF_RECORD,
     POSTED,
+    TRANSFER_LEG,
     UNPAIRED_TRANSFER_LEG,
     in_category_scope,
     join_split_parent,
@@ -81,6 +88,12 @@ class TransactionFilters:
     account_ids: list[uuid.UUID] | None = None
     posted_only: bool = False
     cash_flow_only: bool = False
+    #: Only rows on on-budget accounts (`ON_BUDGET_ACCOUNT`) — the budget's
+    #: own money. Off by default so the register, which lists a tracking
+    #: account's rows when you open it, is untouched; the assistant's tools
+    #: turn it on unless the question names an account, as `account_scope`
+    #: lets a report's explicit selection override the same default.
+    on_budget_only: bool = False
     activity_classes: list[str] | None = None
     necessity_tier: NecessityTier | None = None
     #: Only discretionary spending (`activity_class.DISCRETIONARY_ROW`), the
@@ -129,6 +142,8 @@ def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | 
         where.append(POSTED)
     if f.cash_flow_only:
         where.append(CASH_FLOW_ROW)
+    if f.on_budget_only:
+        where.append(ON_BUDGET_ACCOUNT)
     if f.activity_classes:
         # So a drill-down lists exactly what the chart that opened it
         # counted. Without this an $800 "Expenses" bar opened a panel
@@ -322,6 +337,40 @@ class Dimension:
 PAYEE_OF_ROW = aliased(Payee, name="payee_of_record")
 
 
+def _named_or_why(name: Any) -> Any:
+    """A category or group name, or — for a row with none — the reason it has
+    none.
+
+    `UNCATEGORIZED` only for a row that needs a category, by the app's one
+    rule (`NEEDS_CATEGORY`), so the rollup's Uncategorized line is the rows
+    the register's Uncategorized filter lists. Coalescing every NULL to it
+    filed a tracking account's market adjustments and a mortgage payment's
+    loan leg there, and ranked "Uncategorized" first at three times the
+    month's real spending.
+
+    Off-budget before Transfer: a row on a tracking account is outside the
+    budget whatever else it is, and the loan leg of a mortgage payment is the
+    tracked side of a transfer the budget sees only from checking.
+
+    These are correlated subqueries, which Postgres will not match between a
+    SELECT list and a GROUP BY — so `grouped_totals` computes the label per
+    row in an inner select and groups the outer one by its column.
+    """
+    return case(
+        (name.is_not(None), name),
+        (NEEDS_CATEGORY, UNCATEGORIZED),
+        (not_(ON_BUDGET_ACCOUNT), OFF_BUDGET_LABEL),
+        (TRANSFER_LEG, TRANSFER_LABEL),
+        else_=NO_CATEGORY_LABEL,
+    )
+
+
+_NO_CATEGORY_DESCRIPTION = (
+    f"A row with none reads {UNCATEGORIZED} only when it needs one; otherwise "
+    f"{TRANSFER_LABEL}, {OFF_BUDGET_LABEL} or {NO_CATEGORY_LABEL}."
+)
+
+
 #: Every legal `group_by`. A model picks a KEY here; the expression is one
 #: this module wrote. Nothing from the caller reaches the statement as SQL.
 GROUPABLE: dict[str, Dimension] = {
@@ -334,14 +383,14 @@ GROUPABLE: dict[str, Dimension] = {
         description="Monday … Sunday.",
     ),
     "category": Dimension(
-        func.coalesce(Category.name, UNCATEGORIZED),
+        _named_or_why(Category.name),
         needs=("category",),
-        description="Envelope name.",
+        description=f"Envelope name. {_NO_CATEGORY_DESCRIPTION}",
     ),
     "category_group": Dimension(
-        func.coalesce(CategoryGroup.name, UNCATEGORIZED),
+        _named_or_why(CategoryGroup.name),
         needs=("category", "category_group"),
-        description="The group an envelope sits in.",
+        description=f"The group an envelope sits in. {_NO_CATEGORY_DESCRIPTION}",
     ),
     # The payee of record, as the payee filter and the Pareto and Payee
     # Analysis bars read it. The rollup is leaf-scoped and a split's legs
@@ -364,19 +413,70 @@ GROUPABLE: dict[str, Dimension] = {
     ),
 }
 
-#: Every legal `aggregate`, over the row amount.
+#: Every legal `aggregate`, over a column of row amounts.
 AGGREGATES: dict[str, Any] = {
-    "sum": lambda: func.coalesce(func.sum(Transaction.amount), 0),
-    "count": lambda: func.count(),
-    "avg": lambda: func.coalesce(func.avg(Transaction.amount), 0),
-    "min": lambda: func.coalesce(func.min(Transaction.amount), 0),
-    "max": lambda: func.coalesce(func.max(Transaction.amount), 0),
+    "sum": lambda amount: func.coalesce(func.sum(amount), 0),
+    "count": lambda amount: func.count(),
+    "avg": lambda amount: func.coalesce(func.avg(amount), 0),
+    "min": lambda amount: func.coalesce(func.min(amount), 0),
+    "max": lambda amount: func.coalesce(func.max(amount), 0),
 }
+
+#: The aggregates whose group values add up to something: a sum of sums is
+#: the total, a sum of counts is the row count. A sum of averages, minimums
+#: or maximums means nothing, so those report only how many groups were cut.
+ADDITIVE_AGGREGATES = frozenset({"sum", "count"})
+
+#: How many groups a rollup returns when the caller does not say. One home:
+#: the tool handler, the repository and the registry's text all read it.
+#: It was written as 25 in three of those places and 50 in this one.
+DEFAULT_GROUPS = 50
 
 #: No query may return more groups than this, whatever it asks for. A
 #: thousand payees is not an answer anyone reads, and it is a lot of tokens
-#: to send an assistant that will summarize the top few anyway.
-MAX_GROUPS = 200
+#: to send an assistant. It was 100 in the tool handler and 200 here, so the
+#: registry promised a ceiling this module did not enforce.
+MAX_GROUPS = 100
+
+
+def group_limit(value: Any) -> int:
+    """How many groups to return: `DEFAULT_GROUPS` when unsaid or unreadable,
+    clamped to 1..`MAX_GROUPS`.
+
+    The one clamp. The handler clamped to at least one; this module did not,
+    so a limit of 0 returned no groups and a negative one was a Postgres
+    error rather than an answer.
+    """
+    if value is None or isinstance(value, bool):
+        return DEFAULT_GROUPS
+    try:
+        wanted = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_GROUPS
+    return max(1, min(MAX_GROUPS, wanted))
+
+
+@dataclass(frozen=True)
+class GroupedTotals:
+    """A rollup's groups, and what the cut left out.
+
+    Every figure but `groups` is computed over ALL matching groups, not the
+    page — the caller needs them to say "50 of 63; the other 13 total
+    -1,234.56" rather than imply the page was everything.
+    """
+
+    groups: list[dict]
+    #: How many groups matched before the limit.
+    total_groups: int
+    #: The value across every group: the whole sum, or the whole row count.
+    #: None for an aggregate whose groups do not add up (`ADDITIVE_AGGREGATES`).
+    total: Decimal | int | None = None
+    #: The combined value of the groups below the cut, on the same terms.
+    omitted_value: Decimal | int | None = None
+
+    @property
+    def omitted_groups(self) -> int:
+        return self.total_groups - len(self.groups)
 
 
 def _apply_dimension_joins(q: Select, needs: tuple[str, ...]) -> Select:
@@ -393,27 +493,7 @@ def _apply_dimension_joins(q: Select, needs: tuple[str, ...]) -> Select:
     return q
 
 
-async def grouped_totals(
-    session: AsyncSession,
-    budget_id: uuid.UUID,
-    *,
-    group_by: str,
-    aggregate: str = "sum",
-    filters: TransactionFilters | None = None,
-    necessity_where: list | None = None,
-    order: str = "value",
-    limit: int = 50,
-) -> tuple[list[dict], int]:
-    """Roll the matching rows up by one dimension.
-
-    Returns the groups and how many there were in total — the caller needs
-    the second number to say "the top 20 of 340" rather than imply 20 was
-    all of them.
-
-    The aggregate runs as a real GROUP BY, not over a fetched page: a sum of
-    the first 200 rows is not the sum, and an assistant handed one would
-    state it as though it were.
-    """
+def _vocabulary(group_by: str, aggregate: str) -> tuple[Dimension, Any]:
     dimension = GROUPABLE.get(group_by)
     if dimension is None:
         raise UnknownDimension(
@@ -425,16 +505,25 @@ async def grouped_totals(
         raise UnknownDimension(
             f"{aggregate!r} is not an aggregate. Choose one of: {', '.join(sorted(AGGREGATES))}."
         )
+    return dimension, make_aggregate
 
-    f = filters or TransactionFilters()
-    # Leaf scope: split legs carry the categories, so a grouped total on
-    # parent rows would miss every split — the same bug `spending_insights`
-    # shipped with.
+
+def _labelled_rows(
+    budget_id: uuid.UUID,
+    dimension: Dimension,
+    f: TransactionFilters,
+    necessity_where: list | None,
+) -> Any:
+    """One row per matching transaction: its group label and its amount.
+
+    Leaf scope: split legs carry the categories, so a grouped total on parent
+    rows would miss every split — the same bug `spending_insights` shipped
+    with.
+    """
     parts = build_where(budget_id, f, scope="leaf", necessity_where=necessity_where)
-
-    label = dimension.expression.label("group")
-    value = make_aggregate().label("value")
-    q: Select = select(label, value, func.count().label("rows")).select_from(Transaction)
+    q: Select = select(
+        dimension.expression.label("label"), Transaction.amount.label("amount")
+    ).select_from(Transaction)
     if parts.class_joins:
         q = apply_class_joins(q)
     needs = dimension.needs
@@ -443,24 +532,83 @@ async def grouped_totals(
     if parts.payee_join and "payee" not in needs:
         needs = needs + ("payee",)
     q = _apply_dimension_joins(q, needs)
-    q = q.where(*parts.where).group_by(label)
+    return q.where(*parts.where).subquery("labelled")
 
+
+async def grouped_totals(
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    *,
+    group_by: str,
+    aggregate: str = "sum",
+    filters: TransactionFilters | None = None,
+    necessity_where: list | None = None,
+    order: str = "value",
+    limit: int | None = None,
+) -> GroupedTotals:
+    """Roll the matching rows up by one dimension.
+
+    The aggregate runs as a real GROUP BY, not over a fetched page: a sum of
+    the first 200 rows is not the sum, and an assistant handed one would
+    state it as though it were.
+
+    `order="value"` ranks by SIZE — the absolute value, largest first. Ranking
+    by the signed value put income and positive adjustments first and the
+    biggest outflows (stored negative) last, so a limit cut the very spends a
+    "where did my money go" question was asking about. Every order breaks
+    ties by the group's label: an unordered result is a CI flake here.
+    """
+    dimension, make_aggregate = _vocabulary(group_by, aggregate)
+    labelled = _labelled_rows(
+        budget_id, dimension, filters or TransactionFilters(), necessity_where
+    )
+    grouped = (
+        select(
+            labelled.c.label.label("group"),
+            make_aggregate(labelled.c.amount).label("value"),
+            func.count().label("rows"),
+        )
+        .group_by(labelled.c.label)
+        .subquery("grouped")
+    )
+
+    summary = (
+        await session.execute(select(func.count(), func.sum(grouped.c.value)).select_from(grouped))
+    ).one()
+    total_groups = int(summary[0] or 0)
+
+    tiebreak = grouped.c.group.asc()
     ordering = {
-        "value": value.desc(),
-        "group": label.asc(),
-        "rows": func.count().desc(),
-    }.get(order, value.desc())
+        "group": (tiebreak,),
+        "rows": (grouped.c.rows.desc(), tiebreak),
+    }.get(order, (func.abs(grouped.c.value).desc(), tiebreak))
+    rows = (
+        await session.execute(
+            select(grouped.c.group, grouped.c.value, grouped.c.rows)
+            .order_by(*ordering)
+            .limit(group_limit(limit))
+        )
+    ).all()
 
-    counted = await session.execute(select(func.count()).select_from(q.order_by(None).subquery()))
-    total_groups = int(counted.scalar() or 0)
+    def as_value(raw: Any) -> Decimal | int:
+        return int(raw or 0) if aggregate == "count" else Decimal(raw or 0)
 
-    rows = (await session.execute(q.order_by(ordering).limit(min(limit, MAX_GROUPS)))).all()
+    values = [as_value(row.value) for row in rows]
     groups = [
         {
             "group": (row.group or "").strip() if isinstance(row.group, str) else row.group,
-            "value": Decimal(row.value) if aggregate != "count" else int(row.value),
+            "value": value,
             "rows": int(row.rows),
         }
-        for row in rows
+        for row, value in zip(rows, values, strict=True)
     ]
-    return groups, total_groups
+    if aggregate not in ADDITIVE_AGGREGATES:
+        return GroupedTotals(groups=groups, total_groups=total_groups)
+    total = as_value(summary[1])
+    shown = sum(values, as_value(0))
+    return GroupedTotals(
+        groups=groups,
+        total_groups=total_groups,
+        total=total,
+        omitted_value=total - shown,
+    )
