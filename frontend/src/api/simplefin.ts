@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
+import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import type {
   SimpleFINConfig,
   SimpleFINConnection,
@@ -450,17 +451,30 @@ export function useUpdateAccountSimpleFINSettings(accountId: string) {
   })
 }
 
+/**
+ * The bank's accounts, for the link picker. Every fetch is a request to the
+ * bridge on the day's all-accounts quota, so a failure is not retried: a 429
+ * means the quota is spent and would only be refused again, and any other
+ * failure still spent a request. The error carries the server's message.
+ */
 export function useSimpleFINRemoteAccounts(connectionId: string | null) {
+  const qc = useQueryClient()
   return useQuery({
     queryKey: [ROOT.simplefinRemoteAccounts, connectionId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ id: string; name: string }[]>(
-        `/simplefin/connections/${connectionId}/accounts`
-      )
-      return data
+      try {
+        const { data } = await apiClient.get<{ id: string; name: string }[]>(
+          `/simplefin/connections/${connectionId}/accounts`
+        )
+        return data
+      } finally {
+        // Counted either way, so the quota bars move with it.
+        qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
+      }
     },
     enabled: !!connectionId,
     staleTime: 60_000,
+    retry: false,
   })
 }
 
@@ -492,7 +506,7 @@ export function usePendingMatches(budgetId: string | null) {
   })
 }
 
-export function useAcceptMatch() {
+export function useAcceptMatch(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/accept`),
@@ -501,12 +515,10 @@ export function useAcceptMatch() {
       // Every account's list: the review dialog passes no accountId, and
       // [key, undefined] matches no cached [key, id] — the banner went stale.
       qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
-      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
-      qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
-      // Accepting merges away the duplicate — cleared/working balances change
-      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
-      qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCount] })
-      qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCountAccount] })
+      // Accepting merges two rows into one: a transaction change like any
+      // other. Its hand-kept copy of that list had missed the reconcile
+      // status, whose in_review_count is exactly what a merge settles.
+      void invalidateAfterTransactionChange(qc, { budgetId })
     },
   })
 }
@@ -520,6 +532,9 @@ export function useRejectMatch() {
       // Every account's list: the review dialog passes no accountId, and
       // [key, undefined] matches no cached [key, id] — the banner went stale.
       qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
+      // Rejecting moves no money but closes the pair, and an open pair is
+      // what holds a reconciliation back (`in_review_count`).
+      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus] })
     },
   })
 }

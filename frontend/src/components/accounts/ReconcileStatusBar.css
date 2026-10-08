@@ -150,6 +150,18 @@
   cursor: not-allowed;
 }
 
+/* The server's refusal, in the bar's own inverted text: DialogForm's error
+   colour is drawn for a panel background and would not read on the accent.
+   Wraps rather than stretching the bar across the page. */
+.reconcile-bar__error {
+  margin: 0;
+  max-width: 32ch;
+  white-space: normal;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
 @media (max-width: 768px) {
   .reconcile-bar {
     bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-md));

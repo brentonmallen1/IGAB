@@ -67,9 +67,11 @@ def backfill_windows(*, now: datetime, earliest_wanted: datetime) -> list[SyncWi
     exclusive — without that the boundary day's transactions are dropped from
     both the tile that ends there and the one that starts there.
 
-    Each tile costs one request against a daily quota of twelve, so this is
-    an explicit action the user asks for, never something a sync does on its
-    own.
+    Each tile costs one request against IGAB's daily request budget
+    (`integrations/simplefin/limits.py`: twelve all-accounts and twelve
+    per-account, under the bridge's own ask of 24 or fewer a day), so this
+    is an explicit action the user asks for, never something a sync does on
+    its own.
     """
     if earliest_wanted >= now:
         return []

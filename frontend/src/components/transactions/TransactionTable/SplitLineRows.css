@@ -1,0 +1,116 @@
+/* A split's lines under its register row; see SplitLineRows.tsx.
+   Quieter than a row in every way — smaller, muted, no money colours — so the
+   eye reads them as the row's breakdown, not as more transactions. */
+
+.split-lines {
+  border-bottom: 1px solid var(--edge);
+}
+
+.split-line {
+  display: grid;
+  align-items: center;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px var(--register-pad-x);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.split-line__category,
+.split-line__memo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--spacing-xs);
+}
+
+/* The tree edge: a hairline down the category column ties each line to the
+   row above it without a glyph per line. */
+.split-line__category {
+  border-left: 1px solid var(--edge);
+  padding-left: var(--spacing-sm);
+}
+
+.split-line__memo {
+  color: var(--text-muted);
+}
+
+.split-line__amount {
+  text-align: center;
+  padding: 0 var(--spacing-xs);
+}
+
+.split-line--interactive {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .split-line--interactive:hover {
+    background-color: var(--row-hover-bg);
+    color: var(--text-primary);
+  }
+}
+
+/* ── Desktop: the register's own grid ─────────────────────────────────────
+   Every cell placed explicitly, like the scheduled row: the checkbox, status,
+   date and payee columns stay empty, and the money goes under OUTFLOW or
+   INFLOW by its sign, exactly as the row above draws its own. */
+@media (min-width: 769px) {
+  .split-line {
+    grid-template-columns: var(--register-cols);
+  }
+
+  .split-line__category {
+    grid-column: 5;
+  }
+
+  .split-line__memo {
+    grid-column: 6;
+  }
+
+  .split-line__amount--out {
+    grid-column: 7;
+  }
+
+  .split-line__amount--in {
+    grid-column: 8;
+  }
+
+  /* All-accounts: one extra column (account) after the date shifts the rest. */
+  .transaction-table--all-accounts .split-line {
+    grid-template-columns: var(--register-cols-all-accounts);
+  }
+
+  .transaction-table--all-accounts .split-line__category {
+    grid-column: 6;
+  }
+
+  .transaction-table--all-accounts .split-line__memo {
+    grid-column: 7;
+  }
+
+  .transaction-table--all-accounts .split-line__amount--out {
+    grid-column: 8;
+  }
+
+  .transaction-table--all-accounts .split-line__amount--in {
+    grid-column: 9;
+  }
+}
+
+/* ── Phone: an indented list under the card ───────────────────────────────
+   Category and memo share the line, the amount sits right where the card's
+   own amount does. Read-only here: on a phone the row is one tap target. */
+@media (max-width: 768px) {
+  .split-line {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+    column-gap: var(--spacing-sm);
+    padding: 2px var(--spacing-md) 2px calc(var(--spacing-md) + var(--spacing-lg));
+  }
+
+  .split-line__amount {
+    text-align: right;
+  }
+}

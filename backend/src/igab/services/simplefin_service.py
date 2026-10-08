@@ -182,10 +182,24 @@ def _drift_records(drifts: list[tuple[Account, DriftExplanation]]) -> list[dict]
 
 
 class RateLimitError(IGABError):
-    pass
+    """A bucket's daily budget is spent. `resets_at` is when it refills."""
+
+    def __init__(self, message: str, resets_at: str) -> None:
+        super().__init__(message)
+        self.resets_at = resets_at
 
 
 SyncType = Literal["global", "account"]
+
+
+class _FetchFailed(Exception):
+    """Every attempt at one request to the bridge failed. Carries the window
+    that request asked for, so the run's record names the request that
+    failed rather than the one the run began with."""
+
+    def __init__(self, window: SyncWindow, error: Exception) -> None:
+        super().__init__(str(error))
+        self.window = window
 
 
 class SimpleFINService:
@@ -243,7 +257,7 @@ class SimpleFINService:
         skip_reasons: Counter[str] = Counter()
         outcomes: list[dict] = []
         for conn in await self.repo.get_all_for_user(user_id):
-            result = await self.sync(conn.id, budget_id, sync_type="global")
+            result = await self.sync(conn.id, budget_id)
             for key in totals:
                 totals[key] += int(result.get(key) or 0)
             skip_reasons.update(result.get("skip_reasons") or {})
@@ -277,10 +291,21 @@ class SimpleFINService:
         await self.repo.delete(connection_id)
 
     async def get_remote_accounts(self, connection_id: uuid.UUID) -> list[dict]:
+        """Every account the bridge offers this connection, for the link picker.
+
+        An all-accounts request, so it draws on the global bucket like Sync
+        All: refused with `RateLimitError` when the day's budget is spent, and
+        counted before the bridge is asked, so a request that fails still
+        counts. Under the connection's lock like a sync, so the counter this
+        adds to is the one a concurrent run left behind.
+        """
+        await self._lock_connection(connection_id)
         conn = await self.repo.get(connection_id)
         if conn is None:
             return []
+        self._check_rate_limit(conn, "global")
         access_url = decrypt(conn.access_url_encrypted)
+        await self._bump_request_count(connection_id, conn, Counter({"global": 1}))
         return await self.client.get_accounts(access_url)
 
     def get_rate_limit_status(self, conn: SimpleFINConnection) -> dict:
@@ -291,8 +316,10 @@ class SimpleFINService:
         return {
             "global_used": global_used,
             "global_remaining": max(0, GLOBAL_DAILY_LIMIT - global_used),
+            "global_limit": GLOBAL_DAILY_LIMIT,
             "account_used": account_used,
             "account_remaining": max(0, ACCOUNT_DAILY_LIMIT - account_used),
+            "account_limit": ACCOUNT_DAILY_LIMIT,
             "can_sync_global": global_used < GLOBAL_DAILY_LIMIT,
             "can_sync_account": account_used < ACCOUNT_DAILY_LIMIT,
             "resets_at": _next_midnight_utc(),
@@ -301,7 +328,8 @@ class SimpleFINService:
     def _check_rate_limit(
         self, conn: SimpleFINConnection, sync_type: SyncType, pending: int = 0
     ) -> None:
-        """`pending`: requests this run has already made and not yet counted."""
+        """`pending`: requests this run has already made against `sync_type`'s
+        bucket and not yet counted."""
         today = today_utc()
         is_new_day = conn.last_request_date != today
         used = pending
@@ -312,29 +340,29 @@ class SimpleFINService:
         limit = GLOBAL_DAILY_LIMIT if sync_type == "global" else ACCOUNT_DAILY_LIMIT
         if used >= limit:
             raise RateLimitError(
-                f"Daily {sync_type} sync limit of {limit} requests reached. Resets at midnight UTC."
+                f"Daily {sync_type} sync limit of {limit} requests reached. "
+                "Resets at midnight UTC.",
+                resets_at=_next_midnight_utc(),
             )
 
     async def _bump_request_count(
         self,
         connection_id: uuid.UUID,
         conn: SimpleFINConnection,
-        sync_type: SyncType,
-        requests: int = 1,
+        requests: Counter[SyncType],
     ) -> None:
+        """Add what a run asked the bridge to today's counters, per bucket —
+        one run can draw on both (a per-account sync that has to look at the
+        whole feed to find a reissued id)."""
         today = today_utc()
         is_new_day = conn.last_request_date != today
         global_today = 0 if is_new_day else conn.global_requests_today
         account_today = 0 if is_new_day else conn.account_requests_today
-        if sync_type == "global":
-            global_today += requests
-        else:
-            account_today += requests
         await self.repo.update(
             connection_id,
             last_request_date=today,
-            global_requests_today=global_today,
-            account_requests_today=account_today,
+            global_requests_today=global_today + requests["global"],
+            account_requests_today=account_today + requests["account"],
         )
 
     async def _lock_connection(self, connection_id: uuid.UUID) -> None:
@@ -403,26 +431,90 @@ class SimpleFINService:
             first_sync=first_sync,
         )
 
-    async def _fetch_feed(self, access_url: str, since: datetime) -> SimpleFINFeed:
-        """One request to the bridge, retried. Raises the last error."""
+    @staticmethod
+    def _account_filter(sync_type: SyncType, targets: list[Account]) -> list[str] | None:
+        """What a run's request names: the one account an account sync was
+        asked for, or nothing at all. Read from the targets rather than the
+        argument so a refetch after a relink names the id the account has
+        now. A global run never filters — not even to leave out accounts
+        whose sync is off — because a filtered request draws on the other
+        quota, and the link audit needs the whole feed to see a reissued id.
+        """
+        if sync_type == "global":
+            return None
+        return list(
+            dict.fromkeys(a.simplefin_account_id for a in targets if a.simplefin_account_id)
+        )
+
+    async def _fetch_feed(
+        self,
+        access_url: str,
+        window: SyncWindow,
+        bucket: SyncType,
+        requests: Counter[SyncType],
+        account_ids: list[str] | None = None,
+    ) -> SimpleFINFeed:
+        """One request to the bridge, retried; raises `_FetchFailed`.
+
+        Every attempt is added to `requests[bucket]` as it is made: a retry
+        reaches the bridge as surely as the first try, and so does an attempt
+        that fails — the run that gave up after three used to count none.
+        """
         last_error: Exception | None = None
         for attempt in range(MAX_RETRY_ATTEMPTS):
+            requests[bucket] += 1
             try:
-                return await self.client.get_feed(access_url, since=since)
+                return await self.client.get_feed(
+                    access_url, since=window.start, account_ids=account_ids
+                )
             except Exception as exc:
                 last_error = exc
                 if attempt < MAX_RETRY_ATTEMPTS - 1:
                     await asyncio.sleep(RETRY_BASE_DELAY * (2**attempt))
         assert last_error is not None
-        raise last_error
+        raise _FetchFailed(window, last_error) from last_error
+
+    async def _fetch_again(
+        self,
+        conn: SimpleFINConnection,
+        access_url: str,
+        window: SyncWindow,
+        bucket: SyncType,
+        requests: Counter[SyncType],
+        account_ids: list[str] | None,
+        purpose: str,
+    ) -> SimpleFINFeed | None:
+        """A further request inside a run that has already fetched once.
+
+        Only a run's first request is checked before the run begins; this
+        one is checked against what is left of `bucket` once this run's own
+        requests are counted. With no headroom it is not made, and None says
+        so — the run carries on with the feed in hand. A failure raises like
+        the first request's.
+        """
+        try:
+            self._check_rate_limit(conn, bucket, pending=requests[bucket])
+        except RateLimitError as exc:
+            logger.warning("simplefin: %s deferred to the next run: %s", purpose, exc)
+            return None
+        return await self._fetch_feed(access_url, window, bucket, requests, account_ids)
 
     async def sync(
         self,
         connection_id: uuid.UUID,
         budget_id: uuid.UUID,
-        sync_type: SyncType = "global",
         account_simplefin_id: str | None = None,
     ) -> dict:
+        """Sync one connection: every account whose sync is on, or the one
+        account named by `account_simplefin_id`.
+
+        That argument is the whole rule for what is asked and what it costs.
+        One account asked for: the request names it (`account=`) and counts
+        against the per-account quota. Everything: no filter, and the
+        all-accounts quota. Decided here, once, so the request the bridge
+        sees and the counter it is charged to cannot disagree.
+        """
+        sync_type: SyncType = "account" if account_simplefin_id else "global"
         started_at = datetime.now(UTC)
         # One sync per connection at a time, for the length of this
         # transaction. The hourly job and a person pressing Sync can land in
@@ -462,7 +554,6 @@ class SimpleFINService:
         first_sync_ids = {a.id for a in targets if not a.first_sync_complete}
         is_first_sync = bool(first_sync_ids)
         window = self._lookback_window(targets, is_first_sync)
-        since = window.start
 
         try:
             access_url = decrypt(conn.access_url_encrypted)
@@ -472,39 +563,44 @@ class SimpleFINService:
             # "Internal server error" every time the scheduler runs.
             return await self._fail(connection_id, budget_id, sync_type, started_at, str(exc))
 
-        requests_made = 0
+        # What this run asks the bridge, per bucket — counted as it goes, and
+        # added to the connection once, whether the run finishes or not.
+        requests: Counter[SyncType] = Counter()
         try:
-            feed_data = await self._fetch_feed(access_url, since)
-            requests_made += 1
-        except Exception as exc:
-            return await self._fail(
-                connection_id, budget_id, sync_type, started_at, str(exc), window=window
+            feed_data = await self._fetch_feed(
+                access_url, window, sync_type, requests, self._account_filter(sync_type, targets)
             )
 
-        # Everything this run writes — imports, adoptions, relinks, the rows
-        # it removes, the merges it accepts — is one change-log batch, so the
-        # run can be taken back as a unit from the sync log. ⌘Z never reaches
-        # these (they are not the person's own edits); this is their undo.
-        run_batch = self.txn_service.changes.batch()
-        run_batch_id = run_batch.__enter__()
-        try:
-            return await self._sync_locked(
-                connection_id,
-                budget_id,
-                sync_type,
-                started_at,
-                conn,
-                targets,
-                first_sync_ids,
-                is_first_sync,
-                window,
-                access_url,
-                feed_data,
-                requests_made,
-                run_batch_id,
+            # Everything this run writes — imports, adoptions, relinks, the
+            # rows it removes, the merges it accepts — is one change-log
+            # batch, so the run can be taken back as a unit from the sync
+            # log. ⌘Z never reaches these (they are not the person's own
+            # edits); this is their undo.
+            run_batch = self.txn_service.changes.batch()
+            run_batch_id = run_batch.__enter__()
+            try:
+                return await self._sync_locked(
+                    connection_id,
+                    budget_id,
+                    sync_type,
+                    started_at,
+                    conn,
+                    targets,
+                    first_sync_ids,
+                    is_first_sync,
+                    window,
+                    access_url,
+                    feed_data,
+                    requests,
+                    run_batch_id,
+                )
+            finally:
+                run_batch.__exit__(None, None, None)
+        except _FetchFailed as failed:
+            await self._bump_request_count(connection_id, conn, requests)
+            return await self._fail(
+                connection_id, budget_id, sync_type, started_at, str(failed), window=failed.window
             )
-        finally:
-            run_batch.__exit__(None, None, None)
 
     async def _sync_locked(
         self,
@@ -519,7 +615,7 @@ class SimpleFINService:
         window: SyncWindow,
         access_url: str,
         feed_data: SimpleFINFeed,
-        requests_made: int,
+        requests: Counter[SyncType],
         run_batch_id: uuid.UUID | None,
     ) -> dict:
         since = window.start
@@ -528,6 +624,20 @@ class SimpleFINService:
         # explains every skip that follows it, and because a target that
         # matches nothing must not be reported as a clean sync.
         audit = self._audit_links(targets, feed_data)
+
+        # An account sync asked for one id and the answer does not mention
+        # it. The bank may have reissued the id — and the only way to find
+        # the account under its new one is by name, across the whole feed,
+        # which a filtered answer does not carry. So ask once more for
+        # everything: an all-accounts request, charged to that quota. With
+        # none left, the orphan is reported as it always was.
+        if sync_type == "account" and audit.orphaned:
+            whole = await self._fetch_again(
+                conn, access_url, window, "global", requests, None, "relink lookup"
+            )
+            if whole is not None:
+                feed_data = whole
+                audit = self._audit_links(targets, feed_data)
         if audit.orphaned:
             logger.warning(
                 "simplefin: %d account(s) have a bank link the feed no longer offers: %s",
@@ -545,25 +655,24 @@ class SimpleFINService:
             # served this account nothing. A relinked account needs the full
             # window — the days the broken link missed are exactly what it is
             # owed — so ask again, once, before importing anything. One extra
-            # request against the quota, only on the run that heals a link.
+            # request against the run's own quota, only on the run that heals
+            # a link — and asked the way the run asks, so an account run names
+            # the id the account was just relinked to. With no headroom left
+            # the relink stands and the wider fetch waits for the next run,
+            # whose window is the floor anyway (the stamp is gone).
             full = self._lookback_window(targets, is_first_sync)
             if full.start < since:
-                try:
-                    # The first request was checked; this one was not. With
-                    # no headroom left the relink stands and the wider fetch
-                    # waits for the next run, whose window is the floor
-                    # anyway (the stamp is gone).
-                    self._check_rate_limit(conn, sync_type, pending=requests_made)
-                    window, since = full, full.start
-                    feed_data = await self._fetch_feed(access_url, since)
-                    requests_made += 1
-                except RateLimitError as exc:
-                    logger.warning("simplefin: relink refetch deferred to the next run: %s", exc)
-                except Exception as exc:
-                    await self._bump_request_count(connection_id, conn, sync_type, requests_made)
-                    return await self._fail(
-                        connection_id, budget_id, sync_type, started_at, str(exc), window=window
-                    )
+                wider = await self._fetch_again(
+                    conn,
+                    access_url,
+                    full,
+                    sync_type,
+                    requests,
+                    self._account_filter(sync_type, targets),
+                    "relink refetch",
+                )
+                if wider is not None:
+                    window, since, feed_data = full, full.start, wider
             audit = self._audit_links(targets, feed_data)
 
         # Put the feed into IGAB's frame before ANY of it is read. A lender
@@ -783,7 +892,7 @@ class SimpleFINService:
                 first_sync_complete=True,
             )
 
-        await self._bump_request_count(connection_id, conn, sync_type, requests=requests_made)
+        await self._bump_request_count(connection_id, conn, requests)
         # A run that could not reach an account, or that the bridge reported
         # errors for, is not a clean sync — and `last_sync_error` is the one
         # field the settings panel already renders in full. Clearing it on a

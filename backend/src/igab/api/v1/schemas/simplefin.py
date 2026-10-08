@@ -41,10 +41,12 @@ class SimpleFINUpdateRequest(ApiModel):
     def _canonical_hours(cls, hours: list[int] | None) -> list[int] | None:
         """Sorted, deduplicated, in range, and within the daily budget.
 
-        The cap is the connection's own rate limit rather than a number picked
-        here: scheduling a 13th sync would only queue a request the provider
-        refuses, and the error should say so at the moment it is set rather
-        than silently at 3am.
+        The cap is IGAB's own all-accounts budget (`simplefin.limits`) rather
+        than a number picked here: a scheduled run asks for every account, so
+        a 13th would only queue a request the service refuses, and the error
+        should say so at the moment it is set rather than silently at 3am.
+        Nor would it buy anything — the bridge refreshes from the bank about
+        once a day.
         """
         if hours is None:
             return None
@@ -53,8 +55,8 @@ class SimpleFINUpdateRequest(ApiModel):
         unique = sorted(set(hours))
         if len(unique) > GLOBAL_DAILY_LIMIT:
             raise ValueError(
-                f"at most {GLOBAL_DAILY_LIMIT} syncs a day — that is this "
-                "connection's daily limit with SimpleFIN"
+                f"at most {GLOBAL_DAILY_LIMIT} syncs a day — that is IGAB's daily "
+                "limit of all-accounts requests to SimpleFIN"
             )
         return unique
 
@@ -214,8 +216,13 @@ class SyncAllResult(ApiModel):
 class RateLimitStatus(ApiModel):
     global_used: int
     global_remaining: int
+    #: The day's budget for each bucket (`simplefin.limits`). Served so the
+    #: client draws "3 / 12" from the number the service enforces; required,
+    #: so a path that forgets them raises rather than drawing a guess.
+    global_limit: int
     account_used: int
     account_remaining: int
+    account_limit: int
     can_sync_global: bool
     can_sync_account: bool
     resets_at: str

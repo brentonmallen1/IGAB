@@ -95,6 +95,39 @@
   outline-offset: 1px;
 }
 
+/* A view toggle (show split lines): the pay button's quiet weight, one icon
+   wide. Pressed takes the accent — it is state, which is what accent is for. */
+.transaction-table__toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.transaction-table__toggle-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.transaction-table__toggle-btn[aria-pressed="true"] {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.transaction-table__toggle-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .transaction-table__header {
   display: grid;
   grid-template-columns: var(--register-cols);
@@ -205,8 +238,13 @@
 
   /* The pay button stays — deliberately unlike the add button above: the FAB
      opens the quick-add sheet only, so this is the phone's one payment path. */
-  .transaction-table__pay-btn {
+  .transaction-table__pay-btn,
+  .transaction-table__toggle-btn {
     min-height: var(--tap-min);
+  }
+
+  .transaction-table__toggle-btn {
+    min-width: var(--tap-min);
   }
 }
 

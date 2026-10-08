@@ -14,6 +14,7 @@ import {
   useMergeTransactions,
   usePendingReviewCountForAccount,
   usePendingReviewCount,
+  useSplitLinesFor,
 } from '../../../api/transactions'
 import { useCheckAttachments } from '../../../api/attachments'
 import { useAIJobForTransaction } from '../../../api/aiJobs'
@@ -24,6 +25,7 @@ import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { TransactionRow } from '../TransactionRow/TransactionRow'
 import { TransactionEditor } from '../TransactionEditor/TransactionEditor'
 import { SplitTransactionEditor } from '../SplitTransactionEditor/SplitTransactionEditor'
+import { SplitLineRows } from './SplitLineRows'
 import { ScheduledTransactionEditor } from '../../scheduled/ScheduledTransactionEditor'
 import {
   useScheduledTransactionsByAccount,
@@ -169,6 +171,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     transactionSortColumn,
     transactionSortDirection,
     transactionSearchQuery,
+    showSplitLines,
+    setShowSplitLines,
     toggleTransactionSelection,
     selectAllTransactions,
     clearTransactionSelection,
@@ -185,6 +189,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       transactionSortColumn: s.transactionSortColumn,
       transactionSortDirection: s.transactionSortDirection,
       transactionSearchQuery: s.transactionSearchQuery,
+      showSplitLines: s.showSplitLines,
+      setShowSplitLines: s.setShowSplitLines,
       toggleTransactionSelection: s.toggleTransactionSelection,
       selectAllTransactions: s.selectAllTransactions,
       clearTransactionSelection: s.clearTransactionSelection,
@@ -254,6 +260,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const budgetScopedQuery = useInfiniteBudgetTransactions(allAccounts ? budgetId : null, filters)
   const {
     data: txnPages,
+    dataUpdatedAt: rowsUpdatedAt,
     isLoading,
     isFetching,
     isFetchingNextPage,
@@ -265,6 +272,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const transactionMap = useMemo(() => new Map(transactions.map((t) => [t.id, t])), [transactions])
   const transactionIds = useMemo(() => transactions.map((t) => t.id), [transactions])
   const { data: attachmentMap = {} } = useCheckAttachments(transactionIds)
+  // One request for every split on the loaded pages, only while the toggle is on.
+  const splitParentIds = useMemo(
+    () => transactions.filter((t) => t.is_split).map((t) => t.id),
+    [transactions]
+  )
+  const { data: splitLines } = useSplitLinesFor(
+    budgetId,
+    splitParentIds,
+    showSplitLines,
+    rowsUpdatedAt
+  )
 
   // Only when the transaction editor is the dialog that is open — activeModal
   // carries one editingId for whichever kind holds the slot.
@@ -692,12 +710,24 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           accountLabel={allAccounts ? (accountMap.get(txn.account_id) ?? '—') : undefined}
           accountColor={allAccounts ? accountColorMap.get(txn.account_id) : undefined}
         />
-        {splitEditing?.transactionId === txn.id && (
+        {splitEditing?.transactionId === txn.id ? (
           <SplitTransactionEditor
             transaction={txn}
             categories={categories}
             categoryGroups={categoryGroups}
           />
+        ) : (
+          showSplitLines &&
+          txn.is_split && (
+            <SplitLineRows
+              parent={txn}
+              lines={splitLines?.[txn.id]}
+              categoryMap={categoryMap}
+              accountOnBudget={onBudgetAccountIds.has(txn.account_id)}
+              onStartSplit={handleStartSplit}
+              onEdit={handleEdit}
+            />
+          )
         )}
       </>
     )
@@ -781,7 +811,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   // The main list is virtualized: only rows near the viewport hit the DOM, so
   // accounts with thousands of transactions stay smooth. Row heights vary
-  // (duplicate groups, inline split editor, mobile cards) so items are
+  // (duplicate groups, inline split editor, split lines, mobile cards) so items are
   // measured dynamically.
   const regularItems = useMemo(() => buildRowItems(regularTxns), [buildRowItems, regularTxns])
 
@@ -964,6 +994,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
               ? { label: payAction.label, onClick: () => openModal('card-payment', accountId) }
               : null
           }
+          showSplitLines={showSplitLines}
+          onShowSplitLinesChange={setShowSplitLines}
         />
 
         <SearchFilterChips

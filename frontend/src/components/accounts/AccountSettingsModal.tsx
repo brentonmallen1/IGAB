@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAccounts, useUpdateAccount } from '../../api/accounts'
+import { apiErrorMessage } from '../../api/client'
 import {
   useLinkSimpleFINAccount,
   formatSyncSummary,
@@ -54,7 +55,11 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   // list is a live round trip to the SimpleFIN bridge, and a native <select>
   // whose options arrive while it is open closes itself — the picker used to
   // open empty, snap shut, and only show accounts on the second try.
-  const { data: remoteAccounts = [], isFetching: remoteLoading } = useSimpleFINRemoteAccounts(
+  const {
+    data: remoteAccounts = [],
+    isFetching: remoteLoading,
+    error: remoteError,
+  } = useSimpleFINRemoteAccounts(
     account?.simplefin_account_id ? null : (firstConnection?.id ?? null)
   )
   const link = useLinkSimpleFINAccount(accountId)
@@ -417,8 +422,14 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                       >
                         Cancel
                       </button>
-                      {linkError && (
-                        <span className="dialog-form__error acct-modal__sf-error">{linkError}</span>
+                      {(linkError || remoteError) && (
+                        <span className="dialog-form__error acct-modal__sf-error">
+                          {linkError ??
+                            apiErrorMessage(
+                              remoteError,
+                              'Could not list the bank’s accounts — try again in a moment'
+                            )}
+                        </span>
                       )}
                     </div>
                   )}

@@ -9,6 +9,7 @@ would let one budget reference — or write into — another budget's objects. C
 """
 
 import uuid
+from collections.abc import Collection
 from typing import Any
 
 from sqlalchemy import select
@@ -32,8 +33,27 @@ async def require_in_budget(
     """
     if id_value is None:
         return
-    result = await session.execute(
-        select(model.id).where(model.id == id_value, model.budget_id == budget_id)
-    )
-    if result.scalar_one_or_none() is None:
+    # Asked about one id, the answer holds that id or nothing.
+    if not await ids_in_budget(session, model, [id_value], budget_id):
         raise InvariantViolation(f"{label} does not belong to this budget")
+
+
+async def ids_in_budget(
+    session: AsyncSession,
+    model: Any,
+    ids: Collection[uuid.UUID],
+    budget_id: uuid.UUID,
+) -> set[uuid.UUID]:
+    """The subset of ``ids`` naming ``model`` rows that belong to ``budget_id``.
+
+    The batch form of :func:`require_in_budget`, for a read that takes a list
+    of ids in its query string: an id from another budget (or no row at all)
+    simply drops out, so the caller answers for nothing it does not own rather
+    than refusing the whole request.
+    """
+    if not ids:
+        return set()
+    result = await session.execute(
+        select(model.id).where(model.id.in_(ids), model.budget_id == budget_id)
+    )
+    return set(result.scalars().all())

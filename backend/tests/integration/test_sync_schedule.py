@@ -17,7 +17,6 @@ import pytest
 from pydantic import ValidationError
 
 from igab.api.v1.schemas.simplefin import SimpleFINUpdateRequest
-from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.integrations.simplefin.limits import GLOBAL_DAILY_LIMIT
 from igab.services.simplefin_service import SimpleFINService
 from igab.tasks.scheduler import process_auto_simplefin_sync
@@ -29,20 +28,9 @@ from .factories import (
     create_user,
     make_services,
 )
+from .fake_bridge import FakeBridge
 
 SF_ACCT = "sf-acct-sched"
-
-
-class FakeClient:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    async def get_feed(self, access_url: str, since=None) -> SimpleFINFeed:
-        self.calls += 1
-        return SimpleFINFeed(transactions=[])
-
-    async def get_accounts(self, access_url: str) -> list[dict]:
-        return []
 
 
 def _service(services) -> SimpleFINService:
@@ -54,7 +42,7 @@ def _service(services) -> SimpleFINService:
         txn_service=services.transactions,
         matching_service=services.matching,
     )
-    svc.client = FakeClient()
+    svc.client = FakeBridge()
     return svc
 
 

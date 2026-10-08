@@ -29,7 +29,6 @@ from unittest.mock import patch
 from sqlalchemy import select
 
 from igab.db.models import Account, Transaction
-from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_service import TransactionUpdate
 
@@ -40,6 +39,7 @@ from .factories import (
     create_user,
     make_services,
 )
+from .fake_bridge import FakeBridge
 
 ACCT = "ACT-harborstone"
 PATCH_DECRYPT = patch("igab.services.simplefin_service.decrypt", return_value="https://u:p@x.test")
@@ -75,23 +75,6 @@ def bank_txn(txn_id: str, amount: str, on: date, *, payee: str, posted: bool) ->
     }
 
 
-class FakeClient:
-    def __init__(self, payload, balances=None, balance_dates=None):
-        self.payload = payload
-        self.balances = balances or {}
-        self.balance_dates = balance_dates or {}
-
-    async def get_feed(self, access_url: str, since=None) -> SimpleFINFeed:
-        return SimpleFINFeed(
-            transactions=list(self.payload),
-            balances=dict(self.balances),
-            balance_dates=dict(self.balance_dates),
-        )
-
-    async def get_accounts(self, access_url: str) -> list[dict]:
-        return []
-
-
 async def _setup(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)
@@ -113,7 +96,7 @@ def _service(services, payload, balances=None, balance_dates=None) -> SimpleFINS
         txn_service=services.transactions,
         matching_service=services.matching,
     )
-    svc.client = FakeClient(payload, balances, balance_dates)
+    svc.client = FakeBridge(payload, balances, balance_dates=balance_dates)
     return svc
 
 

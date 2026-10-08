@@ -540,15 +540,34 @@ class TransactionRepository(BaseRepository[Transaction]):
     async def get_splits(self, parent_id: uuid.UUID) -> list[Transaction]:
         """A parent's live lines, oldest first (new lines append). Carries the
         served fields: this is what the split endpoints serialize."""
+        return (await self.get_splits_for([parent_id])).get(parent_id, [])
+
+    async def get_splits_for(
+        self, parent_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, list[Transaction]]:
+        """Each parent's live lines, oldest first, keyed by parent id.
+
+        The one query behind `get_splits` too, so the register's "show split
+        lines" view and the split editor cannot disagree about which lines a
+        split has or the order they come in. A parent with no live lines has
+        no key. Unscoped: callers pass ids already checked against a budget.
+        """
+        if not parent_ids:
+            return {}
         result = await self.session.execute(
             self.with_computed(select(Transaction))
             .where(
-                Transaction.parent_transaction_id == parent_id,
+                Transaction.parent_transaction_id.in_(parent_ids),
                 Transaction.is_deleted == False,  # noqa: E712
             )
             .order_by(Transaction.created_at, Transaction.id)
         )
-        return list(result.scalars().all())
+        lines: dict[uuid.UUID, list[Transaction]] = {}
+        for line in result.scalars().all():
+            # A row selected by parent_transaction_id IN (...) has one.
+            assert line.parent_transaction_id is not None
+            lines.setdefault(line.parent_transaction_id, []).append(line)
+        return lines
 
     async def running_balances(
         self, account_id: uuid.UUID, txn_ids: Sequence[uuid.UUID]

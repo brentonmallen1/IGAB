@@ -12,6 +12,8 @@ Cleared state filtering (documented):
   get_status.cleared_balance = sum WHERE cleared IN ('cleared', 'reconciled')
   get_status.uncleared_count = count WHERE cleared == 'uncleared'
   get_status.pending_count  = count WHERE cleared == 'pending'
+  get_status.in_review_count = count of txn_filters.IN_REVIEW_CLEARED rows —
+    while it is above zero, finish() and create_adjustment() refuse
 """
 
 import uuid
@@ -19,7 +21,9 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
-from igab.services.reconciliation_service import ReconciliationService
+import pytest
+
+from igab.services.reconciliation_service import ReconciliationBlocked, ReconciliationService
 
 ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
@@ -69,15 +73,21 @@ def _mock_scalar(value):
     return res
 
 
-def make_status_service(cleared_bal, uncleared_count=0, pending_count=0):
+def _status_results(cleared_bal, uncleared_count=0, pending_count=0, in_review_count=0):
+    """get_status's four queries, in the order it runs them."""
+    return [
+        _mock_scalar(cleared_bal),
+        _mock_scalar(uncleared_count),
+        _mock_scalar(pending_count),
+        _mock_scalar(in_review_count),
+    ]
+
+
+def make_status_service(cleared_bal, uncleared_count=0, pending_count=0, in_review_count=0):
     """ReconciliationService whose session returns pre-set get_status values."""
     session = AsyncMock()
     session.execute = AsyncMock(
-        side_effect=[
-            _mock_scalar(cleared_bal),
-            _mock_scalar(uncleared_count),
-            _mock_scalar(pending_count),
-        ]
+        side_effect=_status_results(cleared_bal, uncleared_count, pending_count, in_review_count)
     )
     return ReconciliationService(
         session=session,
@@ -89,8 +99,14 @@ def make_status_service(cleared_bal, uncleared_count=0, pending_count=0):
     )
 
 
-def make_adjustment_service(account, payee, created_txn):
-    """ReconciliationService wired for testing create_adjustment."""
+def make_adjustment_service(account, payee, created_txn, in_review_count=0):
+    """ReconciliationService wired for testing create_adjustment, which reads
+    get_status first to refuse while a duplicate review is open."""
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=_status_results(D("0"), in_review_count=in_review_count)
+    )
+
     account_repo = MagicMock()
     account_repo.get_or_raise = AsyncMock(return_value=account)
 
@@ -101,7 +117,7 @@ def make_adjustment_service(account, payee, created_txn):
     transaction_service.create = AsyncMock(return_value=created_txn)
 
     return ReconciliationService(
-        session=AsyncMock(),
+        session=session,
         repo=MagicMock(),
         account_repo=account_repo,
         payee_repo=payee_repo,
@@ -110,7 +126,9 @@ def make_adjustment_service(account, payee, created_txn):
     )
 
 
-def make_finish_service(cleared_bal, snapshot, uncleared_count=0, pending_count=0):
+def make_finish_service(
+    cleared_bal, snapshot, uncleared_count=0, pending_count=0, in_review_count=0
+):
     """ReconciliationService wired for testing finish().
 
     finish() now auto-creates an adjustment when statement != cleared, so the
@@ -120,11 +138,7 @@ def make_finish_service(cleared_bal, snapshot, uncleared_count=0, pending_count=
     """
     session = AsyncMock()
     status_results = iter(
-        [
-            _mock_scalar(cleared_bal),
-            _mock_scalar(uncleared_count),
-            _mock_scalar(pending_count),
-        ]
+        _status_results(cleared_bal, uncleared_count, pending_count, in_review_count)
     )
 
     async def _execute(stmt):
@@ -176,7 +190,17 @@ class TestGetStatus:
     async def test_result_has_required_keys(self):
         svc = make_status_service(D("0"), 0, 0)
         status = await svc.get_status(ACCOUNT_ID)
-        assert set(status.keys()) == {"cleared_balance", "uncleared_count", "pending_count"}
+        assert set(status.keys()) == {
+            "cleared_balance",
+            "uncleared_count",
+            "pending_count",
+            "in_review_count",
+        }
+
+    async def test_in_review_count_is_served(self):
+        svc = make_status_service(D("871.60"), in_review_count=1)
+        status = await svc.get_status(ACCOUNT_ID)
+        assert status["in_review_count"] == 1
 
     async def test_cleared_balance_sum_of_cleared_and_reconciled(self):
         """
@@ -450,17 +474,17 @@ class TestFinish:
     async def test_bulk_update_and_account_update_executed(self):
         """
         finish() must call session.execute for:
-          1-3: get_status (3 queries)
-          4: SELECT the ids about to be locked (undo bookkeeping)
-          5: UPDATE Transaction SET cleared='reconciled'
-          6: UPDATE Account SET last_reconciled_at=...
+          1-4: get_status (4 queries)
+          5: SELECT the ids about to be locked (undo bookkeeping)
+          6: UPDATE Transaction SET cleared='reconciled'
+          7: UPDATE Account SET last_reconciled_at=...
         """
         snapshot = MockSnapshot()
         svc = make_finish_service(D("1000.00"), snapshot)
 
         await svc.finish(ACCOUNT_ID, D("1000.00"))
 
-        assert svc.session.execute.call_count == 6
+        assert svc.session.execute.call_count == 7
 
     async def test_session_flushed(self):
         """Session must be flushed so all changes are committed atomically."""
@@ -540,3 +564,53 @@ class TestGetHistory:
 
         result = await svc.get_history(ACCOUNT_ID)
         assert result == []
+
+
+class TestRefusesWhileADuplicateReviewIsOpen:
+    """The cleared balance counts a queued pair's money twice, so neither the
+    finish nor the adjustment may act on it — see get_status. The integration
+    suite (test_reconciliation.py) proves the count against real rows; these
+    pin that the refusal comes before anything is written."""
+
+    async def test_finish_refuses_before_writing(self):
+        svc = make_finish_service(D("871.60"), MockSnapshot(), in_review_count=1)
+
+        with pytest.raises(ReconciliationBlocked):
+            await svc.finish(ACCOUNT_ID, D("935.80"))
+
+        assert svc.session.execute.call_count == 4, "only get_status ran"
+        svc.transaction_service.create.assert_not_called()
+        svc.repo.create.assert_not_called()
+        svc.session.flush.assert_not_called()
+
+    async def test_adjustment_refuses_before_writing(self):
+        svc = make_adjustment_service(MockAccount(), MockPayee(), MockTransaction(), 1)
+
+        with pytest.raises(ReconciliationBlocked):
+            await svc.create_adjustment(ACCOUNT_ID, D("64.20"))
+
+        svc.payee_repo.find_or_create.assert_not_called()
+        svc.transaction_service.create.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("count", "message"),
+        [
+            (
+                1,
+                "1 possible duplicate on this account is waiting in review — settle it "
+                "first, or the reconciliation will count it twice.",
+            ),
+            (
+                3,
+                "3 possible duplicates on this account are waiting in review — settle "
+                "them first, or the reconciliation will count them twice.",
+            ),
+        ],
+    )
+    async def test_the_message_is_pluralised(self, count, message):
+        svc = make_finish_service(D("0"), MockSnapshot(), in_review_count=count)
+
+        with pytest.raises(ReconciliationBlocked) as raised:
+            await svc.finish(ACCOUNT_ID, D("0"))
+
+        assert str(raised.value) == message

@@ -77,6 +77,7 @@ export function AccountPage() {
     reconcileAccountId,
     reconcileStatementBalance,
     startReconciliation,
+    cancelReconciliation,
     setTransactionSearch,
   } = useUIStore()
   const { data: sfConnections } = useSimpleFINConnections()
@@ -360,7 +361,16 @@ export function AccountPage() {
       </Surface>
 
       {showReconcileModal && accountId && (
-        <ReconcileModal accountId={accountId} accountName={account.name} />
+        <ReconcileModal
+          accountId={accountId}
+          accountName={account.name}
+          onReviewDuplicates={() => {
+            // Settle first, then reconcile: the question the modal asks is
+            // about a balance the open pairs make too large.
+            cancelReconciliation()
+            setShowMatchModal(true)
+          }}
+        />
       )}
 
       {showCsvImport && accountId && budgetId && (
@@ -372,7 +382,12 @@ export function AccountPage() {
         />
       )}
 
-      {showReconcileBar && accountId && <ReconcileStatusBar accountId={accountId} />}
+      {showReconcileBar && accountId && (
+        <ReconcileStatusBar
+          accountId={accountId}
+          onReviewDuplicates={() => setShowMatchModal(true)}
+        />
+      )}
 
       {/* Everything the page wants to say before the register, as one stack
           with one rhythm — terms, a review count, possible duplicates. */}

@@ -30,10 +30,11 @@ def writable_session(*, category_row=None) -> AsyncMock:
     """An `AsyncMock` session that satisfies the pre-write guards.
 
     One `execute` serves both: `require_in_budget` reads
-    `.scalar_one_or_none()`, `require_categorizable` reads `.first()`.
+    `.scalars().all()` (through `ids_in_budget`), `require_categorizable`
+    reads `.first()`.
     """
     result = MagicMock()
-    result.scalar_one_or_none = MagicMock(return_value=MagicMock())
+    result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=[MagicMock()])))
     result.first = MagicMock(return_value=category_row or categorizable_row())
     session = AsyncMock()
     session.execute = AsyncMock(return_value=result)

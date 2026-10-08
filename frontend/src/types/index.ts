@@ -2010,8 +2010,13 @@ export interface SimpleFINConfig {
 export interface SimpleFINRateLimitStatus {
   global_used: number
   global_remaining: number
+  /** The day's budget for all-accounts requests. Served, not written here —
+   *  home: backend/src/igab/integrations/simplefin/limits.py. */
+  global_limit: number
   account_used: number
   account_remaining: number
+  /** The day's budget for single-account requests. Same home. */
+  account_limit: number
   can_sync_global: boolean
   can_sync_account: boolean
   resets_at: string

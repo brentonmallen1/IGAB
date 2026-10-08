@@ -31,6 +31,7 @@ from igab.api.v1.schemas.transaction import (
     PendingReviewCount,
     ReplaceSplitsRequest,
     SimilarTransactionResponse,
+    SplitLinesRequest,
     TransactionClassification,
     TransactionCreate,
     TransactionResponse,
@@ -70,7 +71,7 @@ from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
-from igab.services.ownership import require_in_budget
+from igab.services.ownership import ids_in_budget, require_in_budget
 from igab.services.report_scope import resolve_category_scope
 from igab.services.transaction_service import (
     SplitSpec,
@@ -526,6 +527,36 @@ async def list_split_lines(
     return [
         TransactionResponse.model_validate(c) for c in await txn_repo.get_splits(transaction_id)
     ]
+
+
+@router.post(
+    "/{budget_id}/transactions/split-lines",
+    response_model=dict[str, list[TransactionResponse]],
+)
+async def list_split_lines_for(
+    budget_id: BudgetAccess,
+    body: SplitLinesRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> dict[str, list[TransactionResponse]]:
+    """Many splits' lines in one request, keyed by parent id — the register's
+    "show split lines" view, which draws every split on the page at once.
+
+    A read, sent as a POST only because the ids ride in a body (see
+    `SplitLinesRequest`). The same loader as the one-split endpoint above,
+    never lines rebuilt from a page. An id that is not a transaction in this
+    budget answers nothing (no key), so a guessed id from another budget
+    cannot read its lines. Each owned parent gets a key, with an empty list
+    when it has no live lines.
+    """
+    owned = await ids_in_budget(session, Transaction, body.parent_ids, budget_id)
+    lines = await txn_repo.get_splits_for(owned)
+    return {
+        str(pid): [TransactionResponse.model_validate(c) for c in lines.get(pid, [])]
+        for pid in body.parent_ids
+        if pid in owned
+    }
 
 
 @router.put("/transactions/{transaction_id}/splits", response_model=list[TransactionResponse])

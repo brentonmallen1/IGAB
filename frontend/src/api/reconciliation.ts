@@ -7,6 +7,11 @@ export interface ReconciliationStatus {
   cleared_balance: number
   uncleared_count: number
   pending_count: number
+  /** Cleared rows a pending duplicate review holds beside the bank's copy —
+   * counted twice in `cleared_balance` until the review is settled. Served:
+   * the home is `ReconciliationService.get_status` (txn_filters
+   * IN_REVIEW_CLEARED), and finish and the adjustment 409 while it is above 0. */
+  in_review_count: number
 }
 
 export interface ReconciliationSnapshot {
