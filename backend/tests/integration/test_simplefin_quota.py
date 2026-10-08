@@ -275,6 +275,7 @@ async def test_a_missing_account_looks_at_the_whole_feed_once_and_relinks(db_ses
     assert result["orphaned_links"] == []
     assert result["imported"] == 1
     assert result["skip_reasons"].get("foreign_account") == 1, "Harborstone was not filed"
+    assert result["bank_errors"] == [], "the filtered answer's act.failed went with it"
     assert await _counters(db_session, conn) == (1, 1), "one request from each bucket"
 
 
@@ -317,6 +318,8 @@ async def test_no_lookup_when_the_all_accounts_quota_is_spent(db_session):
     assert bridge.filters == [(SAPPHIRE,)]
     [orphan] = result["orphaned_links"]
     assert orphan["account_name"] == "Sapphire Visa"
+    # The bridge's own word for it stays on the run, beside the orphan.
+    assert [e["code"] for e in result["bank_errors"]] == ["act.failed"]
     await db_session.refresh(sapphire)
     assert sapphire.simplefin_account_id == SAPPHIRE, "nothing to relink it to"
     assert await _counters(db_session, conn) == (GLOBAL_DAILY_LIMIT, 1)

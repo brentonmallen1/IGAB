@@ -32,7 +32,10 @@ class FakeBridge:
     - `account_ids` narrows the answer to those accounts: rows, balances,
       names and dates alike. An id the bridge does not know comes back as
       nothing at all, which is what a reissued id looks like from the side
-      that still holds the old one.
+      that still holds the old one, plus an `act.failed` entry in the
+      errlist. That is the real bridge's answer, probed 2026-10-07: HTTP 200,
+      `accounts: []`, and `{"code": "act.failed", "msg": "Unable to fetch
+      account ID: <id>", "account_id": "<id>"}`, not an HTTP error.
     - `honour_window` drops rows posted before `since`, which is the only way
       to test that a window was wide enough.
     """
@@ -76,8 +79,19 @@ class FakeBridge:
             balances={k: v for k, v in self.balances.items() if served(k)},
             balance_dates={k: v for k, v in self.balance_dates.items() if served(k)},
             account_names={k: v for k, v in self.names.items() if served(k)},
-            errors=list(self.errors),
+            errors=[*self.errors, *self._unknown(named)],
         )
+
+    def _unknown(self, named: tuple[str, ...] | None) -> list[SimpleFINError]:
+        """The bridge's `act.failed` for each named id it has no account for."""
+        if named is None:
+            return []
+        known = set(self.names) | set(self.balances) | {t.get("account_id") for t in self.payload}
+        return [
+            SimpleFINError(code="act.failed", message=f"Unable to fetch account ID: {a}")
+            for a in named
+            if a not in known
+        ]
 
     async def get_accounts(self, access_url: str) -> list[dict]:
         self.listings += 1
