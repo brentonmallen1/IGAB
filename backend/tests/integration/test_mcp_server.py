@@ -336,7 +336,11 @@ class TestTheNewToolsOverTheProtocol:
                 ),
             )
             assert called.status_code == 200, called.text
-            assert "grouped_by" in json.dumps(_result(called))
+            body = json.dumps(_result(called))
+            assert "grouped_by" in body
+            # The same handler as the chat: the cut and the scope travel too.
+            assert "omitted_groups" in body
+            assert "covers" in body
 
     async def test_an_impossible_group_by_comes_back_as_an_answer(self, db_session):
         """Not a 500. A model that guessed wrong has to be able to read what
