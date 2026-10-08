@@ -14,6 +14,20 @@ from decimal import Decimal
 #: the whole window.
 UNCATEGORIZED = "Uncategorized"
 
+#: The other reasons a row can have no category, for a rollup that groups
+#: every row rather than only spending (`txn_query.GROUPABLE`). Only rows that
+#: need a category (`txn_filters.NEEDS_CATEGORY`) may be called
+#: `UNCATEGORIZED`: a rollup that filed a tracking account's market
+#: adjustments there reported "Uncategorized" at three times a month's
+#: spending, while the register's Uncategorized filter listed none of them.
+#: A transfer between the user's own accounts needs no envelope.
+TRANSFER_LABEL = "Transfer"
+#: A row on a tracking account, which the budget never counts.
+OFF_BUDGET_LABEL = "Off-budget"
+#: Anything else with no category that still needs none — a row before its
+#: account's budget start, a card's opening-balance correction.
+NO_CATEGORY_LABEL = "No category"
+
 
 def spent(amounts: Iterable[Decimal]) -> Decimal:
     """Spending from signed row amounts: outflows are stored negative, so the

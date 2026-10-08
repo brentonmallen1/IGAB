@@ -12,6 +12,8 @@ import pytest
 
 from igab.ai.tools import handlers
 from igab.ai.tools.context import ToolContext, build_tool_context
+from igab.domain.spending import OFF_BUDGET_LABEL, UNCATEGORIZED
+from igab.repositories.txn_query import DEFAULT_GROUPS, MAX_GROUPS
 
 from .factories import (
     create_account,
@@ -21,6 +23,7 @@ from .factories import (
     create_category_group,
     create_payee,
     create_transaction,
+    create_transfer,
     create_user,
 )
 
@@ -232,3 +235,143 @@ class TestDatesAModelGotWrong:
     async def test_a_month_argument_is_snapped_to_the_first(self, ctx):
         result = await handlers.get_budget_month(ctx, {"month": "2026-09-22"})
         assert result["month"] == "2026-09-01"
+
+
+AUGUST = {"start_date": "2026-08-01", "end_date": "2026-08-31"}
+
+
+@pytest.fixture
+async def busy_month(db_session) -> ToolContext:
+    """The tester's August, invented and rescaled.
+
+    Income of 20,000 into Ready to Assign; a 1,500 mortgage payment from
+    checking to an off-budget loan, filed under Mortgage; sixty envelopes
+    spending 10, 20 … 600 (18,300 in all); a 500 move to an on-budget HYSA;
+    and a +40,000 market adjustment on an off-budget brokerage — twice the
+    month's income, which the old rollup ranked first as "Uncategorized".
+
+    62 groups by default: Ready to Assign, Mortgage and the sixty envelopes.
+    The default 50 keep the twelve smallest envelopes (10 … 120, -780 in all)
+    out.
+    """
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    inflow_group = await create_category_group(db_session, budget, "Inflow", is_system=True)
+    ready = await create_category(db_session, budget, inflow_group, "Inflow: Ready to Assign")
+    bills = await create_category_group(db_session, budget, "Bills")
+    mortgage = await create_category(db_session, budget, bills, "Mortgage")
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    checking = await create_account(db_session, budget, "Harborstone Checking")
+    hysa = await create_account(db_session, budget, "Cascade Point HYSA", account_type="savings")
+    brokerage = await create_account(
+        db_session, budget, "Northwind Brokerage", account_type="investment", on_budget=False
+    )
+    loan = await create_account(
+        db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+    )
+    payroll = await create_payee(db_session, budget, "Northwind Payserv")
+
+    when = date(2026, 8, 14)
+    await create_transaction(
+        db_session, budget, checking, "20000", when, category=ready, payee=payroll
+    )
+    await create_transfer(db_session, budget, checking, loan, "1500", when, category=mortgage)
+    await create_transfer(db_session, budget, checking, hysa, "500", when)
+    await create_transaction(db_session, budget, brokerage, "40000", when)
+    for i in range(1, 61):
+        envelope = await create_category(db_session, budget, everyday, f"Envelope {i:02d}")
+        await create_transaction(
+            db_session, budget, checking, Decimal(-10 * i), when, category=envelope
+        )
+    await db_session.flush()
+    return await build_tool_context(db_session, budget.id, TODAY)
+
+
+class TestWhereDidMyMoneyGo:
+    """`query_transactions` asked where a month went, with no limit.
+
+    It ranked a positive "Uncategorized" (a tracking account's market
+    adjustment) first, income second, then the smallest spends — the largest
+    ones were cut — and said only "The top 25 of 34 groups."
+    """
+
+    async def test_tracking_account_rows_are_not_spending(self, busy_month):
+        result = await handlers.query_transactions(busy_month, {**AUGUST})
+        names = {g["group"] for g in result["groups"]}
+        assert OFF_BUDGET_LABEL not in names
+        assert not any(g["group"] == UNCATEGORIZED and g["value"] > 0 for g in result["groups"])
+        # Income, less the mortgage and the sixty envelopes; no 40,000.
+        assert result["total"] == 200.0
+
+    async def test_the_largest_spends_are_the_ones_shown(self, busy_month):
+        result = await handlers.query_transactions(busy_month, {**AUGUST})
+        groups = [g["group"] for g in result["groups"]]
+        assert len(groups) == DEFAULT_GROUPS
+        assert groups[:3] == ["Inflow: Ready to Assign", "Mortgage", "Envelope 60"]
+        assert "Envelope 13" in groups
+        assert "Envelope 12" not in groups
+
+    async def test_the_cut_is_stated_truthfully(self, busy_month):
+        result = await handlers.query_transactions(busy_month, {**AUGUST})
+        assert result["group_count"] == 62
+        assert result["truncated"] is True
+        assert (result["omitted_groups"], result["omitted_value"]) == (12, -780.0)
+        assert "Ranked by size, largest first." in result["note"]
+        assert "Showing 50 of 62 groups; the other 12 total -780.00." in result["note"]
+        assert f"up to {MAX_GROUPS}" in result["note"]
+        assert "left out" in result["note"]
+
+    async def test_a_higher_limit_shows_everything(self, busy_month):
+        result = await handlers.query_transactions(busy_month, {**AUGUST, "limit": MAX_GROUPS})
+        assert (len(result["groups"]), result["truncated"], result["omitted_groups"]) == (
+            62,
+            False,
+            0,
+        )
+        assert "Showing" not in result["note"]
+
+    async def test_mixed_signs_are_called_out(self, busy_month):
+        mixed = await handlers.query_transactions(busy_month, {**AUGUST})
+        assert "mix both" in mixed["note"]
+        outflows = await handlers.query_transactions(busy_month, {**AUGUST, "direction": "outflow"})
+        assert "mix both" not in outflows["note"]
+
+    async def test_an_average_says_only_how_many_were_cut(self, busy_month):
+        result = await handlers.query_transactions(busy_month, {**AUGUST, "aggregate": "avg"})
+        assert result["omitted_groups"] == 12
+        assert "total" not in result and "omitted_value" not in result
+        assert "12 more were left out" in result["note"]
+
+    async def test_naming_the_tracking_account_brings_its_rows_back(self, busy_month):
+        result = await handlers.query_transactions(
+            busy_month, {**AUGUST, "account_name": "Northwind Brokerage"}
+        )
+        assert [(g["group"], g["value"]) for g in result["groups"]] == [(OFF_BUDGET_LABEL, 40000.0)]
+        assert result["covers"] == "every row on the named account"
+
+    async def test_is_transfer_asks_for_transfers_on_budget_accounts(self, busy_month):
+        result = await handlers.query_transactions(
+            busy_month, {**AUGUST, "is_transfer": True, "group_by": "account"}
+        )
+        # The mortgage's checking leg and both legs of the HYSA move; the
+        # loan's own leg is on a tracking account.
+        assert {g["group"]: g["value"] for g in result["groups"]} == {
+            "Harborstone Checking": -2000.0,
+            "Cascade Point HYSA": 500.0,
+        }
+
+    async def test_unmatched_names_add_their_notes_rather_than_replace(self, busy_month):
+        result = await handlers.query_transactions(
+            busy_month, {"category_name": "Yacht Maintenance", "payee_name": "Yacht Club"}
+        )
+        assert "No envelope matches" in result["note"]
+        assert "No payee matches" in result["note"]
+
+    async def test_search_covers_the_same_rows_by_default(self, busy_month):
+        """The listing and the rollup share `_filters_from_args`, so the
+        default scope is the same on both."""
+        listed = await handlers.search_transactions(busy_month, {**AUGUST})
+        rolled = await handlers.query_transactions(busy_month, {**AUGUST, "limit": MAX_GROUPS})
+        assert listed["total_rows"] == sum(g["rows"] for g in rolled["groups"]) == 62
+        assert listed["total_amount"] == rolled["total"] == 200.0
+        assert listed["covers"] == rolled["covers"] == handlers.DEFAULT_SCOPE

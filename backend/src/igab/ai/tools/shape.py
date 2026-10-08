@@ -118,6 +118,67 @@ def ranked(
     }
 
 
+def with_notes(result: dict, *notes: str) -> dict:
+    """Add notes to a result's `note`, after whatever it already says.
+
+    Combined, never replaced. `query_transactions` wrote "the top 25 of 34
+    groups" and then overwrote it with "no envelope matches", so a cut list
+    went to the model with nothing saying it was cut.
+    """
+    said = [result["note"]] if result.get("note") else []
+    said += [n for n in notes if n]
+    if said:
+        result["note"] = " ".join(said)
+    return result
+
+
+def _figure(value: Any) -> str:
+    return f"{value:,.2f}"
+
+
+def grouped_notes(
+    *,
+    values: list[Any],
+    total_groups: int,
+    omitted_value: Any,
+    order: str,
+    aggregate: str,
+    max_groups: int,
+) -> list[str]:
+    """What a grouped rollup has to say about itself, one sentence each.
+
+    `values` are the shown groups' values; `total_groups` and `omitted_value`
+    were counted over every group (`txn_query.GroupedTotals`), so the cut is
+    stated as a fact rather than implied away. `omitted_value` is None for an
+    aggregate whose groups do not add up — a sum of averages means nothing,
+    so only the count of what was cut is given.
+    """
+    notes: list[str] = []
+    shown = len(values)
+    if order == "value" and shown > 1:
+        notes.append("Ranked by size, largest first.")
+    omitted = total_groups - shown
+    if omitted > 0:
+        cut = f"Showing {shown} of {total_groups} groups"
+        if omitted_value is None:
+            cut += f"; {omitted} more were left out."
+        elif aggregate == "count":
+            cut += f"; the other {omitted} hold {omitted_value} rows."
+        else:
+            cut += f"; the other {omitted} total {_figure(omitted_value)}."
+        if shown < max_groups:
+            ask = f"ask again with a higher limit (up to {max_groups}) to see them."
+        else:
+            ask = "narrow the filters to see them."
+        notes.append(f"{cut} Tell the user some groups were left out; {ask}")
+    if aggregate == "sum" and any(v > 0 for v in values) and any(v < 0 for v in values):
+        notes.append(
+            "Outflows are negative and inflows positive, and these groups mix both: "
+            "do not add them up as spending."
+        )
+    return notes
+
+
 def fits(payload: Any, max_chars: int = TOOL_RESULT_MAX_CHARS) -> bool:
     """Whether a serialized result is small enough to hand to a model."""
     import json
