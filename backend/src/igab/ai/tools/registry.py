@@ -34,7 +34,7 @@ from igab.ai.tools.context import ToolContext
 # query accepts. This is not the SQL this package is forbidden to write —
 # it is two dicts of names — and importing them is what stops the enum here
 # drifting from the dimensions txn_query can actually group by.
-from igab.repositories.txn_query import AGGREGATES, GROUPABLE
+from igab.repositories.txn_query import AGGREGATES, DEFAULT_GROUPS, GROUPABLE, MAX_GROUPS
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,13 @@ _ROW_ORDER = {
 _FILTERS: dict[str, dict] = {
     "search": {"type": "string", "description": "Text in payee or memo."},
     "category_name": {"type": "string", "description": "Exact-ish envelope name."},
-    "account_name": {"type": "string", "description": "Exact-ish account name."},
+    "account_name": {
+        "type": "string",
+        "description": (
+            "Exact-ish account name. Naming one shows every row on it, tracking "
+            "accounts included; without one, only on-budget accounts count."
+        ),
+    },
     "payee_name": {"type": "string", "description": "Exact-ish payee name."},
     "start_date": _START,
     "end_date": _END,
@@ -108,7 +114,10 @@ _FILTERS: dict[str, dict] = {
     },
     "is_transfer": {
         "type": "boolean",
-        "description": "True for transfers only, false to exclude them.",
+        "description": (
+            "True for transfers only, false to exclude them. Omit it and "
+            "transfers between the user's own accounts are left out."
+        ),
     },
 }
 
@@ -155,7 +164,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         name="spending_by_category",
         description=(
             "Total spent per envelope between two dates, largest first, net of "
-            "refunds, with uncategorized spending as its own line. By default this "
+            "refunds, with uncategorized spending as its own line — the Spending "
+            "report's figures. Use this to answer 'where did my money go', 'what "
+            "did I spend on' or 'my biggest expenses'. By default this "
             "covers day-to-day spending only; set include_savings to also count "
             "money moved to savings and debt payments."
         ),
@@ -224,7 +235,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         name="search_transactions",
         description=(
             "Find transactions. Every filter is optional; combine them. Returns a "
-            "capped page of rows plus the true count and total across the whole match."
+            "capped page of rows plus the true count and total across the whole match. "
+            f"By default it covers {handlers.DEFAULT_SCOPE}. {handlers.WIDEN_SCOPE}"
         ),
         parameters=_obj({**_FILTERS, "order": _ROW_ORDER}),
         handler=handlers.search_transactions,
@@ -233,12 +245,16 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="query_transactions",
         description=(
-            "Totals over transactions, grouped. Use this instead of "
-            "search_transactions whenever the question is about an amount rather "
-            "than which rows: spend per month, per envelope, per payee, per "
-            "account, by day of week. Every filter search_transactions takes "
-            "applies here too, so 'average grocery spend by month, card only' is "
-            "one call. Totals are exact over the whole match, not the page."
+            "Totals over transactions, grouped. For 'where did my money go', "
+            "'what did I spend on' or 'biggest expenses by envelope', use "
+            "spending_by_category instead. Use this for slices the purpose-built "
+            "tools cannot do: by month, by day of week, per payee, per account, or "
+            "under custom filters — and rather than search_transactions when the "
+            "question is about an amount rather than which rows. Every filter "
+            "search_transactions takes applies here too, so 'average grocery spend "
+            "by month, card only' is one call. Totals are exact over the whole "
+            f"match, not the page. By default it covers {handlers.DEFAULT_SCOPE}. "
+            f"{handlers.WIDEN_SCOPE}"
         ),
         parameters=_obj(
             {
@@ -258,12 +274,17 @@ TOOLS: tuple[ToolSpec, ...] = (
                 },
                 "order": {
                     "type": "string",
-                    "enum": ["value", "group", "rows"],
-                    "description": "Sort groups by their total, their name, or how many rows.",
+                    "enum": list(handlers.GROUP_ORDERS),
+                    "description": (
+                        "value: largest total first, by size whatever its sign "
+                        "(the default); group: by name; rows: most rows first."
+                    ),
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "How many groups to return, 1-100. Defaults to 25.",
+                    "description": (
+                        f"How many groups to return, 1-{MAX_GROUPS}. Defaults to {DEFAULT_GROUPS}."
+                    ),
                 },
             }
         ),

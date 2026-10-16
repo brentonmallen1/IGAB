@@ -87,7 +87,12 @@ from igab.repositories.txn_filters import (
     search_matches,
     sync_created_pending,
 )
-from igab.repositories.txn_query import TransactionFilters, build_where, grouped_totals
+from igab.repositories.txn_query import (
+    GroupedTotals,
+    TransactionFilters,
+    build_where,
+    grouped_totals,
+)
 
 if TYPE_CHECKING:
     pass
@@ -306,6 +311,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         scope: str = "parent",
         posted_only: bool = False,
         cash_flow_only: bool = False,
+        on_budget_only: bool = False,
         activity_classes: list[str] | None = None,
         necessity_tier: NecessityTier | None = None,
         discretionary: bool = False,
@@ -363,6 +369,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 account_ids=account_ids,
                 posted_only=posted_only,
                 cash_flow_only=cash_flow_only,
+                on_budget_only=on_budget_only,
                 activity_classes=activity_classes,
                 necessity_tier=necessity_tier,
                 discretionary=discretionary,
@@ -434,13 +441,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         aggregate: str = "sum",
         filters: "TransactionFilters | None" = None,
         order: str = "value",
-        limit: int = 25,
-    ) -> tuple[list[dict], int]:
+        limit: int | None = None,
+    ) -> GroupedTotals:
         """Roll rows up by one dimension, over the same clause the listing uses.
 
         Here rather than in `txn_query` because resolving a necessity tier
         needs a session and five other methods on this class already do it;
-        the query itself is built there, where the vocabulary lives.
+        the query itself is built there, where the vocabulary lives — the
+        default and ceiling on `limit` too (`txn_query.group_limit`).
         """
         f = filters or TransactionFilters()
         necessity_where = None

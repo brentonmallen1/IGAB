@@ -6,14 +6,23 @@ call a service, and shape the reply. No queries. See `registry` for why, and
 """
 
 from collections import defaultdict
+from dataclasses import fields
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
 from igab.ai.tools.context import ToolContext
-from igab.ai.tools.shape import DEFAULT_ROW_LIMIT, clip, money, ranked, summarize_if_large
+from igab.ai.tools.shape import (
+    DEFAULT_ROW_LIMIT,
+    clip,
+    grouped_notes,
+    money,
+    ranked,
+    summarize_if_large,
+    with_notes,
+)
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES
-from igab.repositories.txn_query import TransactionFilters, UnknownDimension
+from igab.repositories.txn_query import MAX_GROUPS, TransactionFilters, UnknownDimension
 
 #: Ceiling on any `months` argument, matching the reports router's own bound.
 MAX_MONTHS = 600
@@ -256,6 +265,9 @@ async def savings_rate(ctx: ToolContext, args: dict) -> dict:
 #: passed through, so a hallucinated state cannot silently return nothing.
 CLEARED_STATES = ("pending", "uncleared", "cleared", "reconciled")
 DIRECTIONS = ("inflow", "outflow")
+#: The orders a grouped query accepts; "value" is by size, largest first.
+#: The registry's enum reads this, so the schema and the check cannot drift.
+GROUP_ORDERS = ("value", "group", "rows")
 
 
 def _enum(args: dict, key: str, allowed: tuple[str, ...]) -> str | None:
@@ -293,7 +305,31 @@ async def _resolve_payee(ctx: ToolContext, name: str):
     return None
 
 
-async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionFilters, str | None]:
+#: What `search_transactions` and `query_transactions` cover when the model
+#: does not narrow them. One home: the registry's descriptions read it before
+#: a call, and the result's `covers` repeats it after one.
+DEFAULT_SCOPE = (
+    "on-budget accounts only, leaving out transfers between the user's own "
+    "accounts (a payment to a loan or investment account still counts, from "
+    "the account it was paid from)"
+)
+#: How to see past the default, said where the model reads the scope.
+WIDEN_SCOPE = (
+    "Name an account (account_name) to see every row on it, tracking accounts "
+    "included; set is_transfer to ask about transfers."
+)
+
+
+def _scope_covers(filters: TransactionFilters) -> str:
+    """What the rows a result was built from cover, in words a model can repeat."""
+    if not filters.on_budget_only:
+        return "every row on the named account"
+    if filters.cash_flow_only:
+        return DEFAULT_SCOPE
+    return "on-budget accounts only, transfers included as asked"
+
+
+async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionFilters, list[str]]:
     """The one place a model's arguments become a filter set.
 
     Shared by `search_transactions` and `query_transactions` so the two
@@ -301,11 +337,21 @@ async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionF
     outflow only" selects — which is the whole reason the rollup and the
     listing were built on one clause underneath.
 
-    The second return value is a note when a name matched nothing: that has
-    to reach the model, because an empty result and "there is no such
-    account" are different answers and it cannot tell them apart.
+    **By default, the budget's own money** (`DEFAULT_SCOPE`): on-budget
+    accounts, without transfers between the user's own accounts. Asked where
+    a month's money went, the rollup ranked a tracking account's market
+    adjustments and a mortgage payment's loan leg first, at three times the
+    month's spending — rows no budget figure counts. Naming an account lifts
+    both halves, as a report's account selection overrides its on-budget
+    default (`txn_filters.account_scope`); passing `is_transfer` lifts the
+    transfer half, since excluding transfers would contradict the question.
+
+    The second return value is notes, one per name that matched nothing: that
+    has to reach the model, because an empty result and "there is no such
+    account" are different answers and it cannot tell them apart. A list, so
+    a second unmatched name adds to the first rather than replacing it.
     """
-    note: str | None = None
+    notes: list[str] = []
     category_ids = None
     name = args.get("category_name")
     if isinstance(name, str) and name.strip():
@@ -314,7 +360,7 @@ async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionF
         # nothing — not silently widen to the whole budget.
         category_ids = [resolved] if resolved else []
         if not resolved:
-            note = f"No envelope matches {name!r}, so nothing was searched."
+            notes.append(f"No envelope matches {name!r}, so nothing was searched.")
 
     account_ids = None
     account_name = args.get("account_name")
@@ -322,7 +368,7 @@ async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionF
         resolved_account = await _resolve_account(ctx, account_name)
         account_ids = [resolved_account] if resolved_account else []
         if not resolved_account:
-            note = f"No account matches {account_name!r}, so nothing was searched."
+            notes.append(f"No account matches {account_name!r}, so nothing was searched.")
 
     payee_ids = None
     payee_name = args.get("payee_name")
@@ -330,11 +376,13 @@ async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionF
         resolved_payee = await _resolve_payee(ctx, payee_name)
         payee_ids = [resolved_payee] if resolved_payee else []
         if not resolved_payee:
-            note = f"No payee matches {payee_name!r}, so nothing was searched."
+            notes.append(f"No payee matches {payee_name!r}, so nothing was searched.")
 
     # An unmatched name selects nothing: `None` means "no filter", so the
     # empty list above is the only way to say "this matches no rows".
     transfer = args.get("is_transfer")
+    is_transfer = transfer if isinstance(transfer, bool) else None
+    named_account = account_ids is not None
 
     return (
         TransactionFilters(
@@ -344,15 +392,17 @@ async def _filters_from_args(ctx: ToolContext, args: dict) -> tuple[TransactionF
             category_ids=category_ids,
             account_ids=account_ids,
             payee_ids=payee_ids,
+            on_budget_only=not named_account,
+            cash_flow_only=not named_account and is_transfer is None,
             uncategorized=bool(args.get("uncategorized")),
             unreconciled=bool(args.get("unreconciled")),
             cleared=_enum(args, "cleared", CLEARED_STATES),
             direction=_enum(args, "direction", DIRECTIONS),
-            is_transfer=transfer if isinstance(transfer, bool) else None,
+            is_transfer=is_transfer,
             amount_min=_number(args.get("amount_min")),
             amount_max=_number(args.get("amount_max")),
         ),
-        note,
+        notes,
     )
 
 
@@ -363,7 +413,7 @@ async def search_transactions(ctx: ToolContext, args: dict) -> dict:
     categories, so a category-filtered search on the default scope would miss
     every split — which is exactly the bug `spending_insights` has.
     """
-    filters, note = await _filters_from_args(ctx, args)
+    filters, notes = await _filters_from_args(ctx, args)
 
     # Names, not ids: the listing does not eager-load these relationships, and
     # touching them would lazy-load — which raises under async. Two id->name
@@ -374,22 +424,13 @@ async def search_transactions(ctx: ToolContext, args: dict) -> dict:
         cat.id: cat.name for cat, _ in await ctx.categories.get_all_with_group_names(ctx.budget_id)
     }
 
+    # Every field of the filter set, by name, rather than a hand-written
+    # list: a field added to `TransactionFilters` and missed here would make
+    # the listing and the rollup disagree, and the rollup reads them all.
     rows, total_count, total_amount = await ctx.transactions.list_for_budget(
         ctx.budget_id,
-        start_date=filters.start_date,
-        end_date=filters.end_date,
-        search=filters.search,
-        category_ids=filters.category_ids,
-        account_ids=filters.account_ids,
-        payee_ids=filters.payee_ids,
+        **{f.name: getattr(filters, f.name) for f in fields(filters)},
         scope="leaf",
-        uncategorized=filters.uncategorized,
-        unreconciled=filters.unreconciled,
-        cleared=filters.cleared,
-        direction=filters.direction,
-        is_transfer=filters.is_transfer,
-        amount_min=filters.amount_min,
-        amount_max=filters.amount_max,
         order="amount" if args.get("order") == "amount" else "date",
         limit=DEFAULT_ROW_LIMIT,
     )
@@ -404,9 +445,8 @@ async def search_transactions(ctx: ToolContext, args: dict) -> dict:
         for t in rows
     ]
     result = clip(shaped, total_rows=total_count, total_amount=total_amount)
-    if note:
-        result["note"] = note
-    return result
+    result["covers"] = _scope_covers(filters)
+    return with_notes(result, *notes)
 
 
 async def query_transactions(ctx: ToolContext, args: dict) -> dict:
@@ -419,50 +459,57 @@ async def query_transactions(ctx: ToolContext, args: dict) -> dict:
     is an error naming the legal ones rather than a guess.
 
     The total is a real GROUP BY, not a sum of the page: a model given the
-    sum of the first 200 rows would report it as the answer.
+    sum of the first 200 rows would report it as the answer. And a cut says
+    what it cut — how many groups and what they come to — because a model
+    handed the top 25 of 34 presented them as everything.
     """
-    filters, note = await _filters_from_args(ctx, args)
+    filters, notes = await _filters_from_args(ctx, args)
     group_by = args.get("group_by") or "category"
     aggregate = args.get("aggregate") or "sum"
+    order = _enum(args, "order", GROUP_ORDERS) or "value"
     try:
-        groups, total_groups = await ctx.transactions.grouped_totals(
+        rolled = await ctx.transactions.grouped_totals(
             ctx.budget_id,
             group_by=group_by,
             aggregate=aggregate,
             filters=filters,
-            order=_enum(args, "order", ("value", "group", "rows")) or "value",
-            limit=_row_limit(args),
+            order=order,
+            # Raw: `group_limit` owns the default, the ceiling and the floor.
+            limit=args.get("limit"),
         )
     except UnknownDimension as bad:
         # Back to the model as an answer it can act on, not a stack trace.
         return {"error": str(bad)}
 
+    as_figure = (lambda v: v) if aggregate == "count" else money
     shaped = [
-        {
-            "group": row["group"],
-            "value": money(row["value"]) if aggregate != "count" else row["value"],
-            "rows": row["rows"],
-        }
-        for row in groups
+        {"group": row["group"], "value": as_figure(row["value"]), "rows": row["rows"]}
+        for row in rolled.groups
     ]
     result: dict[str, Any] = {
         "grouped_by": group_by,
         "aggregate": aggregate,
+        "covers": _scope_covers(filters),
         "groups": shaped,
-        "group_count": total_groups,
+        "group_count": rolled.total_groups,
+        "truncated": rolled.omitted_groups > 0,
+        "omitted_groups": rolled.omitted_groups,
     }
-    if total_groups > len(shaped):
-        result["note"] = f"The top {len(shaped)} of {total_groups} groups."
-    if note:
-        result["note"] = note
-    return result
-
-
-def _row_limit(args: dict) -> int:
-    try:
-        return max(1, min(100, int(args.get("limit", 25))))
-    except (TypeError, ValueError):
-        return 25
+    if rolled.total is not None:
+        result["total"] = as_figure(rolled.total)
+        result["omitted_value"] = as_figure(rolled.omitted_value)
+    return with_notes(
+        result,
+        *notes,
+        *grouped_notes(
+            values=[row["value"] for row in rolled.groups],
+            total_groups=rolled.total_groups,
+            omitted_value=rolled.omitted_value,
+            order=order,
+            aggregate=aggregate,
+            max_groups=MAX_GROUPS,
+        ),
+    )
 
 
 def _number(value: Any) -> float | None:
