@@ -39,6 +39,7 @@ def make_target(
     t.target_date = target_date
     t.weekday = weekday
     t.check_after_day = None
+    t.target_limit = None
     return t
 
 
@@ -48,7 +49,7 @@ def svc() -> TargetService:
 
 
 def needed(svc, target, assigned, available, month=MAY):
-    return svc.calculate_needed(target, D(assigned), D(available), month=month)
+    return svc.calculate_needed(target, D(assigned), D(available), activity=D("0"), month=month)
 
 
 class TestMonthlyFundingNeeded:

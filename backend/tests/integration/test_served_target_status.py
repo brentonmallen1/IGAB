@@ -51,6 +51,7 @@ async def _set_target(
     *,
     weekday=None,
     check_after_day=None,
+    target_limit=None,
 ):
     from igab.repositories.target_repo import TargetRepository
 
@@ -60,6 +61,7 @@ async def _set_target(
         target_type,
         Decimal(amount),
         target_date=target_date,
+        target_limit=Decimal(target_limit) if target_limit is not None else None,
         weekday=weekday,
         check_after_day=check_after_day,
     )
@@ -162,12 +164,12 @@ class TestTheServedFieldIsTheOnlyRule:
             target = await target_service.get(category.id)
             bal = balances[category.id]
             assert rows[str(category.id)]["target_status"] == target_service.calculate_status(
-                target, bal.assigned, bal.available, **_verdict()
+                target, bal.assigned, bal.available, activity=bal.activity, **_verdict()
             ), category.name
             assert Decimal(
                 str(rows[str(category.id)]["needed_this_month"])
             ) == target_service.calculate_needed(
-                target, bal.assigned, bal.available, month=MONTH
+                target, bal.assigned, bal.available, activity=bal.activity, month=MONTH
             ), category.name
 
     async def test_underfunded_means_fill_underfunded_would_move_money(

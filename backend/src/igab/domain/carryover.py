@@ -52,6 +52,20 @@ def write_off(end_of_month: Decimal) -> Decimal:
     return next_carryover(end_of_month) - end_of_month
 
 
+def carried_in(*, assigned: Decimal, activity: Decimal, available: Decimal) -> Decimal:
+    """What a month started with: its Available less what the month itself
+    did — the previous month's `next_carryover`, read back off the figures the
+    Budget page serves for this one.
+
+    An identity rather than a second walk: `available` is carried in plus
+    assigned plus activity, with the card correction already folded into the
+    served `activity` (`BudgetService.get_budget_summary`). Read this way, a
+    caller holding a month's three figures cannot reach a different opening
+    than the walk that produced them.
+    """
+    return available - assigned - activity
+
+
 def monthly_end_balances(
     assignments_by_month: dict[date, Decimal],
     activity_by_month: dict[date, Decimal],

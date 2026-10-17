@@ -824,6 +824,7 @@ async def get_budget_month(
                         t,
                         b.assigned,
                         b.available,
+                        activity=b.activity,
                         month=month,
                         today=today,
                         funding_day=funding_day,
@@ -832,13 +833,19 @@ async def get_budget_month(
                     else None
                 ),
                 needed_this_month=(
-                    target_service.calculate_needed(t, b.assigned, b.available, month=month)
+                    target_service.calculate_needed(
+                        t, b.assigned, b.available, activity=b.activity, month=month
+                    )
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
                 target_assigned=(
                     target_service.target_assigned(
-                        t, assigned=b.assigned, available=b.available, month=month
+                        t,
+                        assigned=b.assigned,
+                        activity=b.activity,
+                        available=b.available,
+                        month=month,
                     )
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
@@ -900,6 +907,7 @@ async def upsert_category_target(
         target_type=body.target_type,
         target_amount=body.target_amount,
         target_date=body.target_date,
+        target_limit=body.target_limit,
         check_after_day=body.check_after_day,
         weekday=body.weekday,
     )

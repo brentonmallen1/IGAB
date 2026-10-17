@@ -429,6 +429,7 @@ class GuideService:
                 t,
                 b.assigned,
                 b.available,
+                activity=b.activity,
                 month=month_start(today),
                 today=today,
                 # The checkup counts what is funded, not what is nagged about:

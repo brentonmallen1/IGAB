@@ -302,6 +302,37 @@ class TestApplyTargets:
         assert targets[str(vacation.id)]["target_type"] == "savings_balance"
         assert targets[str(vacation.id)]["target_amount"] == 3000.0
 
+    async def test_updating_a_monthly_figure_keeps_its_stop_and_check_day(
+        self, db_session, api_client
+    ):
+        """The plan sets the monthly figure and has no column for a stop or a
+        check-after day. Re-saving the target from the figure alone dropped
+        both: a $1,000 stop vanished the first time the plan was applied."""
+        budget = await _budget(db_session, api_client)
+        group = await create_category_group(db_session, budget, "Bills")
+        repairs = await create_category(db_session, budget, group, "Car repairs")
+        r = await api_client.post(
+            f"/api/v1/categories/{repairs.id}/target",
+            json={
+                "target_type": "monthly_funding",
+                "target_amount": "60.00",
+                "target_limit": "1000.00",
+                "check_after_day": 15,
+            },
+        )
+        assert r.status_code == 201
+
+        doc = _payload(_paycheck(_item("Car repairs", 8000, cat=str(repairs.id))), _paycheck())
+        plan = await _create(api_client, budget, payload=doc)
+        r = await api_client.post(f"{_url(budget)}/{plan['id']}/apply-targets", json={})
+        assert r.status_code == 200
+        assert r.json()["targets_updated"] == 1
+
+        target = (await _targets(api_client, budget))[str(repairs.id)]
+        assert target["target_amount"] == 80.0
+        assert target["target_limit"] == 1000.0
+        assert target["check_after_day"] == 15
+
     async def test_rows_naming_one_category_are_summed(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Everyday")

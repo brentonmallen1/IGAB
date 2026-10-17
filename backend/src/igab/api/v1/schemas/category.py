@@ -293,6 +293,11 @@ class CategoryTargetCreate(ApiModel):
     check_after_day: int | None = Field(default=None, ge=1, le=MAX_FUNDING_DAY)
     #: Weekly funding only, and required for it: 0=Monday … 6=Sunday.
     weekday: int | None = Field(default=None, ge=0, le=6)
+    #: Monthly or weekly funding only: "Stop at $L" — the month asks for its
+    #: rate until the balance carried in reaches L (`TargetService.duty`).
+    #: Omitted or null: no stop. Must be more than zero
+    #: (`TargetService.validate` says so in words).
+    target_limit: Money | None = None
 
 
 class CategoryTargetResponse(ApiModel):
@@ -303,6 +308,9 @@ class CategoryTargetResponse(ApiModel):
     target_date: datetime.date | None
     check_after_day: int | None
     weekday: int | None
+    #: Required, not optional: a path that forgot to serve it would read as
+    #: "no stop", and the editor would save the cap away on the next edit.
+    target_limit: Decimal | None
 
     model_config = {"from_attributes": True}
 

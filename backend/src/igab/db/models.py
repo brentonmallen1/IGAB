@@ -701,6 +701,16 @@ class Category(Base):
 
 class CategoryTarget(Base):
     __tablename__ = "category_targets"
+    __table_args__ = (
+        # The service refuses these first (`TargetService.validate`) and says
+        # why; this is the backstop for a path that writes the row directly
+        # (the sample generator, a snapshot import).
+        CheckConstraint(
+            "target_limit IS NULL OR (target_limit > 0"
+            " AND target_type IN ('monthly_funding', 'weekly_funding'))",
+            name="ck_category_targets_limit",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     category_id: Mapped[uuid.UUID] = mapped_column(
@@ -718,6 +728,11 @@ class CategoryTarget(Base):
     #: Weekly funding only: 0=Monday … 6=Sunday. This month's duty is the
     #: amount times the number of that weekday in the month.
     weekday: Mapped[int | None] = mapped_column(Integer)
+    #: Monthly and weekly funding only: "Stop at $L". The month asks for its
+    #: rate until the balance carried in reaches L, and only the part still
+    #: missing once it is close (`TargetService.duty`). Holding L reads
+    #: funded, however little was assigned this month. None: no cap.
+    target_limit: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
