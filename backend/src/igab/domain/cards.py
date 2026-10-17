@@ -396,6 +396,14 @@ class CardFunding[C, K]:
     #: months by anyone — carried per month so a row can say why its activity
     #: differs from the register's.
     repaid_by_category: dict[C, dict[date, Decimal]] = field(default_factory=dict)
+    #: The same `discharged`, attributed to the card the inflow landed on, per
+    #: month. Not a reserve leg — a refund that repays riding debt hands
+    #: nothing back to Set aside — but it is the one term between a month's
+    #: card rows and its reserve legs: those rows net to
+    #: `reservations − released − residual + floored − discharged` on each
+    #: card, so "what set this money aside" can reconcile its list to Set
+    #: aside with every line served.
+    discharged_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
     #: Transfers from the budget's cash that paid each card, per month — the
     #: repository sum, handed to the walk so the walk owns every leg of a
     #: reserve and the anchor's truncation is applied once, here. On an
@@ -648,6 +656,7 @@ def card_funding[C, K](
                 ridden[pair] = ridden.get(pair, ZERO) - discharged
                 reserved[pair] = reserved.get(pair, ZERO) - released - residual
                 repaid += discharged
+                _add(out.discharged_by_card, card, month, discharged)
                 _add(out.released_by_card, card, month, released)
                 _add(out.residual_by_card, card, month, residual)
                 level[card] = level.get(card, ZERO) - released - residual

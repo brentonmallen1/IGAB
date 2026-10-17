@@ -13,6 +13,7 @@ import pytest
 from igab.sample_budget.card_scenarios import (
     ALL_SCENARIOS,
     ANCHORED_SCENARIOS,
+    SETTLED_BY_OTHERS,
     CardScenario,
     ExpectedPosition,
 )
@@ -36,10 +37,11 @@ IDS = [s.slug for s in EVERY]
 D = Decimal
 
 
-async def _budget_with(db_session, *scenarios: CardScenario):
-    """One budget carrying every scenario given — the demo's own shape."""
+async def _budget_with(db_session, *scenarios: CardScenario, user=None):
+    """One budget carrying every scenario given — the demo's own shape.
+    `user` is the API client's, for a test that reads the budget over HTTP."""
     services = make_services(db_session)
-    user = await create_user(db_session)
+    user = user or await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking")
     income_group = await create_category_group(db_session, budget, "Income", is_system=True)
@@ -142,3 +144,85 @@ async def test_a_shared_category_does_not_leak_between_cards(db_session):
     rows = {i.scenario.slug: await _card_row(services, budget, i.card_id) for i in applied}
     assert rows["paid-in-full"].set_aside == D("200")
     assert rows["reimbursed"].short_reserved == D("100")
+
+
+async def _reserving_rows(api_client, budget, card_id, month: str) -> dict:
+    """The rows behind a card's Set aside for one month, as the card-reserve
+    peek asks for them."""
+    resp = await api_client.get(
+        f"/api/v1/{budget.id}/transactions",
+        params={
+            "card_reserving": "true",
+            "account_ids": str(card_id),
+            "budget_month": month,
+            "scope": "leaf",
+            "limit": 5000,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+async def _timeline(api_client, budget, card_id) -> dict:
+    resp = await api_client.get(f"/api/v1/{budget.id}/cards/{card_id}/timeline/{MONTH}")
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
+async def test_the_rows_behind_set_aside_reconcile_to_its_legs(
+    db_session, api_client, scenario: CardScenario
+):
+    """What the card-reserve peek lists, against what the walk served.
+
+    Two routes to one answer: the listing filters rows with
+    `CARD_RESERVING_ROW` and `BUDGET_MONTH`; the timeline is the walk over
+    `sum_credit_outflows_by_category`. Every month, the listed rows must net
+    to the spending legs plus what rode and less what a refund repaid of a
+    ride — the lines the peek draws under its list. A row the walk summed
+    but the listing missed, or the other way round, breaks the sum by its
+    own amount.
+    """
+    _, budget, applied = await _budget_with(db_session, scenario, user=api_client.test_user)
+    card_id = applied[0].card_id
+    timeline = await _timeline(api_client, budget, card_id)
+    anchor = timeline["anchor_month"]
+    walked = [m for m in timeline["months"] if anchor is None or m["month"] >= anchor]
+    assert walked, scenario.slug
+    for m in walked:
+        listed = await _reserving_rows(api_client, budget, card_id, m["month"])
+        spent = -D(str(listed["total_amount"]))
+        legs = (
+            D(str(m["reserved"]))
+            - D(str(m["released"]))
+            - D(str(m["residual"]))
+            + D(str(m["rode"]))
+            - D(str(m["ride_repaid"]))
+        )
+        assert spent == legs, f"{scenario.slug} {m['month']}"
+
+
+async def test_the_settle_up_month_lists_the_tab_and_its_repayment(db_session, api_client):
+    """By hand, on SETTLED_BY_OTHERS: the settle-up month charged the tab 200
+    on the card and took 1,000 back, so the list nets to an 800 inflow. Of
+    that, 400 repaid what the tab had ridden onto the card the two months
+    before — moving nothing in Set aside — and 400 had nowhere to go but Set
+    aside, as residual. Groceries spent nothing on the card that month and is
+    not in the list."""
+    _, budget, applied = await _budget_with(
+        db_session, SETTLED_BY_OTHERS, user=api_client.test_user
+    )
+    card_id = applied[0].card_id
+    listed = await _reserving_rows(api_client, budget, card_id, MONTH.isoformat())
+    assert sorted(D(str(t["amount"])) for t in listed["transactions"]) == [D("-200"), D("1000")]
+    assert D(str(listed["total_amount"])) == D("800")
+
+    [month] = [
+        m
+        for m in (await _timeline(api_client, budget, card_id))["months"]
+        if m["month"] == MONTH.isoformat()
+    ]
+    assert D(str(month["ride_repaid"])) == D("400")
+    assert D(str(month["residual"])) == D("400")
+    assert D(str(month["reserved"])) == D("0")
+    assert D(str(month["rode"])) == D("0")

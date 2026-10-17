@@ -49,6 +49,8 @@ from igab.domain.activity_class import (
 from igab.domain.spending import UNCATEGORIZED
 from igab.repositories.plan_rows import PLAN_SPENT_ROW
 from igab.repositories.txn_filters import (
+    BUDGET_MONTH,
+    CARD_RESERVING_ROW,
     CASH_FLOW_ROW,
     LEAF,
     NEEDS_CATEGORY,
@@ -75,6 +77,13 @@ class TransactionFilters:
 
     start_date: date | None = None
     end_date: date | None = None
+    #: The month a row counts in for budget math (`txn_filters.BUDGET_MONTH`),
+    #: as its first day. Not `start_date`/`end_date`: an envelope's Activity
+    #: and a card's reserve both bucket by this, and a late arrival dated the
+    #: 28th of the import month counts in the month after — so a calendar
+    #: window opened from an Activity figure listed a row the figure never
+    #: counted and missed one it did.
+    budget_month: date | None = None
     search: str | None = None
     category_ids: list[uuid.UUID] | None = None
     payee_ids: list[uuid.UUID] | None = None
@@ -90,6 +99,10 @@ class TransactionFilters:
     #: Only the rows a plan report counts as spent (`plan_rows.PLAN_SPENT_ROW`)
     #: — both ways, so a figure net of refunds opens a list that totals it.
     plan_spent: bool = False
+    #: Only the card rows a spending envelope claims
+    #: (`txn_filters.CARD_RESERVING_ROW`) — the rows a card's Set aside is
+    #: reserved from and released by. Leaf rows by definition.
+    card_reserving: bool = False
     direction: str | None = None
     day_of_week: int | None = None
     cleared: str | None = None
@@ -153,6 +166,10 @@ def _scope_and_class(f: TransactionFilters, scope: str, necessity_where: list | 
         # out its refunds and a savings envelope's transfers out, and listed
         # an untagged envelope's brokerage transfer it never counted.
         where.append(PLAN_SPENT_ROW)
+    if f.card_reserving:
+        # The walk's own rows (`sum_credit_outflows_by_category`), so the
+        # list behind a card's Set aside is the list the walk summed.
+        where.append(CARD_RESERVING_ROW)
     return where
 
 
@@ -167,6 +184,8 @@ def _dates_and_amounts(f: TransactionFilters) -> list:
         where.append(Transaction.date >= f.start_date)
     if f.end_date:
         where.append(Transaction.date <= f.end_date)
+    if f.budget_month:
+        where.append(BUDGET_MONTH == f.budget_month)
     if f.amount_min is not None:
         where.append(func.abs(Transaction.amount) >= f.amount_min)
     if f.amount_max is not None:

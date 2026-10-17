@@ -1085,14 +1085,35 @@ def row_category(predicate):
 IN_SINKING_FUND = row_category(IS_SINKING_FUND)
 
 
+#: A live, posted category-carrying row on a card: the one shape both
+#: claims on card rows are cut from. `CARD_RESERVING_ROW` and
+#: `UNCLAIMED_CARD_ROW` below are this plus opposite answers to "did a
+#: spendable category claim it", so they cannot come to disagree about which
+#: rows are card rows at all.
+_CARD_LEAF = and_(NOT_DELETED, LEAF, POSTED, ON_CARD_ACCOUNT)
+
+#: A card row a spending envelope claims: the rows a card's Set aside is
+#: reserved from (`domain/cards.py`, the walk's step 4) and released by
+#: (step 1). `sum_credit_outflows_by_category` sums exactly these by
+#: (category, card, `BUDGET_MONTH`), and the transaction listing serves them
+#: as `card_reserving=true` — so "what set this money aside" opens the rows
+#: the walk read, not a second spelling of them that could list a refund the
+#: reserve never saw.
+#:
+#: `row_category(SPENDABLE)`, not `category_id IN (spendable ids)`: the same
+#: lift `UNCLAIMED_CARD_ROW` negates, so the two stay complements by
+#: construction.
+CARD_RESERVING_ROW = and_(_CARD_LEAF, row_category(SPENDABLE))
+
+
 #: A card row the budget has no claim on: **the complement**, written as
 #: one, of the two sums that DO claim card rows —
 #:
 #: - not a payment from the budget's cash — `CARD_PAYMENT_FROM_CASH` above,
 #:   the same expression `sum_card_payments_by_month` selects on;
 #: - not a category's own money coming back — `category_filters.SPENDABLE`,
-#:   the same expression that picks the ids handed to
-#:   `sum_credit_outflows_by_category`.
+#:   through `CARD_RESERVING_ROW` above, the predicate
+#:   `sum_credit_outflows_by_category` selects on.
 #:
 #: Both sides read the same two constants, so they cannot stop being
 #: complements. They stopped twice when they were spelled out separately, and
@@ -1131,10 +1152,7 @@ IN_SINKING_FUND = row_category(IS_SINKING_FUND)
 #: amount and hiding real drift of that size. Mixing the two shapes is the
 #: trap this module's docstring opens with.
 UNCLAIMED_CARD_ROW = and_(
-    NOT_DELETED,
-    LEAF,
-    POSTED,
-    ON_CARD_ACCOUNT,
+    _CARD_LEAF,
     not_(row_category(SPENDABLE)),
     not_(CARD_PAYMENT_FROM_CASH),
 )

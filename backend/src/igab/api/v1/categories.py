@@ -707,6 +707,8 @@ async def get_card_timeline(
                 over_reserved=cm.position.over_reserved,
                 short_reserved=cm.position.short_reserved,
                 card_credit=cm.position.card_credit,
+                rode=cm.rode,
+                ride_repaid=cm.ride_repaid,
             )
             for cm in timeline
         ],

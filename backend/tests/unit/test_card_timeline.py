@@ -59,6 +59,18 @@ def test_a_month_where_only_the_balance_moved_still_appears():
     assert timeline[1].balance == D("-400")
 
 
+def test_what_rode_and_what_a_refund_repaid_ride_along_without_moving_set_aside():
+    """60 reserved and 40 rode in January; February's 100 refund repaid the 40
+    and released the 60. The two non-legs are carried onto their months as
+    read, and Set aside is the legs' sum alone: 60, then 0."""
+    reserve = CardReserve(reservations={JAN: D("60")}, released={FEB: D("60")})
+    timeline = card_timeline(
+        reserve, {}, {}, rode_by_month={JAN: D("40")}, repaid_by_month={FEB: D("40")}
+    )
+    assert [(cm.rode, cm.ride_repaid) for cm in timeline] == [(D("40"), D("0")), (D("0"), D("40"))]
+    assert [cm.set_aside for cm in timeline] == [D("60"), D("0")]
+
+
 class TestFirstBreach:
     def test_a_payment_past_the_reserve(self):
         """Reserved 200, paid 300: the breach is February and payments did it."""
