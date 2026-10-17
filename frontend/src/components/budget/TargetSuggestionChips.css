@@ -1,0 +1,42 @@
+/* The target form's "Suggest" row: a label, then the chips, wrapping. */
+
+.target-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+}
+
+.target-suggest__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.target-suggest__chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.target-suggest__chip {
+  padding: 2px var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.target-suggest__chip:hover {
+  border-color: var(--color-accent);
+}
+
+.target-suggest__chip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

@@ -26,18 +26,45 @@ import type { CategoryTarget } from '../types'
  * A savings balance — dated or not — fills by AVAILABLE: the bar answers "how
  * much of the goal balance exists", which is the picture a person saving
  * toward a figure wants even when the server paces this month's ask by the
- * date. Funding targets fill by ASSIGNED — "how much of this month's duty is
- * done".
+ * date. A funding target with a stop fills the same way, toward its stop:
+ * "$100 a month, stop at $1,000" is a balance being built at a pace, like a
+ * dated goal. Other funding targets fill by ASSIGNED — "how much of this
+ * month's duty is done".
  */
 export function targetProgress(
-  target: Pick<CategoryTarget, 'target_type' | 'target_amount'>,
+  target: Pick<CategoryTarget, 'target_type' | 'target_amount' | 'target_limit'>,
   assigned: number,
   available: number
 ): number | null {
+  if (target.target_limit != null) {
+    if (target.target_limit <= 0) return null
+    return Math.min(Math.max(available / target.target_limit, 0), 1)
+  }
   const amount = target.target_amount
   if (amount <= 0) return null
   const numerator = target.target_type === 'savings_balance' ? available : assigned
   return Math.min(Math.max(numerator / amount, 0), 1)
+}
+
+/**
+ * What a target asks for, in words: "$100/mo, stops at $1,000", "$25/wk",
+ * "$1,000". Presentation of the stored fields only — what the month asks for
+ * once the stop is near is the server's (`needed_this_month`).
+ */
+export function describeTarget(
+  target: Pick<CategoryTarget, 'target_type' | 'target_amount' | 'target_limit'>,
+  formatMoney: (amount: number) => string
+): string {
+  const per =
+    target.target_type === 'monthly_funding'
+      ? '/mo'
+      : target.target_type === 'weekly_funding'
+        ? '/wk'
+        : ''
+  const rate = `${formatMoney(target.target_amount)}${per}`
+  return target.target_limit != null
+    ? `${rate}, stops at ${formatMoney(target.target_limit)}`
+    : rate
 }
 
 /** Whether the server judges this target on the balance rather than on this

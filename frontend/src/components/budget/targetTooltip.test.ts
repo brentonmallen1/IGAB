@@ -25,6 +25,13 @@ describe('getTargetTooltip', () => {
   it('funded says so whatever the figures', () => {
     expect(getTargetTooltip('funded', 50, money)).toBe('Funded')
   })
+  it('funded names the stop when the target has one', () => {
+    expect(getTargetTooltip('funded', 0, money, undefined, 1000)).toBe('Funded — stops at $1000.00')
+    expect(getTargetTooltip('funded', 0, money, undefined, null)).toBe('Funded')
+    expect(getTargetTooltip('underfunded', 40, money, undefined, 1000)).toBe(
+      'Need $40.00 this month'
+    )
+  })
   it('underfunded names the month ask', () => {
     expect(getTargetTooltip('underfunded', 50, money)).toBe('Need $50.00 this month')
     expect(getTargetTooltip('underfunded', 0, money)).toBe('Underfunded')

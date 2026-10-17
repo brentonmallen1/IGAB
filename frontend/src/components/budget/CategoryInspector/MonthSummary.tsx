@@ -8,6 +8,7 @@ import { useDeleteTarget } from '../../../api/targets'
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { today } from '../../../utils/dates'
+import { describeTarget } from '../../../utils/targets'
 import { TargetEditor } from '../TargetEditor'
 import type { Category, CategoryTarget } from '../../../types'
 import { autoAssignRows } from './autoAssignActions'
@@ -37,7 +38,7 @@ function PastTargetRow({
       <div className="past-target-row__info">
         <span className="past-target-row__name">{categoryName}</span>
         <span className="past-target-row__meta">
-          {formatMoney(target.target_amount)} ·{' '}
+          {describeTarget(target, formatMoney)} ·{' '}
           {target.target_date ? formatDate(target.target_date) : ''}
         </span>
       </div>
