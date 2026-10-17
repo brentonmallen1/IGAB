@@ -516,6 +516,9 @@ export interface LateArrival {
   account_id: string
   category_id: string | null
   payee_id: string | null
+  /** The row's served `needs_category` (`services.budget_service.LateArrival`):
+   *  a late transfer between budget accounts has no category and needs none. */
+  needs_category: boolean
 }
 
 export interface BudgetMonth {

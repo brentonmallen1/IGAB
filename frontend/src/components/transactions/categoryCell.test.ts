@@ -114,6 +114,13 @@ describe('the copies this replaced', () => {
   it('MergePreviewModal: a row needing a category read "—", like a transfer', () => {
     expect(text({ needs_category: true })).not.toBe(text({ needs_category: false }))
   })
+
+  it('LateArrivalsNote: a late transfer read "Needs a category"', () => {
+    // It said so for every uncategorized row. The server now serves
+    // `needs_category` on a late arrival, and a transfer's is false.
+    expect(text({ category_id: null, needs_category: false })).toBe('Transfer')
+    expect(text({ category_id: null, needs_category: true })).toBe('Needs Category')
+  })
 })
 
 describe('categoryCellAction', () => {

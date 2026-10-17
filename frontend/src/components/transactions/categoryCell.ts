@@ -17,8 +17,8 @@ import {
  * or what an uncategorized leg reads as. One module, both callers.
  *
  * Every other list that draws a transaction's category reads the label too:
- * the report drill-down and the merge preview each spelled their own, and
- * each drew some row differently from the register —
+ * the report drill-down, the merge preview and the late-arrivals note each
+ * spelled their own, and each drew some row differently from the register —
  * see `categoryCell.test.ts`, where every divergence is a case named for the
  * component that had it.
  */
