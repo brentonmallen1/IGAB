@@ -11,11 +11,11 @@ import { today } from '../../../utils/dates'
 import { describeTarget } from '../../../utils/targets'
 import { TargetEditor } from '../TargetEditor'
 import type { Category, CategoryTarget } from '../../../types'
-import { autoAssignRows } from './autoAssignActions'
+import type { AutoAssignAction } from '../../../types'
+import { autoAssignAmounts, autoAssignCategoryIds, autoAssignRows } from './autoAssignActions'
 
 interface Props {
   budgetId: string
-  allCategoryIds: string[]
   categories: Category[]
 }
 
@@ -58,11 +58,12 @@ function PastTargetRow({
   )
 }
 
-export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
+export function MonthSummary({ budgetId, categories }: Props) {
   const { formatMoney, formatDate, formatMonth, settings } = useFormatters()
   const month = useAppStore((s) => s.selectedMonth)
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const { data: histories } = useCategoryHistoryBatch(budgetId, allCategoryIds)
+  const allCategoryIds = autoAssignCategoryIds(categories)
+  const { data: histories } = useCategoryHistoryBatch(budgetId, allCategoryIds, month)
   const { data: allTargets } = useTargetsByBudget(budgetId)
   const autoAssign = useAutoAssign(budgetId, month)
 
@@ -96,7 +97,14 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
     carriedOver: leftOver,
   } = sumBalances(budgetMonth?.category_balances ?? [])
 
-  const autoActions = autoAssignRows(allCategoryIds, histories, budgetMonth?.category_balances)
+  const balances = budgetMonth?.category_balances
+  const autoActions = autoAssignRows(allCategoryIds, histories, balances)
+  const press = (action: AutoAssignAction) =>
+    autoAssign.mutate({
+      categoryIds: allCategoryIds,
+      action,
+      amounts: autoAssignAmounts(action, allCategoryIds, histories, balances),
+    })
 
   const isDisabled = autoAssign.isPending || allCategoryIds.length === 0
 
@@ -166,7 +174,7 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
                 <button
                   key={action}
                   className="inspector-autoassign__btn"
-                  onClick={() => autoAssign.mutate({ categoryIds: allCategoryIds, action })}
+                  onClick={() => press(action)}
                   disabled={isDisabled}
                 >
                   <span className="inspector-autoassign__label">{label}</span>
@@ -176,7 +184,7 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
               <div className="inspector-autoassign__divider" />
               <button
                 className="inspector-autoassign__btn"
-                onClick={() => autoAssign.mutate({ categoryIds: allCategoryIds, action: 'reset' })}
+                onClick={() => press('reset')}
                 disabled={isDisabled}
               >
                 <span className="inspector-autoassign__label">Reset Assigned Amounts</span>

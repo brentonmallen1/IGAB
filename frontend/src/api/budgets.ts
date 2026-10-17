@@ -8,7 +8,7 @@ import type { SnapshotInspection } from './budgetSnapshots'
 import type { YnabImportResult } from './imports'
 import { ROOT } from './queryKeys'
 import { parseLocalDate } from '../utils/dates'
-import { balancesByCategory } from '../utils/categoryBalances'
+import { withAssignments } from '../utils/categoryBalances'
 
 export interface YnabImportBudgetResult {
   budget: Budget
@@ -209,46 +209,10 @@ export function useSetAssignment(budgetId: string) {
       await qc.cancelQueries({ queryKey: [ROOT.budgetMonth, budgetId, month] })
       const previous = qc.getQueryData<BudgetMonth>([ROOT.budgetMonth, budgetId, month])
       if (previous) {
-        const existing = balancesByCategory(previous).get(categoryId)
-        const delta = amount - Number(existing?.assigned ?? 0)
-        const category_balances = existing
-          ? previous.category_balances.map((b) =>
-              b.category_id === categoryId
-                ? { ...b, assigned: amount, available: Number(b.available) + delta }
-                : b
-            )
-          : [
-              ...previous.category_balances,
-              {
-                category_id: categoryId,
-                month,
-                assigned: amount,
-                activity: 0,
-                available: amount,
-                // The server owns the target verdict and has not answered yet.
-                // null hides the pill for one refetch rather than inventing a
-                // status here, which is the rule this field exists to enforce.
-                target_status: null,
-                // A row invented optimistically is never a card's envelope —
-                // those always exist server-side before they can be assigned.
-                is_card_payment: false,
-                needed_this_month: null,
-                target_assigned: null,
-                // Nothing repaid: this row is an assignment the user just
-                // made, not a card inflow the exposure walk had to split.
-                repaid_uncovered_debt: 0,
-                // An optimistic row starts at `assigned` with no activity, so
-                // it cannot be overspent at all, let alone on a card. The
-                // refetch brings the real split a moment later.
-                credit_overspent: 0,
-              },
-            ]
-        qc.setQueryData<BudgetMonth>([ROOT.budgetMonth, budgetId, month], {
-          ...previous,
-          total_assigned: Number(previous.total_assigned) + delta,
-          to_be_assigned: Number(previous.to_be_assigned) - delta,
-          category_balances,
-        })
+        qc.setQueryData<BudgetMonth>(
+          [ROOT.budgetMonth, budgetId, month],
+          withAssignments(previous, month, new Map([[categoryId, amount]]))
+        )
       }
       return { previous }
     },

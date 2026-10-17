@@ -68,7 +68,6 @@ export const ROOT = {
   categoryClassification: 'categoryClassification',
   categoryDeletePreview: 'categoryDeletePreview',
   categoryGroups: 'categoryGroups',
-  categoryHistory: 'categoryHistory',
   categoryHistoryBatch: 'categoryHistoryBatch',
   categoryPlans: 'category-plans',
   changes: 'changes',

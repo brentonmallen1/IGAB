@@ -16,8 +16,6 @@ class SnapshotRepository:
     igab.db.invalidation deletes meta rows on any relevant write.
     """
 
-    _BULK_CHUNK = 1000
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
@@ -66,14 +64,20 @@ class SnapshotRepository:
         await self.session.execute(
             delete(CategoryMonthSnapshot).where(CategoryMonthSnapshot.budget_id == budget_id)
         )
-        for i in range(0, len(rows), self._BULK_CHUNK):
-            chunk = rows[i : i + self._BULK_CHUNK]
+        if rows:
             # DO NOTHING absorbs the race where a concurrent request rebuilt
             # and committed first — its rows were computed from the same data.
+            #
+            # The rows go as parameters, not as `.values(rows)`: a VALUES list
+            # is a new statement for every row count, compiled from scratch,
+            # and compiling two thousand rows' worth was sixty of the hundred
+            # milliseconds a rebuild took. As parameters the statement is
+            # compiled once and cached, and the driver batches the rows.
             await self.session.execute(
-                pg_insert(CategoryMonthSnapshot)
-                .values(chunk)
-                .on_conflict_do_nothing(constraint="uq_snapshot_category_month")
+                pg_insert(CategoryMonthSnapshot).on_conflict_do_nothing(
+                    constraint="uq_snapshot_category_month"
+                ),
+                rows,
             )
         await self.session.execute(
             pg_insert(BudgetSnapshotMeta)

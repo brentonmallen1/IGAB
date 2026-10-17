@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     # root at WARNING, which is why `docker logs` showed nothing at all
     # while a bank account quietly imported nothing for nine days.
     LOG_LEVEL: str = "INFO"
+    #: Log each request's statement count and database time
+    #: (`igab.db.query_stats`). Off by default: it is a diagnostic, and a
+    #: line per request is noise on a server nobody is profiling.
+    LOG_QUERY_STATS: bool = False
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://igab:changeme@localhost:5432/igab"
