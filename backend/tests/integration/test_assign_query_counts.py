@@ -61,7 +61,10 @@ async def _budget(db_session, api_client, envelopes: int):
                 db_session, budget, checking, "-60.00", date(2026, month, 5), category=cat
             )
         await targets.upsert(
-            category_id=cat.id, target_type="monthly_funding", target_amount=D("150")
+            category_id=cat.id,
+            target_type="monthly_funding",
+            target_amount=D("150"),
+            target_limit=None,
         )
     await db_session.flush()
     return budget, [str(c.id) for c in cats]
