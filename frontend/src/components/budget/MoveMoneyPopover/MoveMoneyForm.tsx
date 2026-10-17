@@ -5,6 +5,8 @@ import { useMoveHistory, useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
+import { moveEndpointName } from '../../../utils/categoryLabels'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { expressionToCents, toAmountInput } from '../../../utils/amountExpression'
 import type { Category } from '../../../types'
@@ -66,8 +68,8 @@ export function MoveMoneyForm({
 
   const otherCategories = categories.filter((c) => c.is_assignable && c.id !== category.id)
   const groupedOthers = groupedCategorySections(otherCategories, groups)
-  const nameOf = (id: string | null) =>
-    id === null ? 'Ready to Assign' : (categories.find((c) => c.id === id)?.name ?? '—')
+  const categoryLabels = useCategoryLabels(budgetId)
+  const nameOf = (id: string | null) => moveEndpointName(id, categoryLabels)
 
   const categoryMoves = history
     .filter((m) => m.from_category_id === category.id || m.to_category_id === category.id)

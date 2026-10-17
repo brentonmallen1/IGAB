@@ -50,6 +50,7 @@ import {
 } from './importReview'
 import './ImportReviewDialog.css'
 import { closedAccounts } from '../../../utils/accountLists'
+import { buildCategoryLabels } from '../../../utils/categoryLabels'
 import { parseLocalDate } from '../../../utils/dates'
 import { useBudgetHistory } from '../../../api/budgets'
 
@@ -120,21 +121,18 @@ export function ImportReviewDialog({
 
   const reviewable: ReviewCategory[] = useMemo(() => {
     if (!categories || !groups) return []
-    const names = new Map(groups.map((g) => [g.id, g.name]))
+    const labels = buildCategoryLabels(categories, groups)
     // The live envelopes: `is_assignable` is the server's answer, the same
     // one it scopes tag suggestions by. It leaves out income (holds no
     // envelope money), card envelopes (nothing is ever filed to them), and
     // anything archived or in an archived group — YNAB's Hidden Categories
     // arrive as an archived group, and a review that offered them was asking
     // about categories the user had already put away.
-    return categories
-      .filter((c) => c.is_assignable && names.has(c.category_group_id))
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-        groupName: names.get(c.category_group_id) as string,
-        tagIds: (c.tags ?? []).map((t) => t.id),
-      }))
+    return categories.flatMap((c) => {
+      const group = labels.get(c.id)?.group ?? null
+      if (!c.is_assignable || group === null) return []
+      return [{ id: c.id, name: c.name, groupName: group, tagIds: (c.tags ?? []).map((t) => t.id) }]
+    })
   }, [categories, groups])
 
   const rows = useMemo(

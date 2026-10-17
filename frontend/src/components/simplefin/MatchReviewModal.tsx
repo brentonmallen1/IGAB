@@ -3,11 +3,17 @@ import { ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 
 import { apiErrorMessage } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
-import { useCategories } from '../../api/categories'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useCategoryLabels } from '../../hooks/useCategoryLabels'
+import {
+  categoryDisplay,
+  type CategoryDisplay,
+  type NamedCategory,
+} from '../../utils/categoryLabels'
 import type { Transaction, TransactionMatch } from '../../types'
 import { useTransaction } from '../../api/transactions'
 import { Dialog } from '../common/Dialog/Dialog'
+import { Tooltip } from '../common/Tooltip/Tooltip'
 // After Dialog, so its one-class variations are declared after the shared ones.
 import './MatchReviewModal.css'
 
@@ -31,25 +37,37 @@ function ConfidenceBar({ score }: { score: number }) {
   )
 }
 
+/** A Category line, the group on hover. */
+function CategoryLine({ className, category }: { className: string; category: CategoryDisplay }) {
+  return (
+    <div className={className}>
+      <span className="match-modal__txn-key">Category</span>
+      <Tooltip content={category.path} block className="match-modal__txn-value">
+        {category.name}
+      </Tooltip>
+    </div>
+  )
+}
+
 function TxnDetail({
   txn,
   label,
   payeeMap,
-  categoryMap,
+  categoryLabels,
   formatMoney,
   formatDate,
 }: {
   txn: Transaction
   label: string
   payeeMap: Map<string, string>
-  categoryMap: Map<string, string>
+  categoryLabels: ReadonlyMap<string, NamedCategory>
   formatMoney: (amount: number) => string
   formatDate: (dateStr: string) => string
 }) {
   const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
   const inflow = txn.amount >= 0 ? txn.amount : 0
   const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
-  const categoryName = txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : null
+  const category = txn.category_id ? categoryDisplay(txn.category_id, categoryLabels) : null
 
   return (
     <div className="match-modal__col">
@@ -69,12 +87,7 @@ function TxnDetail({
           <span className="match-modal__txn-key">Payee</span>
           <span className="match-modal__txn-value">{payeeName}</span>
         </div>
-        {categoryName && (
-          <div className="match-modal__txn-row">
-            <span className="match-modal__txn-key">Category</span>
-            <span className="match-modal__txn-value">{categoryName}</span>
-          </div>
-        )}
+        {category && <CategoryLine className="match-modal__txn-row" category={category} />}
         <div className="match-modal__txn-row">
           <span className="match-modal__txn-key">Status</span>
           <span className={`match-modal__cleared match-modal__cleared--${txn.cleared}`}>
@@ -102,14 +115,14 @@ function MergedPreview({
   syncedTxn,
   manualTxn,
   payeeMap,
-  categoryMap,
+  categoryLabels,
   formatMoney,
   formatDate,
 }: {
   syncedTxn: Transaction
   manualTxn: Transaction
   payeeMap: Map<string, string>
-  categoryMap: Map<string, string>
+  categoryLabels: ReadonlyMap<string, NamedCategory>
   formatMoney: (amount: number) => string
   formatDate: (dateStr: string) => string
 }) {
@@ -137,7 +150,12 @@ function MergedPreview({
     : syncedTxn.payee_id
       ? (payeeMap.get(syncedTxn.payee_id) ?? '—')
       : '—'
-  const categoryName = manualTxn.category_id ? categoryMap.get(manualTxn.category_id) : null
+  // The kept category, named even when the labels cannot: this line used to
+  // vanish for a category it could not name, previewing a result with no
+  // category while the accept kept it.
+  const category = manualTxn.category_id
+    ? categoryDisplay(manualTxn.category_id, categoryLabels)
+    : null
   const outflow = mergedAmount < 0 ? Math.abs(mergedAmount) : 0
   const inflow = mergedAmount >= 0 ? mergedAmount : 0
 
@@ -167,12 +185,7 @@ function MergedPreview({
         <span className="match-modal__txn-key">Payee</span>
         <span className="match-modal__txn-value">{payeeName}</span>
       </div>
-      {categoryName && (
-        <div className="match-modal__merged-row">
-          <span className="match-modal__txn-key">Category</span>
-          <span className="match-modal__txn-value">{categoryName}</span>
-        </div>
-      )}
+      {category && <CategoryLine className="match-modal__merged-row" category={category} />}
       <div className="match-modal__merged-row">
         <span className="match-modal__txn-key">Status</span>
         <span className={`match-modal__cleared match-modal__cleared--${mergedCleared}`}>
@@ -207,10 +220,9 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
   const { data: syncedTxn, isLoading: loadingS } = useTransaction(match.synced_transaction_id)
   const { data: manualTxn, isLoading: loadingM } = useTransaction(match.manual_transaction_id)
   const { data: payees = [] } = usePayees(budgetId)
-  const { data: categories = [] } = useCategories(budgetId)
 
   const payeeMap = new Map(payees.map((p) => [p.id, p.name]))
-  const categoryMap = new Map(categories.map((c) => [c.id, c.name]))
+  const categoryLabels = useCategoryLabels(budgetId)
 
   const loading = loadingS || loadingM
 
@@ -230,7 +242,7 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
                 txn={syncedTxn}
                 label="From bank (synced)"
                 payeeMap={payeeMap}
-                categoryMap={categoryMap}
+                categoryLabels={categoryLabels}
                 formatMoney={formatMoney}
                 formatDate={formatDate}
               />
@@ -241,7 +253,7 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
                 txn={manualTxn}
                 label="Manually entered"
                 payeeMap={payeeMap}
-                categoryMap={categoryMap}
+                categoryLabels={categoryLabels}
                 formatMoney={formatMoney}
                 formatDate={formatDate}
               />
@@ -287,7 +299,7 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
               syncedTxn={syncedTxn}
               manualTxn={manualTxn}
               payeeMap={payeeMap}
-              categoryMap={categoryMap}
+              categoryLabels={categoryLabels}
               formatMoney={formatMoney}
               formatDate={formatDate}
             />

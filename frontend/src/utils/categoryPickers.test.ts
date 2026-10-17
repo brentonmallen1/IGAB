@@ -8,11 +8,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  UNGROUPED_LABEL,
   filingCategoryOptions,
   flatCategoryOptions,
   groupedCategorySections,
 } from './categoryPickers'
+import { UNGROUPED_LABEL } from './categoryLabels'
 import type { Category, CategoryGroup } from '../types'
 import { makeCategory } from '../test-utils/factories'
 
@@ -157,7 +157,6 @@ describe('the server owns eligibility', () => {
   it('exports no eligibility rule of its own', async () => {
     const mod = await import('./categoryPickers')
     expect(Object.keys(mod).sort()).toEqual([
-      'UNGROUPED_LABEL',
       'filingCategoryOptions',
       'flatCategoryOptions',
       'groupedCategorySections',

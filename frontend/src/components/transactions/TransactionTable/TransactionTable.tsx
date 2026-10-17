@@ -61,6 +61,8 @@ import type {
   TransactionMatch,
 } from '../../../types'
 import { filingCategoryOptions } from '../../../utils/categoryPickers'
+import { categoryDisplay, categoryNames } from '../../../utils/categoryLabels'
+import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
 import { registerPayAction } from './payButton'
@@ -234,7 +236,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const { splitEditing, startSplitEditing } = useTransactionEditStore()
 
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
-  const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
+  // Naming, not choosing: archived categories included, so a row filed in an
+  // envelope archived since still reads its name. The pickers below keep
+  // `categories`. The parser resolves typed names from the same set.
+  const categoryLabels = useCategoryLabels(budgetId)
+  const categoryMap = useMemo(() => categoryNames(categoryLabels), [categoryLabels])
   const accountMap = useMemo(() => accountNameMap(everyAccount), [everyAccount])
   // Stable palette slot per account (position in the accounts list), so an
   // account keeps its identity color across sections, pages, and themes
@@ -667,7 +673,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             payeeMap,
             accountMap
           ),
-          category: s.category_id ? (categoryMap.get(s.category_id) ?? '—') : '—',
+          category: s.category_id ? categoryDisplay(s.category_id, categoryLabels) : undefined,
         }}
         onEdit={() => setEditingScheduledTxn(s)}
         onEnter={() => enterScheduled.mutate(s.id)}
@@ -692,7 +698,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           onEdit={handleEdit}
           payeeMap={payeeMap}
           accountMap={accountMap}
-          categoryMap={categoryMap}
+          categoryLabels={categoryLabels}
           payees={payees}
           accounts={accounts}
           categories={categories}
@@ -722,7 +728,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <SplitLineRows
               parent={txn}
               lines={splitLines?.[txn.id]}
-              categoryMap={categoryMap}
+              categoryLabels={categoryLabels}
               accountOnBudget={onBudgetAccountIds.has(txn.account_id)}
               onStartSplit={handleStartSplit}
               onEdit={handleEdit}
@@ -931,7 +937,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <MergePreviewModal
           transactions={mergeEligiblePair}
           payeeMap={payeeMap}
-          categoryMap={categoryMap}
+          categoryLabels={categoryLabels}
+          accountOnBudget={onBudgetAccountIds.has(mergeEligiblePair[0].account_id)}
           onConfirm={handleConfirmMerge}
           error={mergeError}
           onCancel={() => {

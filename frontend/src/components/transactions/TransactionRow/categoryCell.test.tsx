@@ -9,7 +9,7 @@
  * nagging about ~930 rows the backend had already agreed were fine.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransactionRow } from './TransactionRow'
@@ -34,6 +34,14 @@ vi.mock('../../../api/payees', () => ({ useCreatePayee: () => ({ mutateAsync: vi
 vi.mock('./RowAttachmentButton', () => ({ RowAttachmentButton: () => null }))
 vi.mock('../../simplefin/BankRecordIcon', () => ({ BankRecordIcon: () => null }))
 
+// Two envelopes named "Gifts", in different groups — the reason the cell has
+// a hover at all. Fictional groups, like every fixture here.
+const labels = new Map([
+  ['c1', { name: 'Groceries', group: 'Everyday' }],
+  ['gifts-hols', { name: 'Gifts', group: 'Holidays' }],
+  ['gifts-bdays', { name: 'Gifts', group: 'Birthdays' }],
+])
+
 function txn(overrides: Partial<Transaction> = {}): Transaction {
   return makeTransaction(overrides)
 }
@@ -55,7 +63,7 @@ function renderRow(t: Transaction, accountOnBudget = true) {
           onEdit={vi.fn()}
           payeeMap={new Map()}
           accountMap={new Map()}
-          categoryMap={new Map([['c1', 'Groceries']])}
+          categoryLabels={labels}
           payees={[]}
           accounts={[]}
           categories={[]}
@@ -128,5 +136,35 @@ describe('a row a category delete emptied', () => {
     expect(categoryCell(txn({ category_id: 'c1', prior_category_name: 'Old Groceries' }))).toBe(
       'Groceries'
     )
+  })
+})
+
+describe('the hover on a filed row', () => {
+  async function hover(t: Transaction): Promise<HTMLElement | null> {
+    const { container } = renderRow(t)
+    fireEvent.mouseEnter(container.querySelector('.txn-col--category .tooltip-host')!)
+    return screen.findByRole('tooltip').catch(() => null)
+  }
+
+  it('names the group, so two envelopes called "Gifts" read apart', async () => {
+    expect(await hover(txn({ category_id: 'gifts-hols' }))).toHaveTextContent('Holidays › Gifts')
+  })
+
+  it('names the other one too', async () => {
+    expect(await hover(txn({ category_id: 'gifts-bdays' }))).toHaveTextContent('Birthdays › Gifts')
+  })
+
+  it('keeps the clip on the host, so a long name still ends in an ellipsis', () => {
+    const { container } = renderRow(txn({ category_id: 'c1' }))
+    const host = container.querySelector('.txn-col--category .tooltip-host')!
+    expect(host.className).toContain('txn-text-clip')
+    expect(host.textContent).toBe('Groceries')
+  })
+
+  it('has nothing to say for a category it cannot name', () => {
+    const { container } = renderRow(txn({ category_id: 'deleted' }))
+    expect(container.querySelector('.txn-col--category')?.textContent).toBe('—')
+    fireEvent.mouseEnter(container.querySelector('.txn-col--category .tooltip-host')!)
+    expect(screen.queryByRole('tooltip')).toBeNull()
   })
 })

@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../../../api/client'
 import { useUpdateTransaction } from '../../../api/transactions'
 import { aiSuggestedCategory } from '../../../components/ai/draftNotes'
 import { filingCategoryOptions } from '../../../utils/categoryPickers'
+import { buildCategoryLabels } from '../../../utils/categoryLabels'
 import { JobField } from './JobField'
 
 /**
@@ -32,7 +33,7 @@ export function JobCategory({ job, budgetId }: { job: AIJob; budgetId: string })
   const update = useUpdateTransaction(budgetId)
 
   const options = useMemo(() => filingCategoryOptions(categories, groups), [categories, groups])
-  const groupNames = useMemo(() => new Map(groups.map((g) => [g.id, g.name])), [groups])
+  const labels = useMemo(() => buildCategoryLabels(categories, groups), [categories, groups])
 
   // Nothing is filed without a row: a queued scan, one waiting for an
   // account, one whose row was deleted. The served account is null exactly
@@ -55,17 +56,9 @@ export function JobCategory({ job, budgetId }: { job: AIJob; budgetId: string })
   }
 
   const filedId = job.transaction_category_id
-  const filed = filedId ? categories.find((c) => c.id === filedId) : undefined
+  const filed = filedId ? labels.get(filedId) : undefined
   // Until the list arrives, a filed row cannot be compared with the pick.
-  const suggested =
-    filedId && !filed
-      ? null
-      : aiSuggestedCategory(
-          job.result?.draft,
-          filed
-            ? { name: filed.name, group: groupNames.get(filed.category_group_id) ?? null }
-            : null
-        )
+  const suggested = filedId && !filed ? null : aiSuggestedCategory(job.result?.draft, filed ?? null)
 
   return (
     <>

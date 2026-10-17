@@ -49,7 +49,7 @@ const STABLE = {
   onEdit: vi.fn(),
   payeeMap: new Map(),
   accountMap: new Map(),
-  categoryMap: new Map(),
+  categoryLabels: new Map(),
   payees: [],
   accounts: [],
   categories: [],

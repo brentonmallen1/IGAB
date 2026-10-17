@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react'
 import { CalendarArrowUp, X } from 'lucide-react'
 import { useAccounts } from '../../../api/accounts'
-import { useCategories } from '../../../api/categories'
 import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
+import {
+  categoryCellHover,
+  categoryCellLabel,
+  categoryCellText,
+} from '../../transactions/categoryCell'
 import type { LateArrival } from '../../../types'
 import { addMonths, formatMonth } from '../../../utils/dates'
 import { dismissedCount, rememberDismissed } from './lateArrivalsDismissal'
@@ -29,17 +35,16 @@ interface Props {
 export function LateArrivalsNote({ budgetId, month, arrivals }: Props) {
   const { formatMoney, formatDate } = useFormatters()
   const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
-  const { data: categories } = useCategories(budgetId, true)
+  const categoryLabels = useCategoryLabels(budgetId)
   const { data: payees } = usePayees(budgetId)
   const [dismissed, setDismissed] = useState(() => dismissedCount(budgetId))
 
   const names = useMemo(
     () => ({
       account: new Map((accounts ?? []).map((a) => [a.id, a.name])),
-      category: new Map((categories ?? []).map((c) => [c.id, c.name])),
       payee: new Map((payees ?? []).map((p) => [p.id, p.name])),
     }),
-    [accounts, categories, payees]
+    [accounts, payees]
   )
 
   if (arrivals.length === 0 || arrivals.length <= dismissed) return null
@@ -70,20 +75,35 @@ export function LateArrivalsNote({ budgetId, month, arrivals }: Props) {
       <details className="late-arrivals__details">
         <summary>Show {count === 1 ? 'it' : 'them'}</summary>
         <ul className="late-arrivals__list">
-          {arrivals.map((a) => (
-            <li key={a.transaction_id} className="late-arrivals__row">
-              <span className="late-arrivals__date">{formatDate(a.date)}</span>
-              <span className="late-arrivals__payee">
-                {(a.payee_id && names.payee.get(a.payee_id)) ||
-                  names.account.get(a.account_id) ||
-                  '—'}
-              </span>
-              <span className="late-arrivals__category">
-                {a.category_id ? (names.category.get(a.category_id) ?? '—') : 'Needs a category'}
-              </span>
-              <span className="late-arrivals__amount">{formatMoney(a.amount)}</span>
-            </li>
-          ))}
+          {arrivals.map((a) => {
+            // The register's rule. Late arrivals are leaves on budget
+            // accounts (`late_arrivals` in the repository), so never a split
+            // and never untracked. This note read every uncategorized row as
+            // needing a category, transfers included.
+            const category = categoryCellLabel(
+              { ...a, is_split: false, prior_category_name: null },
+              categoryLabels,
+              true
+            )
+            return (
+              <li key={a.transaction_id} className="late-arrivals__row">
+                <span className="late-arrivals__date">{formatDate(a.date)}</span>
+                <span className="late-arrivals__payee">
+                  {(a.payee_id && names.payee.get(a.payee_id)) ||
+                    names.account.get(a.account_id) ||
+                    '—'}
+                </span>
+                <Tooltip
+                  content={categoryCellHover(category)}
+                  block
+                  className="late-arrivals__category"
+                >
+                  {categoryCellText(category)}
+                </Tooltip>
+                <span className="late-arrivals__amount">{formatMoney(a.amount)}</span>
+              </li>
+            )
+          })}
         </ul>
       </details>
     </section>

@@ -264,6 +264,30 @@ async def test_the_import_month_lists_its_late_arrivals(db_session):
     assert august.late_arrivals == []
 
 
+async def test_a_late_arrival_says_whether_it_needs_a_category(db_session):
+    """The note named every uncategorized late row "Needs a category". A late
+    card payment from checking has no category and needs none: both legs are
+    a transfer between two budget accounts. The served `needs_category` is
+    what tells them from an unfiled purchase."""
+    b = await _imported(db_session)
+    unfiled = await _enter(b, b.checking, date(2026, 6, 27), "-15.00")
+    await b.services.transactions.create(
+        b.budget.id,
+        TransactionCreate(
+            account_id=b.checking.id,
+            date=date(2026, 6, 28),
+            amount=D("-50.00"),
+            transfer_account_id=b.visa.id,
+            cleared="cleared",
+        ),
+    )
+    july, _ = await _july(b)
+    needs = {a.transaction_id: a.needs_category for a in july.late_arrivals}
+    assert needs.pop(unfiled.id) is True
+    assert len(needs) == 2  # the payment's two legs
+    assert set(needs.values()) == {False}
+
+
 async def test_spending_reports_keep_the_real_date(db_session):
     """The deliberate divergence, pinned: the spending report answers *when*
     money was spent, so the late row stays in June there while the envelope

@@ -743,6 +743,7 @@ class LateArrivalOut(ApiModel):
     account_id: uuid.UUID
     category_id: uuid.UUID | None
     payee_id: uuid.UUID | None
+    needs_category: bool
 
 
 class ImportHistoryRowOut(ApiModel):

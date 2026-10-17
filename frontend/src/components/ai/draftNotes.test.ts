@@ -7,6 +7,7 @@ import {
   labelNamesCategory,
   unresolvedCategoryNote,
 } from './draftNotes'
+import { buildCategoryLabels } from '../../utils/categoryLabels'
 import labelCases from '../../../../shared/category_label_cases.json'
 
 const draft = (over: Partial<AIJobDraft> = {}): AIJobDraft => ({
@@ -88,23 +89,23 @@ describe('labelNamesCategory: agreement with the server that writes the label', 
 })
 
 describe('categoryForLabel', () => {
-  const groupNames = new Map([
-    ['household', 'Household'],
-    ['holidays', 'Holidays'],
-  ])
   const cats = [
     { id: 'gifts-home', name: 'Gifts', category_group_id: 'household' },
     { id: 'gifts-hols', name: 'Gifts', category_group_id: 'holidays' },
   ]
+  const labels = buildCategoryLabels(cats, [
+    { id: 'household', name: 'Household' },
+    { id: 'holidays', name: 'Holidays' },
+  ])
 
   it('finds a group-qualified split line', () => {
     // The editor's suggested split compared bare names, so a qualified line
     // like this one resolved to nothing and its picker was left empty.
-    expect(categoryForLabel('Gifts (Holidays)', cats, groupNames)?.id).toBe('gifts-hols')
+    expect(categoryForLabel('Gifts (Holidays)', cats, labels)?.id).toBe('gifts-hols')
   })
 
   it('finds nothing for a category renamed since', () => {
-    expect(categoryForLabel('Presents', cats, groupNames)).toBeUndefined()
+    expect(categoryForLabel('Presents', cats, labels)).toBeUndefined()
   })
 })
 

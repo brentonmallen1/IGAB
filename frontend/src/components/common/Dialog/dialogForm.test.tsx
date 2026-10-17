@@ -235,7 +235,8 @@ const SWEEP_C_FOOTERS = {
       <MergePreviewModal
         transactions={[txn('t1', '2026-08-01T00:00:00Z'), txn('t2', '2026-08-02T00:00:00Z')]}
         payeeMap={new Map()}
-        categoryMap={new Map()}
+        categoryLabels={new Map()}
+        accountOnBudget
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
         isPending={false}
