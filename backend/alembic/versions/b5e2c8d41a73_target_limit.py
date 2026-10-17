@@ -9,14 +9,14 @@ envelope holding L reads funded.
 Nullable, and NULL on every existing row: no target changes meaning.
 
 Revision ID: b5e2c8d41a73
-Revises: f49967af8129
+Revises: a4e7c2d9b1f3
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "b5e2c8d41a73"
-down_revision = "f49967af8129"
+down_revision = "a4e7c2d9b1f3"
 branch_labels = None
 depends_on = None
 
