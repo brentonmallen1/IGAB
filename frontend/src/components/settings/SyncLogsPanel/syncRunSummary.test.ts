@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SyncRun, SyncRunAccount } from '../../../api/syncLogs'
+import type { NoLongerReported, SyncRun, SyncRunAccount } from '../../../api/syncLogs'
 import { accountNote, describeWindow, runHeadline, runVerdict, windowDays } from './syncRunSummary'
 
 function run(over: Partial<SyncRun> = {}): SyncRun {
@@ -33,6 +33,39 @@ function run(over: Partial<SyncRun> = {}): SyncRun {
     ...over,
   }
 }
+
+function gone(action: NoLongerReported['action'], n: number): NoLongerReported[] {
+  return Array.from({ length: n }, (_, i) => ({
+    transaction_id: `t${action}${i}`,
+    account_id: 'a1',
+    date: '2026-09-14',
+    payee: 'Harborstone Inn',
+    amount: '-120.0000',
+    sync_id: `hold-${i}`,
+    kind: action === 'removed' ? 'pending_hold' : 'posted',
+    action,
+  }))
+}
+
+describe('a run that found rows the bank no longer reports', () => {
+  it('says how many holds dropped off', () => {
+    expect(runHeadline(run({ imported: 2, removed_pending: 1 }))).toBe(
+      '2 imported, 1 pending hold dropped off'
+    )
+    expect(runHeadline(run({ removed_pending: 2 }))).toBe('2 pending holds dropped off')
+  })
+
+  it('counts the rows it kept from the run record, not the ones that came back', () => {
+    const headline = runHeadline(
+      run({ no_longer_reported: [...gone('kept', 2), ...gone('reported_again', 3)] })
+    )
+    expect(headline).toBe('2 rows no longer at the bank')
+  })
+
+  it('says nothing about it when there was nothing', () => {
+    expect(runHeadline(run({ imported: 2, no_longer_reported: [] }))).toBe('2 imported')
+  })
+})
 
 const DRIFT = {
   account_id: 'a1',

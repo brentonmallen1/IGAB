@@ -111,6 +111,10 @@ export interface FindingItem {
   /** The rows a bulk action would touch — for unlinked card payments,
    *  `[outflow, inflow]`. */
   transaction_ids: string[]
+  /** The one-click fix this row offers, decided by the server
+   *  (`domain/bank_absence.offered_action`): `restore` a hold the sync
+   *  removed, `delete` a row it kept. Absent on older servers. */
+  action?: 'restore' | 'delete' | null
 }
 
 export interface HygieneFinding {
@@ -198,6 +202,23 @@ export function useRepairTransfers(budgetId: string) {
       qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
       qc.invalidateQueries({ queryKey: [ROOT.accountHygiene, budgetId] })
     },
+  })
+}
+
+/** Bring back one pending hold a sync removed because the bank dropped it.
+ *  The server checks it is still listed, takes back that row's delete alone
+ *  (with its category, memo and lines) and keeps it as an uncleared row. */
+export function useRestoreDroppedHold(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (transactionId: string) =>
+      apiClient
+        .post(`/${budgetId}/accounts/hygiene/restore-dropped-hold`, {
+          transaction_id: transactionId,
+        })
+        .then((r) => r.data),
+    // The row is money again: balances, envelopes and Ready to Assign move.
+    onSuccess: () => invalidateAfterTransactionChange(qc, { budgetId }),
   })
 }
 

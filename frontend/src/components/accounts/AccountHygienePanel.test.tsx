@@ -25,12 +25,22 @@ const repairMutate = vi.hoisted(() =>
 )
 const stripMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ stripped: 0 })))
 const linkMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ linked: 2, skipped: 0 })))
+const restoreMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: report }),
   useRepairTransfers: () => ({ mutateAsync: repairMutate, isPending: false }),
   useRepairTrackingCategories: () => ({ mutateAsync: stripMutate, isPending: false }),
   useLinkCardPayments: () => ({ mutateAsync: linkMutate, isPending: false }),
+  useRestoreDroppedHold: () => ({ mutateAsync: restoreMutate, isPending: false }),
 }))
+const deleteMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ batchId: 'batch-1' })))
+vi.mock('../../api/transactions', () => ({
+  useDeleteTransaction: () => ({ mutateAsync: deleteMutate, isPending: false }),
+}))
+const confirmDelete = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+vi.mock('../../api/attachments', () => ({ confirmDeleteTransaction: confirmDelete }))
+const notifyUndo = vi.hoisted(() => vi.fn())
+vi.mock('../../utils/toastUndo', () => ({ useUndoToast: () => notifyUndo }))
 const confirmAsync = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 vi.mock('../../stores/confirmStore', () => ({ confirmAsync }))
 
@@ -70,6 +80,9 @@ beforeEach(() => {
   localStorage.clear()
   navigate.mockClear()
   repairMutate.mockClear()
+  restoreMutate.mockClear()
+  deleteMutate.mockClear()
+  notifyUndo.mockClear()
   toastSuccess.mockClear()
   toastError.mockClear()
   report = { findings: [], clean: true }
@@ -260,6 +273,87 @@ describe('AccountHygienePanel', () => {
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: /Link all 1/ }))
     expect(linkMutate).not.toHaveBeenCalled()
+  })
+})
+
+describe('No longer at the bank', () => {
+  function gone(items: FindingItem[], account = 'acct-1'): HygieneFinding {
+    return finding({
+      kind: 'no_longer_at_bank',
+      title: 'Sapphire Visa: no longer at the bank',
+      items,
+      account_ids: [account],
+    })
+  }
+  const HOLD = item({
+    label: 'Harborstone Inn',
+    amount: '-120.0000',
+    account_id: 'acct-1',
+    transaction_id: 'hold-1',
+    action: 'restore',
+  })
+  const KEPT = item({
+    label: 'Corner Market',
+    amount: '-60.0000',
+    account_id: 'acct-1',
+    transaction_id: 'kept-1',
+    action: 'delete',
+  })
+
+  it('restores a dropped hold after saying what restoring does', async () => {
+    report = { findings: [gone([HOLD])], clean: false }
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Harborstone Inn' }))
+    expect(confirmAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Restore this hold?' })
+    )
+    expect(restoreMutate).toHaveBeenCalledWith('hold-1')
+  })
+
+  it('deletes a kept row the ordinary way, with undo', async () => {
+    report = { findings: [gone([KEPT])], clean: false }
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Corner Market' }))
+    expect(confirmDelete).toHaveBeenCalledWith('kept-1')
+    expect(deleteMutate).toHaveBeenCalledWith({ id: 'kept-1', accountId: 'acct-1' })
+    expect(notifyUndo).toHaveBeenCalledWith('Transaction deleted', { batch: 'batch-1' })
+  })
+
+  it('offers no fix on a row the server offered none for', () => {
+    report = { findings: [gone([item({ label: 'Reconciled row', action: null })])], clean: false }
+    renderPanel()
+    expect(screen.queryByRole('button', { name: /Restore|Delete/ })).not.toBeInTheDocument()
+  })
+
+  it('leads a removed hold to its account, since the register no longer has it', async () => {
+    report = { findings: [gone([HOLD, KEPT])], clean: false }
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Harborstone Inn' }))
+    expect(navigate).toHaveBeenLastCalledWith('/accounts/acct-1')
+    await userEvent.click(screen.getByRole('button', { name: 'Corner Market' }))
+    expect(navigate).toHaveBeenLastCalledWith('/accounts/acct-1?highlight=kept-1')
+  })
+
+  it('a dismissal hides these rows, and a new dropped hold speaks up again', async () => {
+    report = { findings: [gone([HOLD])], clean: false }
+    const { unmount } = renderPanel()
+    await userEvent.click(screen.getByLabelText(/Dismiss/))
+    expect(screen.queryByText('Harborstone Inn')).not.toBeInTheDocument()
+    unmount()
+
+    report = { findings: [gone([HOLD, KEPT])], clean: false }
+    renderPanel()
+    expect(screen.getByText('Harborstone Inn')).toBeInTheDocument()
+    expect(screen.getByText('Corner Market')).toBeInTheDocument()
+  })
+
+  it('draws one finding per account', () => {
+    report = {
+      findings: [gone([HOLD]), gone([{ ...KEPT, account_id: 'acct-2' }], 'acct-2')],
+      clean: false,
+    }
+    renderPanel()
+    expect(screen.getAllByText('Sapphire Visa: no longer at the bank')).toHaveLength(2)
   })
 })
 

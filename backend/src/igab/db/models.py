@@ -2715,6 +2715,12 @@ class SyncRun(Base):
     #: as implausible, the person's own history simply needs no stand-in, and
     #: folding it in there would mark an ordinary migration's run degraded.
     anchors_skipped_for_history: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: Linked rows this run found missing from the feed inside the days it
+    #: covered, and what it did to each: a pending hold it wrote is removed,
+    #: anything a person entered or the bank posted is kept. One entry per
+    #: row (`domain.bank_absence.Absence`), so the toast, the sync log and the
+    #: accounts page can say which rows — a count alone cannot be restored.
+    no_longer_reported: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     #: The change-log batch every write of this run landed in. The sync
     #: log's "Undo this run" takes the batch back as a unit; Cmd+Z cannot,
     #: because these are not the person's own edits.

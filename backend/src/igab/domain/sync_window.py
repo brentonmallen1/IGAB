@@ -19,7 +19,7 @@ branch is a one-line test.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 #: The bridge's documented cap. Not a tuning knob — requests wider than this
 #: are capped server-side, silently as far as the transaction data goes.
@@ -44,19 +44,54 @@ class SyncWindow:
     end: datetime | None = None
 
 
-def live_window(*, now: datetime, last_sync_at: datetime | None, first_sync: bool) -> SyncWindow:
+def live_window(
+    *,
+    now: datetime,
+    last_sync_at: datetime | None,
+    first_sync: bool,
+    oldest_open_hold: date | None,
+) -> SyncWindow:
     """The window for an ordinary sync: recent activity, never more than the cap.
 
     A first sync takes the full 90 days, which is as far back as the bridge
     will answer in one request. Afterwards the window starts a few days
     before the last successful run — and is still floored at 90 days, so a
     connection dormant for a year cannot ask for a year.
+
+    `oldest_open_hold` is the earliest row still linked to a bank record the
+    bank has not posted (`txn_filters.linked_to_a_hold`). The window reaches
+    back to cover it, because a row outside the window is never judged
+    (`judged_from`): a hotel hold authorised eight days ago and dropped today
+    sat three days before an hourly sync's window, and stayed pending in the
+    register for good — no later window ever reached back to it. Covering the
+    hold costs nothing but a longer answer to the same one request. Still
+    floored at the cap: a hold older than 90 days cannot be asked about, and
+    stays as it is.
     """
     floor = now - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
     if first_sync or last_sync_at is None:
         return SyncWindow(start=floor)
-    overlapped = last_sync_at - timedelta(days=SYNC_OVERLAP_DAYS)
-    return SyncWindow(start=max(overlapped, floor))
+    start = last_sync_at - timedelta(days=SYNC_OVERLAP_DAYS)
+    if oldest_open_hold is not None:
+        start = min(start, datetime.combine(oldest_open_hold, time.min, tzinfo=UTC))
+    return SyncWindow(start=max(start, floor))
+
+
+def judged_from(window_start: datetime) -> date:
+    """The first day a feed fetched from `window_start` covers whole.
+
+    Only rows dated on or after this day may be judged by their absence from
+    the feed. The request names a moment, not a day, and the bridge filters
+    by that moment: a row posted at 08:00 on the start day of a window that
+    began at 14:00 is not in the answer, and was not dropped by the bank. Feed
+    dates are UTC days (`simplefin_service._feed_record`), so this is too.
+    Absence outside the window is not evidence of anything — the bank was
+    simply not asked.
+    """
+    start = window_start.astimezone(UTC)
+    if start.time() == time.min:
+        return start.date()
+    return start.date() + timedelta(days=1)
 
 
 def backfill_windows(*, now: datetime, earliest_wanted: datetime) -> list[SyncWindow]:

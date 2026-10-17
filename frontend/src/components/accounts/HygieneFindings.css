@@ -63,7 +63,8 @@
 
 .hygiene__row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* label | figure | the row's own fix, when it has one */
+  grid-template-columns: 1fr auto auto;
   gap: var(--spacing-sm);
   align-items: baseline;
   padding: 2px 0;
@@ -115,6 +116,27 @@ button.hygiene__row-label:hover {
 
 .hygiene__action {
   margin-top: var(--spacing-xs);
+}
+
+/* A row's one-click fix (Restore, Delete) — a link in the accent, like the
+   finding's own fixes, so a list of rows does not become a wall of buttons. */
+.hygiene__row-action {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hygiene__row-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.hygiene__row-action:disabled {
+  color: var(--text-muted);
+  cursor: default;
 }
 
 .hygiene__action-label {

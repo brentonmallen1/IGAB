@@ -6,13 +6,17 @@ import {
   useLinkCardPayments,
   useRepairTrackingCategories,
   useRepairTransfers,
+  useRestoreDroppedHold,
   type FindingItem,
   type HygieneFinding,
 } from '../../api/accounts'
+import { confirmDeleteTransaction } from '../../api/attachments'
 import { apiErrorMessage } from '../../api/client'
+import { useDeleteTransaction } from '../../api/transactions'
 import { useFormatters } from '../../hooks/useFormatters'
 import { confirmAsync } from '../../stores/confirmStore'
 import { parseApiDecimal } from '../../utils/money'
+import { useUndoToast } from '../../utils/toastUndo'
 import './HygieneFindings.css'
 
 /** Past this many, a finding's list folds behind "Show N more" — the panel
@@ -44,7 +48,7 @@ export function HygieneFindings({
 }: {
   findings: HygieneFinding[]
   budgetId: string
-  onDismiss?: (kind: string) => void
+  onDismiss?: (finding: HygieneFinding) => void
   /** Fired before routing away — a dialog uses it to close itself first. */
   onNavigate?: () => void
 }) {
@@ -52,6 +56,46 @@ export function HygieneFindings({
   const repair = useRepairTransfers(budgetId)
   const stripCategories = useRepairTrackingCategories(budgetId)
   const linkPayments = useLinkCardPayments(budgetId)
+  const restoreHold = useRestoreDroppedHold(budgetId)
+  const deleteTxn = useDeleteTransaction(budgetId)
+  const notify = useUndoToast()
+
+  // The per-row fixes of "No longer at the bank". Which one a row offers is
+  // the server's call (`FindingItem.action`); these only carry it out.
+  async function restore(item: FindingItem) {
+    if (!item.transaction_id) return
+    const ok = await confirmAsync({
+      title: 'Restore this hold?',
+      message:
+        'It comes back as an uncleared transaction, with the category and memo you gave it, ' +
+        'and a posting for it can still match it. If the charge already posted as a new ' +
+        'row, restoring makes a duplicate.',
+      confirmLabel: 'Restore',
+    })
+    if (!ok) return
+    try {
+      await restoreHold.mutateAsync(item.transaction_id)
+      toast.success('Restored — it counts in the balance again.')
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not restore the hold'))
+    }
+  }
+
+  async function remove(item: FindingItem) {
+    if (!item.transaction_id || !item.account_id) return
+    if (!(await confirmDeleteTransaction(item.transaction_id))) return
+    // useDeleteTransaction reports its own failures.
+    const { batchId } = await deleteTxn.mutateAsync({
+      id: item.transaction_id,
+      accountId: item.account_id,
+    })
+    notify('Transaction deleted', batchId ? { batch: batchId } : null)
+  }
+
+  function act(item: FindingItem) {
+    if (item.action === 'restore') void restore(item)
+    else if (item.action === 'delete') void remove(item).catch(() => undefined)
+  }
 
   async function linkCardPayments(f: HygieneFinding) {
     const n = f.items.length
@@ -144,15 +188,24 @@ export function HygieneFindings({
 
   return (
     <div className="hygiene__list">
-      {findings.map((f) => {
+      {findings.map((f, i) => {
         const t = target(f)
         return (
-          <div key={f.kind} className="hygiene__item">
+          // Not the kind alone: "No longer at the bank" is one finding per
+          // account, and two siblings with one key share their state.
+          <div key={`${f.kind}-${f.account_ids[0] ?? i}`} className="hygiene__item">
             <AlertTriangle className="hygiene__icon" size={15} aria-hidden />
             <div className="hygiene__body">
               <div className="hygiene__title">{f.title}</div>
               <p className="hygiene__summary">{f.summary}</p>
-              {f.items.length > 0 && <FindingItems items={f.items} onGo={go} />}
+              {f.items.length > 0 && (
+                <FindingItems
+                  items={f.items}
+                  onGo={go}
+                  onAct={act}
+                  busy={restoreHold.isPending || deleteTxn.isPending}
+                />
+              )}
               <p className="hygiene__action">
                 <span className="hygiene__action-label">What to do</span> {f.action}
                 {f.kind === 'unlinked_card_payments' && f.items.length > 0 && (
@@ -205,7 +258,7 @@ export function HygieneFindings({
               <button
                 type="button"
                 className="hygiene__dismiss"
-                onClick={() => onDismiss(f.kind)}
+                onClick={() => onDismiss(f)}
                 aria-label={`Dismiss: ${f.title}`}
                 title="Dismiss — this kind of suggestion won't come back"
               >
@@ -219,14 +272,33 @@ export function HygieneFindings({
   )
 }
 
-/** Where an item leads: the row itself when it names one, else its account. */
+/** Where an item leads: the row itself when it names one, else its account.
+ *  A hold the sync removed is not in the register to highlight — it leads to
+ *  its account until it is restored. */
 export function itemTarget(item: FindingItem): string | null {
   if (!item.account_id) return null
   const base = `/accounts/${item.account_id}`
-  return item.transaction_id ? `${base}?highlight=${item.transaction_id}` : base
+  return item.transaction_id && item.action !== 'restore'
+    ? `${base}?highlight=${item.transaction_id}`
+    : base
 }
 
-function FindingItems({ items, onGo }: { items: FindingItem[]; onGo: (to: string) => void }) {
+const ACTION_LABELS: Record<'restore' | 'delete', string> = {
+  restore: 'Restore',
+  delete: 'Delete',
+}
+
+function FindingItems({
+  items,
+  onGo,
+  onAct,
+  busy,
+}: {
+  items: FindingItem[]
+  onGo: (to: string) => void
+  onAct: (item: FindingItem) => void
+  busy: boolean
+}) {
   const { formatMoney, formatDate, formatMonth } = useFormatters()
   const [expanded, setExpanded] = useState(false)
   const shown = expanded ? items : items.slice(0, ITEMS_SHOWN)
@@ -258,6 +330,17 @@ function FindingItems({ items, onGo }: { items: FindingItem[]; onGo: (to: string
               <span className="hygiene__row-amount">
                 {formatMoney(parseApiDecimal(item.amount))}
               </span>
+            )}
+            {item.action && (
+              <button
+                type="button"
+                className="hygiene__row-action"
+                onClick={() => onAct(item)}
+                disabled={busy}
+                aria-label={`${ACTION_LABELS[item.action]} ${item.label}`}
+              >
+                {ACTION_LABELS[item.action]}
+              </button>
             )}
           </li>
         )

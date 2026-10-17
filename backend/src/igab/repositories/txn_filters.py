@@ -199,6 +199,12 @@ CLEARED_AHEAD_OF_BANK = and_(
 ADOPTION_DATE_WINDOW_DAYS = 2
 
 
+#: The day the bank put on a row: its posting date when it has one, else the
+#: row's own date. What a feed window is compared against — the bridge filters
+#: by posting, so a row is "inside the window" by this date, not the ledger's.
+BANK_DATE = func.coalesce(Transaction.bank_posted_date, Transaction.date)
+
+
 def orphaned_link(feed_sync_ids: Collection[str], since: date, feed_date: date):
     """Rows carrying a bank id the bank was asked about and did not report.
 
@@ -227,7 +233,7 @@ def orphaned_link(feed_sync_ids: Collection[str], since: date, feed_date: date):
     so it no longer looked re-identified, and its remaining history was
     invisible again.
     """
-    posted = func.coalesce(Transaction.bank_posted_date, Transaction.date)
+    posted = BANK_DATE
     return and_(
         Transaction.sync_id.isnot(None),
         Transaction.sync_id.notin_(list(feed_sync_ids)),
@@ -258,6 +264,50 @@ def sync_created_pending(source: str):
         Transaction.cleared == "pending",
         Transaction.sync_source == source,
         Transaction.sync_id.isnot(None),
+    )
+
+
+def user_row_linked_to_hold(source: str):
+    """A row the person entered, matched while the bank record was still an
+    auth hold: `uncleared`, carrying the hold's id, nothing posted against it.
+
+    `uncleared` only — a row the person marked cleared is done as far as
+    they are concerned, and pre-`bank_posted_date` legacy rows are `cleared`,
+    so a sweep built on this can never unlink one of them.
+    """
+    return and_(
+        PROVISIONALLY_LINKED,
+        Transaction.cleared == "uncleared",
+        Transaction.sync_source == source,
+    )
+
+
+def linked_to_a_hold(source: str):
+    """Every row whose only bank link is to a record the bank has not posted:
+    a pending row the sync wrote, or a person's row matched to a hold.
+
+    These are the rows a sync judges by absence (`simplefin_service`), so the
+    fetch window must reach back to the oldest of them
+    (`domain.sync_window.live_window`) — a row the window does not cover is
+    never judged at all.
+    """
+    return or_(sync_created_pending(source), user_row_linked_to_hold(source))
+
+
+def posted_bank_link(source: str):
+    """A row carrying the id of a bank record the bank has posted.
+
+    The complement of PROVISIONALLY_LINKED among linked rows, so a row the
+    person cleared ahead of the bank, and a legacy row linked before
+    `bank_posted_date` existed, both count — each holds an id the bank once
+    reported as settled. When such an id stops appearing inside a window
+    that covers its date, the row is reported and never removed: it may be
+    reconciled, and a bank that briefly omits a row must not cost one.
+    """
+    return and_(
+        Transaction.sync_id.isnot(None),
+        Transaction.sync_source == source,
+        not_(PROVISIONALLY_LINKED),
     )
 
 
