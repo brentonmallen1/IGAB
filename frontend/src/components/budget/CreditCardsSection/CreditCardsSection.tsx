@@ -900,15 +900,16 @@ export function CreditCardsSection({
   // it, not in the grid. Absent when archived — the category list leaves
   // archived envelopes out — and then nothing is drawn for it.
   const interest = drawnCardSectionEnvelope(categories, cards.length)
+  const interestMatch = interest === null ? false : sectionFilterMatch(rowMatch, interest.id)
+  const lineMatch = cards.map((c) => sectionFilterMatch(rowMatch, c.category_id))
   const showInterest =
-    interest !== null &&
-    sectionRowShown({ collapsed, filterMatch: sectionFilterMatch(rowMatch, interest.id) })
-  const lineShown = cards.map((c) =>
-    sectionRowShown({ collapsed, filterMatch: sectionFilterMatch(rowMatch, c.category_id) })
-  )
+    interest !== null && sectionRowShown({ collapsed, filterMatch: interestMatch })
+  const lineShown = lineMatch.map((filterMatch) => sectionRowShown({ collapsed, filterMatch }))
   // Under a filter that names nothing here, the band goes the way an empty
-  // grid group does.
-  if (rowMatch !== null && !showInterest && !lineShown.some(Boolean)) return null
+  // grid group does. Asked of the matches, not of what is drawn: a band folded
+  // under a filter that names a card still draws its header, or it could never
+  // be unfolded again.
+  if (rowMatch !== null && interestMatch !== true && !lineMatch.some(Boolean)) return null
   // The server computes a card's envelope target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
@@ -1171,8 +1172,8 @@ export function CreditCardsSection({
       )}
       {/* Full-bleed, outside the padded body, so its Assigned / Activity /
           Available land in the grid's own columns below. The ordinary row,
-          not a card line: it is an ordinary envelope. Outside the fold's
-          body too, so an active filter it matches draws it on a folded band. */}
+          not a card line: it is an ordinary envelope. It folds with the cards
+          (`sectionRowShown`). */}
       {showInterest && interest && (
         <div className="credit-cards__envelope">
           <CategoryRow

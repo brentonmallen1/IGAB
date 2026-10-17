@@ -631,11 +631,16 @@ describe('sectionRowShown — a card line or Interest & fees, under the fold and
     expect(sectionRowShown({ collapsed: true, filterMatch: null })).toBe(false)
   })
 
-  it('with a filter active, the match decides and the fold does not', () => {
-    // The Overspent chip counts a red Interest & fees; a folded band must not
-    // then hide the one row the chip was counting.
-    expect(sectionRowShown({ collapsed: true, filterMatch: true })).toBe(true)
+  it('with a filter active, an open band draws exactly the rows it names', () => {
+    expect(sectionRowShown({ collapsed: false, filterMatch: true })).toBe(true)
     expect(sectionRowShown({ collapsed: false, filterMatch: false })).toBe(false)
+  })
+
+  it('with a filter that names a card, the band still folds', () => {
+    // It used to override the fold: the chevron turned and every named card
+    // stayed drawn, so the band could not be collapsed under any filter.
+    expect(sectionRowShown({ collapsed: true, filterMatch: true })).toBe(false)
+    expect(sectionRowShown({ collapsed: true, filterMatch: false })).toBe(false)
   })
 })
 
