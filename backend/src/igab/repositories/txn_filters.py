@@ -481,8 +481,43 @@ BALANCE_ADJUSTMENT_ROW = _payee_named(BALANCE_ADJUSTMENT_PAYEES)
 #: recorded — so it keeps whatever class its shape gives it.
 STARTING_BALANCE_ROW = _payee_named((STARTING_BALANCE_PAYEE,))
 
+_REVIEWED_AGAINST = aliased(Transaction)
+
+#: The row is one side of an open duplicate review whose other side is a
+#: transfer leg. Either side: the matcher queues the bank's copy as `synced`,
+#: the scan queues whichever row is newer.
+#:
+#: Such a row may already BE that transfer's leg, seen a second time. The way
+#: this was found: a card payment typed as a transfer, then a sync that
+#: queued the checking-side bank row against the typed leg and, in the same
+#: run, paired that bank row with the card-side bank row. Two transfers for
+#: one payment, and the review's accept refused, because both rows it was
+#: asked to merge were now legs.
+DUPLICATE_OF_A_TRANSFER_LEG = (
+    exists()
+    .where(
+        TransactionMatch.status == "pending",
+        or_(
+            and_(
+                TransactionMatch.synced_transaction_id == Transaction.id,
+                _REVIEWED_AGAINST.id == TransactionMatch.manual_transaction_id,
+            ),
+            and_(
+                TransactionMatch.manual_transaction_id == Transaction.id,
+                _REVIEWED_AGAINST.id == TransactionMatch.synced_transaction_id,
+            ),
+        ),
+        _REVIEWED_AGAINST.is_deleted == False,  # noqa: E712
+        _REVIEWED_AGAINST.transfer_id.isnot(None),
+    )
+    .correlate(Transaction)
+)
+
 #: A row that could still be joined to a partner: live, whole (not a split
-#: parent and not one of its children), and not already linked.
+#: parent and not one of its children), not already linked, and not waiting
+#: to be told whether it is a duplicate of a transfer leg
+#: (`DUPLICATE_OF_A_TRANSFER_LEG`) — the review answers that, and pairing it
+#: first builds a second transfer for the same money.
 #:
 #: Composed rather than respelled because two callers need exactly this set and
 #: they must not drift: the editor's candidate picker
@@ -491,7 +526,13 @@ STARTING_BALANCE_ROW = _payee_named((STARTING_BALANCE_PAYEE,))
 #: payee — that is the whole point. Two synced legs of one movement arrive with
 #: ordinary bank payees on both sides, which is why nothing paired them and why
 #: an unpaired savings transfer inflated Ready to Assign by its own amount.
-PAIRABLE_LEG = and_(NOT_DELETED, PARENT_ROW, LEAF, Transaction.transfer_id.is_(None))
+PAIRABLE_LEG = and_(
+    NOT_DELETED,
+    PARENT_ROW,
+    LEAF,
+    Transaction.transfer_id.is_(None),
+    not_(DUPLICATE_OF_A_TRANSFER_LEG),
+)
 
 _partner = aliased(Transaction)
 

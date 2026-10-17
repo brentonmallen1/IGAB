@@ -16,7 +16,7 @@ from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, postin
 from igab.domain.card_charges import is_interest_or_fee
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
-from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
+from igab.domain.merging import MergePlan, MergeSide, Refused, plan_merge
 from igab.domain.projected_interest import adopts_projection
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
@@ -1535,21 +1535,27 @@ class TransactionService:
         """Merge two rows that are the same real-world transaction.
 
         The one merge: the user's explicit merge and the bank-sync review
-        queue's accept both come here. Who survives is domain.merging's
-        rule; what a bank-sourced loser contributes is the bank-posting
-        rule's (its posted amount replaces the survivor's — this is the
-        accepted amount-change review — with the prior amount kept in
-        `entered_amount`; its posted date, amount and payee string arrive as
-        provenance; an uncleared survivor clears). Everything else is
-        additive: the survivor keeps what it has and takes what it lacks —
-        memo, category, payee, approval, the loser's attachments, its import
-        and bank identity. A merge determines which value wins, never which
-        one is lost.
+        queue's accept both come here. Who survives, and what becomes of a
+        transfer the loser was part of, is domain.merging's plan; what a
+        bank-sourced loser contributes is the bank-posting rule's (its posted
+        amount replaces the survivor's — this is the accepted amount-change
+        review — with the prior amount kept in `entered_amount`; its posted
+        date, amount and payee string arrive as provenance; an uncleared
+        survivor clears). Everything else is additive: the survivor keeps what
+        it has and takes what it lacks — memo, category, payee, approval, the
+        loser's attachments, its import and bank identity. A merge determines
+        which value wins, never which one is lost.
 
-        The loser is soft-deleted before the survivor is written so the
+        A transfer leg that loses takes its transfer with it. A survivor that
+        was not a leg becomes one, linked to the loser's partner through
+        `link_legs`. A survivor that was a leg already means the other account
+        holds a duplicate pair too, and that pair is merged by the same rules
+        in the same change: two transfers for one payment become one.
+
+        Each loser is soft-deleted before its survivor is written so the
         partial unique index on (account_id, sync_id) never sees two live
-        rows. Recorded as one batch, so undo restores both rows and moves
-        exactly the loser's attachments back.
+        rows. Recorded as one batch, so undo restores every row and link and
+        moves exactly the losers' attachments back.
         """
         if len(transaction_ids) != 2:
             raise InvariantViolation("Exactly 2 transactions are required for a merge")
@@ -1560,14 +1566,61 @@ class TransactionService:
             if str(txn.budget_id) != str(budget_id):
                 raise InvariantViolation("All transactions must belong to this budget")
 
-        side1, side2 = MergeSide.from_transaction(txn1), MergeSide.from_transaction(txn2)
-        survivor_side, deleted_side = choose_survivor(side1, side2, survivor_id)
-        violation = survivor_violation(survivor_side, deleted_side, survivor_id)
-        if violation is not None:
-            raise InvariantViolation(violation)
-        survivor = txn1 if survivor_side.id == txn1.id else txn2
-        deleted = txn2 if survivor is txn1 else txn1
+        rows: dict[uuid.UUID, Transaction] = {txn1.id: txn1, txn2.id: txn2}
+        partners: dict[uuid.UUID, MergeSide] = {}
+        for txn in (txn1, txn2):
+            if txn.transfer_id is None:
+                continue
+            partner = await self.transaction_repo.get(txn.transfer_id)
+            if partner is not None and not partner.is_deleted:
+                rows.setdefault(partner.id, partner)
+                partners[partner.id] = MergeSide.from_transaction(partner)
 
+        side1, side2 = MergeSide.from_transaction(txn1), MergeSide.from_transaction(txn2)
+        plan = plan_merge(side1, side2, survivor_id, partners)
+        if isinstance(plan, Refused):
+            raise InvariantViolation(plan.reason)
+
+        survivor, deleted = rows[plan.survivor.id], rows[plan.deleted.id]
+        updates, adopting = self._merge_updates(plan, survivor, deleted)
+        if plan.adopted_partner is not None:
+            # The survivor becomes the leg, so its amount is the transfer's;
+            # anything else would leave the pair not summing to zero. A
+            # reconciled survivor's amount is locked, so the bank-posting rule
+            # alone would let this through.
+            transfer_amount = -rows[plan.adopted_partner.id].amount
+            if updates.get("amount", survivor.amount) != transfer_amount:
+                raise InvariantViolation(
+                    f"The transfer is {abs(transfer_amount):.2f}, but this transaction is "
+                    f"{abs(survivor.amount):.2f}; only matching amounts can be merged"
+                )
+        far: tuple[Transaction, Transaction, dict[str, Any], bool] | None = None
+        if plan.partner_merge is not None:
+            far_survivor = rows[plan.partner_merge.survivor.id]
+            far_deleted = rows[plan.partner_merge.deleted.id]
+            far = (
+                far_survivor,
+                far_deleted,
+                *self._merge_updates(plan.partner_merge, far_survivor, far_deleted),
+            )
+
+        async with self._mutation():
+            await self._write_merge(survivor, deleted, updates, adopting)
+            if far is not None:
+                await self._write_merge(*far)
+            new_partner = plan.survivor_partner
+            if plan.relinks and new_partner is not None:
+                await self._relink_merged_leg(budget_id, survivor, rows[new_partner.id])
+                await self.transaction_repo.refresh(survivor)
+        return survivor
+
+    def _merge_updates(
+        self, plan: MergePlan, survivor: Transaction, deleted: Transaction
+    ) -> tuple[dict[str, Any], bool]:
+        """What the survivor of one merged pair is written with, and whether it
+        takes in the loser's split lines. Raises when the amounts cannot be
+        reconciled; writes nothing."""
+        survivor_side, deleted_side = plan.survivor, plan.deleted
         updates: dict[str, Any] = {}
         if deleted_side.bank_sourced:
             outcome = posting_updates(
@@ -1585,9 +1638,9 @@ class TransactionService:
             raise InvariantViolation("Only transactions with identical amounts can be merged")
 
         # A split losing to a reconciled plain row: the survivor takes the
-        # lines and becomes the split (survivor_violation has refused every
-        # survivor that could not). The lines must add up to the amount the
-        # statement vouched for — that amount cannot move.
+        # lines and becomes the split (the plan has refused every survivor
+        # that could not). The lines must add up to the amount the statement
+        # vouched for — that amount cannot move.
         adopting = deleted.is_split
         if adopting and updates.get("amount", survivor.amount) != deleted.amount:
             raise InvariantViolation(
@@ -1621,7 +1674,9 @@ class TransactionService:
         # is kept whole — "survivor — loser" — rather than one being dropped.
         # Category and payee never land on a transfer leg (its payee is its
         # destination and a category is allowed on only one kind of leg), and
-        # a split parent's categories live on its lines.
+        # a split parent's categories live on its lines. A survivor taking a
+        # transfer over is not a leg yet: what it takes here, the link then
+        # judges by the transfer rules (`_relink_merged_leg`).
         if deleted.memo and not survivor.memo:
             updates["memo"] = deleted.memo
         elif deleted.memo and survivor.memo and deleted.memo != survivor.memo:
@@ -1636,7 +1691,16 @@ class TransactionService:
                 updates["payee_id"] = deleted.payee_id
         if deleted.approved and not survivor.approved:
             updates["approved"] = True
+        return updates, adopting
 
+    async def _write_merge(
+        self,
+        survivor: Transaction,
+        deleted: Transaction,
+        updates: dict[str, Any],
+        adopting: bool,
+    ) -> None:
+        """Carry out one merged pair; the caller holds the batch."""
         survivor_before = snapshot("transaction", survivor)
         deleted_before = snapshot("transaction", deleted)
         # Which attachments the loser is contributing — undo moves exactly
@@ -1646,39 +1710,61 @@ class TransactionService:
                 str(a.id) for a in await self.attachment_repo.get_for_transaction(deleted.id)
             ]
 
-        async with self._mutation():
-            # Delete first so the partial unique indexes never see two live
-            # rows with the same identity, then write onto the survivor.
-            await self.transaction_repo.soft_delete(deleted.id)
-            if updates:
-                await self.transaction_repo.update(survivor.id, **updates)
-            if "cleared" in updates and survivor.is_split:
-                await self._mirror_children(survivor.id, cleared=updates["cleared"])
+        # Delete first so the partial unique indexes never see two live
+        # rows with the same identity, then write onto the survivor.
+        await self.transaction_repo.soft_delete(deleted.id)
+        if updates:
+            await self.transaction_repo.update(survivor.id, **updates)
+        if "cleared" in updates and survivor.is_split:
+            await self._mirror_children(survivor.id, cleared=updates["cleared"])
 
-            # The deleted row's attachments belong to the surviving record now.
-            if self.attachment_repo is not None:
-                await self.attachment_repo.reassign(deleted.id, survivor.id)
-            # Pending review matches pointing at the deleted row are moot.
-            if self.match_repo is not None:
-                await self.match_repo.cancel_pending_for_transaction(deleted.id)
+        # The deleted row's attachments belong to the surviving record now.
+        if self.attachment_repo is not None:
+            await self.attachment_repo.reassign(deleted.id, survivor.id)
+        # Pending review matches pointing at the deleted row are moot.
+        if self.match_repo is not None:
+            await self.match_repo.cancel_pending_for_transaction(deleted.id)
 
-            await self.transaction_repo.refresh(survivor)
-            await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
-            await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
-            # After the survivor's record, so undo (LIFO) hands the lines back
-            # before the survivor stops being a split. Lines share their
-            # parent's date and cleared state, as _mirror_children keeps them.
-            if adopting:
-                for line in await self.transaction_repo.get_splits(deleted.id):
-                    line_before = snapshot("transaction", line)
-                    moved = await self.transaction_repo.update(
-                        line.id,
-                        parent_transaction_id=survivor.id,
-                        date=survivor.date,
-                        cleared=survivor.cleared,
-                    )
-                    await self._record_txn(moved, "update", before=line_before)
-        return survivor
+        await self.transaction_repo.refresh(survivor)
+        await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
+        await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
+        # After the survivor's record, so undo (LIFO) hands the lines back
+        # before the survivor stops being a split. Lines share their
+        # parent's date and cleared state, as _mirror_children keeps them.
+        if adopting:
+            for line in await self.transaction_repo.get_splits(deleted.id):
+                line_before = snapshot("transaction", line)
+                moved = await self.transaction_repo.update(
+                    line.id,
+                    parent_transaction_id=survivor.id,
+                    date=survivor.date,
+                    cleared=survivor.cleared,
+                )
+                await self._record_txn(moved, "update", before=line_before)
+
+    async def _relink_merged_leg(
+        self, budget_id: uuid.UUID, survivor: Transaction, partner: Transaction
+    ) -> None:
+        """Link a merge's survivor to the partner it ends up with.
+
+        Through `link_legs`, the one way two existing rows become a transfer,
+        so the survivor carries the same payee and the same category rule as
+        any other leg. A category the rule forbids on either side goes: the
+        merge said this row is the transfer, and a transfer spends from an
+        envelope only when it leaves the budget.
+        """
+        accounts = {
+            leg.id: await self.account_repo.get_or_raise(leg.account_id)
+            for leg in (survivor, partner)
+        }
+        clear = [
+            leg.id
+            for leg, other in ((survivor, partner), (partner, survivor))
+            if leg.category_id is not None
+            and not leg_may_carry_category(accounts[leg.id].on_budget, accounts[other.id].on_budget)
+        ]
+        outflow, inflow = (survivor, partner) if survivor.amount < 0 else (partner, survivor)
+        await self.link_legs(budget_id, outflow, inflow, clear_categories=clear)
 
     async def _partner_on_budget_via_payee(self, payee: Payee | None) -> bool | None:
         """The on-budget flag of the account an UNPAIRED transfer leg names.

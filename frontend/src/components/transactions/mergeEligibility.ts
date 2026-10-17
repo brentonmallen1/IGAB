@@ -31,9 +31,12 @@ export function mayOfferMerge(a: Transaction, b: Transaction): boolean {
   // One split folds into the other row; two would leave one set of lines
   // with nowhere to go.
   if (a.is_split && b.is_split) return false
-  // Stricter than the server, on purpose: it would keep the leg and merge
-  // the plain row away, but the preview cannot show what happens to a
-  // transfer's partner.
+  // Stricter than the server, on purpose. It merges a leg's duplicate three
+  // ways — keeping the leg, handing the transfer to a reconciled row, or
+  // merging the partners in the other account too — but the preview cannot
+  // show a partner relinked or a second pair merged, and this side does not
+  // hold the partner rows the last is decided on. The duplicate review,
+  // where these arrive, accepts all three.
   if (a.transfer_id || b.transfer_id) return false
   if (a.parent_transaction_id || b.parent_transaction_id) return false
   // Two bank records with two different ids are two real transactions the
