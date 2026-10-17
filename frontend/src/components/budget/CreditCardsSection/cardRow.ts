@@ -567,16 +567,17 @@ export function dueHeaderNote(due: CardDue[], formatDay: (iso: string) => string
  * Is a row of the Credit cards section — a card line, or the section's own
  * envelope (Interest & fees) — drawn right now?
  *
- * `filterMatch` is null while no filter, quick filter or search is active —
- * then the fold decides. While one IS active,
- * the filter decides and the fold does not: the row is drawn exactly when it
- * matches, the way a grid row is. A chip that counted a red Interest & fees and
- * then showed nothing because the band happened to be folded would be the
- * count and the rows disagreeing — the thing the chip exists not to do.
+ * `filterMatch` is null while no filter, quick filter or search is active.
+ * While one IS active, a row the filter does not name is not drawn — the card
+ * lines were once never filtered, and a saved filter then showed every card
+ * whatever it said.
  *
- * The card lines follow the same rule. They were never filtered — "they are
- * the cards, and they stay put" — until a filter needed to name one: a filter
- * that cannot hold a card line leaves every card on screen whatever it says.
+ * The fold always decides, filter or not, exactly as a folded grid group stays
+ * folded under one. The filter used to override it so that a chip counting a
+ * red Interest & fees could never point at a folded band; the cost was a band
+ * whose chevron turned and nothing folded, the moment any filter named a card.
+ * A folded band still draws its header, and the header names the cards and the
+ * money not covered, so the count is never pointing at nothing.
  */
 export function sectionRowShown({
   collapsed,
@@ -585,7 +586,7 @@ export function sectionRowShown({
   collapsed: boolean
   filterMatch: boolean | null
 }): boolean {
-  return filterMatch ?? !collapsed
+  return !collapsed && filterMatch !== false
 }
 
 /** A section row's `filterMatch`: null while nothing is active, else whether

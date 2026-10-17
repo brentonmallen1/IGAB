@@ -118,22 +118,34 @@ describe('Interest & fees in the Credit cards section', () => {
     expect(screen.queryByTestId('section-row')).toBeNull()
   })
 
-  it('under an active filter it matches, it is drawn even on a folded band', () => {
-    // The Overspent chip counted it; the fold must not hide the row it counted.
-    state.collapsed = true
+  it('under an active filter it matches, an open band draws it and no unnamed card', () => {
     show({ rowMatch: (id) => id === 'interest' })
     expect(screen.getByTestId('section-row')).toHaveTextContent('Interest & fees')
-    // A card line the filter does not name is not drawn.
     expect(screen.queryByRole('button', { name: /Sapphire Visa/ })).toBeNull()
   })
 
-  it('a filter that names a card draws its line, folded or not, and not Interest & fees', () => {
+  it('a filter that names a card draws its line, and not Interest & fees', () => {
     // A filter could not hold a card: the lines ignored every filter, so a
     // saved filter showed every card whatever it said.
-    state.collapsed = true
     show({ rowMatch: (id) => id === 'visa-env' })
     expect(screen.getByRole('button', { name: /Sapphire Visa/ })).toBeInTheDocument()
     expect(screen.queryByTestId('section-row')).toBeNull()
+  })
+
+  it('folds under a filter that names a card, keeping its header to unfold by', () => {
+    // The filter used to override the fold: the chevron turned and the card
+    // stayed drawn, so the band could not be collapsed under any filter.
+    state.collapsed = true
+    show({ rowMatch: (id) => id === 'visa-env' })
+    expect(screen.queryByRole('button', { name: /Sapphire Visa/ })).toBeNull()
+    expect(screen.getByText('Credit cards')).toBeInTheDocument()
+  })
+
+  it('folds under a filter that names Interest & fees, keeping its header', () => {
+    state.collapsed = true
+    show({ rowMatch: (id) => id === 'interest' })
+    expect(screen.queryByTestId('section-row')).toBeNull()
+    expect(screen.getByText('Credit cards')).toBeInTheDocument()
   })
 
   it('a filter that names nothing here hides the band, like an empty grid group', () => {
