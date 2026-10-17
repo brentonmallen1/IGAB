@@ -520,6 +520,10 @@ class TestSimpleFINSyncDeduplication:
         svc.txn_service.release_bank_link = real.release_bank_link
         svc.txn_repo.get_splits = AsyncMock(return_value=[])
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        svc.txn_repo.find_unreported_postings = AsyncMock(return_value=[])
+        svc.txn_repo.oldest_open_hold = AsyncMock(return_value=None)
+        # No earlier run recorded a row the bank stopped reporting.
+        svc.session.execute = AsyncMock(return_value=MagicMock())
         svc.txn_repo.find_stale_provisional_links = AsyncMock(return_value=[])
         return svc
 
@@ -888,6 +892,10 @@ class TestDedupScoring:
         svc.txn_repo.was_deleted_by_user = AsyncMock(return_value=False)
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        svc.txn_repo.find_unreported_postings = AsyncMock(return_value=[])
+        svc.txn_repo.oldest_open_hold = AsyncMock(return_value=None)
+        # No earlier run recorded a row the bank stopped reporting.
+        svc.session.execute = AsyncMock(return_value=MagicMock())
 
         budget_id = uuid.uuid4()
         conn = MagicMock()

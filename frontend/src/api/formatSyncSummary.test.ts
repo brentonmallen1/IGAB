@@ -32,6 +32,7 @@ function result(over: Partial<SyncAllResult> = {}): SyncAllResult {
     review_queued: 0,
     cleared: 0,
     removed_pending: 0,
+    kept_unreported: 0,
     connections: [connection()],
     ...over,
   }
@@ -185,6 +186,7 @@ describe('formatSyncSummary', () => {
       review_queued: 0,
       cleared: 0,
       removed_pending: 0,
+      kept_unreported: 0,
       orphaned_links: [
         {
           account_id: 'a1',
@@ -262,6 +264,25 @@ describe('an account linked over its own history', () => {
     expect(summary).not.toContain('already had history')
   })
 
+  it('says how many pending holds dropped off, and only when some did', () => {
+    expect(formatSyncSummary(result({ imported: 2, removed_pending: 1 }))).toBe(
+      'Imported 2, 1 pending hold dropped off'
+    )
+    expect(formatSyncSummary(result({ imported: 2, removed_pending: 3 }))).toBe(
+      'Imported 2, 3 pending holds dropped off'
+    )
+    expect(formatSyncSummary(result({ imported: 2 }))).toBe('Imported 2')
+  })
+
+  it('says when rows the bank no longer reports were kept', () => {
+    expect(formatSyncSummary(result({ imported: 1, removed_pending: 2, kept_unreported: 1 }))).toBe(
+      'Imported 1, 2 pending holds dropped off, 1 row no longer at the bank'
+    )
+    expect(formatSyncSummary(result({ kept_unreported: 2 }))).toBe(
+      'Imported 0, 2 rows no longer at the bank'
+    )
+  })
+
   it('reaches a single-connection sync too', () => {
     const single = formatSyncSummary({
       imported: 6,
@@ -271,6 +292,7 @@ describe('an account linked over its own history', () => {
       review_queued: 0,
       cleared: 0,
       removed_pending: 0,
+      kept_unreported: 0,
       orphaned_links: [],
       bank_errors: [],
       balance_drift: [],
@@ -282,5 +304,27 @@ describe('an account linked over its own history', () => {
       account_remaining: null,
     })
     expect(single).toBe(`Imported 6 — ${NOTE}`)
+  })
+
+  it("carries a single-connection sync's dropped holds too", () => {
+    const single = formatSyncSummary({
+      imported: 0,
+      skipped: 0,
+      matched: 0,
+      adopted: 0,
+      review_queued: 0,
+      cleared: 0,
+      removed_pending: 1,
+      kept_unreported: 0,
+      orphaned_links: [],
+      bank_errors: [],
+      balance_drift: [],
+      error: null,
+      global_used: null,
+      global_remaining: null,
+      account_used: null,
+      account_remaining: null,
+    })
+    expect(single).toBe('Imported 0, 1 pending hold dropped off')
   })
 })

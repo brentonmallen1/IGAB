@@ -50,6 +50,7 @@ from igab.repositories.category_filters import (
 from igab.repositories.txn_filters import (
     AI_NEEDS_REVIEW,
     BALANCE_ROW,
+    BANK_DATE,
     BANK_UNLINKED,
     BUDGET_MONTH,
     CARD_PAYMENT_FROM_CASH,
@@ -82,11 +83,14 @@ from igab.repositories.txn_filters import (
     USER_ENTERED,
     in_category_scope,
     join_split_parent,
+    linked_to_a_hold,
     on_alias,
     opening_position,
     orphaned_link,
+    posted_bank_link,
     search_matches,
     sync_created_pending,
+    user_row_linked_to_hold,
 )
 from igab.repositories.txn_query import TransactionFilters, build_where, grouped_totals
 
@@ -1269,58 +1273,93 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return result.scalar_one_or_none() is not None
 
-    async def find_stale_pending_synced(
-        self,
-        account_id: uuid.UUID,
-        sync_source: str,
-        window_start: date | None,
-        active_sync_ids: set[str],
+    async def oldest_open_hold(self, account_ids: list[uuid.UUID], sync_source: str) -> date | None:
+        """The earliest live row still linked only to a bank hold, across
+        these accounts — how far back a sync's window must reach for every
+        such row to be judged (`domain.sync_window.live_window`)."""
+        if not account_ids:
+            return None
+        result = await self.session.execute(
+            select(func.min(Transaction.date)).where(
+                Transaction.account_id.in_(account_ids),
+                NOT_DELETED,
+                linked_to_a_hold(sync_source),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _unreported(
+        self, account_id: uuid.UUID, state, on_or_after, judged_from: date, reported: set[str]
     ) -> list[Transaction]:
-        """Sync-created pending rows inside the fetched window whose bank id no
-        longer appears in the feed — the bank dropped the auth or re-identified
-        it at posting. Never matches user-created rows (sync_source filter).
+        """Live parent rows in `state` whose bank id the account's feed did
+        not carry, dated (by `on_or_after`) inside the days the feed covered.
+
+        Both bounds are load-bearing. A row outside `judged_from` was not
+        asked about; and an account whose feed carried no ids at all proves
+        nothing, so with `reported` empty nothing is judged — callers skip
+        such accounts before they get here, and this refuses to be the place
+        that forgets.
         """
+        if not reported:
+            return []
         q = select(Transaction).where(
             Transaction.account_id == account_id,
-            sync_created_pending(sync_source),
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            PARENT_ROW,
+            state,
+            on_or_after >= judged_from,
+            Transaction.sync_id.notin_(reported),
         )
-        if window_start is not None:
-            q = q.where(Transaction.date >= window_start)
-        if active_sync_ids:
-            q = q.where(Transaction.sync_id.notin_(active_sync_ids))
-        result = await self.session.execute(q)
+        result = await self.session.execute(q.order_by(Transaction.date, Transaction.id))
         return list(result.scalars().all())
+
+    async def find_stale_pending_synced(
+        self, account_id: uuid.UUID, sync_source: str, judged_from: date, reported: set[str]
+    ) -> list[Transaction]:
+        """Sync-created pending rows whose bank id the feed no longer reports
+        — the bank dropped the auth or re-identified it at posting. Never a
+        user row (`sync_created_pending`)."""
+        return await self._unreported(
+            account_id, sync_created_pending(sync_source), Transaction.date, judged_from, reported
+        )
 
     async def find_stale_provisional_links(
-        self,
-        account_id: uuid.UUID,
-        sync_source: str,
-        window_start: date | None,
-        active_sync_ids: set[str],
+        self, account_id: uuid.UUID, sync_source: str, judged_from: date, reported: set[str]
     ) -> list[Transaction]:
-        """User rows linked to a bank record the feed no longer reports.
-
-        An `uncleared` row matched while the bank record was still an auth
-        hold, whose id then vanished: the bank dropped the hold or
-        re-identified it at posting. Such a row can never clear through its
-        link again. `uncleared` only — a row the user marked cleared is done
-        as far as they are concerned, and pre-`bank_posted_date` legacy rows
-        are `cleared`, so this can never unlink one of them.
-        """
-        q = select(Transaction).where(
-            Transaction.account_id == account_id,
-            PROVISIONALLY_LINKED,
-            Transaction.cleared == "uncleared",
-            Transaction.sync_source == sync_source,
-            Transaction.is_deleted == False,  # noqa: E712
+        """User rows linked to a hold the feed no longer reports: the bank
+        dropped the hold or re-identified it at posting. Such a row can never
+        clear through its link again (`user_row_linked_to_hold`)."""
+        return await self._unreported(
+            account_id,
+            user_row_linked_to_hold(sync_source),
+            Transaction.date,
+            judged_from,
+            reported,
         )
-        if window_start is not None:
-            q = q.where(Transaction.date >= window_start)
-        if active_sync_ids:
-            q = q.where(Transaction.sync_id.notin_(active_sync_ids))
-        result = await self.session.execute(q)
-        return list(result.scalars().all())
+
+    async def find_unreported_postings(
+        self, account_id: uuid.UUID, sync_source: str, judged_from: date, reported: set[str]
+    ) -> list[Transaction]:
+        """Rows linked to a POSTED bank record whose id the feed no longer
+        reports, by the bank's own date (`posted_bank_link`). Run after the
+        posting loop, so a re-identified posting has already been adopted and
+        carries an id the feed does report."""
+        return await self._unreported(
+            account_id, posted_bank_link(sync_source), BANK_DATE, judged_from, reported
+        )
+
+    async def live_sync_ids(self, account_id: uuid.UUID, sync_ids: set[str]) -> set[str]:
+        """Which of these bank ids a live row on the account carries now."""
+        if not sync_ids:
+            return set()
+        result = await self.session.execute(
+            select(Transaction.sync_id).where(
+                Transaction.account_id == account_id,
+                NOT_DELETED,
+                Transaction.sync_id.in_(sync_ids),
+            )
+        )
+        return {sid for sid in result.scalars().all() if sid is not None}
 
     async def update_cleared(self, transaction_id: uuid.UUID, cleared: str) -> None:
         await self.session.execute(
@@ -1843,7 +1882,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             # On the date the caller scores with — the bank's posting date
             # when the row has one — or the two disagree about "nearest".
             .order_by(
-                func.abs(func.coalesce(Transaction.bank_posted_date, Transaction.date) - txn_date),
+                func.abs(BANK_DATE - txn_date),
                 Transaction.date.desc(),
             )
             .limit(limit)

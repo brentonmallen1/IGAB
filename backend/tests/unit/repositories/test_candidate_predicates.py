@@ -71,7 +71,7 @@ async def test_a_bank_file_may_claim_a_row_in_any_bank_state():
 
 async def test_stale_provisional_links_are_uncleared_user_rows_only():
     repo = _repo()
-    await repo.find_stale_provisional_links(MagicMock(), "simplefin", None, {"t-live"})
+    await repo.find_stale_provisional_links(MagicMock(), "simplefin", date(2026, 7, 1), {"t-live"})
     sql = _sql(repo)
     assert "cleared = 'uncleared'" in sql
     assert "bank_posted_date IS NULL" in sql

@@ -37,6 +37,20 @@ export interface SyncRunAccount {
   balance_agrees: boolean | null
 }
 
+/** A linked row a run found missing from the feed. `removed` is a pending
+ *  hold the sync wrote; `kept` a row the person entered or the bank posted;
+ *  `reported_again` a kept posted row whose id came back. */
+export interface NoLongerReported {
+  transaction_id: string
+  account_id: string
+  date: string
+  payee: string | null
+  amount: string
+  sync_id: string | null
+  kind: 'pending_hold' | 'linked_to_hold' | 'posted'
+  action: 'removed' | 'kept' | 'reported_again'
+}
+
 export interface SyncRun {
   id: string
   connection_id: string | null
@@ -67,6 +81,9 @@ export interface SyncRun {
   review_queued: number
   removed_pending: number
   anchored: number
+  /** Each linked row the run found missing from the feed, and what it did
+   *  (server: `domain/bank_absence.Absence`). */
+  no_longer_reported?: NoLongerReported[]
   /** Present when the run's writes can be taken back as a unit. */
   change_batch_id: string | null
   undone_at: string | null

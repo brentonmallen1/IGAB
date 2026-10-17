@@ -280,7 +280,7 @@ class TestLookbackCalculation:
         return SimpleNamespace(id=uuid.uuid4(), last_simplefin_sync_at=last_sync)
 
     def test_first_sync_uses_90_days(self, svc: SimpleFINService) -> None:
-        window = svc._lookback_window([self._account(None)], True)
+        window = svc._lookback_window([self._account(None)], True, None)
         expected = datetime.now(UTC) - timedelta(days=90)
         assert abs((window.start - expected).total_seconds()) < 5
 
@@ -289,12 +289,12 @@ class TestLookbackCalculation:
     ) -> None:
         """The regression. A six-year history must not widen the request."""
         last = datetime.now(UTC) - timedelta(days=1)
-        window = svc._lookback_window([self._account(last)], False)
+        window = svc._lookback_window([self._account(last)], False, None)
         assert (datetime.now(UTC) - window.start).days <= SYNC_OVERLAP_DAYS + 1
 
     def test_never_asks_for_more_than_the_bridge_cap(self, svc: SimpleFINService) -> None:
         stale = datetime.now(UTC) - timedelta(days=2247)
-        window = svc._lookback_window([self._account(stale)], False)
+        window = svc._lookback_window([self._account(stale)], False, None)
         assert (datetime.now(UTC) - window.start).days <= SIMPLEFIN_MAX_WINDOW_DAYS
 
     def test_one_unstamped_target_means_the_full_window(self, svc: SimpleFINService) -> None:
@@ -303,12 +303,12 @@ class TestLookbackCalculation:
         relinked account inherited its neighbours' few days — and the days
         its broken link had missed were never asked for."""
         fresh = datetime.now(UTC) - timedelta(hours=1)
-        window = svc._lookback_window([self._account(fresh), self._account(None)], False)
+        window = svc._lookback_window([self._account(fresh), self._account(None)], False, None)
         expected = datetime.now(UTC) - timedelta(days=90)
         assert abs((window.start - expected).total_seconds()) < 5
 
     def test_falls_back_to_90_days_when_nothing_has_synced(self, svc: SimpleFINService) -> None:
-        window = svc._lookback_window([self._account(None)], False)
+        window = svc._lookback_window([self._account(None)], False, None)
         expected = datetime.now(UTC) - timedelta(days=90)
         assert abs((window.start - expected).total_seconds()) < 5
 
@@ -317,7 +317,7 @@ class TestLookbackCalculation:
         shortchanged by its neighbours' freshness."""
         fresh = self._account(datetime.now(UTC) - timedelta(hours=1))
         behind = self._account(datetime.now(UTC) - timedelta(days=20))
-        window = svc._lookback_window([fresh, behind], False)
+        window = svc._lookback_window([fresh, behind], False, None)
         expected = behind.last_simplefin_sync_at - timedelta(days=SYNC_OVERLAP_DAYS)
         assert abs((window.start - expected).total_seconds()) < 5
 
@@ -358,6 +358,10 @@ class TestSyncFlow:
         svc.txn_repo.get_splits = AsyncMock(return_value=[])
         # The after-loop passes iterate these — default to nothing stale
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        svc.txn_repo.find_unreported_postings = AsyncMock(return_value=[])
+        svc.txn_repo.oldest_open_hold = AsyncMock(return_value=None)
+        # No earlier run recorded a row the bank stopped reporting.
+        svc.session.execute = AsyncMock(return_value=MagicMock())
         svc.txn_repo.find_stale_provisional_links = AsyncMock(return_value=[])
         return svc
 

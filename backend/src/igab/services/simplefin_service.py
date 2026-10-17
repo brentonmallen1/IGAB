@@ -3,16 +3,27 @@ import logging
 import uuid
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Account, SimpleFINConnection, Transaction
+from igab.db.models import Account, Payee, SimpleFINConnection, Transaction
+from igab.domain.bank_absence import (
+    HOLD,
+    KEPT,
+    LINKED_TO_HOLD,
+    POSTED,
+    REMOVED,
+    REPORTED_AGAIN,
+    Absence,
+    action_for,
+    unreported_postings,
+)
 from igab.domain.bank_balance import (
     DriftExplanation,
     anchor_verdict,
@@ -43,7 +54,7 @@ from igab.domain.matching import (
     settles_in_strict_pass,
 )
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
-from igab.domain.sync_window import SyncWindow, live_window
+from igab.domain.sync_window import SyncWindow, judged_from, live_window
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINError, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
@@ -252,6 +263,7 @@ class SimpleFINService:
             "review_queued": 0,
             "cleared": 0,
             "removed_pending": 0,
+            "kept_unreported": 0,
             "anchored": 0,
         }
         skip_reasons: Counter[str] = Counter()
@@ -407,7 +419,9 @@ class SimpleFINService:
         return {"imported": 0, "skipped": 0, "error": error}
 
     @staticmethod
-    def _lookback_window(targets: list[Account], first_sync: bool) -> SyncWindow:
+    def _lookback_window(
+        targets: list[Account], first_sync: bool, oldest_open_hold: date | None
+    ) -> SyncWindow:
         """The window to request, from when these accounts last synced.
 
         Anchored to the *earliest* `last_simplefin_sync_at` among the targets,
@@ -417,7 +431,8 @@ class SimpleFINService:
         for exactly this reason; the first version of this dropped missing
         stamps from the minimum, so a relinked account inherited the window
         of the runs that had served it nothing. `domain.sync_window` floors
-        the result at the bridge's 90-day cap.
+        the result at the bridge's 90-day cap, and `oldest_open_hold` widens
+        it to cover every row still linked to a hold (see `live_window`).
         """
         stamps: list[datetime] = []
         for account in targets:
@@ -429,6 +444,7 @@ class SimpleFINService:
             now=datetime.now(UTC),
             last_sync_at=min(stamps) if stamps else None,
             first_sync=first_sync,
+            oldest_open_hold=oldest_open_hold,
         )
 
     @staticmethod
@@ -553,7 +569,8 @@ class SimpleFINService:
         # opening anchor once this run's rows are in.
         first_sync_ids = {a.id for a in targets if not a.first_sync_complete}
         is_first_sync = bool(first_sync_ids)
-        window = self._lookback_window(targets, is_first_sync)
+        oldest_hold = await self.txn_repo.oldest_open_hold([a.id for a in targets], "simplefin")
+        window = self._lookback_window(targets, is_first_sync, oldest_hold)
 
         try:
             access_url = decrypt(conn.access_url_encrypted)
@@ -593,6 +610,7 @@ class SimpleFINService:
                     feed_data,
                     requests,
                     run_batch_id,
+                    oldest_hold,
                 )
             finally:
                 run_batch.__exit__(None, None, None)
@@ -617,6 +635,7 @@ class SimpleFINService:
         feed_data: SimpleFINFeed,
         requests: Counter[SyncType],
         run_batch_id: uuid.UUID | None,
+        oldest_hold: date | None,
     ) -> dict:
         since = window.start
         # Which bank accounts the feed actually offered, and which of our
@@ -660,7 +679,7 @@ class SimpleFINService:
             # the id the account was just relinked to. With no headroom left
             # the relink stands and the wider fetch waits for the next run,
             # whose window is the floor anyway (the stamp is gone).
-            full = self._lookback_window(targets, is_first_sync)
+            full = self._lookback_window(targets, is_first_sync, oldest_hold)
             if full.start < since:
                 wider = await self._fetch_again(
                     conn,
@@ -756,51 +775,21 @@ class SimpleFINService:
         adopted_by_account = tally.adopted_by_account
         created_this_run = tally.created_this_run
 
-        # After the loop: rows whose bank id vanished from the feed. Only rows
-        # inside the fetched window are judged, and only when the feed
-        # actually returned data (an empty feed proves nothing).
-        removed_pending = 0
+        # After the loop: linked rows whose bank id the feed no longer carries
+        # — see `_judge_absences` and `domain.bank_absence` for which rows are
+        # judged and what happens to each.
         orphaned_ids = {o.account_id for o in audit.orphaned}
-        if txns_raw:
-            feed_sync_ids = {
-                (t.get("id") or "").strip() for t in txns_raw if (t.get("id") or "").strip()
-            }
-            window_start = since.date() if since is not None else None
-            for account in targets:
-                # Only accounts this feed actually served. An orphaned account
-                # has no rows in the feed at all, so every id it holds looks
-                # "vanished" — and this pass deleted its pending rows every
-                # hour for as long as the link stayed broken.
-                if account.id in orphaned_ids:
-                    continue
-                # A pending row the sync itself created: the bank dropped the
-                # auth, or re-identified it at posting with a changed amount
-                # (a same-amount re-id was absorbed in the loop). Recorded, so
-                # a category or memo the user put on it comes back with undo.
-                stale_rows = await self.txn_repo.find_stale_pending_synced(
-                    account.id, "simplefin", window_start, feed_sync_ids
-                )
-                for stale in stale_rows:
-                    await self.txn_service.delete(budget_id, stale.id, source="system")
-                    removed_pending += 1
-
-                # A user row linked to a pending record that vanished can
-                # never clear through that link. Unlink it, and if a posted
-                # row this run created looks like the same purchase, offer the
-                # pair for review — the amounts differ by construction.
-                fresh = [
-                    (txn, f)
-                    for txn, f in created_this_run
-                    if txn.account_id == account.id and f.posted
-                ]
-                for row in await self.txn_repo.find_stale_provisional_links(
-                    account.id, "simplefin", window_start, feed_sync_ids
-                ):
-                    await self.txn_service.release_bank_link(row)
-                    if self.matching_service is None or not fresh:
-                        continue
-                    if await self._queue_reidentified_review(row, fresh):
-                        review_queued += 1
+        absences, newly_queued = await self._judge_absences(
+            budget_id,
+            [a for a in targets if a.id not in orphaned_ids],
+            feed_ids_by_account,
+            judged_from(since),
+            prepared,
+            created_this_run,
+        )
+        review_queued += newly_queued
+        removed_pending = sum(1 for a in absences if a.action == REMOVED)
+        kept_unreported = sum(1 for a in absences if a.action == KEPT)
 
         # The bank's reported balance, kept every sync (the account page can
         # show drift against the ledger) — and, on an account's FIRST sync,
@@ -934,6 +923,7 @@ class SimpleFINService:
                 "removed_pending": removed_pending,
                 "anchored": anchored,
             },
+            no_longer_reported=[a.to_record() for a in absences],
             skip_reasons={r.value: n for r, n in skips.items()},
         )
         logger.info(
@@ -961,6 +951,7 @@ class SimpleFINService:
             "review_queued": review_queued,
             "cleared": cleared,
             "removed_pending": removed_pending,
+            "kept_unreported": kept_unreported,
             "anchored": anchored,
             "refused_anchors": refused_anchors,
             "anchors_skipped_for_history": anchors_skipped_for_history,
@@ -1209,6 +1200,7 @@ class SimpleFINService:
         change_batch_id: uuid.UUID | None,
         counts: dict[str, int],
         skip_reasons: dict[str, int],
+        no_longer_reported: list[dict],
     ) -> None:
         """Leave a record of what this run did.
 
@@ -1280,6 +1272,7 @@ class SimpleFINService:
             anchors_skipped_for_history=list(anchors_skipped_for_history),
             change_batch_id=change_batch_id,
             skip_reasons=skip_reasons,
+            no_longer_reported=no_longer_reported,
             accounts=per_account,
             **counts,
         )
@@ -1529,6 +1522,129 @@ class SimpleFINService:
                 payee_name = payee.name
         return calculate_confidence(
             feed.amount, feed.date, feed.payee or "", row.amount, row.date, payee_name
+        )
+
+    async def _judge_absences(
+        self,
+        budget_id: uuid.UUID,
+        served: list[Account],
+        reported_by_account: dict[str, set[str]],
+        judged_from_day: date,
+        feed: list[tuple[Account, FeedRecord]],
+        created_this_run: list[tuple[Transaction, FeedRecord]],
+    ) -> tuple[list[Absence], int]:
+        """Act on the linked rows whose bank id the feed no longer carries,
+        and say which rows they were. Returns the entries for the run record
+        and how many review pairs it queued.
+
+        Judged only where absence is evidence:
+
+        - **Inside the days the feed covered** (`judged_from`). The window
+          reaches back to the oldest row linked to a hold (`live_window`), so
+          a hold older than an hourly run's few days is still asked about —
+          it used to be skipped by every run after the one that wrote it.
+        - **Per account, only when that account's feed carried rows.** An
+          orphaned account is never passed in (every id it holds looks
+          vanished; this pass once deleted its pending rows hourly), and an
+          account the bank answered with nothing proves as little as an empty
+          feed does. The gate used to be the whole feed's: one busy checking
+          account licensed judging a quiet card against no rows at all.
+        - **Against that account's own ids**, not the connection's.
+        - **A posted row, only back to the oldest posting the account's feed
+          carried.** A bank may keep less history than the window asks for,
+          and a window widened to reach an old hold would otherwise list every
+          posted row between the bank's horizon and the hold as missing. A
+          hold is not bounded so: the bank reports what is still pending
+          whatever its date, which is what the window widening relies on.
+
+        What each kind of row gets is `domain.bank_absence`'s rule; this only
+        applies it. A posted row stays missing on every run while the window
+        covers it, so it is recorded the first time and then not again until
+        its id comes back (`unreported_postings`).
+        """
+        absences: list[Absence] = []
+        queued = 0
+        prior = await SyncRunRepository(self.session).recent_absences(budget_id)
+        still_missing = unreported_postings(prior)
+        oldest_posting: dict[uuid.UUID, date] = {}
+        for acct, record in feed:
+            if record.posted:
+                seen = oldest_posting.get(acct.id)
+                oldest_posting[acct.id] = record.date if seen is None else min(seen, record.date)
+        for account in served:
+            reported = reported_by_account.get(account.simplefin_account_id or "", set())
+            if not reported:
+                continue
+
+            # A pending row the sync itself created: the bank dropped the
+            # auth, or re-identified it at posting with a changed amount (a
+            # same-amount re-id was absorbed in the loop). Removed through the
+            # change log, so a category or memo the user put on it comes back
+            # with Restore.
+            for stale in await self.txn_repo.find_stale_pending_synced(
+                account.id, "simplefin", judged_from_day, reported
+            ):
+                absences.append(await self._absence(stale, HOLD))
+                await self.txn_service.delete(budget_id, stale.id, source="system")
+
+            # A user row linked to a pending record that vanished can never
+            # clear through that link. Unlink it, and if a posted row this run
+            # created looks like the same purchase, offer the pair for review
+            # — the amounts differ by construction. Without a pair to review
+            # the person is told instead: a hold that never cleared is a row
+            # typed in for money that never left.
+            fresh = [
+                (txn, f) for txn, f in created_this_run if txn.account_id == account.id and f.posted
+            ]
+            for row in await self.txn_repo.find_stale_provisional_links(
+                account.id, "simplefin", judged_from_day, reported
+            ):
+                entry = await self._absence(row, LINKED_TO_HOLD)
+                await self.txn_service.release_bank_link(row)
+                if (
+                    self.matching_service is not None
+                    and fresh
+                    and await self._queue_reidentified_review(row, fresh)
+                ):
+                    queued += 1
+                    continue
+                absences.append(entry)
+
+            covered = oldest_posting.get(account.id)
+            for row in (
+                await self.txn_repo.find_unreported_postings(
+                    account.id, "simplefin", max(judged_from_day, covered), reported
+                )
+                if covered is not None
+                else []
+            ):
+                if row.id not in still_missing:
+                    absences.append(await self._absence(row, POSTED))
+            back = {
+                e.transaction_id: e
+                for e in prior
+                if e.transaction_id in still_missing
+                and e.account_id == account.id
+                and e.sync_id in reported
+            }
+            absences.extend(replace(e, action=REPORTED_AGAIN) for e in back.values())
+        return absences, queued
+
+    async def _absence(self, row: Transaction, kind: str) -> Absence:
+        """The run's record of one row it found missing — read before the
+        row is touched, because removing or unlinking it gives the id up."""
+        payee: str | None = None
+        if row.payee_id is not None:
+            payee = await self.session.scalar(select(Payee.name).where(Payee.id == row.payee_id))
+        return Absence(
+            transaction_id=row.id,
+            account_id=row.account_id,
+            date=row.date,
+            payee=payee or row.bank_payee or row.import_description,
+            amount=row.amount,
+            sync_id=row.sync_id,
+            kind=kind,
+            action=action_for(kind),
         )
 
     async def _queue_reidentified_review(
