@@ -17,16 +17,20 @@ from pathlib import Path
 
 import pytest
 
-from igab.ai.tools import executor
+from igab.ai.prompts import CHAT_SYSTEM_PROMPT
+from igab.ai.tools import executor, handlers
 from igab.ai.tools.registry import BY_NAME, TOOLS, ollama_schema
 from igab.ai.tools.shape import (
     TOOL_RESULT_MAX_CHARS,
     clip,
     fits,
+    grouped_notes,
     money,
     ranked,
     summarize_if_large,
+    with_notes,
 )
+from igab.repositories.txn_query import DEFAULT_GROUPS, MAX_GROUPS
 
 TOOLS_DIR = Path(__file__).resolve().parents[2] / "src" / "igab" / "ai" / "tools"
 
@@ -330,3 +334,94 @@ class TestLoopBounds:
         """Without these a small model loops until the context runs out."""
         assert executor.MAX_TURNS >= 2
         assert executor.MAX_TOOL_CALLS >= executor.MAX_TURNS
+
+
+class TestGroupedQueryText:
+    """What the model reads about `query_transactions` before it calls it."""
+
+    def _params(self, name: str) -> dict:
+        return BY_NAME[name].parameters["properties"]
+
+    def test_the_limit_text_is_built_from_the_one_default_and_ceiling(self):
+        """The registry said "1-100. Defaults to 25." while the query
+        defaulted to 50 and capped at 200."""
+        text = self._params("query_transactions")["limit"]["description"]
+        assert f"1-{MAX_GROUPS}" in text
+        assert f"Defaults to {DEFAULT_GROUPS}" in text
+        assert "25" not in text
+
+    def test_the_order_enum_is_the_one_the_handler_checks(self):
+        order = self._params("query_transactions")["order"]
+        assert order["enum"] == list(handlers.GROUP_ORDERS)
+        assert "size" in order["description"]
+
+    def test_spending_questions_are_routed_to_spending_by_category(self):
+        assert "spending_by_category" in BY_NAME["query_transactions"].description
+        assert "where did my money go" in BY_NAME["spending_by_category"].description
+
+    @pytest.mark.parametrize("name", ["search_transactions", "query_transactions"])
+    def test_both_say_what_they_cover_by_default(self, name):
+        description = BY_NAME[name].description
+        assert handlers.DEFAULT_SCOPE in description
+        assert handlers.WIDEN_SCOPE in description
+
+    def test_the_prompt_says_to_tell_the_user_what_was_left_out(self):
+        assert "left out" in CHAT_SYSTEM_PROMPT
+        assert "offer to show more" in CHAT_SYSTEM_PROMPT
+
+
+class TestNotesCombine:
+    def test_a_second_note_joins_the_first(self):
+        """The unmatched-name note overwrote the truncation note."""
+        result = with_notes({"note": "Showing 50 of 63 groups."}, "No payee matches 'X'.")
+        assert result["note"] == "Showing 50 of 63 groups. No payee matches 'X'."
+
+    def test_no_notes_adds_no_key(self):
+        assert "note" not in with_notes({}, *[])
+
+
+def _notes(values, total_groups, omitted_value, *, order="value", aggregate="sum", cap=100):
+    return " ".join(
+        grouped_notes(
+            values=values,
+            total_groups=total_groups,
+            omitted_value=omitted_value,
+            order=order,
+            aggregate=aggregate,
+            max_groups=cap,
+        )
+    )
+
+
+class TestGroupedNotes:
+    def test_a_ranked_result_says_how_it_was_ranked(self):
+        assert "Ranked by size, largest first." in _notes([-5, -3], 2, Decimal(0))
+        assert "Ranked" not in _notes([-5, -3], 2, Decimal(0), order="group")
+
+    def test_a_cut_sum_states_what_the_rest_come_to(self):
+        note = _notes([Decimal("-900"), Decimal("-400")], 15, Decimal("-1234.5"))
+        assert "Showing 2 of 15 groups; the other 13 total -1,234.50." in note
+        assert "Tell the user some groups were left out" in note
+        assert "up to 100" in note
+
+    def test_a_cut_count_states_the_rows_left_out(self):
+        note = _notes([9, 4], 5, 6, aggregate="count")
+        assert "the other 3 hold 6 rows." in note
+
+    def test_a_cut_average_states_only_how_many(self):
+        note = _notes([Decimal(-9)], 4, None, aggregate="avg")
+        assert "3 more were left out." in note
+        assert "total" not in note
+
+    def test_at_the_ceiling_it_asks_for_narrower_filters(self):
+        note = _notes([Decimal(-1)] * 3, 7, Decimal(-4), cap=3)
+        assert "narrow the filters" in note
+        assert "higher limit" not in note
+
+    def test_a_complete_result_claims_no_cut(self):
+        assert "Showing" not in _notes([Decimal(-5)], 1, Decimal(0))
+
+    def test_mixed_signs_are_called_out_for_a_sum_only(self):
+        assert "mix both" in _notes([Decimal(500), Decimal(-90)], 2, Decimal(0))
+        assert "mix both" not in _notes([Decimal(-500), Decimal(-90)], 2, Decimal(0))
+        assert "mix both" not in _notes([Decimal(5), Decimal(-9)], 2, None, aggregate="avg")
