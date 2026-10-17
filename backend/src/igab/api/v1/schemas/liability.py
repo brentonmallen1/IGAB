@@ -9,6 +9,7 @@ from igab.api.v1.schemas.base import ApiModel, ClientDated
 from igab.domain.money import Money
 from igab.domain.payment_composition import MAX_LABEL
 from igab.domain.payment_due import PaymentDueKind
+from igab.services.card_due_dismissals import DueState
 from igab.services.liability_service import BalanceSource
 
 LiabilityType = Literal[
@@ -364,12 +365,16 @@ class CardDueDismissalOut(ApiModel):
 
     account_id: uuid.UUID
     due_date: datetime.date
-    state: Literal["due", "past_due"]
+    #: `paid` is not a dismissal of a reminder but a bill somebody says is
+    #: paid: the client's rule counts that due date as paid
+    #: (`services/card_due_dismissals.py`).
+    state: DueState
 
 
 class CardDueDismissalIn(ClientDated):
     account_id: uuid.UUID
     #: The reminder's own date — the next due date for "due", the one that
-    #: went by for "past_due" (`CardDueReminder.dueDate` in the client).
+    #: went by for "past_due" (`CardDueReminder.dueDate` in the client), the
+    #: bill's due date for "paid".
     due_date: datetime.date
-    state: Literal["due", "past_due"]
+    state: DueState

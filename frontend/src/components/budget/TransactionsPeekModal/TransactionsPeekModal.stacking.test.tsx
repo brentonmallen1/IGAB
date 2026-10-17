@@ -19,6 +19,7 @@ vi.mock('../../../api/transactions', () => ({
   usePayees: () => ({ data: [] }),
 }))
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: [] }) }))
+vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 
 import { Dialog } from '../../common/Dialog/Dialog'

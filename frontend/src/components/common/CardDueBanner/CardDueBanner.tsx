@@ -1,7 +1,8 @@
 import { CalendarClock, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAccounts } from '../../../api/accounts'
-import { useCardDueDismissals, useDismissCardDue } from '../../../api/cardDueDismissals'
+import { useCardDueDismissals, useRecordCardDue } from '../../../api/cardDueDismissals'
+import { useMarkBillPaid } from '../../../hooks/useMarkBillPaid'
 import { useLiabilities } from '../../../api/liabilities'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
@@ -16,8 +17,10 @@ import './CardDueBanner.css'
  * or somebody dismisses it.
  *
  * The rule is `reminderForCard` (utils/paymentDue.ts), the same one the
- * credit-cards strip and the terms header read. This adds only the part
- * that is the banner's own: dismissing. A dismissal is stored on the server
+ * credit-cards strip and the terms header read. Mark paid (`useMarkBillPaid`)
+ * feeds that rule, so the bill is settled everywhere and the next due date
+ * reminds as usual — the strip offers the same. Dismissing is the part that
+ * is the banner's own. A dismissal is stored on the server
  * (`api/cardDueDismissals.ts`), so the household's other device stops
  * showing it too, and it is of one due date in one state — a "due" dismissed
  * this week does not hide the "past due" that follows if nothing is paid.
@@ -32,7 +35,8 @@ export function CardDueBanner() {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: dismissals = [] } = useCardDueDismissals(budgetId)
-  const dismiss = useDismissCardDue(budgetId)
+  const dismiss = useRecordCardDue(budgetId)
+  const markPaid = useMarkBillPaid()
   const { formatMoney, formatDayMonth } = useFormatters()
 
   const lines = bannerLines(liabilities, accounts, dismissals, today())
@@ -74,12 +78,25 @@ export function CardDueBanner() {
                     ))}
                 </span>
               </span>
+              {/* Words, not an icon: this one changes what every surface says
+                about the bill, where the X beside it only quiets this bar. */}
+              <button
+                type="button"
+                className="card-due-banner__paid"
+                aria-label={`Mark ${name}'s bill due ${formatDayMonth(reminder.dueDate)} paid`}
+                disabled={markPaid.isPending}
+                onClick={() => markPaid.mark(accountId, name, reminder.dueDate)}
+              >
+                Mark paid
+              </button>
               <button
                 type="button"
                 className="card-due-banner__dismiss"
                 aria-label={`Dismiss the reminder for ${name}`}
                 disabled={dismiss.isPending}
-                onClick={() => dismiss.mutate({ accountId, reminder })}
+                onClick={() =>
+                  dismiss.mutate({ accountId, dueDate: reminder.dueDate, state: reminder.state })
+                }
               >
                 <X size={14} aria-hidden />
               </button>

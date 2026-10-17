@@ -58,6 +58,12 @@ export interface CardTimelineMonth {
   over_reserved: number
   short_reserved: number
   card_credit: number
+  /** Not legs — neither moves `set_aside` — but the two terms between the
+   *  month's card rows (the listing's `card_reserving`) and the legs: what
+   *  rode on instead of reserving, and what a refund repaid of an earlier
+   *  ride (server: CardTimelineMonthOut). Read by `reserveMonth`. */
+  rode: number
+  ride_repaid: number
 }
 
 export interface CardTimelineBreach {

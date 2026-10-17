@@ -1,4 +1,5 @@
-"""Which card-bill reminders the household has dismissed.
+"""Which card-bill reminders the household has dismissed, and which bills it
+has said are paid.
 
 The reminder itself is decided in the client (`frontend/src/utils/paymentDue.ts`
 `cardDueReminder`), which is the side that knows what day it is. What the
@@ -17,8 +18,21 @@ it is already the per-budget key-value store for household preference, with
 an undo-recorded writer and a cascade to the budget. Dismissing is a person's
 decision, so it records and ⌘Z brings the reminder back.
 
+**A bill marked paid is a third key, `paid:<account_id>:<YYYY-MM-DD>`.** A
+dismissal only quiets the banner; a bill marked paid changes the rule
+(`cardDueReminder` counts that due date as paid), so the banner and the
+credit-cards strip agree it is settled and the next due date reminds as
+usual. It exists for the payment the ledger cannot see — made from an
+account the budget does not track, or one whose checking leg never paired as
+a transfer. Same store, same writer, same undo: marking a bill paid is a
+person's decision like any dismissal.
+
 Old keys are pruned on write: a due date more than `KEEP_DAYS` before today
-can no longer be the one a reminder is about. The prunes are recorded in the
+can no longer be the one a reminder is about. A bill marked paid is kept for
+`PAYMENT_WINDOW_DAYS` instead — the client walks every due date in that
+window to match payments to bills, so an acknowledgement has to last as long
+as its bill can still be in the walk, and a quarterly cycle's bill is
+older than `KEEP_DAYS` while it is still the latest one. The prunes are recorded in the
 same batch as the dismissal that triggered them, the dismissal last, so one
 ⌘Z takes back both — rather than leaving an older dismissal whose undo would
 refuse because its key had quietly vanished.
@@ -31,13 +45,17 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.domain.payment_due import PAYMENT_WINDOW_DAYS
 from igab.guide.repo import GuideRepository, set_state_recorded
 from igab.services.change_log import ChangeRecorder
 
-DueState = Literal["due", "past_due"]
+#: `due` and `past_due` are dismissals of a reminder in that state; `paid` is
+#: a bill somebody says is paid, whatever the ledger shows.
+DueState = Literal["due", "past_due", "paid"]
 
 PREFIX = "due:"
 PAST_SUFFIX = ":past"
+PAID_PREFIX = "paid:"
 
 #: How long a dismissal is kept. A reminder is only ever about the next due
 #: date or the most recent one, so anything two billing cycles old is dead
@@ -53,6 +71,8 @@ class Dismissal:
 
 
 def dismissal_key(account_id: uuid.UUID, due_date: date, state: DueState) -> str:
+    if state == "paid":
+        return f"{PAID_PREFIX}{account_id}:{due_date.isoformat()}"
     key = f"{PREFIX}{account_id}:{due_date.isoformat()}"
     return key + PAST_SUFFIX if state == "past_due" else key
 
@@ -60,13 +80,18 @@ def dismissal_key(account_id: uuid.UUID, due_date: date, state: DueState) -> str
 def parse_dismissal_key(key: str) -> Dismissal | None:
     """The dismissal a key spells, or None for any other key (or a mangled
     one — a hand-edited row reads as "not a dismissal", never as an error)."""
-    if not key.startswith(PREFIX):
+    state: DueState
+    if key.startswith(PAID_PREFIX):
+        body = key[len(PAID_PREFIX) :]
+        state = "paid"
+    elif key.startswith(PREFIX):
+        body = key[len(PREFIX) :]
+        state = "due"
+        if body.endswith(PAST_SUFFIX):
+            body = body[: -len(PAST_SUFFIX)]
+            state = "past_due"
+    else:
         return None
-    body = key[len(PREFIX) :]
-    state: DueState = "due"
-    if body.endswith(PAST_SUFFIX):
-        body = body[: -len(PAST_SUFFIX)]
-        state = "past_due"
     account, _, day = body.partition(":")
     try:
         return Dismissal(uuid.UUID(account), date.fromisoformat(day), state)
@@ -74,13 +99,17 @@ def parse_dismissal_key(key: str) -> Dismissal | None:
         return None
 
 
+def kept_days(state: DueState) -> int:
+    """How long a key of this state is worth keeping — see the module docstring."""
+    return PAYMENT_WINDOW_DAYS if state == "paid" else KEEP_DAYS
+
+
 def expired_keys(keys: list[str], today: date) -> list[str]:
-    """Dismissal keys whose due date is more than `KEEP_DAYS` before today."""
-    cutoff = today - timedelta(days=KEEP_DAYS)
+    """Keys whose due date is older than their state keeps (`kept_days`)."""
     out = []
     for key in keys:
         parsed = parse_dismissal_key(key)
-        if parsed is not None and parsed.due_date < cutoff:
+        if parsed is not None and parsed.due_date < today - timedelta(days=kept_days(parsed.state)):
             out.append(key)
     return out
 

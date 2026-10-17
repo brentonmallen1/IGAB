@@ -29,6 +29,10 @@ const accounts = [CARD_ACCOUNT]
 vi.mock('../../api/accounts', () => ({
   useAccounts: () => ({ data: accounts }),
 }))
+const dueKeys: { account_id: string; due_date: string; state: 'due' | 'past_due' | 'paid' }[] = []
+vi.mock('../../api/cardDueDismissals', () => ({
+  useCardDueDismissals: () => ({ data: dueKeys }),
+}))
 
 function liability(overrides: Partial<Liability> = {}): Liability {
   return {
@@ -298,6 +302,23 @@ describe('LiabilityTermsHeader', () => {
 
       expect(screen.getByText('Bill past due')).toBeInTheDocument()
       expect(screen.getByText('Sep 3')).toHaveClass('liability-terms__value--negative')
+    })
+
+    it('reads a bill marked paid as paid, and goes on to the next due date', () => {
+      // The same unpaid 3 Sep bill, marked paid from the banner or the strip:
+      // the header agrees with them and shows October's.
+      dueKeys.push({ account_id: 'acct-1', due_date: '2026-09-03', state: 'paid' })
+      renderHeader([
+        liability({
+          payment_due_day: 3,
+          current_balance: 420,
+          recent_payment_dates: ['2026-07-20'],
+        }),
+      ])
+      dueKeys.length = 0
+
+      expect(screen.queryByText('Bill past due')).not.toBeInTheDocument()
+      expect(screen.getByText('Oct 3')).toBeInTheDocument()
     })
 
     it('does not call a bill missed from before the card joined the budget', () => {

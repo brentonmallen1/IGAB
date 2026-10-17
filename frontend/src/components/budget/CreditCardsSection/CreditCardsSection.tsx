@@ -13,7 +13,15 @@ import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { useAccounts } from '../../../api/accounts'
 import { currentMonthStart, today } from '../../../utils/dates'
-import { reminderChip, reminderForCard, type CardDueReminder } from '../../../utils/paymentDue'
+import {
+  reminderChip,
+  reminderForCard,
+  reminderWords,
+  type CardDueReminder,
+} from '../../../utils/paymentDue'
+import { cardCoverage } from '../../../utils/cardCoverage'
+import { useCardDueDismissals } from '../../../api/cardDueDismissals'
+import { useMarkBillPaid } from '../../../hooks/useMarkBillPaid'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -61,8 +69,8 @@ import './CreditCardsSection.css'
  * The budget's cards, served whole by the month endpoint (`cards` on
  * BudgetMonth; the model is domain/cards.py).
  *
- * Each card is one line: a word, a covered/owed bar, and its Set aside drawn
- * like any envelope's Available — red when overspent (it is covered from
+ * Each card is one line: a word, what it owes, a covered/owed bar, and its
+ * Set aside drawn like any envelope's Available — red when overspent (it is covered from
  * Ready to Assign on the 1st), green when money is waiting. The card's
  * envelope never renders in the grid; this strip is where it is read. Debt
  * not covered is a warning, not overspending: nothing is wrong yet, but a
@@ -92,12 +100,15 @@ function ReserveLegs({
   budgetId,
   month,
   card,
+  onPeekReserve,
   formatMoney,
   formatMonth,
 }: {
   budgetId: string
   month: string
   card: CardStatus
+  /** Open the rows that set this month's money aside. */
+  onPeekReserve: () => void
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
 }) {
@@ -129,7 +140,18 @@ function ReserveLegs({
         ))}
         <div className="credit-cards__leg credit-cards__leg--total">
           <dt>Set aside</dt>
-          <dd className="tabular">{formatMoney(card.set_aside)}</dd>
+          <dd className="tabular">
+            {/* The total opens its rows, the way Activity does on any
+              envelope: this month's charges and the lines from them to here. */}
+            <button
+              type="button"
+              className="credit-cards__figure-btn"
+              aria-label={`Set aside for ${card.name}: ${formatMoney(card.set_aside)}. Show what set it aside this month`}
+              onClick={onPeekReserve}
+            >
+              {formatMoney(card.set_aside)}
+            </button>
+          </dd>
         </div>
       </dl>
       {/* This month, from the card's own ledger. The legs above are lifetime
@@ -612,11 +634,16 @@ function CardDetail({
   onLegs,
   onPeek,
   onPeekCategory,
+  onPeekReserve,
   onTarget,
   payLabel,
   onPay,
+  due,
+  onMarkPaid,
+  markingPaid,
   formatMoney,
   formatMonth,
+  formatDayMonth,
 }: {
   id: string
   budgetId: string
@@ -641,22 +668,53 @@ function CardDetail({
   onLegs: () => void
   onPeek: () => void
   onPeekCategory: (categoryId: string, categoryName: string) => void
+  /** Open the rows that set this month's money aside (the card-reserve peek). */
+  onPeekReserve: () => void
   onTarget: () => void
   /** "Make a payment" (registerPayAction's word for a card), or null when
    *  the account is not one that takes a payment. */
   payLabel: string | null
   onPay: () => void
+  /** The bill reminder the line's chip draws, or null. */
+  due: CardDueReminder | null
+  onMarkPaid: () => void
+  markingPaid: boolean
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
+  formatDayMonth: (iso: string) => string
 }) {
   const callout = cardCallout(card, formatMoney)
   const drift = driftSentence(card, formatMoney)
-  const owed = Math.max(0, -card.balance)
-  const covered = Math.min(owed, Math.max(0, card.set_aside))
+  const { owed, covered } = cardCoverage(card)
   const [rodeOpen, setRodeOpen] = useState(false)
   const rodeCount = card.overspent_by_category.length
   return (
     <div id={id} className="credit-cards__detail">
+      {/* The bill, with the way to say it is paid. On the line the chip is a
+        label inside the line's button — nothing interactive nests there — so
+        the control is here, first thing under it. It feeds the same rule the
+        chip and the banner read (`reminderForCard`), so all three settle the
+        bill together and the next due date reminds as usual. */}
+      {due && (
+        <p
+          className={`credit-cards__note credit-cards__bill ${due.state === 'past_due' ? 'credit-cards__bill--past-due' : ''}`}
+        >
+          <CalendarClock size={12} aria-hidden />
+          <span>
+            Bill {reminderWords(due, formatDayMonth)}
+            {due.state === 'due' && due.days > 1 && <> ({formatDayMonth(due.dueDate)})</>}
+          </span>
+          <button
+            type="button"
+            className="credit-cards__inline-link"
+            disabled={markingPaid}
+            aria-label={`Mark ${card.name}'s bill due ${formatDayMonth(due.dueDate)} paid`}
+            onClick={onMarkPaid}
+          >
+            Mark paid
+          </button>
+        </p>
+      )}
       <dl className="credit-cards__stats">
         <div>
           <dt>Owes</dt>
@@ -664,7 +722,19 @@ function CardDetail({
         </div>
         <div>
           <dt>Covered</dt>
-          <dd className="tabular">{formatMoney(covered)}</dd>
+          <dd className="tabular">
+            {/* Like Activity on any envelope: the figure opens what made it —
+              this month's charges filed to envelopes, and the lines from them
+              to Set aside. */}
+            <button
+              type="button"
+              className="credit-cards__figure-btn"
+              aria-label={`Covered: ${formatMoney(covered)}. Show what set money aside for ${card.name} this month`}
+              onClick={onPeekReserve}
+            >
+              {formatMoney(covered)}
+            </button>
+          </dd>
         </div>
         <div>
           <dt>Not covered</dt>
@@ -847,6 +917,7 @@ function CardDetail({
           budgetId={budgetId}
           month={month}
           card={card}
+          onPeekReserve={onPeekReserve}
           formatMoney={formatMoney}
           formatMonth={formatMonth}
         />
@@ -891,6 +962,10 @@ export function CreditCardsSection({
   // For Release: the card's envelope is an ordinary category to the server,
   // and the move endpoint wants the category, not the account.
   const { data: categories = [] } = useCategories(budgetId)
+  // Bills somebody marked paid — read by the reminder rule, so the chip, the
+  // banner and the terms header settle a bill together.
+  const { data: dueKeys = [] } = useCardDueDismissals(budgetId)
+  const markPaid = useMarkBillPaid()
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
@@ -932,9 +1007,10 @@ export function CreditCardsSection({
   const remindersApply = month >= currentMonthStart()
   // Once, for every card, through the same `reminderForCard` the app-wide
   // banner reads — same balance, same payment date, same start — so the
-  // strip and the banner cannot disagree about a bill. The header's line is
-  // an aggregate over the reminders the rows draw. Not dismissible here:
-  // dismissing only quiets the banner.
+  // strip and the banner cannot disagree about a bill — bills marked paid
+  // included. The header's line is an aggregate over the reminders the rows
+  // draw. Not dismissible here: dismissing only quiets the banner. A bill can
+  // be marked paid here (the opened card), which settles it everywhere.
   const asOf = today()
   const accountById = new Map(accounts.map((a) => [a.id, a]))
   const reminderByAccount = new Map<string, CardDueReminder>()
@@ -942,7 +1018,7 @@ export function CreditCardsSection({
     for (const c of cards) {
       const liability = liabilityByAccount.get(c.account_id)
       const reminder = liability
-        ? reminderForCard(liability, accountById.get(c.account_id), asOf)
+        ? reminderForCard(liability, accountById.get(c.account_id), asOf, dueKeys)
         : null
       if (reminder) reminderByAccount.set(c.account_id, reminder)
     }
@@ -1094,12 +1170,19 @@ export function CreditCardsSection({
                         </span>
                       )}
                     </span>
+                    {/* What the card owes, beside what is set aside for it:
+                      the line showed only the reserve, and the debt it stands
+                      behind took opening the card to see. The same figure as
+                      the opened card's Owes (`cardCoverage`). */}
+                    <span className="credit-cards__owes tabular">
+                      Owes {formatMoney(line.owed)}
+                    </span>
                     <span
                       className="credit-cards__bar"
                       role="img"
-                      aria-label={`${Math.round(line.covered * 100)}% of what ${card.name} owes is set aside`}
+                      aria-label={`${Math.round(line.coveredShare * 100)}% of what ${card.name} owes is set aside`}
                     >
-                      <span style={{ width: `${line.covered * 100}%` }} />
+                      <span style={{ width: `${line.coveredShare * 100}%` }} />
                     </span>
                     <span className={`credit-cards__pill credit-cards__pill--${line.tone}`}>
                       {formatMoney(card.set_aside)}
@@ -1154,6 +1237,19 @@ export function CreditCardsSection({
                         // "Rode on this card in {month}" explains one month.
                         setPeek({ kind: 'category', categoryId, categoryName, month })
                       }
+                      onPeekReserve={() =>
+                        setPeek({
+                          kind: 'card-reserve',
+                          accountId: card.account_id,
+                          accountName: card.name,
+                          month,
+                        })
+                      }
+                      due={due}
+                      onMarkPaid={() =>
+                        due && markPaid.mark(card.account_id, card.name, due.dueDate)
+                      }
+                      markingPaid={markPaid.isPending}
                       onTarget={() =>
                         setTargetFor({ categoryId: card.category_id as string, name: card.name })
                       }
@@ -1161,6 +1257,7 @@ export function CreditCardsSection({
                       onPay={() => setPayFor(card.account_id)}
                       formatMoney={formatMoney}
                       formatMonth={formatMonth}
+                      formatDayMonth={formatDayMonth}
                     />
                   )}
                 </li>

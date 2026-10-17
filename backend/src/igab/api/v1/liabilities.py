@@ -54,6 +54,7 @@ from igab.services.amortization import (
     payoff_verdict,
 )
 from igab.services.card_due_dismissals import Dismissal, dismiss, list_dismissals
+from igab.services.card_payment import is_card_account
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.liability_service import (
     LIABILITY_CLASSIFICATION,
@@ -842,8 +843,9 @@ async def link_category_to_liability(
 # ─── Card-bill reminders ─────────────────────────────────────────────────────
 #
 # The reminder is the client's (utils/paymentDue.ts); these keep only who has
-# dismissed which one, shared across the household's devices. See
-# services/card_due_dismissals.py for the key shape and the pruning.
+# dismissed which one, and which bills somebody marked paid, shared across the
+# household's devices. See services/card_due_dismissals.py for the key shape
+# and the pruning.
 
 
 def _dismissals_out(rows: list[Dismissal]) -> list[CardDueDismissalOut]:
@@ -871,10 +873,19 @@ async def dismiss_card_due(
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     recorder: Recorder,
 ) -> list[CardDueDismissalOut]:
-    """Dismiss one reminder; returns every dismissal still on file."""
+    """Dismiss one reminder, or mark one bill paid; returns every key still on
+    file."""
     account = await account_repo.get(body.account_id)
     if account is None or account.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    if body.state == "paid" and not is_card_account(account):
+        # Only a card has a bill the reminder walks (`reminderForCard` reads
+        # on-budget cards alone); a key for anything else would sit in the
+        # store meaning nothing.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Only a card's bill can be marked paid",
+        )
     rows = await dismiss(
         session,
         recorder,

@@ -2,23 +2,27 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
 import { today } from '../utils/dates'
-import type { CardDueReminder, CardDueState } from '../utils/paymentDue'
+import type { CardDueKey } from '../utils/paymentDue'
 
 /**
- * Card-bill reminders the household has dismissed — stored on the server so a
- * bill dismissed on one device stays dismissed on the other
- * (backend `services/card_due_dismissals.py`).
+ * The household's card-bill keys, stored on the server so what one device
+ * says the other device knows (backend `services/card_due_dismissals.py`).
  *
- * A dismissal is of one due date in one state, never of a card: dismissing
- * "due" does not hide the "past due" that may follow for the same date, and
- * dismissing one date never silences the next. Only the banner reads these;
- * the credit-cards strip is not dismissible.
+ * Two kinds in one store:
+ *
+ * - **A dismissal** (`due` / `past_due`) is of one due date in one state,
+ *   never of a card: dismissing "due" does not hide the "past due" that may
+ *   follow for the same date, and dismissing one date never silences the
+ *   next. Only the banner reads these (`bannerLines`).
+ * - **A bill marked paid** (`paid`) is read by the reminder rule itself
+ *   (`reminderForCard`), so the banner, the credit-cards strip and the terms
+ *   header all see that bill as settled, and the next due date reminds as
+ *   usual.
+ *
+ * Every key is recorded in the change log, so ⌘Z — or the toast's Undo —
+ * takes it back.
  */
-export interface CardDueDismissal {
-  account_id: string
-  due_date: string
-  state: CardDueState
-}
+export type CardDueDismissal = CardDueKey
 
 export function useCardDueDismissals(budgetId: string | null) {
   return useQuery({
@@ -30,21 +34,30 @@ export function useCardDueDismissals(budgetId: string | null) {
   })
 }
 
-export function useDismissCardDue(budgetId: string | null) {
+/** Store one key: dismiss a reminder in its state, or mark its bill paid. */
+export function useRecordCardDue(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ accountId, reminder }: { accountId: string; reminder: CardDueReminder }) =>
+    mutationFn: ({
+      accountId,
+      dueDate,
+      state,
+    }: {
+      accountId: string
+      dueDate: string
+      state: CardDueKey['state']
+    }) =>
       apiClient
         .put<CardDueDismissal[]>(`/${budgetId}/card-due-dismissals`, {
           account_id: accountId,
-          due_date: reminder.dueDate,
-          state: reminder.state,
-          // The server prunes dismissals older than 60 days against this.
+          due_date: dueDate,
+          state,
+          // The server prunes old keys against this.
           client_today: today(),
         })
         .then((r) => r.data),
-    // The PUT answers with every dismissal still on file, so the banner hides
-    // without waiting on a refetch.
+    // The PUT answers with every key still on file, so the banner and the
+    // strip update without waiting on a refetch.
     onSuccess: (rows) => {
       qc.setQueryData([ROOT.cardDueDismissals, budgetId], rows)
       // Recorded in the change log: the activity feed has a new row, and ⌘Z

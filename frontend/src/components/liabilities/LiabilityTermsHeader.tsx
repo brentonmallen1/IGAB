@@ -6,6 +6,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { today } from '../../utils/dates'
 import { formatRate } from '../../utils/rate'
 import { useAccounts } from '../../api/accounts'
+import { useCardDueDismissals } from '../../api/cardDueDismissals'
 import { describeDueRule, dueInPhrase, nextDueDate, reminderForCard } from '../../utils/paymentDue'
 import { useUIStore } from '../../stores/uiStore'
 import './LiabilityTermsHeader.css'
@@ -37,6 +38,8 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: assets = [] } = useAssets(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
+  // Bills somebody marked paid are paid here too.
+  const { data: dueKeys = [] } = useCardDueDismissals(budgetId)
   const openModal = useUIStore((s) => s.openModal)
 
   const liability = liabilities.find((l) => l.linked_account_id === accountId)
@@ -64,7 +67,8 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   const reminder = reminderForCard(
     liability,
     accounts.find((a) => a.id === accountId),
-    today()
+    today(),
+    dueKeys
   )
   // Past due, the date that matters is the one that went by; otherwise the
   // next one.

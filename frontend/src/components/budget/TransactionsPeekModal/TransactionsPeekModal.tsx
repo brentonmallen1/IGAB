@@ -10,18 +10,24 @@ import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { Transaction } from '../../../types'
 import './TransactionsPeekModal.css'
 import { openAccounts } from '../../../utils/accountLists'
-import { wholeMonthWindow } from '../../../utils/dateWindow'
+import { useCategories } from '../../../api/categories'
+import { CardReserveSummary } from './CardReserveSummary'
 
 const RECENT_LIMIT = 10
 const ALL_LIMIT = 1000
 
 /** What the peek is about: one category across accounts (the grid's
- *  Activity click), or one account whole (the cards strip's Set aside).
- *  A category scope with a `month` ("YYYY-MM-01") opens on that month's
- *  rows — the ones the Activity figure that was clicked counts. */
+ *  Activity click), one account whole (the cards strip's Transactions), or
+ *  what set a card's money aside in one month (the strip's Covered and Set
+ *  aside figures).
+ *
+ *  A `month` ("YYYY-MM-01") opens on the rows that month's figure counts —
+ *  by the month a row counts in for budget math, not its calendar date (see
+ *  `useTransactionsPeek`). */
 export type PeekScope =
   | { kind: 'category'; categoryId: string; categoryName: string; month?: string }
   | { kind: 'account'; accountId: string; accountName: string }
+  | { kind: 'card-reserve'; accountId: string; accountName: string; month: string }
 
 interface Props {
   budgetId: string
@@ -56,22 +62,30 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   const { formatMoney, formatMoneyOrDash, formatDate, formatMonth } = useFormatters()
 
   // The whole month, not "so far": Activity counts a future-dated row later
-  // this month, so the list behind the number has to show it too.
-  const month = scope.kind === 'category' ? scope.month : undefined
-  const monthRange = month && !showAll ? wholeMonthWindow(month) : null
+  // this month, so the list behind the number has to show it too. A card's
+  // reserve is a month's figure through and through, so that list never
+  // widens to "all".
+  const reserve = scope.kind === 'card-reserve'
+  const month = scope.kind === 'account' ? undefined : scope.month
+  const budgetMonth = month && (reserve || !showAll) ? month : null
   const { data, isPending } = useTransactionsPeek(
     budgetId,
     scope.kind === 'category'
       ? { categoryId: scope.categoryId, accountId: accountFilter || null }
-      : { accountId: scope.accountId },
-    showAll || monthRange ? ALL_LIMIT : RECENT_LIMIT,
-    monthRange
+      : { accountId: scope.accountId, cardReserving: reserve },
+    showAll || budgetMonth ? ALL_LIMIT : RECENT_LIMIT,
+    budgetMonth
   )
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: payees = [] } = usePayees(budgetId)
+  // Archived envelopes included: one still reserves on a card, and its rows
+  // still need a name.
+  const { data: categories = [] } = useCategories(reserve ? budgetId : null, true)
 
   const accountName = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
   const payeeName = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
+  const categoryName = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
+  const title = scope.kind === 'category' ? scope.categoryName : scope.accountName
 
   const transactions = data?.transactions ?? []
   const totalCount = data?.total_count ?? 0
@@ -94,7 +108,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   function openInTransactions() {
     // Land on the all-accounts register pre-filtered to this peek's scope
     // via the shared search-token state
-    if (scope.kind === 'account') {
+    if (scope.kind !== 'category') {
       setTransactionSearch(`account:"${scope.accountName}"`)
     } else {
       const accountToken = accountFilter ? ` account:"${accountName.get(accountFilter) ?? ''}"` : ''
@@ -109,9 +123,15 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
       <div className="category-txns" role="dialog" aria-modal aria-labelledby="category-txns-title">
         <div className="category-txns__header">
           <span id="category-txns-title" className="category-txns__title">
-            {scope.kind === 'category' ? scope.categoryName : scope.accountName}
+            {title}
             <span className="category-txns__subtitle">
-              {showAll ? 'All transactions' : month ? formatMonth(month) : 'Recent transactions'}
+              {reserve && month
+                ? `What set money aside in ${formatMonth(month)}`
+                : showAll
+                  ? 'All transactions'
+                  : month
+                    ? formatMonth(month)
+                    : 'Recent transactions'}
             </span>
           </span>
           <div className="category-txns__header-actions">
@@ -146,11 +166,13 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
             <div className="category-txns__empty">Loading…</div>
           ) : transactions.length === 0 ? (
             <div className="category-txns__empty">
-              {scope.kind === 'account'
-                ? 'No transactions on this account yet.'
-                : accountFilter
-                  ? 'No transactions in this category for that account.'
-                  : 'No transactions in this category yet.'}
+              {scope.kind === 'card-reserve'
+                ? 'Nothing on this card was filed to an envelope this month.'
+                : scope.kind === 'account'
+                  ? 'No transactions on this account yet.'
+                  : accountFilter
+                    ? 'No transactions in this category for that account.'
+                    : 'No transactions in this category yet.'}
             </div>
           ) : (
             <>
@@ -166,6 +188,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                     <th scope="col">Date</th>
                     <th scope="col">Payee</th>
                     {scope.kind === 'category' && <th scope="col">Account</th>}
+                    {reserve && <th scope="col">Category</th>}
                     <th scope="col" className="category-txns__amount-col">
                       Amount
                     </th>
@@ -193,6 +216,11 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                           {accountName.get(t.account_id) ?? '—'}
                         </td>
                       )}
+                      {reserve && (
+                        <td className="category-txns__account">
+                          {(t.category_id && categoryName.get(t.category_id)) || '—'}
+                        </td>
+                      )}
                       <td
                         className={`category-txns__amount tabular ${t.amount < 0 ? 'negative' : 'positive'}`}
                       >
@@ -210,6 +238,17 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                 </tbody>
               </table>
             </>
+          )}
+          {/* Under the list, inside the one scroller: the lines that take
+            these rows to Set aside. Drawn once the rows are in, since the
+            first line is their total. */}
+          {scope.kind === 'card-reserve' && !isPending && data && (
+            <CardReserveSummary
+              budgetId={budgetId}
+              accountId={scope.accountId}
+              month={scope.month}
+              listedNet={data.total_amount}
+            />
           )}
         </div>
 
@@ -234,7 +273,13 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
             Open in Transactions
           </button>
           <span className="category-txns__footer-spacer" />
-          {monthRange ? (
+          {reserve ? (
+            totalCount > 0 && (
+              <span className="category-txns__count">
+                {totalCount} transaction{totalCount !== 1 ? 's' : ''}
+              </span>
+            )
+          ) : budgetMonth ? (
             // The month is all here; older rows are what "all" adds, and the
             // month's count says nothing about how many of those there are.
             <button

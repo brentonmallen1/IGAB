@@ -6,7 +6,9 @@
  * the card owes something and a bill is close and unpaid ("Due in 4 days"),
  * or went by unpaid ("Past due", in red, with a red dot on the line and the
  * section header). It goes once a payment lands after the last due date.
- * The strip is not dismissible: dismissing only quiets the banner.
+ * The strip is not dismissible: dismissing only quiets the banner. A bill
+ * can be marked paid from the opened card, which the rule reads as paid —
+ * so the chip, the banner and the terms header settle it together.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -53,6 +55,17 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,
 }))
 
+const dueKeys = vi.hoisted(() => ({
+  current: [] as { account_id: string; due_date: string; state: 'due' | 'past_due' | 'paid' }[],
+}))
+const markBill = vi.hoisted(() => vi.fn())
+vi.mock('../../../api/cardDueDismissals', () => ({
+  useCardDueDismissals: () => ({ data: dueKeys.current }),
+}))
+vi.mock('../../../hooks/useMarkBillPaid', () => ({
+  useMarkBillPaid: () => ({ mark: markBill, isPending: false }),
+}))
+
 import { CreditCardsSection } from './CreditCardsSection'
 import { cardStatus } from '../../../test-utils/cardFixture'
 
@@ -93,6 +106,8 @@ beforeEach(() => {
   month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
   rows.liabilities = [due()]
   accounts.current = [account('a1'), account('a2')]
+  dueKeys.current = []
+  markBill.mockClear()
 })
 
 afterEach(() => {
@@ -259,6 +274,59 @@ describe('a bill past due', () => {
     show()
 
     expect(screen.queryByText('Past due')).not.toBeInTheDocument()
+  })
+})
+
+describe('marking a bill paid', () => {
+  // The same unpaid 3 Sep bill: the ledger saw no payment for it.
+  beforeEach(() => {
+    rows.liabilities = [due({ payment_due_day: 3, recent_payment_dates: ['2026-08-01'] })]
+  })
+
+  it('is offered in the opened card, outside the line — nothing nests in its button', () => {
+    show()
+    const line = document.querySelector('.credit-cards__line') as HTMLElement
+    expect(line.querySelector('button')).toBeNull()
+
+    fireEvent.click(line)
+    fireEvent.click(
+      screen.getByRole('button', { name: "Mark Sapphire Visa's bill due Sep 3 paid" })
+    )
+
+    expect(markBill).toHaveBeenCalledWith('a1', 'Sapphire Visa', '2026-09-03')
+  })
+
+  it('once marked, the chip, the dot and the header all let the bill go', () => {
+    dueKeys.current = [{ account_id: 'a1', due_date: '2026-09-03', state: 'paid' }]
+    show()
+
+    expect(screen.queryByText('Past due')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'A card bill is past due' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/past due since/)).not.toBeInTheDocument()
+  })
+
+  it('a dismissal is not a payment: the strip still says past due', () => {
+    // Dismissing quiets the banner alone.
+    dueKeys.current = [{ account_id: 'a1', due_date: '2026-09-03', state: 'past_due' }]
+    show()
+
+    expect(screen.getByText('Past due')).toBeInTheDocument()
+  })
+
+  it('the next bill reminds as usual', () => {
+    dueKeys.current = [{ account_id: 'a1', due_date: '2026-09-03', state: 'paid' }]
+    vi.setSystemTime(new Date(2026, 8, 30, 12, 0, 0)) // 3 Oct is three days out
+    show()
+
+    expect(screen.getByText('Due in 3 days')).toBeInTheDocument()
+  })
+
+  it('taken back, the bill is past due again', () => {
+    // Undo removes the key; the strip reads what the store now holds.
+    dueKeys.current = []
+    show()
+
+    expect(screen.getByText('Past due')).toBeInTheDocument()
   })
 })
 
