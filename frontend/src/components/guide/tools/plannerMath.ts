@@ -112,6 +112,12 @@ export function incomeTotalCents(payload: PlanPayload): number {
  * What an imported category's row starts at. Only a monthly-funding target
  * translates directly to a monthly plan figure; a savings balance or a
  * weekly rhythm would need invented arithmetic, so those seed blank.
+ *
+ * A monthly target with a stop ("Stop at $L") seeds its rate. The plan has no
+ * column for the stop, and applying the plan keeps it on the target
+ * (backend `CategoryPlanService`, `update_target`) — so a month that asks
+ * less because the envelope is nearly full is the target's business, not the
+ * plan's.
  */
 export function seedCentsFromTarget(
   target: { target_type: string; target_amount: number } | null | undefined

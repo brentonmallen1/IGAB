@@ -243,6 +243,21 @@ class TestOwnEnvelope:
         body = (await api_client.get(_url(budget))).json()
         assert money(body["items"][0]["cost"]) == Decimal("2000.00")
 
+    async def test_editing_the_cost_keeps_a_stop_the_budget_page_set(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cost="1800", funding={"mode": "own"})
+        cat_id = wish["funding"]["category_id"]
+        r = await api_client.post(
+            f"/api/v1/categories/{cat_id}/target",
+            json={"target_type": "monthly_funding", "target_amount": "150", "target_limit": "1800"},
+        )
+        assert r.status_code in (200, 201), r.text
+
+        r = await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"cost": "2000"})
+        assert r.status_code == 200, r.text
+        target = (await api_client.get(f"/api/v1/categories/{cat_id}/target")).json()
+        assert Decimal(str(target["target_limit"])) == Decimal("1800.00")
+
     async def test_delete_offers_the_envelope_only_when_owned(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         owned = await _add(api_client, budget, funding={"mode": "own"})

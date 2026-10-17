@@ -374,10 +374,16 @@ async def _underfunded_setup(db_session, *, income: str):
     await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("100.00"))
     target_service = TargetService(TargetRepository(db_session))
     await target_service.upsert(
-        category_id=groceries.id, target_type="monthly_funding", target_amount=Decimal("500.00")
+        category_id=groceries.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("500.00"),
+        target_limit=None,
     )
     await target_service.upsert(
-        category_id=dining.id, target_type="monthly_funding", target_amount=Decimal("100.00")
+        category_id=dining.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("100.00"),
+        target_limit=None,
     )
     return services, budget, groceries, dining
 
@@ -454,10 +460,16 @@ async def test_underfunded_preview_via_api_pins_values(api_client, db_session):
     await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("100.00"))
     target_service = TargetService(TargetRepository(db_session))
     await target_service.upsert(
-        category_id=groceries.id, target_type="monthly_funding", target_amount=Decimal("500.00")
+        category_id=groceries.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("500.00"),
+        target_limit=None,
     )
     await target_service.upsert(
-        category_id=dining.id, target_type="monthly_funding", target_amount=Decimal("100.00")
+        category_id=dining.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("100.00"),
+        target_limit=None,
     )
 
     resp = await api_client.get(
@@ -618,13 +630,22 @@ async def _overfunded_setup(db_session):
 
     target_service = TargetService(TargetRepository(db_session))
     await target_service.upsert(
-        category_id=groceries.id, target_type="monthly_funding", target_amount=Decimal("200.00")
+        category_id=groceries.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("200.00"),
+        target_limit=None,
     )
     await target_service.upsert(
-        category_id=dining.id, target_type="monthly_funding", target_amount=Decimal("100.00")
+        category_id=dining.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("100.00"),
+        target_limit=None,
     )
     await target_service.upsert(
-        category_id=rent.id, target_type="monthly_funding", target_amount=Decimal("100.00")
+        category_id=rent.id,
+        target_type="monthly_funding",
+        target_amount=Decimal("100.00"),
+        target_limit=None,
     )
     return services, budget, groceries, dining, fun, rent
 
@@ -729,7 +750,10 @@ async def _spend_setup(db_session):
     target_service = TargetService(TargetRepository(db_session))
     for cat in (groceries, dining):
         await target_service.upsert(
-            category_id=cat.id, target_type="monthly_funding", target_amount=Decimal("100.00")
+            category_id=cat.id,
+            target_type="monthly_funding",
+            target_amount=Decimal("100.00"),
+            target_limit=None,
         )
     return services, budget, checking, groceries, dining
 
@@ -871,7 +895,10 @@ async def test_inspector_target_amount_sets_only_the_selected_and_serves_the_fig
     target_service = TargetService(TargetRepository(db_session))
     for cat, amount in ((groceries, "500.00"), (dining, "100.00")):
         await target_service.upsert(
-            category_id=cat.id, target_type="monthly_funding", target_amount=Decimal(amount)
+            category_id=cat.id,
+            target_type="monthly_funding",
+            target_amount=Decimal(amount),
+            target_limit=None,
         )
 
     month = (await api_client.get(f"/api/v1/{budget.id}/months/2026-07-01")).json()

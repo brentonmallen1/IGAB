@@ -70,6 +70,8 @@ class TargetSpec:
     check_after_day: int | None = None
     #: Weekly targets only: 0=Monday … 6=Sunday.
     weekday: int | None = None
+    #: Monthly or weekly only: "Stop at $L" (`CategoryTarget.target_limit`).
+    limit: Decimal | None = None
 
 
 @dataclass(frozen=True)

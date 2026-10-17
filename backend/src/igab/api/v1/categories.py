@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from igab.api.route import CommitRoute
+from igab.api.v1.params import ReaderToday
 from igab.api.v1.schemas.category import (
     ArchivedCategoryResponse,
     AssignApplyRequest,
@@ -61,8 +63,9 @@ from igab.api.v1.schemas.category import (
     OverspentLastMonthItem,
     RecentPayeeResponse,
     RepairOrphansResponse,
+    TargetSuggestionsResponse,
 )
-from igab.db.models import Budget, CategoryGroup, Transaction
+from igab.db.models import Budget, Category, CategoryGroup, Transaction
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
@@ -104,6 +107,7 @@ from igab.services.category_service import (
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
 from igab.services.target_service import TargetService
+from igab.services.target_suggestions import target_suggestions
 from igab.utils.clock import today_utc
 
 router = APIRouter(route_class=CommitRoute)
@@ -824,6 +828,7 @@ async def get_budget_month(
                         t,
                         b.assigned,
                         b.available,
+                        activity=b.activity,
                         month=month,
                         today=today,
                         funding_day=funding_day,
@@ -832,13 +837,19 @@ async def get_budget_month(
                     else None
                 ),
                 needed_this_month=(
-                    target_service.calculate_needed(t, b.assigned, b.available, month=month)
+                    target_service.calculate_needed(
+                        t, b.assigned, b.available, activity=b.activity, month=month
+                    )
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
                 target_assigned=(
                     target_service.target_assigned(
-                        t, assigned=b.assigned, available=b.available, month=month
+                        t,
+                        assigned=b.assigned,
+                        activity=b.activity,
+                        available=b.available,
+                        month=month,
                     )
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
@@ -900,6 +911,7 @@ async def upsert_category_target(
         target_type=body.target_type,
         target_amount=body.target_amount,
         target_date=body.target_date,
+        target_limit=body.target_limit,
         check_after_day=body.check_after_day,
         weekday=body.weekday,
     )
@@ -1143,6 +1155,26 @@ async def get_category_history_batch(
             )
         )
     return results
+
+
+@router.get(
+    "/{budget_id}/categories/{category_id}/target-suggestions",
+    response_model=TargetSuggestionsResponse,
+)
+async def get_target_suggestions(
+    budget_id: BudgetAccess,
+    category_id: uuid.UUID,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    today: ReaderToday,
+) -> TargetSuggestionsResponse:
+    """The target editor's suggestions: average and peak monthly spending,
+    and the highest month-end balance, over the last twelve complete months
+    (`services.target_suggestions`). Orchestration only."""
+    session = budget_service.category_repo.session
+    await require_in_budget(session, Category, category_id, budget_id, "Category")
+    found = await target_suggestions(session, budget_service, budget_id, category_id, today)
+    return TargetSuggestionsResponse(category_id=category_id, **asdict(found))
 
 
 @router.post("/{budget_id}/categories/auto-assign", status_code=status.HTTP_204_NO_CONTENT)
