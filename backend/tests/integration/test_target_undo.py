@@ -201,3 +201,45 @@ class TestTargetUndo:
         r = await api_client.post(f"/api/v1/{budget.id}/changes/redo")  # re-insert hard row
         assert r.status_code == 200, r.text
         assert (await _read_target(api_client, category))["target_amount"] == 1200.0
+
+
+class TestTheStopIsUndone:
+    """`target_limit` is in the change log's snapshot field list, so an edit
+    that only moved the stop is a recorded change, and undo puts it back.
+    Left out of the list, the edit recorded nothing and undo dropped the cap."""
+
+    async def test_editing_only_the_stop_undoes_back_to_the_old_stop(self, db_session, api_client):
+        budget, category = await _setup(db_session, api_client)
+        body = dict(target_type="monthly_funding", target_amount="100")
+        await _set_target(api_client, category, **body, target_limit="1000")
+        await _set_target(api_client, category, **body, target_limit="500")
+
+        undone = await _undo(api_client, budget)
+        assert (undone["entity_type"], undone["action"]) == ("category_target", "update")
+        assert (await _read_target(api_client, category))["target_limit"] == 1000.0
+
+    async def test_removing_the_stop_undoes_back_to_having_one(self, db_session, api_client):
+        budget, category = await _setup(db_session, api_client)
+        body = dict(target_type="monthly_funding", target_amount="100")
+        await _set_target(api_client, category, **body, target_limit="1000")
+        await _set_target(api_client, category, **body)
+        assert (await _read_target(api_client, category))["target_limit"] is None
+
+        await _undo(api_client, budget)
+        assert (await _read_target(api_client, category))["target_limit"] == 1000.0
+
+    async def test_deleting_a_capped_target_undo_restores_the_stop(self, db_session, api_client):
+        budget, category = await _setup(db_session, api_client)
+        await _set_target(
+            api_client,
+            category,
+            target_type="weekly_funding",
+            target_amount="25",
+            weekday=4,
+            target_limit="300",
+        )
+        await api_client.delete(_target_url(category))
+        await _undo(api_client, budget)
+        restored = await _read_target(api_client, category)
+        assert restored["target_limit"] == 300.0
+        assert restored["weekday"] == 4

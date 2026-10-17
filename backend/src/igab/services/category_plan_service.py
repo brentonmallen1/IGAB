@@ -248,11 +248,25 @@ class CategoryPlanService:
                         after=snapshot("category", category),
                     )
                     await self.targets.upsert(
-                        category.id, "monthly_funding", entry["amount"], batch_id=batch_id
+                        category.id,
+                        "monthly_funding",
+                        entry["amount"],
+                        target_limit=None,
+                        batch_id=batch_id,
                     )
                 elif kind in ("set_target", "update_target"):
+                    # The plan sets the monthly figure and nothing else. A
+                    # stop ("Stop at $L") and a check-after day already on
+                    # the target are the budget page's decisions, kept as
+                    # they were — the plan has no column for either.
+                    existing = await self.targets.get(entry["category_id"])
                     await self.targets.upsert(
-                        entry["category_id"], "monthly_funding", entry["amount"], batch_id=batch_id
+                        entry["category_id"],
+                        "monthly_funding",
+                        entry["amount"],
+                        target_limit=existing.target_limit if existing else None,
+                        check_after_day=existing.check_after_day if existing else None,
+                        batch_id=batch_id,
                     )
                 if entry["category_id"] is not None and kind not in (
                     "skip_invalid_link",
