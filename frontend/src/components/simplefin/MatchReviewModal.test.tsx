@@ -8,20 +8,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { TransactionMatch } from '../../types'
+import { makeTransaction } from '../../test-utils/factories'
 import { MatchReviewModal } from './MatchReviewModal'
 
 const api = vi.hoisted(() => ({
   accept: vi.fn((_: string) => Promise.resolve({})),
   reject: vi.fn((_: string) => Promise.resolve({})),
+  /** Rows `useTransaction` answers with; empty unless a test fills it. */
+  txns: {} as Record<string, unknown>,
 }))
 vi.mock('../../api/simplefin', () => ({
   useAcceptMatch: () => ({ mutateAsync: api.accept, isPending: false }),
   useRejectMatch: () => ({ mutateAsync: api.reject, isPending: false }),
 }))
 vi.mock('../../api/payees', () => ({ usePayees: () => ({ data: [] }) }))
-vi.mock('../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
+vi.mock('../../api/categories', () => ({
+  useCategories: () => ({ data: [] }),
+  useCategoryGroups: () => ({ data: [] }),
+}))
 vi.mock('../../api/transactions', () => ({
-  useTransaction: () => ({ data: undefined, isLoading: false }),
+  useTransaction: (id: string) => ({ data: api.txns[id], isLoading: false }),
 }))
 
 const match = (id: string): TransactionMatch => ({
@@ -39,6 +45,7 @@ beforeEach(async () => {
   window.history.replaceState(null, '')
   api.accept.mockClear()
   api.reject.mockClear()
+  api.txns = {}
 })
 
 describe('MatchReviewModal', () => {
@@ -83,5 +90,22 @@ describe('MatchReviewModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Accept link' }))
     expect(await screen.findByText('Transactions must be in the same account')).toBeTruthy()
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('the Category line', () => {
+  it('MatchReviewModal: the merged preview keeps a category it cannot name', () => {
+    // The detail columns drew "—" for it; the merged preview dropped the line,
+    // previewing a result with no category while the accept keeps the
+    // manual row's. Here the category list has nothing in it at all.
+    api.txns = {
+      's-a': makeTransaction({ id: 's-a', category_id: null, has_sync_source: true }),
+      'm-a': makeTransaction({ id: 'm-a', category_id: 'archived-gym' }),
+    }
+    render(<MatchReviewModal matches={[match('a')]} budgetId="b1" onClose={vi.fn()} />)
+    const merged = document.querySelector('.match-modal__merged')!
+    const keys = [...merged.querySelectorAll('.match-modal__txn-key')].map((k) => k.textContent)
+    expect(keys).toContain('Category')
+    expect(merged.textContent).toContain('—')
   })
 })

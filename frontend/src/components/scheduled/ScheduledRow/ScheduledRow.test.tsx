@@ -34,7 +34,11 @@ const base: ScheduledTransaction = {
   updated_at: '',
 }
 
-const names = { payee: 'City Water', category: 'Utilities', account: 'Harborstone Checking' }
+const names = {
+  payee: 'City Water',
+  category: { name: 'Utilities', path: 'Bills › Utilities' },
+  account: 'Harborstone Checking',
+}
 
 function renderRow(layout: 'register' | 'table', over: Partial<ScheduledTransaction> = {}) {
   const onEdit = vi.fn()
@@ -85,6 +89,32 @@ describe('ScheduledRow', () => {
       }
       unmount()
     }
+  })
+
+  it('names the category, and its group on hover', async () => {
+    // The register's upcoming rows sit under the register's own category
+    // column, so they answer the same question the row above does: which
+    // "Utilities" is this?
+    renderRow('register')
+    const cell = document.querySelector('.scheduled-row__category')!
+    expect(cell.textContent).toBe('Utilities')
+    fireEvent.mouseEnter(cell)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Bills › Utilities')
+  })
+
+  it('draws a dash with no hover when the caller has no category to name', () => {
+    render(
+      <ScheduledRow
+        scheduled={{ ...base, category_id: null }}
+        names={{ payee: 'City Water' }}
+        layout="register"
+        todayISO="2026-09-08"
+        onEdit={() => {}}
+        onEnter={() => {}}
+        onSkip={() => {}}
+      />
+    )
+    expect(document.querySelector('.scheduled-row__category')?.textContent).toBe('—')
   })
 
   it('signs the amount by direction and says which way', () => {

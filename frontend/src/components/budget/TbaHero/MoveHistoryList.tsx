@@ -1,8 +1,9 @@
-import { useCategories } from '../../../api/categories'
 import { useUndoMove } from '../../../api/budgets'
 import { Undo2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
+import { moveEndpointName } from '../../../utils/categoryLabels'
 import type { BudgetMove } from '../../../api/budgets'
 import './TbaHero.css'
 
@@ -14,7 +15,7 @@ interface Props {
 /** Full move log for a month; a null side renders as "Ready to Assign". */
 export function MoveHistoryList({ budgetId, moves }: Props) {
   const { formatMoney, formatDate } = useFormatters()
-  const { data: categories = [] } = useCategories(budgetId)
+  const categoryLabels = useCategoryLabels(budgetId)
   const undoMove = useUndoMove(budgetId)
   // A real undo, scoped to this one move: the server reverses its amount and
   // drops the row, so the list shrinks instead of gaining a mirror-image move
@@ -30,8 +31,7 @@ export function MoveHistoryList({ budgetId, moves }: Props) {
       toast.error(typeof detail === 'string' ? detail : 'Could not undo this move')
     }
   }
-  const nameOf = (id: string | null) =>
-    id === null ? 'Ready to Assign' : (categories.find((c) => c.id === id)?.name ?? '—')
+  const nameOf = (id: string | null) => moveEndpointName(id, categoryLabels)
   const dayOf = (iso: string) => {
     const d = formatDate(iso.slice(0, 10))
     const parts = d.split(/[\s/-]/)

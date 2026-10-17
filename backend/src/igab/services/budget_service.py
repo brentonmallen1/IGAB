@@ -444,6 +444,10 @@ class LateArrival:
     account_id: uuid.UUID
     category_id: uuid.UUID | None
     payee_id: uuid.UUID | None
+    #: The row's served `needs_category`. A late transfer between two budget
+    #: accounts has no category and needs none; the note read every
+    #: uncategorized row as needing one.
+    needs_category: bool
 
 
 @dataclass
@@ -1461,6 +1465,7 @@ class BudgetService:
                     account_id=row.account_id,
                     category_id=row.category_id,
                     payee_id=row.payee_of_record_id,
+                    needs_category=row.needs_category,
                 )
                 for row in await self.transaction_repo.late_arrivals(budget_id)
             ]

@@ -36,7 +36,8 @@ function open(error: string | null = null) {
     <MergePreviewModal
       transactions={[txn(), txn({ id: 't2', cleared: 'reconciled', sync_id: 'TRN-c6ba' })]}
       payeeMap={new Map([['p1', 'Hobby Lobby']])}
-      categoryMap={new Map()}
+      categoryLabels={new Map()}
+      accountOnBudget
       onConfirm={onConfirm}
       onCancel={vi.fn()}
       isPending={false}
@@ -74,7 +75,8 @@ describe('MergePreviewModal', () => {
           txn({ id: 'bank', cleared: 'reconciled' }),
         ]}
         payeeMap={new Map([['p1', 'Harborstone Wholesale']])}
-        categoryMap={new Map()}
+        categoryLabels={new Map()}
+        accountOnBudget
         onConfirm={onConfirm}
         onCancel={vi.fn()}
         isPending={false}
@@ -95,7 +97,8 @@ describe('MergePreviewModal', () => {
           txn({ id: 'split', is_split: true, sync_id: null, created_at: '2026-09-02T00:00:00Z' }),
         ]}
         payeeMap={new Map()}
-        categoryMap={new Map()}
+        categoryLabels={new Map()}
+        accountOnBudget
         onConfirm={onConfirm}
         onCancel={vi.fn()}
         isPending={false}
@@ -105,5 +108,50 @@ describe('MergePreviewModal', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Date/ })[0])
     fireEvent.click(screen.getByText('Merge'))
     expect(onConfirm).toHaveBeenCalledWith('split')
+  })
+})
+
+describe('the category line', () => {
+  // The cards had their own rule: a split read "Split", a filed row its name,
+  // and every other row "—". A row needing a category and a transfer leg read
+  // the same, so choosing which to keep hid the one difference that mattered.
+  function categories(a: Partial<Transaction>, b: Partial<Transaction>, onBudget = true) {
+    render(
+      <MergePreviewModal
+        transactions={[txn(a), txn({ id: 't2', ...b })]}
+        payeeMap={new Map()}
+        categoryLabels={new Map([['c1', { name: 'Groceries', group: 'Everyday' }]])}
+        accountOnBudget={onBudget}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        isPending={false}
+      />
+    )
+    return [...document.querySelectorAll('.merge-card__row')]
+      .filter((row) => row.querySelector('.merge-card__label')?.textContent === 'Category')
+      .map((row) => row.querySelector('.merge-card__value')?.textContent)
+  }
+
+  it('MergePreviewModal: a row needing a category says so, not "—"', () => {
+    expect(categories({ needs_category: true }, { needs_category: false })).toEqual([
+      'Needs Category',
+      'Transfer',
+    ])
+  })
+
+  it('reads a tracking account the way the register does', () => {
+    expect(categories({ needs_category: false }, { category_id: 'c1' }, false)).toEqual([
+      '—',
+      'Groceries',
+    ])
+  })
+
+  it('names the group on hover', async () => {
+    categories({ category_id: 'c1' }, {})
+    const value = [...document.querySelectorAll('.merge-card__value')].find(
+      (el) => el.textContent === 'Groceries'
+    )!
+    fireEvent.mouseEnter(value)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Everyday › Groceries')
   })
 })

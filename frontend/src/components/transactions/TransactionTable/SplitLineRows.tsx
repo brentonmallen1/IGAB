@@ -1,7 +1,14 @@
 import { memo } from 'react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
-import { categoryCellAction, categoryCellLabel } from '../categoryCell'
+import {
+  categoryCellAction,
+  categoryCellHover,
+  categoryCellLabel,
+  categoryCellText,
+} from '../categoryCell'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
+import type { NamedCategory } from '../../../utils/categoryLabels'
 import type { Transaction } from '../../../types'
 import './SplitLineRows.css'
 
@@ -11,29 +18,10 @@ interface Props {
   parent: Transaction
   /** From `useSplitLinesFor` — undefined while the batch is loading. */
   lines: Transaction[] | undefined
-  categoryMap: ReadonlyMap<string, string>
+  categoryLabels: ReadonlyMap<string, NamedCategory>
   accountOnBudget: boolean
   onStartSplit: (txn: Transaction) => void
   onEdit: (txn: Transaction) => void
-}
-
-/** What a line's category cell reads. A line is never a split itself. */
-function lineCategory(
-  line: Transaction,
-  categoryMap: ReadonlyMap<string, string>,
-  accountOnBudget: boolean
-): string {
-  const label = categoryCellLabel(line, categoryMap, accountOnBudget)
-  switch (label.kind) {
-    case 'category':
-      return label.name
-    case 'needs-category':
-      return 'Needs Category'
-    case 'transfer':
-      return 'Transfer'
-    default:
-      return '—'
-  }
 }
 
 /**
@@ -48,7 +36,7 @@ function lineCategory(
 export const SplitLineRows = memo(function SplitLineRows({
   parent,
   lines,
-  categoryMap,
+  categoryLabels,
   accountOnBudget,
   onStartSplit,
   onEdit,
@@ -68,10 +56,14 @@ export const SplitLineRows = memo(function SplitLineRows({
   return (
     <div className="split-lines" role="group" aria-label="Split lines">
       {lines.map((line) => {
-        const category = lineCategory(line, categoryMap, accountOnBudget)
+        // A line is never a split itself, so its label is a category, a
+        // needs-category, or a transfer — the register row's own rule.
+        const label = categoryCellLabel(line, categoryLabels, accountOnBudget)
         const cells = (
           <>
-            <span className="split-line__category">{category}</span>
+            <Tooltip content={categoryCellHover(label)} block className="split-line__category">
+              {categoryCellText(label)}
+            </Tooltip>
             <span className="split-line__memo">{line.memo ?? ''}</span>
             <span
               className={`split-line__amount tabular ${line.amount < 0 ? 'split-line__amount--out' : 'split-line__amount--in'}`}

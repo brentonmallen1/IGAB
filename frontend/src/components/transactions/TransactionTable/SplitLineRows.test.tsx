@@ -11,9 +11,9 @@ import type { Transaction } from '../../../types'
 const h = vi.hoisted(() => ({ isMobile: false }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => h.isMobile }))
 
-const categoryMap = new Map([
-  ['cat-groceries', 'Groceries'],
-  ['cat-household', 'Household'],
+const categoryLabels = new Map([
+  ['cat-groceries', { name: 'Groceries', group: 'Everyday' }],
+  ['cat-household', { name: 'Household', group: 'Home' }],
 ])
 
 const parent = makeTransaction({ id: 'parent-1', amount: -100, is_split: true })
@@ -44,7 +44,7 @@ function renderLines(over: Partial<Parameters<typeof SplitLineRows>[0]> = {}) {
   const props = {
     parent,
     lines,
-    categoryMap,
+    categoryLabels,
     accountOnBudget: true,
     onStartSplit: vi.fn(),
     onEdit: vi.fn(),
@@ -68,6 +68,19 @@ describe('SplitLineRows', () => {
     expect(rows[1].querySelector('.split-line__memo')?.textContent).toBe('')
     expect(rows[0].textContent).toContain('60.00')
     expect(rows[1].textContent).toContain('45.00')
+  })
+
+  it("names each line's group on hover, as the row above does", async () => {
+    renderLines()
+    fireEvent.mouseEnter(screen.getByText('Household'))
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Home › Household')
+  })
+
+  it('keeps the tree edge and the clip on the category cell itself', () => {
+    const { container } = renderLines()
+    const cell = container.querySelector('.split-line__category')!
+    expect(cell).toHaveClass('tooltip-host')
+    expect(cell.textContent).toBe('Groceries')
   })
 
   it('puts money under OUTFLOW or INFLOW by its sign, as the row above does', () => {

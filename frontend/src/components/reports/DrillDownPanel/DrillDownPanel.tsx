@@ -3,11 +3,17 @@ import { X } from 'lucide-react'
 import { useReportStore, type DrillDownContext } from '../../../stores/reportStore'
 import { useBudgetTransactions, type BudgetTransactionParams } from '../../../api/transactions'
 import { useAccounts } from '../../../api/accounts'
-import { useCategories } from '../../../api/categories'
 import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { accountNameMap } from '../../../utils/accountLists'
+import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
+import {
+  categoryCellHover,
+  categoryCellLabel,
+  categoryCellText,
+} from '../../transactions/categoryCell'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './DrillDownPanel.css'
 
 const PAGE_SIZE = 200
@@ -44,7 +50,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
   // reach back past an account's closing, and a row whose account is missing
   // from the map renders blank — see TransactionTable for the same rule.
   const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
-  const { data: categories } = useCategories(budgetId)
+  const categoryLabels = useCategoryLabels(budgetId)
   const { data: payees } = usePayees(budgetId)
 
   useEffect(() => {
@@ -76,9 +82,9 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
   const { data, isLoading, isError } = useBudgetTransactions(budgetId, params)
 
   const accountName = useMemo(() => accountNameMap(accounts ?? []), [accounts])
-  const categoryName = useMemo(
-    () => new Map((categories ?? []).map((c) => [c.id, c.name])),
-    [categories]
+  const onBudget = useMemo(
+    () => new Set((accounts ?? []).filter((a) => a.on_budget).map((a) => a.id)),
+    [accounts]
   )
   const payeeName = useMemo(() => new Map((payees ?? []).map((p) => [p.id, p.name])), [payees])
 
@@ -140,6 +146,10 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
             <tbody>
               {rows.map((t) => {
                 const amount = t.amount
+                // The register's rule. This cell had its own, which read
+                // `transfer_id` — the test the register dropped because an
+                // unpaired leg has none — and never read `needs_category`.
+                const category = categoryCellLabel(t, categoryLabels, onBudget.has(t.account_id))
                 return (
                   <tr key={t.id}>
                     <td className="ddp__date">{t.date}</td>
@@ -150,13 +160,9 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
                         : ''}
                     </td>
                     <td>
-                      {t.is_split
-                        ? 'Split'
-                        : t.category_id
-                          ? (categoryName.get(t.category_id) ?? '')
-                          : t.counterpart_account_id || t.transfer_id
-                            ? 'Transfer'
-                            : ''}
+                      <Tooltip content={categoryCellHover(category)} block>
+                        {categoryCellText(category)}
+                      </Tooltip>
                     </td>
                     <td className="ddp__memo">{t.memo ?? ''}</td>
                     <td

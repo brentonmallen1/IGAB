@@ -2,13 +2,19 @@ import { useState } from 'react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction } from '../../../types'
 import { Dialog } from '../../common/Dialog/Dialog'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
+import type { NamedCategory } from '../../../utils/categoryLabels'
+import { categoryCellHover, categoryCellLabel, categoryCellText } from '../categoryCell'
 import { lockedSurvivor } from '../mergeEligibility'
 import './MergePreviewModal.css'
 
 interface Props {
   transactions: [Transaction, Transaction]
   payeeMap: Map<string, string>
-  categoryMap: Map<string, string>
+  categoryLabels: ReadonlyMap<string, NamedCategory>
+  /** Both rows are on one account (`mayOfferMerge`); is it on budget? The
+   *  category reads by the register's rule, which needs to know. */
+  accountOnBudget: boolean
   onConfirm: (survivorId?: string) => void
   onCancel: () => void
   isPending: boolean
@@ -21,7 +27,8 @@ interface Props {
 function TxnCard({
   txn,
   payeeMap,
-  categoryMap,
+  categoryLabels,
+  accountOnBudget,
   isSelected,
   onClick,
   formatMoney,
@@ -29,18 +36,17 @@ function TxnCard({
 }: {
   txn: Transaction
   payeeMap: Map<string, string>
-  categoryMap: Map<string, string>
+  categoryLabels: ReadonlyMap<string, NamedCategory>
+  accountOnBudget: boolean
   isSelected: boolean
   onClick?: () => void
   formatMoney: (amount: number) => string
   formatDate: (dateStr: string) => string
 }) {
   const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
-  const categoryName = txn.is_split
-    ? 'Split'
-    : txn.category_id
-      ? (categoryMap.get(txn.category_id) ?? '—')
-      : '—'
+  // The register row's own label: this card used to read a row needing a
+  // category as "—", the same as a transfer.
+  const category = categoryCellLabel(txn, categoryLabels, accountOnBudget)
   const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
   const inflow = txn.amount >= 0 ? txn.amount : 0
 
@@ -67,7 +73,9 @@ function TxnCard({
       </div>
       <div className="merge-card__row">
         <span className="merge-card__label">Category</span>
-        <span className="merge-card__value">{categoryName}</span>
+        <Tooltip content={categoryCellHover(category)} block className="merge-card__value">
+          {categoryCellText(category)}
+        </Tooltip>
       </div>
       {txn.memo && (
         <div className="merge-card__row">
@@ -96,7 +104,8 @@ function TxnCard({
 export function MergePreviewModal({
   transactions,
   payeeMap,
-  categoryMap,
+  categoryLabels,
+  accountOnBudget,
   onConfirm,
   onCancel,
   isPending,
@@ -159,7 +168,8 @@ export function MergePreviewModal({
         <TxnCard
           txn={txn1}
           payeeMap={payeeMap}
-          categoryMap={categoryMap}
+          categoryLabels={categoryLabels}
+          accountOnBudget={accountOnBudget}
           isSelected={survivorId === txn1.id}
           onClick={locked ? undefined : () => setSurvivorId(txn1.id)}
           formatMoney={formatMoney}
@@ -168,7 +178,8 @@ export function MergePreviewModal({
         <TxnCard
           txn={txn2}
           payeeMap={payeeMap}
-          categoryMap={categoryMap}
+          categoryLabels={categoryLabels}
+          accountOnBudget={accountOnBudget}
           isSelected={survivorId === txn2.id}
           onClick={locked ? undefined : () => setSurvivorId(txn2.id)}
           formatMoney={formatMoney}

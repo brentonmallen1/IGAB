@@ -50,7 +50,13 @@ import { AccountCell, accountCellLock } from './AccountCell'
 import { payeeOptions } from './rowOptions'
 import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import { mayBecomeTransfer, transferOptionAccountId, transferOptions } from '../transferConversion'
-import { categoryCellAction, categoryCellLabel } from '../categoryCell'
+import {
+  categoryCellAction,
+  categoryCellHover,
+  categoryCellLabel,
+  categoryCellText,
+} from '../categoryCell'
+import type { NamedCategory } from '../../../utils/categoryLabels'
 import type { Transaction, Category, CategoryGroup, Payee, Account } from '../../../types'
 import './TransactionRow.css'
 import { confirmAsync } from '../../../stores/confirmStore'
@@ -62,7 +68,9 @@ interface Props {
   /** id → name for every budget account, so transfer legs can name their
    *  destination ("Transfer : Savings") instead of the bare word. */
   accountMap: Map<string, string>
-  categoryMap: Map<string, string>
+  /** `useCategoryLabels`: names every category a row can be filed in,
+   *  archived included, with its group for the hover. */
+  categoryLabels: ReadonlyMap<string, NamedCategory>
   payees: Payee[]
   /** Open accounts, for the all-accounts register's account picker. */
   accounts: Account[]
@@ -164,7 +172,7 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     return false
   if (prev.payeeMap !== next.payeeMap) return false
   if (prev.accountMap !== next.accountMap) return false
-  if (prev.categoryMap !== next.categoryMap) return false
+  if (prev.categoryLabels !== next.categoryLabels) return false
   if (prev.payees !== next.payees) return false
   if (prev.categories !== next.categories) return false
   if (prev.categoryGroups !== next.categoryGroups) return false
@@ -191,7 +199,7 @@ export const TransactionRow = memo(function TransactionRow({
   onEdit,
   payeeMap,
   accountMap,
-  categoryMap,
+  categoryLabels,
   payees,
   accounts,
   categories,
@@ -234,7 +242,7 @@ export const TransactionRow = memo(function TransactionRow({
 
   const payeeName = transactionDisplayPayee(txn, payeeMap, accountMap)
 
-  const categoryLabel = categoryCellLabel(txn, categoryMap, accountOnBudget)
+  const categoryLabel = categoryCellLabel(txn, categoryLabels, accountOnBudget)
 
   const isEditing = (field: string) =>
     editingField?.transactionId === txn.id && editingField.field === field
@@ -681,14 +689,18 @@ export const TransactionRow = memo(function TransactionRow({
             </span>
           </Tooltip>
         ) : categoryLabel.kind === 'category' ? (
-          <span className="txn-cell-text">{categoryLabel.name}</span>
+          // Two envelopes can share a name in different groups; the hover
+          // says which one this is.
+          <Tooltip content={categoryCellHover(categoryLabel)} block className="txn-text-clip">
+            <span className="txn-cell-text">{categoryLabel.name}</span>
+          </Tooltip>
         ) : categoryLabel.kind === 'needs-category' ? (
           // `prior_category_name` is provenance, never a category: this row
           // IS uncategorized and the chip says so. The hint only answers
           // "why did this suddenly need filing?" for rows a category delete
           // emptied — without it they look like a gap the user forgot about.
           <span className="txn-needs-category">
-            Needs Category
+            {categoryCellText(categoryLabel)}
             {categoryLabel.was && (
               <span className="txn-needs-category__was">was {categoryLabel.was}</span>
             )}
@@ -702,11 +714,11 @@ export const TransactionRow = memo(function TransactionRow({
           // This used to read `transfer_id !== null`, which recognises only a
           // transfer whose partner also imported, so every unpaired leg wore
           // the amber chip. The server decides now; see `needs_category`.
-          <span className="txn-cell-text">Transfer</span>
+          <span className="txn-cell-text">{categoryCellText(categoryLabel)}</span>
         ) : (
           // Off-budget accounts don't use categories at all
           <span className="txn-cell-text" title="Tracking accounts don't use categories">
-            —
+            {categoryCellText(categoryLabel)}
           </span>
         )}
       </div>

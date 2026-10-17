@@ -805,6 +805,7 @@ async def get_budget_month(
                 account_id=a.account_id,
                 category_id=a.category_id,
                 payee_id=a.payee_id,
+                needs_category=a.needs_category,
             )
             for a in summary.late_arrivals
         ],

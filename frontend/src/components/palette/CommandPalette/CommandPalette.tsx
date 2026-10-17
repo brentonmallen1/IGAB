@@ -16,7 +16,8 @@ import {
 import { apiClient } from '../../../api/client'
 import { useAccounts } from '../../../api/accounts'
 import { usePayees } from '../../../api/payees'
-import { useCategories } from '../../../api/categories'
+import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
+import { categoryNames } from '../../../utils/categoryLabels'
 import { transactionFilterParams } from '../../../api/transactions'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { matchSuggestions, parseTransactionSearch } from '../../../utils/searchParser'
@@ -93,7 +94,7 @@ export function CommandPalette() {
 
   const { data: accounts = [] } = useAccounts(open ? budgetId : null)
   const { data: payees = [] } = usePayees(open ? budgetId : null)
-  const { data: categories = [] } = useCategories(open ? budgetId : null)
+  const categoryLabels = useCategoryLabels(open ? budgetId : null)
   const { data: filters = [] } = useBudgetFilters(open ? budgetId : null)
   const { data: me } = useCurrentUser()
   // The palette must apply the same gates the pages do — a row for a guide tab
@@ -115,8 +116,9 @@ export function CommandPalette() {
 
   // The palette speaks the register's search language rather than a poorer
   // dialect of its own: `date: 3/1-3/15`, `amount:>100`, `category:"Rent"`
-  // and the rest all work here, across every account at once.
-  const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
+  // and the rest all work here, across every account at once — resolving
+  // names from the register's own set (`categoryNames`, archived included).
+  const categoryMap = useMemo(() => categoryNames(categoryLabels), [categoryLabels])
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
   const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
   const txnFilters = useMemo(

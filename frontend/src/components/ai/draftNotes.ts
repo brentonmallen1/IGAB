@@ -1,11 +1,5 @@
 import type { AIJob, AIJobDraft } from '../../api/aiJobs'
-
-/** A category as a label can name it: its own name and its group's. */
-export interface NamedCategory {
-  name: string
-  /** Null when the group is not in the list the caller holds. */
-  group: string | null
-}
+import type { NamedCategory } from '../../utils/categoryLabels'
 
 /**
  * Does the model's category label name this category?
@@ -31,14 +25,15 @@ export function labelNamesCategory(label: string, category: NamedCategory): bool
  * into a picker value. Undefined when none does (renamed or archived since),
  * which leaves that line's picker empty for the user to fill.
  */
-export function categoryForLabel<C extends { name: string; category_group_id: string }>(
+export function categoryForLabel<C extends { id: string }>(
   label: string,
   categories: C[],
-  groupNames: Map<string, string>
+  labels: ReadonlyMap<string, NamedCategory>
 ): C | undefined {
-  return categories.find((c) =>
-    labelNamesCategory(label, { name: c.name, group: groupNames.get(c.category_group_id) ?? null })
-  )
+  return categories.find((c) => {
+    const named = labels.get(c.id)
+    return named !== undefined && labelNamesCategory(label, named)
+  })
 }
 
 /**
