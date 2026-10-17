@@ -605,7 +605,7 @@ async def category_history_report(
     # here from the group repository.
     #
     # "Income categories do not hold money" is the app's own rule, raised by
-    # `BudgetService._require_envelope`. Their `available` is a lifetime
+    # `budget_service._Envelopes.require_source`. Their `available` is a lifetime
     # carryover the budget page never draws, and this report published it as
     # an envelope balance under a docstring promising the budget page's own
     # numbers. Their month-by-month ACTIVITY is meaningful and stays.

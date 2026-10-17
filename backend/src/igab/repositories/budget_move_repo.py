@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import date
 
 from sqlalchemy import select
@@ -10,6 +10,13 @@ from igab.repositories.base import BaseRepository
 
 class BudgetMoveRepository(BaseRepository[BudgetMove]):
     model = BudgetMove
+
+    def add_many(self, moves: Iterable[BudgetMove]) -> list[BudgetMove]:
+        """Stage several audit rows for the next flush — a bulk assign writes
+        one per envelope, and a flush apiece was most of what it cost."""
+        staged = list(moves)
+        self.session.add_all(staged)
+        return staged
 
     async def get_for_month(self, budget_id: uuid.UUID, month: date) -> list[BudgetMove]:
         result = await self.session.execute(

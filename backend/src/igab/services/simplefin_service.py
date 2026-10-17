@@ -8,10 +8,10 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.db.locks import lock_for_transaction
 from igab.db.models import Account, SimpleFINConnection, Transaction
 from igab.domain.bank_balance import (
     DriftExplanation,
@@ -367,8 +367,7 @@ class SimpleFINService:
 
     async def _lock_connection(self, connection_id: uuid.UUID) -> None:
         """A transaction-scoped advisory lock keyed on the connection."""
-        key = int.from_bytes(connection_id.bytes[:8], "big", signed=True)
-        await self.session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+        await lock_for_transaction(self.session, connection_id)
 
     async def _fail(
         self,

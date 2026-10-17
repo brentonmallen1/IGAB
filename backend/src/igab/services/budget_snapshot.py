@@ -378,9 +378,9 @@ class SnapshotIntegrityError(IGABError):
     """
 
 
-#: Rows per INSERT. Matches SnapshotRepository._BULK_CHUNK: big enough that a
-#: large import is not a million round trips, small enough that the resident
-#: cost stays a chunk rather than a budget.
+#: Rows per INSERT: big enough that a large import is not a million round
+#: trips, small enough that the resident cost stays a chunk rather than a
+#: budget.
 IMPORT_CHUNK = 1000
 
 

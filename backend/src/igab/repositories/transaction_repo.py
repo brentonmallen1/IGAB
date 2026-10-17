@@ -625,21 +625,13 @@ class TransactionRepository(BaseRepository[Transaction]):
         Those four clauses are `CLASS_TOTAL_ROW`, read by name so the
         envelope's activity and the savings figure's cut
         (`sum_categories_dated_after`) are one row set.
+
+        The one-category form of `sum_all_categories_by_month`, and it is that
+        query: the two were written out separately, which is how the history
+        strategies came to run one of them per envelope.
         """
-        rows = by_budget_month(
-            Transaction.amount,
-            where=(
-                Transaction.category_id == category_id,
-                CLASS_TOTAL_ROW,
-                Transaction.date <= end_date,
-            ),
-        )
-        result = await self.session.execute(
-            select(rows.c.month, func.coalesce(func.sum(rows.c.amount), 0).label("total")).group_by(
-                rows.c.month
-            )
-        )
-        return {row["month"]: row["total"] for row in result.mappings()}
+        by_category = await self.sum_all_categories_by_month([category_id], end_date=end_date)
+        return by_category.get(category_id, {})
 
     async def late_arrivals(self, budget_id: uuid.UUID) -> list[Transaction]:
         """The budget's live late arrivals (`txn_filters.LATE_ARRIVAL`), oldest

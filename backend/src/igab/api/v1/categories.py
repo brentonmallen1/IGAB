@@ -1129,20 +1129,18 @@ async def get_category_history_batch(
     from datetime import date as date_cls
 
     current = month or date_cls.today()
-    results = []
-    for cat_id in body.category_ids:
-        h = await budget_service.get_category_history(budget_id, cat_id, current)
-        results.append(
-            CategoryHistoryResponse(
-                category_id=h.category_id,
-                last_month_assigned=h.last_month_assigned,
-                last_month_spent=h.last_month_spent,
-                average_assigned=h.average_assigned,
-                average_spent=h.average_spent,
-                months_included=h.months_included,
-            )
+    histories = await budget_service.get_category_histories(budget_id, body.category_ids, current)
+    return [
+        CategoryHistoryResponse(
+            category_id=h.category_id,
+            last_month_assigned=h.last_month_assigned,
+            last_month_spent=h.last_month_spent,
+            average_assigned=h.average_assigned,
+            average_spent=h.average_spent,
+            months_included=h.months_included,
         )
-    return results
+        for h in (histories[cat_id] for cat_id in body.category_ids)
+    ]
 
 
 @router.post("/{budget_id}/categories/auto-assign", status_code=status.HTTP_204_NO_CONTENT)
@@ -1157,8 +1155,7 @@ async def auto_assign_categories(
         if body.action == "target_amount":
             await assign_service.set_to_targets(budget_id, body.month, body.category_ids)
             return
-        for cat_id in body.category_ids:
-            await budget_service.auto_assign(budget_id, cat_id, body.month, body.action)
+        await budget_service.auto_assign(budget_id, body.category_ids, body.month, body.action)
 
 
 # ─── Assign Strategies (TBA hero dropdown) ────────────────────────────────────
