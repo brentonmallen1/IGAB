@@ -6,7 +6,12 @@
  * "0 imported, 500+ skipped" described both a broken bank link and a quiet
  * morning with nothing new.
  */
-import { describeDrift, describeOrphanFix, describeSkippedAnchors } from '../../../api/simplefin'
+import {
+  describeDrift,
+  describeNoLongerAtBank,
+  describeOrphanFix,
+  describeSkippedAnchors,
+} from '../../../api/simplefin'
 import type { SyncRun, SyncRunAccount } from '../../../api/syncLogs'
 
 /** Names for `domain.enums.SkipReason`, in the terms a person would use. */
@@ -78,6 +83,9 @@ function describeCounts(run: SyncRun): string {
   if (run.matched) parts.push(`${run.matched} matched`)
   if (run.cleared) parts.push(`${run.cleared} cleared`)
   if (run.review_queued) parts.push(`${run.review_queued} to review`)
+  const kept = (run.no_longer_reported ?? []).filter((r) => r.action === 'kept').length
+  const gone = describeNoLongerAtBank(run.removed_pending, kept)
+  if (gone) parts.push(gone)
   return parts.length === 0 ? 'Nothing new' : parts.join(', ')
 }
 

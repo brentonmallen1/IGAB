@@ -2031,6 +2031,8 @@ export interface SyncResult {
   review_queued: number
   cleared: number
   removed_pending: number
+  /** Rows the bank no longer reports that the run kept. See api/simplefin.ts. */
+  kept_unreported: number
   /** See api/simplefin.ts for the shapes; typed there so the summary formatter
    *  can read a single-connection result and a sync-all the same way. */
   orphaned_links: import('../api/simplefin').OrphanedLink[]

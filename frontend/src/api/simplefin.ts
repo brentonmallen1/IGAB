@@ -202,7 +202,12 @@ export interface SyncAllResult {
   adopted: number
   review_queued: number
   cleared: number
+  /** Pending holds the bank dropped, which the sync removed. */
   removed_pending: number
+  /** Rows the bank no longer reports that the sync kept: a row the person
+   *  typed against a hold that vanished, or a posted row whose id is gone
+   *  (server: `domain/bank_absence`). */
+  kept_unreported: number
   connections: ConnectionSyncOutcome[]
 }
 
@@ -264,6 +269,7 @@ function asSyncAll(result: SyncResult): SyncAllResult {
     review_queued: result.review_queued,
     cleared: result.cleared,
     removed_pending: result.removed_pending,
+    kept_unreported: result.kept_unreported,
     connections: [
       {
         connection_id: '',
@@ -306,6 +312,7 @@ function formatSyncAll(result: SyncAllResult): string {
   if (result.matched) parts.push(`matched ${result.matched}`)
   if (result.cleared) parts.push(`cleared ${result.cleared}`)
   if (result.review_queued) parts.push(`${result.review_queued} need review`)
+  parts.push(describeNoLongerAtBank(result.removed_pending, result.kept_unreported))
   // "Nothing new" is the honest reading when every skip was a row already
   // filed, and it is what the benign case actually means.
   parts.push(describeSkips(result))
@@ -321,6 +328,19 @@ function formatSyncAll(result: SyncAllResult): string {
     result.connections.flatMap((c) => c.anchors_skipped_for_history ?? [])
   )
   return note ? `${summary} — ${note}` : summary
+}
+
+/**
+ * Rows the bank stopped reporting, as a clause: "2 pending holds dropped off,
+ * 1 row no longer at the bank". Empty when there were none. Shared by the
+ * sync toast and the sync log so the two cannot word it differently; the
+ * accounts page lists the rows themselves, with Restore and Delete.
+ */
+export function describeNoLongerAtBank(removed: number, kept: number): string {
+  const parts: string[] = []
+  if (removed > 0) parts.push(`${removed} pending hold${removed === 1 ? '' : 's'} dropped off`)
+  if (kept > 0) parts.push(`${kept} row${kept === 1 ? '' : 's'} no longer at the bank`)
+  return parts.join(', ')
 }
 
 /**
