@@ -1,4 +1,5 @@
-"""Card-bill reminders: the served payment dates, and the shared dismissals.
+"""Card-bill reminders: the served payment dates, the shared dismissals, and
+the bills somebody marked paid.
 
 The reminder rule itself is the client's (`frontend/src/utils/paymentDue.ts`,
 `cardDueReminder`). What the server owes it is the two inputs the client
@@ -269,5 +270,67 @@ class TestDismissals:
         resp = await api_client.put(
             _url(budget),
             json={"account_id": str(visa.id), "due_date": "2026-10-03", "state": "late"},
+        )
+        assert resp.status_code == 422
+
+
+class TestMarkedPaid:
+    """`paid:<account>:<date>` — a bill the household says is paid. The rule
+    that reads it is the client's (`cardDueReminder`); the server keeps the
+    key, shared across devices, undoable, and refuses one that means nothing."""
+
+    async def test_round_trip_beside_the_dismissals(self, db_session, api_client):
+        budget, _, visa = await _card(db_session, api_client)
+        await _dismiss(api_client, budget, visa.id, "2026-09-03", state="past_due")
+        rows = await _dismiss(api_client, budget, visa.id, "2026-09-03", state="paid")
+
+        expected = {("2026-09-03", "past_due"), ("2026-09-03", "paid")}
+        assert {(r["due_date"], r["state"]) for r in rows} == expected
+        listed = (await api_client.get(_url(budget))).json()
+        assert {(r["due_date"], r["state"]) for r in listed} == expected
+
+    async def test_undo_takes_the_payment_back(self, db_session, api_client):
+        budget, _, visa = await _card(db_session, api_client)
+        await _dismiss(api_client, budget, visa.id, "2026-09-03", state="paid")
+
+        r = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+        assert r.status_code == 200, r.text
+        assert (await api_client.get(_url(budget))).json() == []
+
+    async def test_kept_while_its_bill_can_still_be_in_the_walk(self, db_session, api_client):
+        # A dismissal goes after 60 days; a paid bill after the payment window.
+        budget, _, visa = await _card(db_session, api_client)
+        await _dismiss(api_client, budget, visa.id, "2026-07-01", state="paid", today="2026-07-01")
+        await _dismiss(api_client, budget, visa.id, "2026-07-01", state="due", today="2026-07-01")
+
+        rows = await _dismiss(api_client, budget, visa.id, "2026-10-03", today="2026-09-27")
+
+        assert {(r["due_date"], r["state"]) for r in rows} == {
+            ("2026-07-01", "paid"),
+            ("2026-10-03", "due"),
+        }
+
+    async def test_refuses_an_account_that_has_no_bill(self, db_session, api_client):
+        # Only an on-budget card has a bill the reminder walks.
+        budget, checking, _ = await _card(db_session, api_client)
+        resp = await api_client.put(
+            _url(budget),
+            json={"account_id": str(checking.id), "due_date": "2026-09-03", "state": "paid"},
+        )
+        assert resp.status_code == 422
+
+    async def test_refuses_an_account_from_another_budget(self, db_session, api_client):
+        budget, _, _ = await _card(db_session, api_client)
+        resp = await api_client.put(
+            _url(budget),
+            json={"account_id": str(uuid.uuid4()), "due_date": "2026-09-03", "state": "paid"},
+        )
+        assert resp.status_code == 404
+
+    async def test_refuses_a_date_that_is_not_one(self, db_session, api_client):
+        budget, _, visa = await _card(db_session, api_client)
+        resp = await api_client.put(
+            _url(budget),
+            json={"account_id": str(visa.id), "due_date": "2026-02-30", "state": "paid"},
         )
         assert resp.status_code == 422
