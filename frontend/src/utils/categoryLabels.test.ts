@@ -11,6 +11,7 @@ import {
   categoryNames,
   categoryPath,
   groupHeading,
+  moveEndpointName,
 } from './categoryLabels'
 import { flatCategoryOptions } from './categoryPickers'
 import { makeCategory, makeCategoryGroup } from '../test-utils/factories'
@@ -97,5 +98,24 @@ describe('categoryNames', () => {
         ['gifts-bdays', 'Gifts'],
       ])
     )
+  })
+})
+
+describe('moveEndpointName', () => {
+  const archived = makeCategory({ id: 'old-gym', name: 'Gym', is_archived: true })
+  const labels = buildCategoryLabels([archived, giftsHols], [holidays])
+
+  it('reads a null end as Ready to Assign', () => {
+    expect(moveEndpointName(null, labels)).toBe('Ready to Assign')
+  })
+
+  it('MoveHistoryList and MoveMoneyForm: a move out of an archived envelope read "—"', () => {
+    // Both named from the list that leaves archived envelopes out, and
+    // rescuing a stranded balance from one is exactly a move out of it.
+    expect(moveEndpointName('old-gym', labels)).toBe('Gym')
+  })
+
+  it('reads a deleted envelope as a dash', () => {
+    expect(moveEndpointName('deleted', labels)).toBe(UNKNOWN_CATEGORY)
   })
 })

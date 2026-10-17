@@ -21,6 +21,7 @@
  * group map of their own.
  */
 import type { Category, CategoryGroup } from '../types'
+import { BUDGET_TERM_LABEL } from './moneyMoves'
 
 /** Heading for a category whose group is not in the list handed in — the
  *  picker's section title for it, and the group half of its path. */
@@ -83,6 +84,18 @@ export function categoryDisplay(
   return label
     ? { name: label.name, path: categoryPath(label) }
     : { name: UNKNOWN_CATEGORY, path: null }
+}
+
+/** One end of a money move: an envelope, or Ready to Assign (`null`). The
+ *  move history beside the move form and the month's full move log each
+ *  spelled this, both from the list that leaves archived envelopes out — so
+ *  rescuing a stranded balance from an archived envelope logged as "— →
+ *  Groceries". */
+export function moveEndpointName(
+  id: string | null,
+  labels: ReadonlyMap<string, NamedCategory>
+): string {
+  return id === null ? BUDGET_TERM_LABEL.ready_to_assign : categoryDisplay(id, labels).name
 }
 
 /** id → name, for the search parser and its chips, which resolve a typed
