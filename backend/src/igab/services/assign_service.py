@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from igab.db.models import Category, CategoryTarget
 from igab.domain.money import quantize_cents
@@ -55,7 +56,7 @@ def strategy_new_assigned(
     current_assigned: Decimal,
     available: Decimal,
     history: CategoryHistory,
-    target_duty: Decimal | None = None,
+    returnable: Decimal | None = None,
 ) -> Decimal | None:
     """Target assigned value for one category under a bulk strategy.
 
@@ -64,10 +65,11 @@ def strategy_new_assigned(
     per-category auto-assign semantics) — setting below current returns
     money to TBA.
 
-    `target_duty` is the month's duty from `TargetService.duty`, not the
-    target's raw amount: a weekly target's duty is the amount times the
-    weeks in the month, and pulling back to the weekly figure would strip
-    four fifths of a correctly funded envelope.
+    `returnable` is `TargetService.returnable` — what Reduce Overfunded may
+    hand back — or None for a category without a target. The amount is the
+    target service's to decide, not this function's: it pulled back to a
+    duty passed in from there, and a target with a stop needs a second
+    bound (never below the stop) that only the target row knows.
     """
     if strategy == "last_month_assigned":
         return history.last_month_assigned
@@ -81,23 +83,21 @@ def strategy_new_assigned(
         # Mirror of "underfunded": categories assigned beyond their target come
         # back down to it and the excess returns to TBA.
         #
-        # **Bounded by what is still in the envelope.** Money assigned above a
-        # target has often been spent, and spent money cannot return to Ready
-        # to Assign. Unbounded, this took a category with target 100, assigned
-        # 150 and 400 spent — available −250 — down to 100 assigned and −300
-        # available: it manufactured 50 of overspending and told the user it
-        # was returning 50 of surplus. (That behaviour had a test asserting it,
-        # written from the same "assigned > target" reading.)
+        # **Bounded by what is still in the envelope** (`returnable`). Money
+        # assigned above a target has often been spent, and spent money cannot
+        # return to Ready to Assign. Unbounded, this took a category with
+        # target 100, assigned 150 and 400 spent — available −250 — down to
+        # 100 assigned and −300 available: it manufactured 50 of overspending
+        # and told the user it was returning 50 of surplus.
         #
         # So the row set here is deliberately NARROWER than the overfunded
         # quick filter, which asks only whether assigned exceeds the target: a
         # category over its target with nothing left in it is over-*assigned*,
         # not over-funded, and there is nothing to pull back. Pinned by
         # `test_reduce_overfunded_never_pulls_back_spent_money`.
-        if target_duty is None or available <= ZERO:
+        if returnable is None or returnable <= ZERO:
             return None
-        pullback = min(current_assigned - target_duty, available)
-        return current_assigned - pullback if pullback > ZERO else None
+        return current_assigned - returnable
     if strategy == "reset_available":
         # Only positive available returns to TBA; overspent categories are
         # Cover Overspending's job. Assigned may legitimately go negative.
@@ -243,16 +243,25 @@ class AssignService:
             targets=target_map,
         )
 
-    def _duty_for(
-        self, ctx: _AssignContext, category_id: uuid.UUID, assigned: Decimal, available: Decimal
-    ) -> Decimal | None:
-        """The month's duty for a category's target, or None without one."""
+    @staticmethod
+    def _figures(ctx: _AssignContext, category_id: uuid.UUID) -> dict[str, Any]:
+        """The month's served figures for one category, as the target
+        arithmetic takes them — zero for a category the summary lacks."""
+        bal = ctx.balances.get(category_id)
+        return dict(
+            assigned=bal.assigned if bal else ZERO,
+            activity=bal.activity if bal else ZERO,
+            available=bal.available if bal else ZERO,
+            month=ctx.month,
+        )
+
+    def _returnable(self, ctx: _AssignContext, category_id: uuid.UUID) -> Decimal | None:
+        """What Reduce Overfunded may return from a category, or None
+        without a target (`TargetService.returnable`)."""
         target = ctx.targets.get(category_id)
         if target is None:
             return None
-        return self.target_service.duty(
-            target, assigned=assigned, available=available, month=ctx.month
-        )
+        return self.target_service.returnable(target, **self._figures(ctx, category_id))
 
     def _target_assigned(self, ctx: _AssignContext, category_id: uuid.UUID) -> Decimal | None:
         """What "target amounts" sets a category's assigned to, or None
@@ -260,13 +269,7 @@ class AssignService:
         target = ctx.targets.get(category_id)
         if target is None:
             return None
-        bal = ctx.balances.get(category_id)
-        return self.target_service.target_assigned(
-            target,
-            assigned=bal.assigned if bal else ZERO,
-            available=bal.available if bal else ZERO,
-            month=ctx.month,
-        )
+        return self.target_service.target_assigned(target, **self._figures(ctx, category_id))
 
     async def set_to_targets(
         self, budget_id: uuid.UUID, month: date, category_ids: list[uuid.UUID]
@@ -293,7 +296,7 @@ class AssignService:
             if target is None or bal is None:
                 continue
             needed = self.target_service.calculate_needed(
-                target, bal.assigned, bal.available, month=ctx.month
+                target, bal.assigned, bal.available, activity=bal.activity, month=ctx.month
             )
             if needed > ZERO:
                 shortfalls[cat.id] = needed
@@ -335,7 +338,7 @@ class AssignService:
             current,
             available,
             ctx.histories[cat.id],
-            self._duty_for(ctx, cat.id, current, available),
+            self._returnable(ctx, cat.id),
         )
 
     def _set_items(self, ctx: _AssignContext, strategy: str) -> list[AssignPreviewItem]:

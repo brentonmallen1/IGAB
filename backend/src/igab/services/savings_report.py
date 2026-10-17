@@ -259,6 +259,7 @@ async def savings_report(
                     t,
                     s.assigned[-1],
                     available,
+                    activity=s.activity[-1],
                     month=month_list[-1],
                     today=end_date,
                     funding_day=funding_day,

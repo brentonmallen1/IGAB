@@ -252,6 +252,9 @@ export const CategoryRow = memo(function CategoryRow({
   const { data: budgets } = useBudgets()
   const checkDay =
     target?.check_after_day ?? budgets?.find((b) => b.id === budgetId)?.funding_day ?? undefined
+  const targetTooltip = targetStatus
+    ? getTargetTooltip(targetStatus, amountRemaining, formatMoney, checkDay, target?.target_limit)
+    : ''
 
   return (
     <>
@@ -407,8 +410,8 @@ export const CategoryRow = memo(function CategoryRow({
                 budgetRowMode !== 'expanded' ? (
                   <button
                     className={`category-row__target-led category-row__target-led--${targetStatus}`}
-                    title={getTargetTooltip(targetStatus, amountRemaining, formatMoney, checkDay)}
-                    aria-label={`${category.name}: ${getTargetTooltip(targetStatus, amountRemaining, formatMoney, checkDay)}`}
+                    title={targetTooltip}
+                    aria-label={`${category.name}: ${targetTooltip}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       setShowTargetEditor(true)
@@ -419,6 +422,7 @@ export const CategoryRow = memo(function CategoryRow({
                     status={targetStatus}
                     needed={amountRemaining}
                     checkDay={checkDay}
+                    limit={target?.target_limit}
                     onClick={() => setShowTargetEditor(true)}
                   />
                 )

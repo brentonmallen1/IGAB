@@ -293,6 +293,11 @@ class CategoryTargetCreate(ApiModel):
     check_after_day: int | None = Field(default=None, ge=1, le=MAX_FUNDING_DAY)
     #: Weekly funding only, and required for it: 0=Monday … 6=Sunday.
     weekday: int | None = Field(default=None, ge=0, le=6)
+    #: Monthly or weekly funding only: "Stop at $L" — the month asks for its
+    #: rate until the balance carried in reaches L (`TargetService.duty`).
+    #: Omitted or null: no stop. Must be more than zero
+    #: (`TargetService.validate` says so in words).
+    target_limit: Money | None = None
 
 
 class CategoryTargetResponse(ApiModel):
@@ -303,8 +308,32 @@ class CategoryTargetResponse(ApiModel):
     target_date: datetime.date | None
     check_after_day: int | None
     weekday: int | None
+    #: Required, not optional: a path that forgot to serve it would read as
+    #: "no stop", and the editor would save the cap away on the next edit.
+    target_limit: Decimal | None
 
     model_config = {"from_attributes": True}
+
+
+class TargetSuggestionsResponse(ApiModel):
+    """Figures the target editor offers as one-tap suggestions
+    (`services.target_suggestions`): spending from the plan ledger, as the
+    Category History report states it, and the Budget page's month-end
+    Available, over the last twelve complete months."""
+
+    category_id: uuid.UUID
+    #: Net spent per complete month, as Category History averages it; zero
+    #: when there is no history (or refunds beat spending).
+    average_spent: Decimal
+    #: The heaviest complete month's net spent; null when none spent.
+    peak_spent: Decimal | None
+    peak_spent_month: datetime.date | None
+    #: The most the envelope held at a complete month's end; null when it
+    #: never held anything.
+    peak_available: Decimal | None
+    peak_available_month: datetime.date | None
+    #: Complete months read — up to twelve, fewer on a young budget.
+    months_counted: int
 
 
 class CategoryBalance(ApiModel):

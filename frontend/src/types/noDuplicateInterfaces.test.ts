@@ -16,8 +16,15 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 
-describe('types/index.ts', () => {
-  const src = fs.readFileSync(path.resolve(__dirname, 'index.ts'), 'utf8')
+describe('types/', () => {
+  // Every module here, not just index.ts: index.ts re-exports the others
+  // with `export *`, and a local declaration silently shadows a re-exported
+  // one of the same name — the same quiet failure across two files.
+  const src = fs
+    .readdirSync(__dirname)
+    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+    .map((f) => fs.readFileSync(path.resolve(__dirname, f), 'utf8'))
+    .join('\n')
 
   it('declares each interface exactly once', () => {
     const seen = new Map<string, number>()

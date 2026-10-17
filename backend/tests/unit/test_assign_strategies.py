@@ -140,27 +140,21 @@ class TestDistributeFill:
         assert distribute_fill({}, D("100")) == {}
 
 
-class TestReduceOverfundedReadsTheDuty:
-    """`reduce_overfunded` pulls back to the month's DUTY, not the target's
-    raw amount. A $50-every-Friday target's May duty is $250 (five Fridays);
-    pulling a correctly funded envelope back to $50 stripped four fifths of
-    it. The caller passes the duty from TargetService; this function never
-    sees the target row."""
+class TestReduceOverfundedReturnsWhatTheTargetSays:
+    """`reduce_overfunded` hands back `TargetService.returnable` and decides
+    nothing itself. It used to pull back to a duty passed in, which could not
+    say "but never below the stop" — a bound only the target row knows. The
+    amounts are pinned in test_target_service.py (`TestReturnable`)."""
 
-    def test_pulls_back_to_the_duty(self):
-        new = strategy_new_assigned("reduce_overfunded", D("300"), D("300"), history(), D("250"))
+    def test_returns_the_returnable(self):
+        new = strategy_new_assigned("reduce_overfunded", D("300"), D("300"), history(), D("50"))
         assert new == D("250")
 
-    def test_nothing_to_pull_back_at_or_under_the_duty(self):
+    def test_nothing_returnable_leaves_it_alone(self):
         assert (
-            strategy_new_assigned("reduce_overfunded", D("250"), D("250"), history(), D("250"))
+            strategy_new_assigned("reduce_overfunded", D("250"), D("250"), history(), D("0"))
             is None
         )
 
-    def test_bounded_by_what_is_still_in_the_envelope(self):
-        # Assigned 300 over a duty of 100, but only 50 left unspent: 50 back.
-        new = strategy_new_assigned("reduce_overfunded", D("300"), D("50"), history(), D("100"))
-        assert new == D("250")
-
-    def test_no_duty_means_untouched(self):
+    def test_no_target_means_untouched(self):
         assert strategy_new_assigned("reduce_overfunded", D("300"), D("300"), history()) is None

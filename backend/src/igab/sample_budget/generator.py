@@ -280,6 +280,7 @@ class SampleBudgetGenerator:
                         target_date=t.target_date.resolve(anchor) if t.target_date else None,
                         check_after_day=t.check_after_day,
                         weekday=t.weekday,
+                        target_limit=t.limit,
                     )
                     result.targets += 1
 

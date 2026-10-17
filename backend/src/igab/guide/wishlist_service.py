@@ -384,7 +384,11 @@ class WishlistService:
         target = await self.targets.get(category_id)
         pace = (
             self.targets.monthly_pace(
-                target, assigned=balance.assigned, available=balance.available, month=month
+                target,
+                assigned=balance.assigned,
+                activity=balance.activity,
+                available=balance.available,
+                month=month,
             )
             if target
             else None
@@ -538,6 +542,7 @@ class WishlistService:
             "savings_balance",
             quantize_cents(cost),
             want_by,
+            target_limit=None,
             batch_id=self.changes.current_batch_id,
         )
         return category
@@ -650,6 +655,9 @@ class WishlistService:
                         target.target_type if target else "savings_balance",
                         item.cost,
                         target.target_date if target else None,
+                        # Only the amount follows the cost. A stop the budget
+                        # page put on a monthly goal is that page's decision.
+                        target_limit=target.target_limit if target else None,
                         check_after_day=target.check_after_day if target else None,
                         weekday=target.weekday if target else None,
                         batch_id=self.changes.current_batch_id,

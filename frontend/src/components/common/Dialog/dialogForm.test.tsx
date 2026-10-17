@@ -321,6 +321,7 @@ describe('DialogForm.css', () => {
 vi.mock('../../../api/targets', () => ({
   useUpsertTarget: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteTarget: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useTargetSuggestions: () => ({ data: undefined }),
 }))
 vi.mock('../../../api/categories', () => ({
   useCategoryGroups: () => ({ data: [] }),

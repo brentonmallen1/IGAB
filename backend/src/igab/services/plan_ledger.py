@@ -265,6 +265,12 @@ async def spent_series(
     steady category as falling every month until the month closed. This
     spelled "complete" again, as "before the running month", beside the
     window that already said it.
+
+    Not Auto-assign's "Average spent" (`BudgetService.get_category_history`),
+    on purpose: that one asks what assignments had to cover — the envelope's
+    net drain, money moved in netting it, over the envelope's own active
+    months — and this one what was spent. The differences are listed there
+    and pinned by `tests/integration/test_average_spent_agreement.py`.
     """
     ledger = await plan_ledger(
         session,

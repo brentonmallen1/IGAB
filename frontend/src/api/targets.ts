@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
-import type { CategoryTarget } from '../types'
+import type { CategoryTarget, TargetSuggestions } from '../types'
+import { today } from '../utils/dates'
 import { ROOT } from './queryKeys'
 
 export function useTargetsByBudget(budgetId: string | null) {
@@ -21,6 +22,7 @@ export interface TargetUpsert {
   target_date?: string | null
   check_after_day?: number | null
   weekday?: number | null
+  target_limit?: number | null
 }
 
 export function useTarget(categoryId: string | null) {
@@ -57,5 +59,23 @@ export function useDeleteTarget(categoryId: string) {
       qc.invalidateQueries({ queryKey: [ROOT.target, categoryId] })
       qc.invalidateQueries({ queryKey: [ROOT.targets, 'budget'] })
     },
+  })
+}
+
+/** Suggested amounts for a category's target, from its last twelve complete
+ *  months. The reader's day rides as `client_today`, as every report request
+ *  sends it, so "complete months" are the reader's. */
+export function useTargetSuggestions(budgetId: string | null, categoryId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.targetSuggestions, budgetId, categoryId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TargetSuggestions>(
+        `/${budgetId}/categories/${categoryId}/target-suggestions`,
+        { params: { client_today: today() } }
+      )
+      return data
+    },
+    enabled: !!budgetId && !!categoryId,
+    staleTime: 60_000,
   })
 }

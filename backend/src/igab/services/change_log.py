@@ -205,6 +205,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "target_date",
         "check_after_day",
         "weekday",
+        "target_limit",
     ),
     "liability": (
         "name",

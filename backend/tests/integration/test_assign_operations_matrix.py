@@ -142,7 +142,10 @@ async def _base(db_session, *, with_card: bool = False):
 
 async def _target(db_session, category, amount: str) -> None:
     await TargetService(TargetRepository(db_session)).upsert(
-        category_id=category.id, target_type="monthly_funding", target_amount=D(amount)
+        category_id=category.id,
+        target_type="monthly_funding",
+        target_amount=D(amount),
+        target_limit=None,
     )
 
 

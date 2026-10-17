@@ -53,12 +53,20 @@ export function targetTypeLabel(value: string): string {
   return TARGET_TYPES.find((t) => t.value === value)?.label ?? value
 }
 
+/** The shapes that may carry a "Stop at" — the ones paced by a rate. The
+ *  form shows the field for these and drops a stale value for the rest;
+ *  the server refuses it anywhere else (backend `CAPPABLE`). */
+export function targetTakesLimit(targetType: string): boolean {
+  return targetType === 'monthly_funding' || targetType === 'weekly_funding'
+}
+
 export interface TargetPayload {
   target_type: string
   target_amount: number
   target_date: string | null
   check_after_day: number | null
   weekday: number | null
+  target_limit: number | null
 }
 
 export interface TargetFormFields {
@@ -69,6 +77,8 @@ export interface TargetFormFields {
   weekday: string
   /** '' for "use the budget's funding day". */
   checkAfterDay: string
+  /** '' for no stop; otherwise an amount, read by `parseAmountInput`. */
+  limit: string
 }
 
 export type TargetFormResult = { ok: true; payload: TargetPayload } | { ok: false; error: string }
@@ -95,9 +105,20 @@ function parseCheckAfterDay(raw: string): Parsed<number | null> {
   return { ok: true, value: n }
 }
 
+/** '' means "no stop"; anything else must read as an amount above zero.
+ *  Unreadable input is an error, never a silent "no stop". */
+function parseLimit(raw: string): Parsed<number | null> {
+  if (raw.trim() === '') return { ok: true, value: null }
+  const n = parseAmountInput(raw)
+  if (isNaN(n)) return { ok: false, error: 'Enter the balance to stop at, or leave it blank.' }
+  if (n <= 0) return { ok: false, error: 'The balance to stop at has to be more than zero.' }
+  return { ok: true, value: n }
+}
+
 /** Build the upsert payload, or say why it cannot be built. A weekly target
- *  needs its weekday; only a savings balance carries a date (the form drops
- *  a stale one rather than sending it to be refused). */
+ *  needs its weekday; only a savings balance carries a date, and only a
+ *  monthly or weekly target a stop (the form drops a stale one rather than
+ *  sending it to be refused). */
 export function buildTargetPayload(fields: TargetFormFields): TargetFormResult {
   const parsed = parseAmountInput(fields.amount)
   if (isNaN(parsed)) return { ok: false, error: 'Enter an amount.' }
@@ -110,6 +131,9 @@ export function buildTargetPayload(fields: TargetFormFields): TargetFormResult {
   }
   const checkAfterDay = parseCheckAfterDay(fields.checkAfterDay)
   if (!checkAfterDay.ok) return checkAfterDay
+  const takesLimit = targetTakesLimit(fields.targetType)
+  const limit = takesLimit ? parseLimit(fields.limit) : { ok: true as const, value: null }
+  if (!limit.ok) return limit
   const isSavings = fields.targetType === 'savings_balance'
   return {
     ok: true,
@@ -119,6 +143,7 @@ export function buildTargetPayload(fields: TargetFormFields): TargetFormResult {
       target_date: isSavings && fields.targetDate ? fields.targetDate : null,
       check_after_day: checkAfterDay.value,
       weekday: isWeekly ? weekday.value : null,
+      target_limit: limit.value,
     },
   }
 }

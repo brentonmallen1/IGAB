@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
 import { useUpsertTarget, useDeleteTarget } from '../../api/targets'
 import type { CategoryTarget } from '../../types'
-import { TARGET_TYPES, WEEKDAYS, buildTargetPayload } from './targetForm'
+import { TARGET_TYPES, WEEKDAYS, buildTargetPayload, targetTakesLimit } from './targetForm'
+import { TargetSuggestionChips } from './TargetSuggestionChips'
 import { Dialog } from '../common/Dialog/Dialog'
 import './TargetEditor.css'
 import { MAX_FUNDING_DAY } from '../../utils/targets'
@@ -24,9 +25,13 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
   const [checkAfterDay, setCheckAfterDay] = useState(
     existing?.check_after_day != null ? String(existing.check_after_day) : ''
   )
+  const [limit, setLimit] = useState(
+    existing?.target_limit != null ? String(existing.target_limit) : ''
+  )
   const [error, setError] = useState<string | null>(null)
   const typeId = useId()
   const checkAfterId = useId()
+  const limitId = useId()
 
   const upsert = useUpsertTarget(categoryId)
   const del = useDeleteTarget(categoryId)
@@ -35,7 +40,14 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const result = buildTargetPayload({ targetType, amount, targetDate, weekday, checkAfterDay })
+    const result = buildTargetPayload({
+      targetType,
+      amount,
+      targetDate,
+      weekday,
+      checkAfterDay,
+      limit,
+    })
     if (!result.ok) {
       setError(result.error)
       return
@@ -122,6 +134,12 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
           />
         </label>
 
+        <TargetSuggestionChips
+          categoryId={categoryId}
+          targetType={targetType}
+          onPick={(field, value) => (field === 'limit' ? setLimit(value) : setAmount(value))}
+        />
+
         {targetType === 'weekly_funding' && (
           <label className="dialog-form__field">
             <span>Every</span>
@@ -141,6 +159,25 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
             <span>By (optional)</span>
             <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           </label>
+        )}
+
+        {targetTakesLimit(targetType) && (
+          <div className="dialog-form__field">
+            <label htmlFor={limitId}>Stop at (optional)</label>
+            <input
+              id={limitId}
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              placeholder="No limit"
+            />
+            <p className="dialog-form__hint">
+              Fill until the envelope holds this much. While it does, it counts as funded.
+            </p>
+          </div>
         )}
 
         <div className="dialog-form__field">
