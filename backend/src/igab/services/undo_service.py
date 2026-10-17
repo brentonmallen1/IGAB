@@ -243,6 +243,54 @@ class UndoService(UndoRestores):
             raise UndoConflict("This run has already been undone")
         return BatchUndo(undone, skipped)
 
+    async def undo_row_removal(
+        self, budget_id: uuid.UUID, batch_id: uuid.UUID, transaction_id: uuid.UUID
+    ) -> BatchUndo:
+        """Take back one transaction's delete from a batch that removed many.
+
+        A sync run is one batch (`simplefin_service.sync`), so `undo_change`
+        on the delete of one pending hold would take back the whole run —
+        every import, adoption and removal with it. This undoes exactly the
+        row's own delete and the deletes it cascaded to in the same batch:
+        its split lines and its transfer partner (`TransactionService.delete`).
+        Strict, like `undo_batch`: a row and its lines come back together or
+        not at all.
+        """
+        changes = await self.repo.get_batch(budget_id, batch_id)
+        own = next(
+            (
+                c
+                for c in changes
+                if c.entity_type == "transaction"
+                and c.action == "delete"
+                and c.entity_id == transaction_id
+            ),
+            None,
+        )
+        if own is None:
+            raise NotFoundError("change", str(transaction_id))
+        if own.undone_at is not None:
+            raise UndoConflict("This row has already been restored")
+        row = str(transaction_id)
+        partner = (own.before or {}).get("transfer_id")
+        cascade = [
+            c
+            for c in changes
+            if c.entity_type == "transaction"
+            and c.action == "delete"
+            and c.undone_at is None
+            and (
+                c.entity_id == transaction_id
+                or (c.before or {}).get("parent_transaction_id") == row
+                or (partner is not None and str(c.entity_id) == partner)
+            )
+        ]
+        for change in cascade:
+            await self._apply(change, False)
+            _mark_undone(change)
+            await self.session.flush()
+        return BatchUndo([c.id for c in cascade], [])
+
     async def _undo_move_groups(self, groups: list[list[ChangeLog]], force: bool) -> "BatchUndo":
         """Undo a batch of budget moves, move by move, skipping the ones whose
         envelope has been assigned by hand since.

@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useAccountHygiene } from '../../api/accounts'
+import { useAccountHygiene, type HygieneFinding } from '../../api/accounts'
 import { HygieneFindings } from './HygieneFindings'
+import { dismissalKeys, isDismissed } from './hygieneDismissal'
 import './AccountHygienePanel.css'
 
 /**
@@ -21,8 +22,9 @@ const STORAGE_KEY = 'igab.hygiene.dismissed'
 
 /** Dismissals are per-viewer and per-finding-kind, not per-budget-state: a
  *  finding you have decided to live with should stay gone, but a *new* kind
- *  of problem should still speak up. Wrapped because storage throws outright
- *  in some contexts (private windows, blocked site data). */
+ *  of problem should still speak up — and for findings whose rows are each
+ *  news, a new row (see `hygieneDismissal.ts`). Wrapped because storage
+ *  throws outright in some contexts (private windows, blocked site data). */
 function readDismissed(): string[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -44,13 +46,13 @@ export function AccountHygienePanel({ budgetId }: { budgetId: string | null }) {
   const { data } = useAccountHygiene(budgetId)
   const [dismissed, setDismissed] = useState<string[]>(readDismissed)
 
-  function dismiss(kind: string) {
-    const next = [...dismissed, kind]
+  function dismiss(f: HygieneFinding) {
+    const next = [...new Set([...dismissed, ...dismissalKeys(f)])]
     setDismissed(next)
     persistDismissed(next)
   }
 
-  const findings = (data?.findings ?? []).filter((f) => !dismissed.includes(f.kind))
+  const findings = (data?.findings ?? []).filter((f) => !isDismissed(f, dismissed))
   if (findings.length === 0) return null
 
   return (

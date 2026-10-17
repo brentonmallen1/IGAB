@@ -27,6 +27,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Asset, Liability, Transaction
+from igab.domain.bank_absence import LOOKBACK_DAYS, REMOVED, offered_action
+from igab.domain.bank_absence import POSTED as POSTED_ABSENCE
 from igab.domain.cards import receivable_ledgers
 from igab.domain.import_mapping import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.domain.matching import DATE_WINDOW_DAYS
@@ -43,6 +45,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     UNPAIRED_TRANSFER_LEG,
 )
+from igab.services.bank_absence_listing import OpenAbsence, open_absences
 from igab.utils.clock import today_utc
 
 #: Months without a posted transaction before an open account reads as dormant.
@@ -98,6 +101,10 @@ class FindingItem:
     #: The rows a bulk action on this item would touch, in the order that
     #: action expects — for unlinked card payments, (outflow, inflow).
     transaction_ids: list[uuid.UUID] = field(default_factory=list)
+    #: The one-click fix this row offers, when it has its own: `restore` or
+    #: `delete` (`domain.bank_absence.offered_action`). None for a row that
+    #: only leads somewhere.
+    action: str | None = None
 
 
 @dataclass
@@ -169,6 +176,9 @@ class AccountHygieneService:
             # ranks here: it corrupts to_be_assigned, from an account the user
             # cannot see to check.
             await self._closed_account_still_holds_money(accounts),
+            # Next because a removed hold is the one row here the sync took
+            # out on its own, and Restore is only one click while it is recent.
+            *(await self._no_longer_at_bank(accounts, budget_id)),
             await self._asset_beside_asset_account(budget_id, accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
@@ -893,6 +903,77 @@ class AccountHygieneService:
             ),
             transaction_count=int(count),
         )
+
+    async def _no_longer_at_bank(
+        self, accounts: list[Account], budget_id: uuid.UUID
+    ) -> list[HygieneFinding]:
+        """Rows the bank stopped reporting, one finding per account.
+
+        A sync removes a pending hold the bank dropped and keeps everything
+        else (`domain.bank_absence`), and it used to do both in silence: a
+        card whose register still showed charges the bank's website no longer
+        had, with nothing saying which, or that a hold had gone. Listed from
+        the runs' own records, because only the server knows what it removed.
+        """
+        names = {a.id: a.name for a in accounts}
+        by_account: dict[uuid.UUID, list[OpenAbsence]] = {}
+        for absence in await open_absences(self.session, budget_id):
+            if absence.entry.account_id in names:
+                by_account.setdefault(absence.entry.account_id, []).append(absence)
+        findings = []
+        for account_id, rows in by_account.items():
+            removed = sum(1 for r in rows if r.entry.action == REMOVED)
+            kept = len(rows) - removed
+            said = []
+            if removed:
+                said.append(
+                    f"{removed} pending hold{'s' if removed != 1 else ''} the bank dropped "
+                    f"{'were' if removed != 1 else 'was'} removed"
+                )
+            if kept:
+                said.append(
+                    f"{kept} row{'s' if kept != 1 else ''} the bank no longer reports "
+                    f"{'were' if kept != 1 else 'was'} kept"
+                )
+            findings.append(
+                HygieneFinding(
+                    kind="no_longer_at_bank",
+                    title=f"{names[account_id]}: no longer at the bank",
+                    summary=f"{'; '.join(said)}.",
+                    action=(
+                        "Restore a hold that was a real charge. Delete a kept row for money "
+                        "that never left. Anything else can stay as it is."
+                    ),
+                    why=(
+                        "A hold can drop off without ever posting — a hotel or fuel "
+                        "pre-authorisation released, a declined charge. A row typed against "
+                        "such a hold is spending that never happened. A posted row the bank "
+                        "stops reporting is rarer: a reversal, or the bank re-issuing its ids. "
+                        f"Rows stay listed for {LOOKBACK_DAYS} days."
+                    ),
+                    items=[
+                        FindingItem(
+                            label=r.entry.payee or "No payee",
+                            amount=r.entry.amount,
+                            day=r.entry.date,
+                            note=(
+                                "pending hold, removed"
+                                if r.entry.action == REMOVED
+                                else "kept"
+                                if r.entry.kind != POSTED_ABSENCE
+                                else "posted, kept"
+                            ),
+                            account_id=account_id,
+                            transaction_id=r.entry.transaction_id,
+                            action=offered_action(r.entry, r.state),
+                        )
+                        for r in rows
+                    ],
+                    account_ids=[account_id],
+                    transaction_count=len(rows),
+                )
+            )
+        return findings
 
     async def _dormant_open_accounts(
         self, accounts: list[Account], budget_id: uuid.UUID

@@ -25,12 +25,15 @@ from igab.dependencies import (
     get_change_recorder,
     get_transaction_matching_service,
     get_transaction_service,
+    get_undo_service,
 )
+from igab.domain.bank_absence import REMOVED
 from igab.domain.bank_balance import DriftExplanation, drift_is_a_fault
-from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError
+from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError, UndoConflict
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
 from igab.services.account_hygiene import AccountHygieneService
 from igab.services.account_type_service import apply_type, resolve_type
+from igab.services.bank_absence_listing import open_absences
 from igab.services.card_payment import ensure_payment_category
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.liability_service import (
@@ -47,6 +50,7 @@ from igab.services.secrets import (
 )
 from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionService
+from igab.services.undo_service import UndoService
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -143,6 +147,7 @@ class FindingItemResponse(BaseModel):
     account_id: uuid.UUID | None = None
     transaction_id: uuid.UUID | None = None
     transaction_ids: list[uuid.UUID] = []
+    action: str | None = None
 
 
 class HygieneFindingResponse(BaseModel):
@@ -254,6 +259,49 @@ async def link_card_payments(
                 budget_id, p.outflow, p.inflow, clear_categories=p.pair.clears_categories
             )
     return LinkCardPaymentsResponse(linked=len(chosen), skipped=len(body.pairs) - len(chosen))
+
+
+class RestoreDroppedHoldRequest(BaseModel):
+    transaction_id: uuid.UUID
+
+
+@router.post("/{budget_id}/accounts/hygiene/restore-dropped-hold")
+async def restore_dropped_hold(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    undo: Annotated[UndoService, Depends(get_undo_service)],
+    body: RestoreDroppedHoldRequest,
+) -> dict[str, str]:
+    """Bring back one pending hold a sync removed because the bank dropped it.
+
+    Only a hold the "No longer at the bank" finding still lists — the list is
+    recomputed here by the same query the finding reads, never taken on the
+    client's word. The row's own delete is taken back from the run's batch
+    (`UndoService.undo_row_removal`), so the category, memo and split lines
+    the person gave it return as they were; then it is kept as theirs —
+    unlinked and `uncleared` (`TransactionService.keep_restored_hold`) — or
+    the next sync would remove it again.
+    """
+    listed = {
+        a.entry.transaction_id: a
+        for a in await open_absences(session, budget_id)
+        if a.entry.action == REMOVED
+    }
+    absence = listed.get(body.transaction_id)
+    if absence is None or absence.removal_batch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="That hold is no longer listed — it may have been restored already",
+        )
+    try:
+        await undo.undo_row_removal(budget_id, absence.removal_batch_id, body.transaction_id)
+    except (NotFoundError, UndoConflict) as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    await session.refresh(absence.row)
+    await txn_service.keep_restored_hold(absence.row)
+    return {"transaction_id": str(body.transaction_id)}
 
 
 class RepairTrackingCategoriesResponse(BaseModel):

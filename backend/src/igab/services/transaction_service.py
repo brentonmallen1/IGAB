@@ -1027,6 +1027,25 @@ class TransactionService:
         updated = await self.transaction_repo.update(txn.id, sync_id=None)
         await self._record_txn(updated, "update", before=before, source="system")
 
+    async def keep_restored_hold(self, txn: Transaction) -> Transaction:
+        """A pending hold the sync removed, brought back by the person: it is
+        their row now, `uncleared` and unlinked.
+
+        Left `pending` with the hold's id, the next sync would find the same
+        id missing and remove it again; and `pending` is in no balance, which
+        is not what someone restoring a charge means. Unlinked, a posting for
+        it can still claim it — same amount on the candidate ladder, or a
+        review when the amount moved. Recorded as the person's own edit, so
+        ⌘Z takes it back like any other.
+        """
+        before = snapshot("transaction", txn)
+        async with self._mutation():
+            if txn.is_split:
+                await self._mirror_children(txn.id, cleared="uncleared")
+            updated = await self.transaction_repo.update(txn.id, sync_id=None, cleared="uncleared")
+            await self._record_txn(updated, "update", before=before)
+        return updated
+
     async def approve(self, transaction_id: uuid.UUID, budget_id: uuid.UUID | None = None):
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if budget_id is not None and str(txn.budget_id) != str(budget_id):
