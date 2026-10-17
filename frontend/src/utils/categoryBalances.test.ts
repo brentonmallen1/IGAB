@@ -1,6 +1,67 @@
 import { describe, expect, it } from 'vitest'
-import { availableTone, balancesByCategory } from './categoryBalances'
+import { availableTone, balancesByCategory, withAssignments } from './categoryBalances'
 import { makeCategoryBalance } from '../test-utils/factories'
+import type { BudgetMonth } from '../types'
+
+describe('withAssignments', () => {
+  const month = (
+    balances = [
+      makeCategoryBalance({ category_id: 'rent', assigned: 900, activity: -900, available: 0 }),
+      makeCategoryBalance({ category_id: 'food', assigned: 300, activity: -340, available: -40 }),
+    ]
+  ) =>
+    ({
+      month: '2026-07-01',
+      to_be_assigned: 500,
+      total_assigned: 1200,
+      category_balances: balances,
+    }) as unknown as BudgetMonth
+
+  it('moves Available with Assigned and Ready to Assign against both', () => {
+    const next = withAssignments(month(), '2026-07-01', new Map([['food', 380]]))
+    const food = balancesByCategory(next).get('food')!
+    expect(food.assigned).toBe(380)
+    expect(food.available).toBe(40) // was 40 red; 80 more assigned
+    expect(next.to_be_assigned).toBe(420)
+    expect(next.total_assigned).toBe(1280)
+  })
+
+  it('sums several envelopes, up and down, into one Ready to Assign change', () => {
+    // The inspector's buttons set many at once: rent down 100, food up 50.
+    const next = withAssignments(
+      month(),
+      '2026-07-01',
+      new Map([
+        ['rent', 800],
+        ['food', 350],
+      ])
+    )
+    expect(next.to_be_assigned).toBe(550)
+    expect(balancesByCategory(next).get('rent')!.available).toBe(-100)
+  })
+
+  it('adds a row for an envelope with none, claiming nothing the server decides', () => {
+    const next = withAssignments(month([]), '2026-07-01', new Map([['gifts', 25]]))
+    const gifts = balancesByCategory(next).get('gifts')!
+    expect(gifts).toMatchObject({ assigned: 25, available: 25, activity: 0 })
+    expect(gifts.target_status).toBeNull()
+    expect(gifts.credit_overspent).toBe(0)
+    expect(next.to_be_assigned).toBe(475)
+  })
+
+  it('leaves every envelope it was not given alone, and the input untouched', () => {
+    const before = month()
+    const next = withAssignments(before, '2026-07-01', new Map([['food', 0]]))
+    expect(balancesByCategory(next).get('rent')).toBe(balancesByCategory(before).get('rent'))
+    expect(balancesByCategory(before).get('food')!.assigned).toBe(300)
+  })
+
+  it('changes nothing for no amounts', () => {
+    const next = withAssignments(month(), '2026-07-01', new Map())
+    expect(next.to_be_assigned).toBe(500)
+    expect(next.category_balances).toHaveLength(2)
+  })
+})
 
 describe('balancesByCategory', () => {
   it('keys every served balance by its category', () => {
