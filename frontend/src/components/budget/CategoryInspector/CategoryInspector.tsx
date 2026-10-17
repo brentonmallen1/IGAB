@@ -49,7 +49,6 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const count = selectedIds.length
 
   const selectedCategories = categories?.filter((c) => selectedCategoryIds.has(c.id)) ?? []
-  const allCategoryIds = categories?.map((c) => c.id) ?? []
 
   const selectedBalances =
     budgetMonth?.category_balances.filter((b) => selectedCategoryIds.has(b.category_id)) ?? []
@@ -151,11 +150,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
           <div className="category-inspector__body">
             {count === 0 ? (
-              <MonthSummary
-                budgetId={budgetId}
-                allCategoryIds={allCategoryIds}
-                categories={categories ?? []}
-              />
+              <MonthSummary budgetId={budgetId} categories={categories ?? []} />
             ) : (
               <>
                 <AvailableBreakdown balances={selectedBalances} prevBalances={prevBalances} />

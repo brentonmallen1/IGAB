@@ -5,8 +5,8 @@ the month; the delta between current and target is what moves. Previews,
 menu totals, and apply all run through the same builder so the number shown
 in the dropdown row, the modal table, and the applied result can never
 diverge. Apply recomputes server-side (the request carries no amounts) and
-routes every nonzero delta through BudgetService.move_money so each change
-lands in the budget_moves audit trail.
+routes every nonzero delta through BudgetService.move_money_many — one move
+per envelope — so each change lands in the budget_moves audit trail.
 
 Eligibility: non-system, non-hidden categories. Hidden categories are
 archived — silently re-funding them via "Assigned Last Month" would move
@@ -28,6 +28,7 @@ from igab.services.budget_service import (
     BudgetSummary,
     CategoryBalance,
     CategoryHistory,
+    MoneyMove,
     first_of_month,
 )
 from igab.services.target_service import TargetService
@@ -54,7 +55,7 @@ def strategy_new_assigned(
     strategy: str,
     current_assigned: Decimal,
     available: Decimal,
-    history: CategoryHistory,
+    history: CategoryHistory | None,
     target_duty: Decimal | None = None,
 ) -> Decimal | None:
     """Target assigned value for one category under a bulk strategy.
@@ -69,14 +70,9 @@ def strategy_new_assigned(
     weeks in the month, and pulling back to the weekly figure would strip
     four fifths of a correctly funded envelope.
     """
-    if strategy == "last_month_assigned":
-        return history.last_month_assigned
-    if strategy == "last_month_spent":
-        return history.last_month_spent
-    if strategy == "average_assigned":
-        return history.average_assigned
-    if strategy == "average_spent":
-        return history.average_spent
+    if strategy in HISTORY_STRATEGIES:
+        assert history is not None, "a history strategy needs the category's history"
+        return history.figure(strategy)
     if strategy == "reduce_overfunded":
         # Mirror of "underfunded": categories assigned beyond their target come
         # back down to it and the excess returns to TBA.
@@ -188,6 +184,8 @@ class _AssignContext:
     summary: BudgetSummary
     balances: dict[uuid.UUID, CategoryBalance]
     eligible: list[Category]
+    #: Empty unless the strategy reads history (`HISTORY_STRATEGIES`): the
+    #: other six never look, and loading it was most of what they cost.
     histories: dict[uuid.UUID, CategoryHistory]
     targets: dict[uuid.UUID, CategoryTarget]
 
@@ -207,7 +205,9 @@ class AssignService:
         self.category_repo = category_repo
         self.category_group_repo = category_group_repo
 
-    async def _gather(self, budget_id: uuid.UUID, month: date) -> _AssignContext:
+    async def _gather(
+        self, budget_id: uuid.UUID, month: date, *, with_histories: bool
+    ) -> _AssignContext:
         month_start = first_of_month(month)
         summary = await self.budget_service.get_budget_summary(budget_id, month_start)
         balances = {b.category_id: b for b in summary.category_balances}
@@ -227,10 +227,13 @@ class AssignService:
         categories = await self.category_repo.get_all(budget_id, include_archived=False)
         eligible = [c for c in categories if c.is_fundable]
 
-        histories = {
-            c.id: await self.budget_service.get_category_history(budget_id, c.id, month_start)
-            for c in eligible
-        }
+        histories = (
+            await self.budget_service.get_category_histories(
+                budget_id, [c.id for c in eligible], month_start
+            )
+            if with_histories
+            else {}
+        )
         targets = await self.target_repo.get_by_category_ids([c.id for c in eligible])
         target_map = {t.category_id: t for t in targets}
 
@@ -274,15 +277,17 @@ class AssignService:
         """The inspector's per-category "Target amount": the dropdown's
         `target_amount` strategy, for the selected categories only. A
         category without a target is left alone."""
-        ctx = await self._gather(budget_id, month)
+        ctx = await self._gather(budget_id, month, with_histories=False)
         wanted = set(category_ids)
+        amounts: dict[uuid.UUID, Decimal] = {}
         for cat in ctx.eligible:
             if cat.id not in wanted:
                 continue
             new = self._target_assigned(ctx, cat.id)
             bal = ctx.balances.get(cat.id)
             if new is not None and new != (bal.assigned if bal else ZERO):
-                await self.budget_service.set_assignment(budget_id, cat.id, ctx.month, new)
+                amounts[cat.id] = new
+        await self.budget_service.set_assignments(budget_id, ctx.month, amounts)
 
     def _underfunded_items(self, ctx: _AssignContext) -> tuple[list[AssignPreviewItem], Decimal]:
         """Fill-to-target, pro-rated within TBA; and the unclamped need."""
@@ -334,7 +339,7 @@ class AssignService:
             strategy,
             current,
             available,
-            ctx.histories[cat.id],
+            ctx.histories.get(cat.id),
             self._duty_for(ctx, cat.id, current, available),
         )
 
@@ -379,7 +384,9 @@ class AssignService:
                     if new is None:
                         continue
                 else:
-                    new = strategy_new_assigned(strategy, current, available, ctx.histories[cat.id])
+                    new = strategy_new_assigned(
+                        strategy, current, available, ctx.histories.get(cat.id)
+                    )
                 total += new if new is not None else current
             return total
         # Resets: net amount returned to TBA.
@@ -428,7 +435,7 @@ class AssignService:
         )
 
     async def strategy_totals(self, budget_id: uuid.UUID, month: date) -> AssignTotals:
-        ctx = await self._gather(budget_id, month)
+        ctx = await self._gather(budget_id, month, with_histories=True)
         return AssignTotals(
             month=ctx.month,
             tba=ctx.summary.to_be_assigned,
@@ -438,21 +445,22 @@ class AssignService:
         )
 
     async def preview(self, budget_id: uuid.UUID, month: date, strategy: str) -> AssignPreview:
-        ctx = await self._gather(budget_id, month)
+        if strategy not in ASSIGN_STRATEGIES:
+            raise ValueError(f"Unknown assign strategy: {strategy}")
+        ctx = await self._gather(budget_id, month, with_histories=strategy in HISTORY_STRATEGIES)
         return self._build_preview(ctx, strategy)
 
     async def apply(self, budget_id: uuid.UUID, month: date, strategy: str) -> AssignPreview:
-        """Recompute the strategy fresh and apply it through move_money."""
+        """Recompute the strategy fresh and apply it, one move per envelope."""
         preview = await self.preview(budget_id, month, strategy)
+        moves = [
+            MoneyMove(None, item.category_id, item.delta)
+            if item.delta > ZERO
+            else MoneyMove(item.category_id, None, -item.delta)
+            for item in preview.items
+            if item.delta != ZERO
+        ]
         with self.budget_service.changes.batch() as batch_id:
             preview.batch_id = batch_id
-            for item in preview.items:
-                if item.delta > ZERO:
-                    await self.budget_service.move_money(
-                        budget_id, None, item.category_id, item.delta, month
-                    )
-                elif item.delta < ZERO:
-                    await self.budget_service.move_money(
-                        budget_id, item.category_id, None, -item.delta, month
-                    )
+            await self.budget_service.move_money_many(budget_id, month, moves)
         return preview

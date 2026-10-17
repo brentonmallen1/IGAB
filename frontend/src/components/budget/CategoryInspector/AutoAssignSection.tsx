@@ -4,7 +4,7 @@ import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { AutoAssignAction } from '../../../types'
 import { useBudgetMonth } from '../../../api/budgets'
-import { autoAssignRows } from './autoAssignActions'
+import { autoAssignAmounts, autoAssignRows } from './autoAssignActions'
 
 interface Props {
   categoryIds: string[]
@@ -14,14 +14,19 @@ interface Props {
 export function AutoAssignSection({ categoryIds, budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const month = useAppStore((s) => s.selectedMonth)
-  const { data: histories } = useCategoryHistoryBatch(budgetId, categoryIds)
+  const { data: histories } = useCategoryHistoryBatch(budgetId, categoryIds, month)
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const autoAssign = useAutoAssign(budgetId, month)
 
-  const actions = autoAssignRows(categoryIds, histories, budgetMonth?.category_balances)
+  const balances = budgetMonth?.category_balances
+  const actions = autoAssignRows(categoryIds, histories, balances)
 
   function handleAction(action: AutoAssignAction) {
-    autoAssign.mutate({ categoryIds, action })
+    autoAssign.mutate({
+      categoryIds,
+      action,
+      amounts: autoAssignAmounts(action, categoryIds, histories, balances),
+    })
   }
 
   return (

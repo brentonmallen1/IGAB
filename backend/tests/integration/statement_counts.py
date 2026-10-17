@@ -40,14 +40,20 @@ class StatementCounter:
 
 async def count_request(api_client, db_session, path: str, params: dict) -> StatementCounter:
     """GET `path` and count what it asked the database."""
+    return await count_call(api_client, db_session, "GET", path, params=params)
+
+
+async def count_call(api_client, db_session, method: str, path: str, **kwargs) -> StatementCounter:
+    """Send any request and count what it asked the database — writes too,
+    whose cost is statements of every kind (`statements`), not only reads."""
     counter = StatementCounter()
     # The API and this fixture share one session, so its bind is where every
     # statement the request issues shows up.
     bind = db_session.get_bind()
     event.listen(bind, "after_cursor_execute", counter)
     try:
-        resp = await api_client.get(path, params=params)
-        assert resp.status_code == 200, resp.text
+        resp = await api_client.request(method, path, **kwargs)
+        assert resp.is_success, resp.text
     finally:
         event.remove(bind, "after_cursor_execute", counter)
     # Every request reads at least its user: a counter that saw nothing is
