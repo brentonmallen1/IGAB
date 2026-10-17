@@ -88,6 +88,7 @@ import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 import { categoryForLabel } from '../../ai/draftNotes'
+import { buildCategoryLabels } from '../../../utils/categoryLabels'
 
 interface Props {
   budgetId: string
@@ -380,10 +381,10 @@ export function TransactionEditor({
   function applySuggestedSplit() {
     if (!suggestedSplit || suggestedSplit.length < 2) return
     const fileable = categories.filter((c) => c.is_categorizable)
-    const groupNames = new Map(categoryGroups.map((g) => [g.id, g.name]))
+    const labels = buildCategoryLabels(fileable, categoryGroups)
     setSplits(
       suggestedSplit.map((line) => {
-        const cat = categoryForLabel(line.category, fileable, groupNames)
+        const cat = categoryForLabel(line.category, fileable, labels)
         return {
           tempId: randomUUID(),
           amount: toAmountInput(line.amount),

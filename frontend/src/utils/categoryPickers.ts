@@ -36,9 +36,7 @@
  * skipped `is_categorizable`, so it offered every card's envelope.
  */
 import type { Category, CategoryGroup } from '../types'
-
-/** Heading for a category whose group is not in the list handed to the picker. */
-export const UNGROUPED_LABEL = 'Other'
+import { UNGROUPED_LABEL, buildCategoryLabels, groupHeading } from './categoryLabels'
 
 export interface FlatCategoryOption {
   id: string
@@ -51,11 +49,12 @@ export function flatCategoryOptions(
   categories: Category[],
   groups: CategoryGroup[]
 ): FlatCategoryOption[] {
-  const groupNames = new Map(groups.map((g) => [g.id, g.name]))
-  return categories.map((c) => ({
-    id: c.id,
-    label: c.name,
-    group: groupNames.get(c.category_group_id) ?? UNGROUPED_LABEL,
+  // The heading is the group half of the row's own hover (categoryLabels.ts),
+  // so the picker and the cell cannot name an orphan's group differently.
+  return [...buildCategoryLabels(categories, groups)].map(([id, label]) => ({
+    id,
+    label: label.name,
+    group: groupHeading(label),
   }))
 }
 

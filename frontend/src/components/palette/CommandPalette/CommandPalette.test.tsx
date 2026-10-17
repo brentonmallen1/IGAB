@@ -26,7 +26,10 @@ const ACCOUNTS = vi.hoisted(() => [{ id: 'acc-1', name: 'Checking', on_budget: t
 const PAYEES = vi.hoisted(() => [{ id: 'p-1', name: 'Corner Grocer' }])
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: ACCOUNTS }) }))
 vi.mock('../../../api/payees', () => ({ usePayees: () => ({ data: PAYEES }) }))
-vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
+vi.mock('../../../api/categories', () => ({
+  useCategories: () => ({ data: [] }),
+  useCategoryGroups: () => ({ data: [] }),
+}))
 vi.mock('../../../api/budgetFilters', () => ({ useBudgetFilters: () => ({ data: [] }) }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
 vi.mock('../../../hooks/useHistoryDismissable', () => ({ useHistoryDismissable: () => {} }))

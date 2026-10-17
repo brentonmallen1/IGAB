@@ -1,6 +1,8 @@
 import type { ScheduledTransaction } from '../../../types'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../../utils/schedule'
+import { UNKNOWN_CATEGORY, type CategoryDisplay } from '../../../utils/categoryLabels'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './ScheduledRow.css'
 
 /**
@@ -22,8 +24,9 @@ import './ScheduledRow.css'
 
 export interface ScheduledRowProps {
   scheduled: ScheduledTransaction
-  /** Display names resolved by the caller, which owns the lookups. */
-  names: { payee: string; category?: string; account?: string }
+  /** Display names resolved by the caller, which owns the lookups. The
+   *  category is `categoryDisplay`'s, so its hover names the group. */
+  names: { payee: string; category?: CategoryDisplay; account?: string }
   layout: 'register' | 'table'
   todayISO: string
   onEdit: () => void
@@ -63,7 +66,13 @@ export function ScheduledRow({
     >
       <span className="scheduled-row__account txn-text-clip">{names.account ?? ''}</span>
       <span className="scheduled-row__payee txn-text-clip">{names.payee}</span>
-      <span className="scheduled-row__category txn-text-clip">{names.category ?? '—'}</span>
+      <Tooltip
+        content={names.category?.path ?? null}
+        block
+        className="scheduled-row__category txn-text-clip"
+      >
+        {names.category?.name ?? UNKNOWN_CATEGORY}
+      </Tooltip>
       <span className="scheduled-row__memo txn-text-clip">{s.memo ?? ''}</span>
       <span className={`scheduled-row__amount tabular ${out ? 'negative' : 'positive'}`}>
         {formatMoney(Math.abs(s.amount))}

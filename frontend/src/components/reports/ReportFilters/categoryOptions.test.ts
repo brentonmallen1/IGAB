@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { categoryOptions } from './categoryOptions'
-import { UNGROUPED_LABEL } from '../../../utils/categoryPickers'
+import { UNGROUPED_LABEL } from '../../../utils/categoryLabels'
 import type { BudgetView, Category } from '../../../types'
 import { makeCategory, makeCategoryGroup } from '../../../test-utils/factories'
 

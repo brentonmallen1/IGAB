@@ -65,7 +65,7 @@ function renderRow(t: Transaction, accountLabel: string | null = 'Harborstone Ch
           onEdit={vi.fn()}
           payeeMap={new Map()}
           accountMap={new Map(ACCOUNTS.map((a) => [a.id, a.name]))}
-          categoryMap={new Map()}
+          categoryLabels={new Map()}
           payees={[]}
           accounts={ACCOUNTS}
           categories={[]}
