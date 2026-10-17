@@ -1,12 +1,14 @@
 import uuid
+from collections.abc import Collection, Mapping
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, func, not_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload, with_expression
 
-from igab.db.models import BudgetAssignment, Category, CategoryGroup
+from igab.db.models import BudgetAssignment, Category, CategoryGroup, new_uuid
 from igab.domain.ordering import merge_reorder
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
@@ -231,17 +233,27 @@ class CategoryRepository(BaseRepository[Category]):
 
     async def get(self, id: uuid.UUID) -> Category | None:
         # Overrides BaseRepository.get to carry the eligibility flags.
-        # populate_existing is load-bearing: after a flush the row is already
-        # in the identity map, and SQLAlchemy leaves a with_expression
-        # attribute unset on an object it has seen before — which would
-        # surface as None on exactly the create/update responses.
+        return (await self.get_many([id])).get(id)
+
+    async def get_many(self, ids: Collection[uuid.UUID]) -> dict[uuid.UUID, Category]:
+        """Live categories by id, with the eligibility flags; an id with no
+        live row is simply absent. The batch form of `get`, for a write that
+        checks several envelopes at once (`BudgetService.set_assignments`).
+
+        populate_existing is load-bearing: after a flush the row is already
+        in the identity map, and SQLAlchemy leaves a with_expression
+        attribute unset on an object it has seen before — which would
+        surface as None on exactly the create/update responses.
+        """
+        if not ids:
+            return {}
         stmt = self.with_eligibility(
             select(Category).where(
-                Category.id == id,
+                Category.id.in_(list(ids)),
                 Category.is_deleted == False,  # noqa: E712
             )
         ).execution_options(populate_existing=True)
-        return (await self.session.execute(stmt)).scalar_one_or_none()
+        return {c.id: c for c in (await self.session.execute(stmt)).scalars()}
 
     async def next_sort_order(self, group_id: uuid.UUID) -> int:
         """The position after the group's last live category."""
@@ -491,14 +503,72 @@ class BudgetAssignmentRepository(BaseRepository[BudgetAssignment]):
     async def get_for_category(
         self, category_id: uuid.UUID, through_month: date | None = None
     ) -> list[BudgetAssignment]:
-        q = select(BudgetAssignment).where(
-            BudgetAssignment.category_id == category_id,
-        )
+        return (await self.get_for_categories([category_id], through_month)).get(category_id, [])
+
+    async def get_for_categories(
+        self, category_ids: Collection[uuid.UUID], through_month: date | None = None
+    ) -> dict[uuid.UUID, list[BudgetAssignment]]:
+        """{category: its assignment rows, oldest month first}, one query for
+        the lot. A category with no rows is absent."""
+        if not category_ids:
+            return {}
+        q = select(BudgetAssignment).where(BudgetAssignment.category_id.in_(list(category_ids)))
         if through_month:
             q = q.where(BudgetAssignment.month <= through_month)
-        q = q.order_by(BudgetAssignment.month)
-        result = await self.session.execute(q)
-        return list(result.scalars().all())
+        q = q.order_by(BudgetAssignment.category_id, BudgetAssignment.month)
+        out: dict[uuid.UUID, list[BudgetAssignment]] = {}
+        for row in (await self.session.execute(q)).scalars():
+            out.setdefault(row.category_id, []).append(row)
+        return out
+
+    async def assigned_in_month(
+        self, month: date, category_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """{category: assigned} for one month. A category with no row is
+        absent, which reads as zero — what `get_or_create` would have made."""
+        if not category_ids:
+            return {}
+        result = await self.session.execute(
+            select(BudgetAssignment.category_id, BudgetAssignment.assigned).where(
+                BudgetAssignment.category_id.in_(list(category_ids)),
+                BudgetAssignment.month == month,
+            )
+        )
+        return {category_id: assigned for category_id, assigned in result.tuples()}
+
+    async def set_month(
+        self, budget_id: uuid.UUID, month: date, assigned: Mapping[uuid.UUID, Decimal]
+    ) -> dict[uuid.UUID, BudgetAssignment]:
+        """Write several categories' assigned for one month in one statement:
+        an existing row is updated, a missing one is created holding the
+        figure. Returns every row as it now stands.
+
+        One statement, so one snapshot invalidation (`igab.db.invalidation`)
+        where the get-or-create-then-update it replaces issued a handful of
+        statements and up to two invalidations per envelope.
+        `populate_existing` so a row the session already holds reads the new
+        figure rather than the one it was loaded with.
+        """
+        if not assigned:
+            return {}
+        stmt = pg_insert(BudgetAssignment).values(
+            [
+                {
+                    "id": new_uuid(),
+                    "budget_id": budget_id,
+                    "category_id": category_id,
+                    "month": month,
+                    "assigned": amount,
+                }
+                for category_id, amount in assigned.items()
+            ]
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_assignment_category_month",
+            set_={"assigned": stmt.excluded.assigned, "updated_at": func.now()},
+        ).returning(BudgetAssignment)
+        rows = await self.session.scalars(stmt, execution_options={"populate_existing": True})
+        return {row.category_id: row for row in rows}
 
     async def get_all_for_budget(self, budget_id: uuid.UUID) -> list[BudgetAssignment]:
         result = await self.session.execute(

@@ -1,10 +1,12 @@
 import uuid
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
-from igab.db.models import BudgetMove, Category
+from igab.db.locks import lock_for_transaction
+from igab.db.models import BudgetMove, Category, new_uuid
 from igab.domain.cards import (
     CardFunding,
     CardReserve,
@@ -57,7 +59,7 @@ from igab.repositories.import_plan_repo import ImportPlanRepository
 from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot
-from igab.services.ownership import require_in_budget
+from igab.services.ownership import ids_in_budget
 from igab.utils.clock import today_utc
 
 if TYPE_CHECKING:
@@ -351,6 +353,45 @@ class CategoryHistory:
     average_spent: Decimal
     months_included: int
 
+    def figure(self, name: str) -> Decimal:
+        """The figure a history strategy or inspector button of that name sets
+        assigned to. The one map from those names to these fields — the
+        dropdown's strategies and the inspector's buttons both read it."""
+        return {
+            "last_month_assigned": self.last_month_assigned,
+            "last_month_spent": self.last_month_spent,
+            "average_assigned": self.average_assigned,
+            "average_spent": self.average_spent,
+        }[name]
+
+
+def _history(
+    category_id: uuid.UUID,
+    assigned_by_month: dict[date, Decimal],
+    activity_by_month: dict[date, Decimal],
+    past_months: list[date],
+) -> CategoryHistory:
+    """One category's history over `past_months` (newest first)."""
+    zero = Decimal("0")
+    # activity is negative for spending; flip sign for "spent" values
+    spent_by_month = {m: -v for m, v in activity_by_month.items() if v < 0}
+    last_month = past_months[0] if past_months else None
+    last_assigned = assigned_by_month.get(last_month, zero) if last_month else zero
+    last_spent = spent_by_month.get(last_month, zero) if last_month else zero
+
+    months_with_data = [m for m in past_months if m in assigned_by_month or m in spent_by_month]
+    n = len(months_with_data) if months_with_data else 1
+    avg_assigned = sum((assigned_by_month.get(m, zero) for m in past_months), zero) / n
+    avg_spent = sum((spent_by_month.get(m, zero) for m in past_months), zero) / n
+    return CategoryHistory(
+        category_id=category_id,
+        last_month_assigned=last_assigned,
+        last_month_spent=last_spent,
+        average_assigned=quantize_cents(avg_assigned),
+        average_spent=quantize_cents(avg_spent),
+        months_included=n,
+    )
+
 
 @dataclass
 class BudgetSummary:
@@ -632,6 +673,63 @@ def _corrected_available(
     return available_at(funding.end_balances[category.id], month_start)
 
 
+@dataclass(frozen=True)
+class MoneyMove:
+    """One move of `BudgetService.move_money_many`. A None side is Ready to
+    Assign: from=None funds an envelope, to=None releases one."""
+
+    from_category_id: uuid.UUID | None
+    to_category_id: uuid.UUID | None
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class _Envelopes:
+    """The categories one money write names, with the two guards every such
+    write runs — loaded once by `BudgetService._envelopes`, so checking forty
+    envelopes costs what checking one did."""
+
+    categories: dict[uuid.UUID, Category]
+    system_group_ids: set[uuid.UUID]
+
+    def require_source(self, category_id: uuid.UUID) -> None:
+        """Money may LEAVE here. Income is the only refusal.
+
+        A category in a system group is where income is *filed*, not an
+        envelope: it never held money, so there is none to take out.
+
+        Everything else may be a source, archived included — that is how a
+        balance stranded in an archived envelope gets rescued, and Phase 3 of
+        the archive flow depends on it.
+        """
+        if self.categories[category_id].category_group_id in self.system_group_ids:
+            raise InvariantViolation("Income categories do not hold money")
+
+    def require_fundable(self, category_id: uuid.UUID) -> None:
+        """Money may ENTER here — `category_filters.IS_FUNDABLE`, served.
+
+        A strictly narrower question than leaving, and it used to be the same
+        check: `require_source` tested the system group alone, under a
+        comment claiming it was "the same rule" the pickers read. It was one of
+        `IS_ASSIGNABLE`'s three terms, so money could be assigned into an
+        archived envelope by anything that was not a picker — and land
+        somewhere the budget page does not draw.
+
+        A card's envelope is fundable and always was; that is how a
+        card is paid down, and it is why this reads `IS_FUNDABLE` rather than
+        `IS_ASSIGNABLE`, which now excludes it.
+        """
+        category = self.categories[category_id]
+        if category.is_fundable:
+            return
+        if category.category_group_id in self.system_group_ids:
+            raise InvariantViolation("Income categories do not hold money")
+        raise InvariantViolation(
+            "That envelope is archived. Restore it before budgeting into it — "
+            "money already in it can still be moved out"
+        )
+
+
 class BudgetService:
     def __init__(
         self,
@@ -661,17 +759,27 @@ class BudgetService:
         return await self.anchor_repo.get_for_budget(budget_id)
 
     async def _record_assignment(
-        self, assignment, before_assigned: Decimal, move: BudgetMove | None = None
+        self,
+        assignment,
+        before_assigned: Decimal,
+        move: BudgetMove | None = None,
+        *,
+        after_assigned: Decimal | None = None,
     ) -> None:
         """Record an assignment change (all assignment writes are updates —
-        get_or_create means the row may be fresh, in which case before is 0).
+        a missing row is created at the figure, in which case before is 0).
 
         `move` ties the row to the budget move that produced it: undoing the
         move finds its rows by it, undoing the row deletes the move, and redo
         recreates it.
+        `after_assigned` is for an envelope two moves of one batch pass
+        through: the first move's record holds the figure between them, which
+        the row itself — written once, at the end — never held.
         Underscore keys are bookkeeping — snapshot matching and field restore
         both skip them."""
         after = snapshot("assignment", assignment)
+        if after_assigned is not None:
+            after["assigned"] = snapshot("assignment", {"assigned": after_assigned})["assigned"]
         if move is not None:
             after["_move_id"] = str(move.id)
             # Enough to recreate the audit row on redo, under the same id
@@ -694,12 +802,6 @@ class BudgetService:
             after=after,
         )
 
-    async def _load_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID):
-        category = await self.category_repo.get(category_id)
-        if category is None or str(category.budget_id) != str(budget_id):
-            raise InvariantViolation("Category does not belong to this budget")
-        return category
-
     async def _system_group_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
         """The budget's system (Income) groups — the one place this service
         decides "is this an income category". The summary, `envelope_series`
@@ -707,43 +809,19 @@ class BudgetService:
         groups = await self.category_group_repo.get_all(budget_id, include_archived=True)
         return {g.id for g in groups if g.is_system}
 
-    async def _require_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
-        """Money may LEAVE here. Income is the only refusal.
-
-        A category in a system group is where income is *filed*, not an
-        envelope: it never held money, so there is none to take out.
-
-        Everything else may be a source, archived included — that is how a
-        balance stranded in an archived envelope gets rescued, and Phase 3 of
-        the archive flow depends on it.
-        """
-        category = await self._load_envelope(budget_id, category_id)
-        if category.category_group_id in await self._system_group_ids(budget_id):
-            raise InvariantViolation("Income categories do not hold money")
-
-    async def _require_fundable(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
-        """Money may ENTER here — `category_filters.IS_FUNDABLE`, served.
-
-        A strictly narrower question than leaving, and it used to be the same
-        check: `_require_envelope` tested the system group alone, under a
-        comment claiming it was "the same rule" the pickers read. It was one of
-        `IS_ASSIGNABLE`'s three terms, so money could be assigned into an
-        archived envelope by anything that was not a picker — and land
-        somewhere the budget page does not draw.
-
-        A card's envelope is fundable and always was; that is how a
-        card is paid down, and it is why this reads `IS_FUNDABLE` rather than
-        `IS_ASSIGNABLE`, which now excludes it.
-        """
-        category = await self._load_envelope(budget_id, category_id)
-        if category.is_fundable:
-            return
-        if category.category_group_id in await self._system_group_ids(budget_id):
-            raise InvariantViolation("Income categories do not hold money")
-        raise InvariantViolation(
-            "That envelope is archived. Restore it before budgeting into it — "
-            "money already in it can still be moved out"
-        )
+    async def _envelopes(
+        self, budget_id: uuid.UUID, category_ids: Iterable[uuid.UUID]
+    ) -> "_Envelopes":
+        """Every category a write names, loaded once, each refused if it is
+        not this budget's — and the budget's income groups, which both money
+        guards read. Two queries however many envelopes the write touches."""
+        wanted = set(category_ids)
+        found = await self.category_repo.get_many(wanted)
+        for category_id in wanted:
+            category = found.get(category_id)
+            if category is None or str(category.budget_id) != str(budget_id):
+                raise InvariantViolation("Category does not belong to this budget")
+        return _Envelopes(found, await self._system_group_ids(budget_id))
 
     async def get_category_balance(
         self,
@@ -1575,7 +1653,18 @@ class BudgetService:
         if any relevant write invalidated it (see igab.db.invalidation)."""
         assert self.snapshot_repo is not None
         if not await self.snapshot_repo.is_valid(budget_id):
-            await self._rebuild_snapshots(budget_id, categories)
+            # One rebuild per invalidation, not one per reader. A write is
+            # followed by a burst of refetches — the month, the month before
+            # it, the dropdown's totals — and each found the cache invalid and
+            # rebuilt it, all at once, each waiting on the others' row locks:
+            # four refetches took 670 ms against 270 ms with the cache valid.
+            # The lock is held to the end of this transaction, so a waiter
+            # wakes after the holder's rows are committed and the second look
+            # finds them. A transaction that invalidated the cache itself
+            # still sees its own invalidation, and rebuilds.
+            await lock_for_transaction(self.snapshot_repo.session, budget_id)
+            if not await self.snapshot_repo.is_valid(budget_id):
+                await self._rebuild_snapshots(budget_id, categories)
 
         latest = await self.snapshot_repo.latest_per_category(budget_id, month_start)
         zero = Decimal("0")
@@ -1706,24 +1795,46 @@ class BudgetService:
         month: date,
         amount: Decimal,
     ) -> None:
-        await self._require_envelope(budget_id, category_id)
+        await self.set_assignments(budget_id, month, {category_id: amount})
+
+    async def set_assignments(
+        self,
+        budget_id: uuid.UUID,
+        month: date,
+        amounts: Mapping[uuid.UUID, Decimal],
+    ) -> None:
+        """Set several envelopes' assigned for one month — the inspector's
+        auto-assign buttons and Target Amount, and a single typed cell.
+
+        One write whatever the count: the envelopes are loaded and checked
+        together, the month's rows written in one statement, and the change
+        rows go out in the caller's batch, so undo still takes the whole
+        button back as one step. Every guard still runs per envelope, and all
+        of them run before anything is written. The per-envelope loop this
+        replaced spent about ten statements on each — Assigned Last Month
+        across seventy envelopes was 737 of them.
+        """
+        if not amounts:
+            return
+        envelopes = await self._envelopes(budget_id, amounts)
+        for category_id in amounts:
+            envelopes.require_source(category_id)
         month_start = first_of_month(month)
         await self._require_editable_month(budget_id, month_start)
-        assignment = await self.assignment_repo.get_or_create(
-            budget_id=budget_id,
-            category_id=category_id,
-            month=month_start,
-        )
-        before_assigned = assignment.assigned
-        # Only an INCREASE has to clear the funding rule. Setting an archived
-        # envelope's assignment down — to zero, or anywhere below where it
-        # stands — is money coming back out, which is always allowed and is
-        # what the archive sweep does.
-        if amount > before_assigned:
-            await self._require_fundable(budget_id, category_id)
-        updated = await self.assignment_repo.update(assignment.id, assigned=amount)
-        if updated.assigned != before_assigned:
-            await self._record_assignment(updated, before_assigned)
+        before = await self.assignment_repo.assigned_in_month(month_start, amounts)
+        zero = Decimal("0")
+        for category_id, amount in amounts.items():
+            # Only an INCREASE has to clear the funding rule. Setting an
+            # archived envelope's assignment down — to zero, or anywhere below
+            # where it stands — is money coming back out, which is always
+            # allowed and is what the archive sweep does.
+            if amount > before.get(category_id, zero):
+                envelopes.require_fundable(category_id)
+        rows = await self.assignment_repo.set_month(budget_id, month_start, amounts)
+        for category_id in amounts:
+            row, was = rows[category_id], before.get(category_id, zero)
+            if row.assigned != was:
+                await self._record_assignment(row, was)
 
     async def get_category_history(
         self,
@@ -1732,8 +1843,24 @@ class BudgetService:
         current_month: date,
         lookback: int = 6,
     ) -> "CategoryHistory":
-        """Auto-assign's history figures for one envelope: last month's and
-        the trailing average's assigned and spent.
+        """One envelope's `get_category_histories` — see there for what
+        "spent" means here and why it is not the reports' figure."""
+        histories = await self.get_category_histories(
+            budget_id, [category_id], current_month, lookback
+        )
+        return histories[category_id]
+
+    async def get_category_histories(
+        self,
+        budget_id: uuid.UUID,
+        category_ids: Sequence[uuid.UUID],
+        current_month: date,
+        lookback: int = 6,
+    ) -> dict[uuid.UUID, "CategoryHistory"]:
+        """Auto-assign's history figures, per envelope: last month's and the
+        trailing average's assigned and spent, over the `lookback` complete
+        months before `current_month` — three queries for any number of
+        envelopes.
 
         **"Spent" here is not the reports' spent, deliberately.** Category
         History, Plan vs Spent and the target editor's suggestions read the
@@ -1758,67 +1885,57 @@ class BudgetService:
         and the same total; `tests/integration/test_average_spent_agreement.py`
         holds them to exactly these differences and fails if they drift
         further.
+
+        Batched because the history strategies and the inspector's buttons
+        ask it of every envelope at once; one category at a time it was three
+        queries each, two hundred for a seventy-envelope budget.
         """
-        # Guard: category_id may arrive from a request body (batch history),
+        # Guard: the ids may arrive from a request body (batch history),
         # bypassing the route's BudgetAccess check. Reject foreign categories
         # so history cannot be read across budgets.
-        await require_in_budget(
-            self.category_repo.session, Category, category_id, budget_id, "Category"
-        )
+        wanted = set(category_ids)
+        owned = await ids_in_budget(self.category_repo.session, Category, wanted, budget_id)
+        if owned != wanted:
+            raise InvariantViolation("Category does not belong to this budget")
+        if not wanted:
+            return {}
         month_start = first_of_month(current_month)
         # The `lookback` complete months before this one, newest first — the
         # window every per-month average reads.
         past_months = month_starts(*complete_month_window(month_start, lookback))[::-1]
-
-        assignments = await self.assignment_repo.get_for_category(category_id)
-        assigned_by_month = {a.month: a.assigned for a in assignments}
-
-        # Activity through the most RECENT past month (past_months[0]); the
-        # current month's spending must not leak into history.
-        activity_by_month = await self.transaction_repo.sum_by_category_by_month(
-            category_id, end_date=last_of_month(past_months[0] if past_months else month_start)
-        )
-        # activity is negative for spending; flip sign for "spent" values
-        spent_by_month = {m: -v for m, v in activity_by_month.items() if v < 0}
-
         last_month = past_months[0] if past_months else None
-        last_assigned = (
-            assigned_by_month.get(last_month, Decimal("0")) if last_month else Decimal("0")
-        )
-        last_spent = spent_by_month.get(last_month, Decimal("0")) if last_month else Decimal("0")
 
-        months_with_data = [m for m in past_months if m in assigned_by_month or m in spent_by_month]
-        n = len(months_with_data) if months_with_data else 1
-        zero = Decimal("0")
-        avg_assigned = sum((assigned_by_month.get(m, zero) for m in past_months), zero) / n
-        avg_spent = sum((spent_by_month.get(m, zero) for m in past_months), zero) / n
-
-        return CategoryHistory(
-            category_id=category_id,
-            last_month_assigned=last_assigned,
-            last_month_spent=last_spent,
-            average_assigned=quantize_cents(avg_assigned),
-            average_spent=quantize_cents(avg_spent),
-            months_included=n,
+        assignments = await self.assignment_repo.get_for_categories(wanted, last_month)
+        # Activity through the most RECENT past month; the current month's
+        # spending must not leak into history.
+        activity = await self.transaction_repo.sum_all_categories_by_month(
+            list(wanted), end_date=last_of_month(last_month or month_start)
         )
+        return {
+            category_id: _history(
+                category_id,
+                {a.month: a.assigned for a in assignments.get(category_id, [])},
+                activity.get(category_id, {}),
+                past_months,
+            )
+            for category_id in category_ids
+        }
 
     async def auto_assign(
         self,
         budget_id: uuid.UUID,
-        category_id: uuid.UUID,
+        category_ids: Sequence[uuid.UUID],
         month: date,
         action: str,
     ) -> None:
-        history = await self.get_category_history(budget_id, category_id, month)
-        amount_map = {
-            "last_month_assigned": history.last_month_assigned,
-            "last_month_spent": history.last_month_spent,
-            "average_assigned": history.average_assigned,
-            "average_spent": history.average_spent,
-            "reset": Decimal("0"),
-        }
-        amount = amount_map[action]  # the request schema closes the set
-        await self.set_assignment(budget_id, category_id, month, amount)
+        """The inspector's history buttons and Reset: set each envelope to
+        its own figure for `action`, as one write."""
+        if action == "reset":
+            amounts = dict.fromkeys(category_ids, Decimal("0"))
+        else:
+            histories = await self.get_category_histories(budget_id, category_ids, month)
+            amounts = {cid: histories[cid].figure(action) for cid in category_ids}
+        await self.set_assignments(budget_id, month, amounts)
 
     def _plan_repo(self) -> ImportPlanRepository | None:
         """The import's stored YNAB months, read through the anchor
@@ -1891,10 +2008,30 @@ class BudgetService:
         into a category; to=None releases a category's money back to TBA.
         The move is recorded in the budget_moves audit trail.
         """
-        if amount <= 0:
-            raise InvariantViolation("Amount to move must be positive")
-        if from_category_id == to_category_id:
-            raise InvariantViolation("Choose two different envelopes")
+        await self.move_money_many(
+            budget_id, month, [MoneyMove(from_category_id, to_category_id, amount)]
+        )
+
+    async def move_money_many(
+        self, budget_id: uuid.UUID, month: date, moves: Sequence[MoneyMove]
+    ) -> None:
+        """Several moves in one month, as one write — the dropdown's Apply and
+        Cover Overspending, which move one envelope each.
+
+        Each move is still its own audit row and its own pair of change rows,
+        so the month's move list, per-move undo and `_move_groups` see exactly
+        what one `move_money` per envelope recorded. What changes is the cost:
+        the envelopes are checked together and the month's rows written in
+        one statement, where the per-move loop spent about a dozen statements
+        on each.
+        """
+        for move in moves:
+            if move.amount <= 0:
+                raise InvariantViolation("Amount to move must be positive")
+            if move.from_category_id == move.to_category_id:
+                raise InvariantViolation("Choose two different envelopes")
+        if not moves:
+            return
 
         month_start = first_of_month(month)
         await self._require_editable_month(budget_id, month_start)
@@ -1902,41 +2039,60 @@ class BudgetService:
         # Asymmetric on purpose: leaving is always allowed, entering is not.
         # Both used to run the same check, which is how money could be moved
         # into an envelope the budget page no longer draws.
-        if from_category_id is not None:
-            await self._require_envelope(budget_id, from_category_id)
-        if to_category_id is not None:
-            await self._require_fundable(budget_id, to_category_id)
+        envelopes = await self._envelopes(
+            budget_id,
+            {c for m in moves for c in (m.from_category_id, m.to_category_id) if c is not None},
+        )
+        for move in moves:
+            if move.from_category_id is not None:
+                envelopes.require_source(move.from_category_id)
+            if move.to_category_id is not None:
+                envelopes.require_fundable(move.to_category_id)
 
-        # The audit row first, so both assignment change rows can carry its id.
-        move = None
+        # The audit rows first, so every assignment change row can carry its id.
+        audits: list[BudgetMove | None] = [None] * len(moves)
         if self.move_repo is not None:
-            move = await self.move_repo.create(
-                budget_id=budget_id,
-                month=month_start,
-                from_category_id=from_category_id,
-                to_category_id=to_category_id,
-                amount=amount,
+            audits = list(
+                self.move_repo.add_many(
+                    BudgetMove(
+                        id=new_uuid(),
+                        budget_id=budget_id,
+                        month=month_start,
+                        from_category_id=m.from_category_id,
+                        to_category_id=m.to_category_id,
+                        amount=m.amount,
+                    )
+                    for m in moves
+                )
             )
 
+        # Walk the moves in order, so each change row's before/after is the
+        # figure that move saw — an envelope two moves pass through gets two
+        # rows, chained, exactly as two sequential moves recorded them.
+        zero = Decimal("0")
+        running = dict(
+            await self.assignment_repo.assigned_in_month(month_start, envelopes.categories)
+        )
+        steps: list[tuple[uuid.UUID, Decimal, Decimal, BudgetMove | None]] = []
+        for move, audit in zip(moves, audits, strict=True):
+            for category_id, sign in ((move.from_category_id, -1), (move.to_category_id, 1)):
+                if category_id is None:
+                    continue
+                was = running.get(category_id, zero)
+                running[category_id] = was + sign * move.amount
+                steps.append((category_id, was, running[category_id], audit))
+        rows = await self.assignment_repo.set_month(
+            budget_id, month_start, {cid: running[cid] for cid in envelopes.categories}
+        )
+        last_step = {category_id: i for i, (category_id, *_rest) in enumerate(steps)}
         with self.changes.batch():
-            if from_category_id is not None:
-                from_assignment = await self.assignment_repo.get_or_create(
-                    budget_id, from_category_id, month_start
+            for i, (category_id, was, now, audit) in enumerate(steps):
+                await self._record_assignment(
+                    rows[category_id],
+                    was,
+                    audit,
+                    after_assigned=None if last_step[category_id] == i else now,
                 )
-                before_from = from_assignment.assigned
-                updated_from = await self.assignment_repo.update(
-                    from_assignment.id, assigned=from_assignment.assigned - amount
-                )
-                await self._record_assignment(updated_from, before_from, move)
-            if to_category_id is not None:
-                to_assignment = await self.assignment_repo.get_or_create(
-                    budget_id, to_category_id, month_start
-                )
-                before_to = to_assignment.assigned
-                updated_to = await self.assignment_repo.update(
-                    to_assignment.id, assigned=to_assignment.assigned + amount
-                )
-                await self._record_assignment(updated_to, before_to, move)
         # The rows must be queryable by the next statement in this transaction
         # (undo_move, a batch undo): a session without autoflush would otherwise
         # hold the last-recorded side back until something else flushed.
@@ -2056,6 +2212,7 @@ class BudgetService:
                 )
 
         with self.changes.batch() as batch_id:
-            for cat_id, amount in to_apply:
-                await self.move_money(budget_id, None, cat_id, amount, month)
+            await self.move_money_many(
+                budget_id, month, [MoneyMove(None, cat_id, amount) for cat_id, amount in to_apply]
+            )
         return batch_id if to_apply else None
