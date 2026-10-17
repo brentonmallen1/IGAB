@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -8,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from igab.api.v1.router import api_router
 from igab.config import settings
+from igab.db import query_stats
 from igab.db.session import engine, init_db
 from igab.domain.exceptions import IGABError, NotFoundError
 from igab.mcp.server import mcp_app
@@ -156,6 +158,27 @@ async def maintenance_guard(request: Request, call_next):
             content={"detail": "Restoring from backup — the app will restart shortly"},
         )
     return await call_next(request)
+
+
+if settings.LOG_QUERY_STATS:
+    query_stats.install(engine.sync_engine)
+
+    @app.middleware("http")
+    async def log_query_stats(request: Request, call_next):
+        """One line per request: statements, database time, wall time."""
+        started = time.perf_counter()
+        with query_stats.measuring() as stats:
+            response = await call_next(request)
+        logger.info(
+            "%s %s -> %d: %d statements, %.1f ms in the database, %.1f ms total",
+            request.method,
+            request.url.path,
+            response.status_code,
+            stats.statements,
+            stats.db_seconds * 1000,
+            (time.perf_counter() - started) * 1000,
+        )
+        return response
 
 
 app.add_middleware(
