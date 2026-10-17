@@ -4,9 +4,18 @@ version of this and agreed only on the first rung.
 """
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
+from igab.domain.merging import (
+    MergePlan,
+    MergeSide,
+    Refused,
+    choose_survivor,
+    plan_merge,
+    survivor_violation,
+)
 
 ACCOUNT = uuid.uuid4()
 T0 = datetime(2026, 7, 1, tzinfo=UTC)
@@ -21,6 +30,7 @@ def side(**over) -> MergeSide:
         transfer_id=None,
         parent_transaction_id=None,
         account_id=ACCOUNT,
+        amount=Decimal("-500.00"),
         sync_id=None,
         sync_source=None,
         created_at=T0,
@@ -83,7 +93,7 @@ def test_refusals_by_name():
         side(is_split=True, cleared="reconciled"), split, None
     )
     leg = side(transfer_id=uuid.uuid4())
-    assert "merge away a transfer" in survivor_violation(rec, leg, None)
+    assert survivor_violation(rec, leg, None) is None, "a leg's transfer is the plan's question"
 
     elsewhere = side(account_id=uuid.uuid4())
     assert "same account" in survivor_violation(side(), elsewhere, None)
@@ -98,3 +108,148 @@ def test_refusals_by_name():
 
 def test_a_clean_pair_has_no_violation():
     assert survivor_violation(side(), side(sync_id="t-1", sync_source="simplefin"), None) is None
+
+
+# ─── What becomes of a transfer leg that loses ──────────────────────────────
+#
+# The review queue used to refuse every one of these with "Cannot merge away a
+# transfer", and nothing else on screen could resolve the duplicate.
+
+CARD = uuid.uuid4()
+
+
+def pair(**over) -> tuple[MergeSide, MergeSide]:
+    """A checking leg and its card leg, linked both ways: a $500 payment.
+    `over` is applied to the checking leg."""
+    leg_id, partner_id = uuid.uuid4(), uuid.uuid4()
+    leg = side(id=leg_id, transfer_id=partner_id, **over)
+    partner = side(id=partner_id, transfer_id=leg_id, account_id=CARD, amount=Decimal("500.00"))
+    return leg, partner
+
+
+def changed(s: MergeSide, **over) -> MergeSide:
+    return replace(s, **over)
+
+
+def partners_of(*sides: MergeSide) -> dict[uuid.UUID, MergeSide]:
+    return {s.id: s for s in sides}
+
+
+def test_a_reconciled_plain_row_takes_the_transfer_over():
+    """The statement row survives and becomes the leg; the deleted leg's
+    partner is the one it links to."""
+    typed, card_leg = pair()
+    statement = side(cleared="reconciled", sync_id="t-1", sync_source="simplefin")
+
+    plan = plan_merge(typed, statement, None, partners_of(card_leg))
+
+    assert isinstance(plan, MergePlan)
+    assert plan.survivor is statement and plan.deleted is typed
+    assert plan.adopted_partner is card_leg and plan.partner_merge is None
+    assert plan.survivor_partner is card_leg and plan.relinks
+
+
+def test_a_plain_duplicate_of_a_leg_changes_no_link():
+    typed, _ = pair()
+    plan = plan_merge(typed, side(sync_id="t-1", sync_source="simplefin"), None, {})
+    assert isinstance(plan, MergePlan)
+    assert plan.survivor is typed and plan.adopted_partner is None
+    assert not plan.relinks, "the leg keeps the partner it had"
+
+
+def test_two_transfers_for_one_payment_merge_on_both_accounts():
+    """The sync shape: the typed payment, and the bank's two rows paired
+    into a second transfer. The typed pair survives on both sides, the bank
+    pair goes, and no link has to move."""
+    typed, typed_card = pair(created_at=T0)
+    bank, bank_card = pair(sync_id="t-chk", sync_source="simplefin", created_at=T1)
+    bank_card = changed(bank_card, sync_id="t-card", sync_source="simplefin")
+
+    plan = plan_merge(bank, typed, None, partners_of(typed_card, bank_card))
+
+    assert isinstance(plan, MergePlan)
+    assert plan.survivor is typed and plan.deleted is bank
+    assert plan.partner_merge is not None
+    assert plan.partner_merge.survivor is typed_card and plan.partner_merge.deleted is bank_card
+    assert not plan.relinks
+
+
+def test_the_far_pair_follows_its_own_precedence():
+    """A reconciled card leg survives on the card even when its checking leg
+    loses — so the checking survivor is relinked to it."""
+    typed, typed_card = pair(created_at=T0)
+    bank, bank_card = pair(created_at=T1)
+    bank_card = changed(bank_card, cleared="reconciled")
+
+    plan = plan_merge(bank, typed, None, partners_of(typed_card, bank_card))
+
+    assert isinstance(plan, MergePlan)
+    assert plan.survivor is typed
+    assert plan.partner_merge is not None and plan.partner_merge.survivor is bank_card
+    assert plan.survivor_partner is bank_card and plan.relinks
+
+
+def test_partners_with_different_amounts_are_refused_by_name():
+    typed, typed_card = pair()
+    bank, bank_card = pair(created_at=T1)
+    bank_card = changed(bank_card, amount=Decimal("450.00"))
+
+    plan = plan_merge(bank, typed, None, partners_of(typed_card, bank_card))
+
+    assert isinstance(plan, Refused)
+    assert "other account's two legs don't match" in plan.reason
+    assert "500.00" in plan.reason and "450.00" in plan.reason
+
+
+def test_partners_in_different_accounts_are_refused_by_name():
+    typed, typed_card = pair()
+    bank, bank_card = pair(created_at=T1)
+    bank_card = changed(bank_card, account_id=uuid.uuid4())
+
+    plan = plan_merge(bank, typed, None, partners_of(typed_card, bank_card))
+
+    assert isinstance(plan, Refused)
+    assert "other account's two legs don't match" in plan.reason
+    assert "different accounts" in plan.reason
+
+
+def test_partners_the_rules_would_not_merge_are_refused_by_name():
+    """Both reconciled, or two different bank records: the far pair is held
+    to the same rules a direct merge of it would be."""
+    typed, typed_card = pair()
+    bank, bank_card = pair(created_at=T1)
+    for far_typed, far_bank, why in (
+        (
+            changed(typed_card, cleared="reconciled"),
+            changed(bank_card, cleared="reconciled"),
+            "two reconciled",
+        ),
+        (
+            changed(typed_card, sync_id="t-card-1", sync_source="simplefin"),
+            changed(bank_card, sync_id="t-card-2", sync_source="simplefin"),
+            "different bank",
+        ),
+    ):
+        plan = plan_merge(bank, typed, None, partners_of(far_typed, far_bank))
+        assert isinstance(plan, Refused), why
+        assert "other account's two legs don't match" in plan.reason
+        assert why in plan.reason
+
+
+def test_a_leg_whose_partner_is_gone_is_refused():
+    typed, _ = pair()
+    plan = plan_merge(typed, side(cleared="reconciled"), None, {})
+    assert isinstance(plan, Refused) and "missing" in plan.reason
+
+
+def test_a_split_cannot_take_a_transfer_over():
+    typed, card_leg = pair()
+    reconciled_split = side(cleared="reconciled", is_split=True)
+    plan = plan_merge(typed, reconciled_split, None, partners_of(card_leg))
+    assert isinstance(plan, Refused) and "split cannot take over a transfer" in plan.reason
+
+
+def test_the_two_legs_of_one_transfer_are_not_duplicates():
+    leg, partner = pair()
+    plan = plan_merge(leg, partner, None, partners_of(leg, partner))
+    assert isinstance(plan, Refused) and "same account" in plan.reason

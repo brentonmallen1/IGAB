@@ -2,7 +2,8 @@
   "_comment": "One rule, two languages. Run by BOTH frontend/src/components/transactions/mergeEligibility.test.ts and backend/tests/unit/test_merge_offer.py. A rule changed on one side only fails on the other.",
   "_why": "The client's copy of this rule had already drifted. It knew about accounts, reconciled pairs, splits and transfer legs, but not about bank identity — so the register offered Merge on two SimpleFIN rows carrying different bank ids, the server refused every save, and the modal swallowed the refusal. A real duplicate of a reconciled Hobby Lobby row could not be merged and the UI would not say why.",
   "_shape": "`server_accepts` is domain/merging.may_offer_merge — would the merge go through with no survivor requested. `register_offers` is whether the register draws the Merge button. Two invariants, both tested on both sides: the register never offers what the server refuses, and where it offers LESS the divergence is named below. Which row survives stays a server decision (choose_survivor); offerability is not survivorship. `kept` (on every case the register offers) is the side the server keeps whatever the user picks — choose_survivor's reconciled and structured rules — or null where the choice is the user's. The merge preview locks its Keep badge from the same rule (mergeEligibility.lockedSurvivor), so this pins that copy too.",
-  "_deliberate_divergence": "The register does not offer a merge involving a transfer leg, though the server would accept one (the leg survives, the plain duplicate goes). The preview modal shows rows becoming one; it cannot show what happens to a transfer's partner, and a merge the user cannot see the consequences of is not one the register should offer. Splits used to be held back the same way; the preview now says where a split's lines go, so they are offered. Bounded here, and pinned by the containment test — if the gap widens, both suites fail.",
+  "_deliberate_divergence": "The register does not offer a merge involving a transfer leg, though the server accepts three shapes of one: the leg survives and the plain duplicate goes; a reconciled plain row survives and takes the transfer over (the leg's partner is relinked to it); and two legs merge, which merges their partners on the other account in the same change. The preview modal shows two rows becoming one; it cannot show a partner being relinked or a second pair being merged in another account, and the register does not hold the partner rows the third shape is decided on (`partners`, which only the server suite reads). A merge the user cannot see the consequences of is not one the register should offer, and the duplicate-review queue, which is where transfer duplicates arrive, accepts all three. Splits used to be held back the same way; the preview now says where a split's lines go, so they are offered. Bounded here, and pinned by the containment test — if the gap widens, both suites fail.",
+  "_partners": "`partners` (server suite only) maps a leg's `transfer_id` key to its partner row; a partner's `transfer_id` names the side it belongs to. Amounts default to -500.00 on `a`/`b` — a $500 card payment out of checking.",
   "cases": [
     {
       "note": "the ordinary duplicate: one hand-entered, one from the bank",
@@ -120,6 +121,126 @@
       },
       "b": { "cleared": "cleared", "account_id": "a1", "sync_id": null },
       "server_accepts": true,
+      "register_offers": false
+    },
+    {
+      "note": "deliberate divergence: a reconciled bank row and the card payment typed as a transfer before it — the bank row is kept and takes the transfer over. This used to be refused with 'Cannot merge away a transfer'",
+      "a": { "cleared": "reconciled", "account_id": "a1", "sync_id": "TRN-1" },
+      "b": {
+        "cleared": "uncleared",
+        "account_id": "a1",
+        "sync_id": null,
+        "transfer_id": "card-of-b"
+      },
+      "partners": {
+        "card-of-b": {
+          "cleared": "uncleared",
+          "account_id": "card",
+          "sync_id": null,
+          "amount": "500.00",
+          "transfer_id": "side-b"
+        }
+      },
+      "server_accepts": true,
+      "register_offers": false
+    },
+    {
+      "note": "deliberate divergence: two transfers for one card payment — the typed one, and the bank's two rows a sync paired — merge on both accounts. This used to be refused with 'Cannot merge away a transfer'",
+      "a": {
+        "cleared": "uncleared",
+        "account_id": "a1",
+        "sync_id": null,
+        "transfer_id": "card-of-a"
+      },
+      "b": {
+        "cleared": "cleared",
+        "account_id": "a1",
+        "sync_id": "TRN-chk",
+        "transfer_id": "card-of-b"
+      },
+      "partners": {
+        "card-of-a": {
+          "cleared": "uncleared",
+          "account_id": "card",
+          "sync_id": null,
+          "amount": "500.00",
+          "transfer_id": "side-a"
+        },
+        "card-of-b": {
+          "cleared": "cleared",
+          "account_id": "card",
+          "sync_id": "TRN-card",
+          "amount": "500.00",
+          "transfer_id": "side-b"
+        }
+      },
+      "server_accepts": true,
+      "register_offers": false
+    },
+    {
+      "note": "two transfers whose card legs are for different amounts: the other account's two legs don't match, so neither pair is merged",
+      "a": {
+        "cleared": "uncleared",
+        "account_id": "a1",
+        "sync_id": null,
+        "transfer_id": "card-of-a"
+      },
+      "b": {
+        "cleared": "cleared",
+        "account_id": "a1",
+        "sync_id": "TRN-chk",
+        "transfer_id": "card-of-b"
+      },
+      "partners": {
+        "card-of-a": {
+          "cleared": "uncleared",
+          "account_id": "card",
+          "sync_id": null,
+          "amount": "500.00",
+          "transfer_id": "side-a"
+        },
+        "card-of-b": {
+          "cleared": "cleared",
+          "account_id": "card",
+          "sync_id": "TRN-card",
+          "amount": "450.00",
+          "transfer_id": "side-b"
+        }
+      },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "two transfers whose card legs are both reconciled: neither card leg may go, so neither pair is merged",
+      "a": {
+        "cleared": "uncleared",
+        "account_id": "a1",
+        "sync_id": null,
+        "transfer_id": "card-of-a"
+      },
+      "b": {
+        "cleared": "cleared",
+        "account_id": "a1",
+        "sync_id": "TRN-chk",
+        "transfer_id": "card-of-b"
+      },
+      "partners": {
+        "card-of-a": {
+          "cleared": "reconciled",
+          "account_id": "card",
+          "sync_id": null,
+          "amount": "500.00",
+          "transfer_id": "side-a"
+        },
+        "card-of-b": {
+          "cleared": "reconciled",
+          "account_id": "card",
+          "sync_id": "TRN-card",
+          "amount": "500.00",
+          "transfer_id": "side-b"
+        }
+      },
+      "server_accepts": false,
       "register_offers": false
     },
     {

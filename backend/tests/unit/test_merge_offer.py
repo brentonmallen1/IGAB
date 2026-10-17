@@ -10,6 +10,7 @@ save, with the refusal swallowed by the modal.
 
 import json
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -38,18 +39,27 @@ def _side(spec: dict, key: str) -> MergeSide:
         transfer_id=_id(spec.get("transfer_id")),
         parent_transaction_id=_id(spec.get("parent_transaction_id")),
         account_id=_id(spec["account_id"]),  # type: ignore[arg-type]
+        amount=Decimal(spec.get("amount", "-500.00")),
         sync_id=spec.get("sync_id"),
         sync_source="simplefin" if spec.get("sync_id") else None,
         created_at=None,
     )
 
 
+def _partners(case: dict) -> dict[uuid.UUID, MergeSide]:
+    """The partner rows a transfer case is decided on — the input the
+    register does not hold, which is why it offers none of these."""
+    sides = (_side(spec, key) for key, spec in case.get("partners", {}).items())
+    return {s.id: s for s in sides}
+
+
 @pytest.mark.parametrize("case", CASES, ids=[c["note"] for c in CASES])
 def test_shared_merge_cases(case):
     a, b = _side(case["a"], "side-a"), _side(case["b"], "side-b")
-    assert may_offer_merge(a, b) is case["server_accepts"], case["note"]
+    partners = _partners(case)
+    assert may_offer_merge(a, b, partners) is case["server_accepts"], case["note"]
     # Order is not part of the question: the register has no first row.
-    assert may_offer_merge(b, a) is case["server_accepts"], case["note"]
+    assert may_offer_merge(b, a, partners) is case["server_accepts"], case["note"]
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c["note"] for c in CASES])
