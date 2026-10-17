@@ -1725,6 +1725,33 @@ class BudgetService:
         current_month: date,
         lookback: int = 6,
     ) -> "CategoryHistory":
+        """Auto-assign's history figures for one envelope: last month's and
+        the trailing average's assigned and spent.
+
+        **"Spent" here is not the reports' spent, deliberately.** Category
+        History, Plan vs Spent and the target editor's suggestions read the
+        plan ledger (`plan_ledger.spent_series`): spending classified by
+        `plan_effect`, net of refunds, with money moved in or out of the
+        envelope not counted as spending. This reads the envelope's own
+        Activity, because the question is different — not "what was spent"
+        but "what did assignments have to cover":
+
+        - **Money moved in nets it.** A bill paid by a transfer from savings
+          needed no assignment; the ledger counts the whole bill.
+        - **Money moved out counts.** A principal transfer out of an untagged
+          envelope drained it like spending; the ledger calls it moved out.
+        - **A month that took in more than it paid out needed nothing** — it
+          counts as zero, where the ledger lets refunds make a month negative.
+        - **The divisor is the envelope's own months**: those with an
+          assignment or spending in the window, so an envelope three months
+          old is not averaged over six. The ledger's average divides by every
+          complete month of the window.
+
+        On an envelope with plain spending only, both read the same months
+        and the same total; `tests/integration/test_average_spent_agreement.py`
+        holds them to exactly these differences and fails if they drift
+        further.
+        """
         # Guard: category_id may arrive from a request body (batch history),
         # bypassing the route's BudgetAccess check. Reject foreign categories
         # so history cannot be read across budgets.

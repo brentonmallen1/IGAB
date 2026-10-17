@@ -315,6 +315,27 @@ class CategoryTargetResponse(ApiModel):
     model_config = {"from_attributes": True}
 
 
+class TargetSuggestionsResponse(ApiModel):
+    """Figures the target editor offers as one-tap suggestions
+    (`services.target_suggestions`): spending from the plan ledger, as the
+    Category History report states it, and the Budget page's month-end
+    Available, over the last twelve complete months."""
+
+    category_id: uuid.UUID
+    #: Net spent per complete month, as Category History averages it; zero
+    #: when there is no history (or refunds beat spending).
+    average_spent: Decimal
+    #: The heaviest complete month's net spent; null when none spent.
+    peak_spent: Decimal | None
+    peak_spent_month: datetime.date | None
+    #: The most the envelope held at a complete month's end; null when it
+    #: never held anything.
+    peak_available: Decimal | None
+    peak_available_month: datetime.date | None
+    #: Complete months read — up to twelve, fewer on a young budget.
+    months_counted: int
+
+
 class CategoryBalance(ApiModel):
     category_id: uuid.UUID
     month: datetime.date
