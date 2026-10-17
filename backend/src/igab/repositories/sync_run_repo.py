@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from igab.db.models import SyncRun, SyncRunAccount
+from igab.domain.bank_absence import LOOKBACK_DAYS, Absence
 
 
 class SyncRunRepository:
@@ -64,6 +65,26 @@ class SyncRunRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def recent_absences(self, budget_id: uuid.UUID) -> list[Absence]:
+        """Every row a recent run found missing from the feed, oldest first.
+
+        Recent is `bank_absence.LOOKBACK_DAYS`. A run since undone is left
+        out: its removals were taken back with it, so its entries describe
+        nothing that is still true.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=LOOKBACK_DAYS)
+        result = await self.session.execute(
+            select(SyncRun.no_longer_reported)
+            .where(
+                SyncRun.budget_id == budget_id,
+                SyncRun.created_at >= cutoff,
+                SyncRun.undone_at.is_(None),
+                func.jsonb_array_length(SyncRun.no_longer_reported) > 0,
+            )
+            .order_by(SyncRun.seq)
+        )
+        return [Absence.from_record(entry) for entries in result.scalars() for entry in entries]
 
     async def mark_undone(self, run: SyncRun) -> None:
         run.undone_at = datetime.now(UTC)

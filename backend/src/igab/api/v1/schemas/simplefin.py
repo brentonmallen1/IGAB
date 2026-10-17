@@ -139,6 +139,22 @@ class BalanceDriftInfo(ApiModel):
     in_review: Decimal | None = None
 
 
+class NoLongerReportedInfo(ApiModel):
+    """A linked row a run found missing from the feed, and what it did —
+    `domain.bank_absence.Absence`. `action` is `removed` (a pending hold the
+    sync wrote), `kept` (a row the person entered, or one the bank posted),
+    or `reported_again` (a kept posted row whose id came back)."""
+
+    transaction_id: uuid.UUID
+    account_id: uuid.UUID
+    date: date
+    payee: str | None = None
+    amount: Decimal
+    sync_id: str | None = None
+    kind: str
+    action: str
+
+
 class SyncResult(ApiModel):
     imported: int
     skipped: int
@@ -153,6 +169,9 @@ class SyncResult(ApiModel):
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
+    #: Rows the bank no longer reports that this run kept — a person's row
+    #: linked to a hold that vanished, or a posted row whose id is gone.
+    kept_unreported: int = 0
     orphaned_links: list[OrphanedLinkInfo] = []
     bank_errors: list[BankErrorInfo] = []
     balance_drift: list[BalanceDriftInfo] = []
@@ -209,6 +228,7 @@ class SyncAllResult(ApiModel):
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
+    kept_unreported: int = 0
     anchored: int = 0
     connections: list[ConnectionSyncOutcome] = []
 
@@ -303,6 +323,9 @@ class SyncRunResponse(ApiModel):
     review_queued: int = 0
     removed_pending: int = 0
     anchored: int = 0
+    #: Each row behind `removed_pending`, and each row the run kept although
+    #: the bank no longer reports it.
+    no_longer_reported: list[NoLongerReportedInfo] = []
     #: Present when the run's writes can be taken back as a unit.
     change_batch_id: uuid.UUID | None = None
     undone_at: datetime | None = None
