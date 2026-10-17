@@ -218,32 +218,46 @@ export function useBudgetTransactions(
   })
 }
 
-/** Recent transactions for a single category across all accounts, newest first.
- * Pass accountId to narrow to one account. */
-/** One row-peek query for the budget page's drill-ins. Category scope uses
- *  leaf rows (categories live on split children); account scope uses parent
- *  rows (an account's register counts each split once, via its parent). */
+/** One row-peek query for the budget page's drill-ins, newest first.
+ *
+ *  Category scope uses leaf rows (categories live on split children); account
+ *  scope uses parent rows (an account's register counts each split once, via
+ *  its parent). `cardReserving` with an account is the card-reserve scope:
+ *  the card rows a spending envelope claims (`txn_filters.CARD_RESERVING_ROW`),
+ *  leaf rows, so a split charge lists by envelope.
+ *
+ *  `budgetMonth` ("YYYY-MM-01") is the month a row counts in for budget math
+ *  (`txn_filters.BUDGET_MONTH`) — what Activity and a card's reserve both
+ *  bucket by — never a calendar window: a late arrival dated in the import
+ *  month counts in the month after, and a window listed it under the wrong
+ *  figure. */
 export function useTransactionsPeek(
   budgetId: string | null,
-  scope: { categoryId?: string | null; accountId?: string | null },
+  scope: { categoryId?: string | null; accountId?: string | null; cardReserving?: boolean },
   limit: number,
-  window: { start: string; end: string } | null = null
+  budgetMonth: string | null = null
 ) {
-  const { categoryId = null, accountId = null } = scope
+  const { categoryId = null, accountId = null, cardReserving = false } = scope
   return useQuery({
-    queryKey: [ROOT.transactionsPeek, budgetId, categoryId, accountId, limit, window],
+    queryKey: [
+      ROOT.transactionsPeek,
+      budgetId,
+      categoryId,
+      accountId,
+      cardReserving,
+      limit,
+      budgetMonth,
+    ],
     queryFn: async () => {
-      const params: Record<string, unknown> = categoryId
-        ? { category_ids: categoryId, scope: 'leaf', limit }
-        : { scope: 'parent', limit }
+      const leaf = !!categoryId || cardReserving
+      const params: Record<string, unknown> = { scope: leaf ? 'leaf' : 'parent', limit }
+      if (categoryId) params.category_ids = categoryId
+      if (cardReserving) params.card_reserving = true
       if (accountId) params.account_ids = accountId
-      if (window) {
-        params.start_date = window.start
-        params.end_date = window.end
-      }
+      if (budgetMonth) params.budget_month = budgetMonth
       // Only the account scope: a running total across accounts is not a
       // balance of anything, and the server refuses it there anyway.
-      if (accountId && !categoryId) params.running_balance = true
+      if (accountId && !leaf) params.running_balance = true
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params }

@@ -3,8 +3,9 @@
  * due, a link to the card, and a Dismiss that the household shares.
  *
  * The rule is `reminderForCard`'s (utils/paymentDue.ts, tested there); these
- * pin what the banner adds — which lines it draws, what they say, and that a
- * dismissal hides exactly the reminder it names.
+ * pin what the banner adds — which lines it draws, what they say, that a
+ * dismissal hides exactly the reminder it names, and that Mark paid stores
+ * the bill the rule then reads as paid.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -37,6 +38,7 @@ const data = vi.hoisted(() => ({
   accounts: [] as AccountRow[],
   dismissals: [] as CardDueDismissal[],
   mutate: vi.fn(),
+  markPaid: vi.fn(),
 }))
 vi.mock('../../../api/liabilities', () => ({
   useLiabilities: () => ({ data: data.liabilities }),
@@ -44,7 +46,10 @@ vi.mock('../../../api/liabilities', () => ({
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: data.accounts }) }))
 vi.mock('../../../api/cardDueDismissals', () => ({
   useCardDueDismissals: () => ({ data: data.dismissals }),
-  useDismissCardDue: () => ({ mutate: data.mutate, isPending: false }),
+  useRecordCardDue: () => ({ mutate: data.mutate, isPending: false }),
+}))
+vi.mock('../../../hooks/useMarkBillPaid', () => ({
+  useMarkBillPaid: () => ({ mark: data.markPaid, isPending: false }),
 }))
 
 import { CardDueBanner } from './CardDueBanner'
@@ -95,6 +100,7 @@ beforeEach(() => {
   data.accounts = [account()]
   data.dismissals = []
   data.mutate.mockReset()
+  data.markPaid.mockReset()
 })
 
 afterEach(() => {
@@ -146,14 +152,34 @@ describe('the banner', () => {
 
     expect(data.mutate).toHaveBeenCalledExactlyOnceWith({
       accountId: 'visa',
-      reminder: {
-        state: 'due',
-        dueDate: '2026-09-17',
-        days: 4,
-        lastPayment: '2026-08-10',
-        watchedFrom: '2026-07-01',
-      },
+      dueDate: '2026-09-17',
+      state: 'due',
     })
+  })
+
+  it('marks the bill on its line paid — the bill, not the reminder', () => {
+    data.liabilities = [liability({ payment_due_day: 3, recent_payment_dates: ['2026-07-01'] })]
+    show()
+    fireEvent.click(
+      screen.getByRole('button', { name: "Mark Sapphire Visa's bill due Sep 3 paid" })
+    )
+
+    expect(data.markPaid).toHaveBeenCalledExactlyOnceWith('visa', 'Sapphire Visa', '2026-09-03')
+    expect(data.mutate).not.toHaveBeenCalled()
+  })
+
+  it('draws nothing once that bill is marked paid, and the next bill speaks as usual', () => {
+    data.liabilities = [liability({ payment_due_day: 3, recent_payment_dates: ['2026-07-01'] })]
+    // 3 Aug went by unpaid too, but the reminder is about the latest bill:
+    // marking 3 Sep paid clears it.
+    data.dismissals = [{ account_id: 'visa', due_date: '2026-09-03', state: 'paid' }]
+    const { container, unmount } = show()
+    expect(container).toBeEmptyDOMElement()
+    unmount()
+
+    vi.setSystemTime(new Date(2026, 8, 30, 12, 0, 0))
+    show()
+    expect(screen.getByRole('listitem')).toHaveTextContent('Sapphire Visa is due in 3 days')
   })
 
   it('hides once the dismissal is on file', () => {

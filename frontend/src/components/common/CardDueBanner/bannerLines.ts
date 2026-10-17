@@ -35,8 +35,9 @@ export interface BannerLine {
  * Which cards the banner speaks about, in the order it says them.
  *
  * Pure composition: the reminder is `reminderForCard`'s answer — the one the
- * credit-cards strip and the terms header read too — and this only drops the
- * ones somebody dismissed and orders the rest. Past due first (it is already
+ * credit-cards strip and the terms header read too, bills marked paid
+ * included — and this only drops the ones somebody dismissed and orders the
+ * rest. Past due first (it is already
  * late), then the soonest, then by name so the order is stable.
  */
 export function bannerLines(
@@ -50,7 +51,7 @@ export function bannerLines(
   for (const liability of liabilities) {
     const account = liability.linked_account_id ? byId.get(liability.linked_account_id) : undefined
     if (!account) continue
-    const reminder = reminderForCard(liability, account, today)
+    const reminder = reminderForCard(liability, account, today, dismissals)
     if (!reminder || isDismissed(dismissals, account.id, reminder)) continue
     lines.push({
       accountId: account.id,
