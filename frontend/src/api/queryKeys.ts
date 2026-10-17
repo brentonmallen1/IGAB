@@ -117,6 +117,7 @@ export const ROOT = {
   tagSuggestions: 'tagSuggestions',
   tags: 'tags',
   target: 'target',
+  targetSuggestions: 'targetSuggestions',
   targets: 'targets',
   transaction: 'transaction',
   transactionClassification: 'transaction-classification',

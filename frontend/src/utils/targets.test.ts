@@ -10,7 +10,7 @@
  * Fill Underfunded asks. The last describe block exists to keep it that way.
  */
 import { describe, expect, it } from 'vitest'
-import { targetMeasuresBalance, targetProgress } from './targets'
+import { describeTarget, targetMeasuresBalance, targetProgress } from './targets'
 import type { CategoryTarget } from '../types'
 
 function target(overrides: Partial<CategoryTarget> = {}): CategoryTarget {
@@ -21,6 +21,7 @@ function target(overrides: Partial<CategoryTarget> = {}): CategoryTarget {
     target_date: null,
     check_after_day: null,
     weekday: null,
+    target_limit: null,
     ...overrides,
   } as unknown as CategoryTarget
 }
@@ -59,6 +60,43 @@ describe('which number fills the bar', () => {
   })
 })
 
+describe('a target with a stop', () => {
+  it('fills toward its stop, by available, like a balance being built', () => {
+    const t = target({ target_amount: 100, target_limit: 1000 })
+    expect(targetProgress(t, 100, 250)).toBe(0.25)
+    // Assigned does not move it: holding the stop is the whole bar.
+    expect(targetProgress(t, 0, 1000)).toBe(1)
+    expect(targetProgress(t, 0, 1400)).toBe(1)
+    expect(targetProgress(t, 0, -20)).toBe(0)
+  })
+
+  it('a weekly target with a stop fills the same way', () => {
+    const t = target({ target_type: 'weekly_funding', weekday: 4, target_limit: 300 })
+    expect(targetProgress(t, 25, 150)).toBe(0.5)
+  })
+})
+
+describe('describeTarget', () => {
+  const money = (n: number) => `$${n.toLocaleString('en-US')}`
+
+  it('says the rate, and the stop when there is one', () => {
+    expect(describeTarget(target(), money)).toBe('$100/mo')
+    expect(describeTarget(target({ target_limit: 1000 }), money)).toBe('$100/mo, stops at $1,000')
+    expect(
+      describeTarget(
+        target({ target_type: 'weekly_funding', target_amount: 25, target_limit: 300 }),
+        money
+      )
+    ).toBe('$25/wk, stops at $300')
+  })
+
+  it('a savings balance is a balance, not a rate', () => {
+    expect(
+      describeTarget(target({ target_type: 'savings_balance', target_amount: 1000 }), money)
+    ).toBe('$1,000')
+  })
+})
+
 describe('targetMeasuresBalance is wording only', () => {
   it('is true for an undated savings balance and nothing else', () => {
     expect(targetMeasuresBalance(target({ target_type: 'savings_balance' }))).toBe(true)
@@ -79,6 +117,7 @@ describe('the server owns the verdict', () => {
     const mod = await import('./targets')
     expect(Object.keys(mod).sort()).toEqual([
       'MAX_FUNDING_DAY',
+      'describeTarget',
       'targetMeasuresBalance',
       'targetProgress',
     ])

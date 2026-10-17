@@ -29,6 +29,7 @@ const MONEY_FIELDS = new Set([
   'bank_amount',
   'assigned',
   'target_amount',
+  'target_limit',
   'balance',
   'value',
   'manual_balance',

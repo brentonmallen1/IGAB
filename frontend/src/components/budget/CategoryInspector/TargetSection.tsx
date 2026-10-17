@@ -2,8 +2,15 @@ import { useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useTarget, useUpsertTarget, useDeleteTarget } from '../../../api/targets'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { TARGET_TYPES, WEEKDAYS, buildTargetPayload, targetTypeLabel } from '../targetForm'
-import { MAX_FUNDING_DAY } from '../../../utils/targets'
+import {
+  TARGET_TYPES,
+  WEEKDAYS,
+  buildTargetPayload,
+  targetTakesLimit,
+  targetTypeLabel,
+} from '../targetForm'
+import { TargetSuggestionChips } from '../TargetSuggestionChips'
+import { MAX_FUNDING_DAY, describeTarget } from '../../../utils/targets'
 
 interface Props {
   categoryId: string
@@ -17,6 +24,7 @@ export function TargetSection({ categoryId }: Props) {
   const [targetDate, setTargetDate] = useState('')
   const [weekday, setWeekday] = useState('')
   const [checkAfterDay, setCheckAfterDay] = useState('')
+  const [limit, setLimit] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { data: target } = useTarget(categoryId)
@@ -29,12 +37,20 @@ export function TargetSection({ categoryId }: Props) {
     setTargetDate(target?.target_date ?? '')
     setWeekday(target?.weekday != null ? String(target.weekday) : '')
     setCheckAfterDay(target?.check_after_day != null ? String(target.check_after_day) : '')
+    setLimit(target?.target_limit != null ? String(target.target_limit) : '')
     setIsEditing(true)
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    const result = buildTargetPayload({ targetType, amount, targetDate, weekday, checkAfterDay })
+    const result = buildTargetPayload({
+      targetType,
+      amount,
+      targetDate,
+      weekday,
+      checkAfterDay,
+      limit,
+    })
     if (!result.ok) {
       setError(result.error)
       return
@@ -81,6 +97,11 @@ export function TargetSection({ categoryId }: Props) {
               required
             />
           </label>
+          <TargetSuggestionChips
+            categoryId={categoryId}
+            targetType={targetType}
+            onPick={(field, value) => (field === 'limit' ? setLimit(value) : setAmount(value))}
+          />
           {targetType === 'weekly_funding' && (
             <label className="inspector-field">
               <span>Every</span>
@@ -107,6 +128,21 @@ export function TargetSection({ categoryId }: Props) {
                 className="inspector-input"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
+              />
+            </label>
+          )}
+          {targetTakesLimit(targetType) && (
+            <label className="inspector-field">
+              <span>Stop at</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                className="inspector-input"
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+                placeholder="No limit"
               />
             </label>
           )}
@@ -190,7 +226,7 @@ export function TargetSection({ categoryId }: Props) {
               : ''}
           </div>
           <div className="inspector-target-display__amount">
-            {formatMoney(target.target_amount)}
+            {describeTarget(target, formatMoney)}
           </div>
           {target.target_date && (
             <div className="inspector-target-display__date">

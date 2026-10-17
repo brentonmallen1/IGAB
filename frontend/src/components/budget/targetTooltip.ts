@@ -21,14 +21,21 @@ export function ordinal(day: number): string {
 
 /** `needed` is the server's `needed_this_month`; `checkDay` is the day a
  *  pending target will be checked on (the target's own, else the budget's
- *  funding day). */
+ *  funding day); `limit` is the target's stop, if it has one — a funded
+ *  envelope with a stop says where it stops, since "funded" there can mean
+ *  "holding the stop" with nothing assigned this month. */
 export function getTargetTooltip(
   status: BadgeStatus,
   needed: number | undefined,
   formatMoney: (amount: number) => string,
-  checkDay?: number
+  checkDay?: number,
+  limit?: number | null
 ): string {
-  if (status === 'funded') return BADGE_LABELS.funded
+  if (status === 'funded') {
+    return limit != null
+      ? `${BADGE_LABELS.funded} — stops at ${formatMoney(limit)}`
+      : BADGE_LABELS.funded
+  }
   const amount = needed !== undefined && needed > 0 ? formatMoney(needed) : null
   if (status === 'pending') {
     const when = checkDay ? ` — checked after the ${ordinal(checkDay)}` : ''

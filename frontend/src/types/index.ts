@@ -789,6 +789,28 @@ export interface CategoryTarget {
   check_after_day: number | null
   /** Weekly funding only: 0=Monday … 6=Sunday. */
   weekday: number | null
+  /** Monthly or weekly funding only: "Stop at $L". The month asks for its
+   *  rate until the balance carried in reaches L, and holding L reads funded
+   *  (backend `TargetService.duty` / `calculate_status` — the verdict is
+   *  served on the row, never recomputed here). Null: no stop. */
+  target_limit: number | null
+}
+
+/** The target editor's suggestions (backend `services/target_suggestions.py`):
+ *  spending as the Category History report states it, and the Budget page's
+ *  month-end Available, over the last twelve complete months. */
+export interface TargetSuggestions {
+  category_id: string
+  /** Net spent per complete month; 0 when there is no history to read. */
+  average_spent: number
+  /** The heaviest complete month's net spent; null when none spent. */
+  peak_spent: number | null
+  peak_spent_month: string | null
+  /** The most the envelope held at a complete month's end; null if never. */
+  peak_available: number | null
+  peak_available_month: string | null
+  /** Complete months read — up to twelve, fewer on a young budget. */
+  months_counted: number
 }
 
 export interface ScheduledTransaction {
