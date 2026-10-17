@@ -1,0 +1,49 @@
+/* The arithmetic under a card's list of charges: from Set aside going in to
+   Set aside at the month's end. Ruled like the cards strip's breakdown — a
+   rule under a column is what arithmetic looks like — and on the sunken
+   surface, a well below the rows it totals. */
+.card-reserve-summary {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-lg) var(--spacing-md);
+  background-color: var(--surface-sunken);
+  border-top: 1px solid var(--edge-strong);
+}
+
+.card-reserve-summary__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: 2px 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.card-reserve-summary__row dt,
+.card-reserve-summary__row dd {
+  margin: 0;
+}
+
+.card-reserve-summary__row dd {
+  white-space: nowrap;
+}
+
+/* The two ends of the sum read a step louder than the lines between them. */
+.card-reserve-summary__row--edge,
+.card-reserve-summary__row--total {
+  color: var(--text-primary);
+}
+
+.card-reserve-summary__row--total {
+  margin-top: 2px;
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--edge);
+  font-weight: var(--font-weight-medium);
+}
+
+.card-reserve-summary__note {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

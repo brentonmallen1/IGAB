@@ -62,6 +62,15 @@ class CardMonth:
     riding: Decimal
     #: `card_position(set_aside, balance)` at this month.
     position: CardPosition
+    #: What rode onto the card this month instead of reserving
+    #: (`CardFunding.floored_by_card`), and what refunds on it repaid of
+    #: earlier rides (`discharged_by_card`). Not legs: neither moves Set
+    #: aside. They are the two terms between the month's card rows and its
+    #: legs — the rows net to `reservations − released − residual + rode −
+    #: ride_repaid` — so a list of those rows can be reconciled to Set aside
+    #: line by line.
+    rode: Decimal = ZERO
+    ride_repaid: Decimal = ZERO
 
     @property
     def reserve_delta(self) -> Decimal:
@@ -87,6 +96,8 @@ def card_timeline(
     riding_by_month: dict[date, Decimal],
     *,
     start: date | None = None,
+    rode_by_month: dict[date, Decimal] | None = None,
+    repaid_by_month: dict[date, Decimal] | None = None,
 ) -> list[CardMonth]:
     """The reserve's whole history, one entry per month anything moved.
 
@@ -99,7 +110,12 @@ def card_timeline(
     the opening leg, the real B−1 balance, the opening ride — rather than a
     history the anchor exists not to re-derive. The walk's own series carry
     no pre-anchor months, so only the register-sourced balance needs folding.
+
+    `rode_by_month` and `repaid_by_month` are carried onto each month as read
+    (`CardMonth.rode`, `ride_repaid`); they move no running total.
     """
+    rode = rode_by_month or {}
+    repaid = repaid_by_month or {}
     leg_series: dict[str, dict[date, Decimal]] = {
         "opening": reserve.opening,
         "written_off": reserve.written_off,
@@ -118,6 +134,8 @@ def card_timeline(
         {m for series in leg_series.values() for m in series}
         | set(balance_by_month)
         | set(riding_by_month)
+        | set(rode)
+        | set(repaid)
     )
     out: list[CardMonth] = []
     set_aside = balance = riding = ZERO
@@ -134,6 +152,8 @@ def card_timeline(
                 balance=balance,
                 riding=riding,
                 position=card_position(set_aside, balance),
+                rode=rode.get(month, ZERO),
+                ride_repaid=repaid.get(month, ZERO),
             )
         )
     return out

@@ -53,6 +53,7 @@ from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     BUDGET_MONTH,
     CARD_PAYMENT_FROM_CASH,
+    CARD_RESERVING_ROW,
     CASH_FLOW_ROW,
     CLASS_TOTAL_ROW,
     COUNTERPART_ACCOUNT_ID,
@@ -299,6 +300,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         *,
         start_date: date | None = None,
         end_date: date | None = None,
+        budget_month: date | None = None,
         search: str | None = None,
         category_ids: list[uuid.UUID] | None = None,
         payee_ids: list[uuid.UUID] | None = None,
@@ -310,6 +312,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         necessity_tier: NecessityTier | None = None,
         discretionary: bool = False,
         plan_spent: bool = False,
+        card_reserving: bool = False,
         direction: str | None = None,
         day_of_week: int | None = None,
         cleared: str | None = None,
@@ -357,6 +360,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             TransactionFilters(
                 start_date=start_date,
                 end_date=end_date,
+                budget_month=budget_month,
                 search=search,
                 category_ids=category_ids,
                 payee_ids=payee_ids,
@@ -367,6 +371,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 necessity_tier=necessity_tier,
                 discretionary=discretionary,
                 plan_spent=plan_spent,
+                card_reserving=card_reserving,
                 direction=direction,
                 day_of_week=day_of_week,
                 cleared=cleared,
@@ -898,7 +903,7 @@ class TransactionRepository(BaseRepository[Transaction]):
 
     async def sum_credit_outflows_by_category(
         self,
-        category_ids: list[uuid.UUID],
+        budget_id: uuid.UUID,
         end_date: date,
     ) -> dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]]:
         """Net categorized card spending: {category: {card: {month: SIGNED net}}}.
@@ -911,27 +916,24 @@ class TransactionRepository(BaseRepository[Transaction]):
         walk is what decides how much of it releases. (Clamping here is how
         every cross-month refund got discarded and the set-asides ratcheted
         upward — "The Unreleased Reservation".) Same row predicates as
-        `sum_all_categories_by_month`, narrowed to card accounts
-        (`ON_CARD_ACCOUNT`), so the split can never claim more credit
-        spending than the activity sum counted.
+        `sum_all_categories_by_month`, narrowed to card accounts, so the split
+        can never claim more credit spending than the activity sum counted.
 
-        `category_ids` is `CategoryRepository.spendable_ids`
-        (`category_filters.SPENDABLE`). Whatever is not in that set and is not
-        a payment from cash is an unbudgeted card credit, by construction —
-        see `sum_unclaimed_card_rows`.
+        The rows are `txn_filters.CARD_RESERVING_ROW` — a spendable
+        envelope's (`category_filters.SPENDABLE`) live, posted leaf on a card
+        — the predicate the transaction listing serves as
+        `card_reserving=true`, so the rows a card's "what set this aside"
+        lists are the rows summed here. Whatever is not one and is not a
+        payment from cash is an unbudgeted card credit, by construction — see
+        `sum_unclaimed_card_rows`.
         """
-        if not category_ids:
-            return {}
         rows = by_budget_month(
             Transaction.category_id,
             Transaction.account_id,
             Transaction.amount,
             where=(
-                Transaction.category_id.in_(category_ids),
-                NOT_DELETED,
-                LEAF,
-                POSTED,
-                ON_CARD_ACCOUNT,
+                Transaction.budget_id == budget_id,
+                CARD_RESERVING_ROW,
                 Transaction.date <= end_date,
             ),
         )

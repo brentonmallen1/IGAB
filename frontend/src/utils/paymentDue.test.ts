@@ -195,13 +195,14 @@ describe('cardDueReminder', () => {
   const ON_TIME = ['2026-05-01', '2026-05-29', '2026-06-29', '2026-07-29', '2026-08-29']
   const at = (
     today: string,
-    over: { owed?: number; paymentDates?: string[]; watchFrom?: string } = {}
+    over: { owed?: number; paymentDates?: string[]; watchFrom?: string; markedPaid?: string[] } = {}
   ) =>
     cardDueReminder(dayRule(3), {
       today,
       owed: 412,
       paymentDates: ON_TIME,
       watchFrom: WINDOW,
+      markedPaid: [],
       ...over,
     })
   const seen = { lastPayment: '2026-08-29', watchedFrom: WINDOW }
@@ -335,6 +336,7 @@ describe('cardDueReminder', () => {
       owed: 412,
       paymentDates: ['2026-08-31', '2026-09-05', '2026-09-10', '2026-09-15', '2026-09-20'],
       watchFrom: '2026-09-01',
+      markedPaid: [],
     })
     expect(reminder).toMatchObject({ state: 'past_due', dueDate: '2026-09-26' })
   })
@@ -344,7 +346,13 @@ describe('cardDueReminder', () => {
     // early through August.
     const rule = cycleRule(31, '2026-09-03')
     const on = (today: string, paymentDates: string[]) =>
-      cardDueReminder(rule, { today, owed: 412, paymentDates, watchFrom: '2026-06-01' })
+      cardDueReminder(rule, {
+        today,
+        owed: 412,
+        paymentDates,
+        watchFrom: '2026-06-01',
+        markedPaid: [],
+      })
     const early = ['2026-06-01', '2026-07-01', '2026-08-01']
 
     // 3 Sep paid on the 1st: 4 Oct is three days out on 1 Oct, unpaid.
@@ -409,8 +417,60 @@ describe('cardDueReminder', () => {
         owed: 412,
         paymentDates: [],
         watchFrom: WINDOW,
+        markedPaid: [],
       })
     ).toBeNull()
+  })
+
+  describe('a bill marked paid', () => {
+    // The bill the ledger cannot see paid: from an account the budget does
+    // not track, or one whose checking leg never paired as a transfer.
+
+    it('clears a past-due bill — the banner and the strip read this one rule', () => {
+      expect(at('2026-10-04')).toMatchObject({ state: 'past_due', dueDate: '2026-10-03' })
+      expect(at('2026-10-04', { markedPaid: ['2026-10-03'] })).toBeNull()
+      expect(at('2026-10-20', { markedPaid: ['2026-10-03'] })).toBeNull()
+    })
+
+    it('quiets the reminder only until the next due date, which reminds as usual', () => {
+      const marked = { markedPaid: ['2026-10-03'] }
+      expect(at('2026-10-27', marked)).toMatchObject({ state: 'due', dueDate: '2026-11-03' })
+      expect(at('2026-11-04', marked)).toMatchObject({ state: 'past_due', dueDate: '2026-11-03' })
+    })
+
+    it('can be said of a bill still only due', () => {
+      expect(at('2026-09-30')).toMatchObject({ state: 'due', dueDate: '2026-10-03' })
+      expect(at('2026-09-30', { markedPaid: ['2026-10-03'] })).toBeNull()
+    })
+
+    it('takes no payment, so a card paid off an untracked account is not nagged next month', () => {
+      // October paid from an account the budget does not track, and marked;
+      // November paid from checking on 20 Oct. Had the marked bill taken that
+      // payment, November would read unpaid — and so on every month after.
+      const november = [...ON_TIME, '2026-10-20']
+      // Unmarked, the 20 Oct payment is read as October's, paid late.
+      expect(at('2026-11-04', { paymentDates: november })).toMatchObject({
+        state: 'past_due',
+        dueDate: '2026-11-03',
+      })
+      expect(at('2026-11-04', { paymentDates: november, markedPaid: ['2026-10-03'] })).toBeNull()
+    })
+
+    it('marked on another date is not this bill: one mark never silences the next', () => {
+      expect(at('2026-10-04', { markedPaid: ['2026-09-03'] })).toMatchObject({
+        state: 'past_due',
+        dueDate: '2026-10-03',
+      })
+    })
+
+    it('taken back (undone), the bill is past due again', () => {
+      // Undo removes the key, so the rule simply no longer sees it.
+      expect(at('2026-10-04', { markedPaid: ['2026-10-03'] })).toBeNull()
+      expect(at('2026-10-04', { markedPaid: [] })).toMatchObject({
+        state: 'past_due',
+        dueDate: '2026-10-03',
+      })
+    })
   })
 })
 
@@ -439,6 +499,7 @@ describe('reminderForCard', () => {
     payment_window_start: '2026-05-07',
   }
   const card = {
+    id: 'visa',
     on_budget: true,
     classification: 'liability' as const,
     budget_start_date: null,
@@ -448,31 +509,50 @@ describe('reminderForCard', () => {
   it("reads the liability's owed-positive balance and served payments", () => {
     // Walked from the window (7 May): nothing paid June–August but the
     // 20 Aug payment, which goes to 3 Jun — so 3 Oct is past due on the 4th.
-    expect(reminderForCard(liability, card, '2026-10-04')).toMatchObject({
+    expect(reminderForCard(liability, card, '2026-10-04', [])).toMatchObject({
       state: 'past_due',
       dueDate: '2026-10-03',
       watchedFrom: '2026-05-07',
     })
-    expect(reminderForCard({ ...liability, current_balance: 0 }, card, '2026-10-04')).toBeNull()
+    expect(reminderForCard({ ...liability, current_balance: 0 }, card, '2026-10-04', [])).toBeNull()
   })
 
   it('walks from the later of the window and the day the account joined', () => {
     const joined = { ...card, budget_start_date: '2026-09-10' }
-    expect(reminderForCard(liability, joined, '2026-10-04')).toMatchObject({
+    expect(reminderForCard(liability, joined, '2026-10-04', [])).toMatchObject({
       state: 'past_due',
       dueDate: '2026-10-03',
       watchedFrom: '2026-09-10',
     })
     // A card added today is not overdue today.
     const added = { ...card, created_at: new Date(2026, 9, 4, 8, 0).toISOString() }
-    expect(reminderForCard(liability, added, '2026-10-04')).toBeNull()
+    expect(reminderForCard(liability, added, '2026-10-04', [])).toBeNull()
+  })
+
+  it("reads this card's bills marked paid, and no other card's", () => {
+    const keys = [
+      { account_id: 'visa', due_date: '2026-10-03', state: 'paid' as const },
+      // A dismissal is the banner's alone; it settles nothing here.
+      { account_id: 'visa', due_date: '2026-09-03', state: 'past_due' as const },
+    ]
+    expect(reminderForCard(liability, card, '2026-10-04', keys)).toBeNull()
+    const other = [{ account_id: 'amex', due_date: '2026-10-03', state: 'paid' as const }]
+    expect(reminderForCard(liability, card, '2026-10-04', other)).toMatchObject({
+      state: 'past_due',
+    })
+    const dismissedOnly = [
+      { account_id: 'visa', due_date: '2026-10-03', state: 'past_due' as const },
+    ]
+    expect(reminderForCard(liability, card, '2026-10-04', dismissedOnly)).toMatchObject({
+      state: 'past_due',
+    })
   })
 
   it('says nothing where no payment could ever be seen', () => {
     // An off-budget card's payments are not CARD_PAYMENT_FROM_CASH, so none
     // is ever served there and every bill would read missed.
-    expect(reminderForCard(liability, { ...card, on_budget: false }, '2026-10-04')).toBeNull()
-    expect(reminderForCard(liability, undefined, '2026-10-04')).toBeNull()
+    expect(reminderForCard(liability, { ...card, on_budget: false }, '2026-10-04', [])).toBeNull()
+    expect(reminderForCard(liability, undefined, '2026-10-04', [])).toBeNull()
   })
 })
 

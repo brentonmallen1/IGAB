@@ -219,6 +219,11 @@ class TestCardFunding:
         assert cf.funded_by_card == {VISA: {JAN: D("60"), FEB: D("-60")}}
         assert cf.floored_by_category == {"groceries": {JAN: D("40")}}
         assert cf.repaid_by_category == {"groceries": {FEB: D("40")}}
+        # The same 40, on the card the refund landed on: the term between
+        # February's -100 row and its 60 release, so the card-reserve list
+        # reconciles to Set aside.
+        assert cf.discharged_by_card == {VISA: {FEB: D("40")}}
+        assert cf.floored_by_card == {VISA: {JAN: D("40")}}
         assert cf.end_balances == {"groceries": {JAN: D("-40"), FEB: D("60")}}
 
     def test_a_release_stays_on_the_card_that_reserved(self):

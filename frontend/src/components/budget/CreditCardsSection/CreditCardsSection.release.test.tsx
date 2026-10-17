@@ -9,6 +9,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+vi.mock('../../../api/cardDueDismissals', () => ({ useCardDueDismissals: () => ({ data: [] }) }))
+vi.mock('../../../hooks/useMarkBillPaid', () => ({
+  useMarkBillPaid: () => ({ mark: vi.fn(), isPending: false }),
+}))
+
 import { CreditCardsSection } from './CreditCardsSection'
 import { releaseAnchors } from './cardRow'
 import type { BudgetMonth, CardStatus, Category } from '../../../types'

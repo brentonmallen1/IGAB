@@ -1,5 +1,7 @@
 import type { CardStatus } from '../../../types'
+import type { CardTimelineMonth } from '../../../api/budgets'
 import { dueInPhrase, reminderWords, type CardDueReminder } from '../../../utils/paymentDue'
+import { cardCoverage } from '../../../utils/cardCoverage'
 
 /**
  * What a card's row says about itself, decided once and away from the DOM.
@@ -87,9 +89,12 @@ export interface CardLine {
   /** Set only when there is something to act on this month. */
   mark: LineMark | null
   tone: PillTone
+  /** What the card owes, drawn beside the Set aside pill — a folded line
+   *  that showed only the reserve left the debt it stands behind unsaid. */
+  owed: number
   /** 0..1: how much of what the card owes is covered by Set aside — the
    *  filled part of the line's bar. Nothing owed reads as fully covered. */
-  covered: number
+  coveredShare: number
 }
 
 /**
@@ -109,29 +114,19 @@ export function cardLine(
   toCategorize: number,
   money: Money
 ): CardLine {
-  const owed = Math.max(0, -card.balance)
-  const covered = owed === 0 ? 1 : Math.min(1, Math.max(0, card.set_aside) / owed)
+  const { owed, share } = cardCoverage(card)
+  const figures = { owed, coveredShare: share }
   const tone: PillTone = card.set_aside < 0 ? 'negative' : card.set_aside > 0 ? 'positive' : 'zero'
-  if (card.set_aside < 0) return { word: 'overspent', mark: 'overspent', tone, covered }
+  const said = (word: string, mark: LineMark | null): CardLine => ({ word, mark, tone, ...figures })
+  if (card.set_aside < 0) return said('overspent', 'overspent')
   if (toCategorize > 0) {
-    return {
-      word: toCategorize === 1 ? '1 to categorize' : `${toCategorize} to categorize`,
-      mark: 'to-file',
-      tone,
-      covered,
-    }
+    return said(toCategorize === 1 ? '1 to categorize' : `${toCategorize} to categorize`, 'to-file')
   }
-  if (card.card_credit > 0) {
-    return { word: `holds ${money(card.card_credit)} of yours`, mark: null, tone, covered }
-  }
-  if (notCoveredWarns(card)) {
-    return { word: `${money(card.uncovered)} not covered`, mark: 'not-covered', tone, covered }
-  }
-  if (card.over_reserved > 0) {
-    return { word: `${money(card.over_reserved)} spare`, mark: null, tone, covered }
-  }
-  if (owed === 0) return { word: 'paid off', mark: null, tone, covered }
-  return { word: 'covered', mark: null, tone, covered }
+  if (card.card_credit > 0) return said(`holds ${money(card.card_credit)} of yours`, null)
+  if (notCoveredWarns(card)) return said(`${money(card.uncovered)} not covered`, 'not-covered')
+  if (card.over_reserved > 0) return said(`${money(card.over_reserved)} spare`, null)
+  if (owed === 0) return said('paid off', null)
+  return said('covered', null)
 }
 
 /**
@@ -373,6 +368,13 @@ export interface ReserveTerms {
  * in one place and subtracted from it in another.
  *
  * Zero legs are dropped: a month lists what moved, not what did not.
+ *
+ * A leg's `value` is never negative: two legs are signed on the wire —
+ * `assigned` (money moved back out of the card's envelope) and `opening` (a
+ * card imported in the red) — and a negative one flips its sign instead. The
+ * drawer prints `sign` beside `|value|`, so "Assigned to this card −50"
+ * printed as "+ $50.00": the one row of the breakdown that said the opposite
+ * of what happened.
  */
 export function reserveLegs(terms: ReserveTerms): CardLeg[] {
   return (
@@ -385,7 +387,69 @@ export function reserveLegs(terms: ReserveTerms): CardLeg[] {
       { label: 'Paid to the card', value: terms.payments, sign: '−' },
       { label: 'Covered from Ready to Assign on the 1st', value: terms.written_off, sign: '+' },
     ] satisfies CardLeg[]
-  ).filter((leg) => leg.value !== 0)
+  )
+    .filter((leg) => leg.value !== 0)
+    .map(signed)
+}
+
+/** A leg as drawn: a non-negative amount, the direction in its sign. */
+function signed(leg: CardLeg): CardLeg {
+  if (leg.value >= 0) return leg
+  return { ...leg, value: -leg.value, sign: leg.sign === '+' ? '−' : '+' }
+}
+
+/** A month of a card's reserve, as the "what set this aside" list closes it. */
+export interface ReserveMonth {
+  /** Set aside going into the month: the last served month before it. */
+  before: number
+  /** Each line between `before` and `after`, zero lines dropped — except the
+   *  list's own total, which is always said. */
+  lines: CardLeg[]
+  /** Set aside once the month had happened. Served, never summed here. */
+  after: number
+}
+
+/**
+ * The lines that take a month's card rows to its Set aside — the card-reserve
+ * peek's footer, under the list of charges and refunds.
+ *
+ * The rows net to `reserved − released − residual + rode − ride_repaid`
+ * (server: `domain/card_timeline.CardMonth`, pinned over every card scenario
+ * by `test_the_rows_behind_set_aside_reconcile_to_its_legs`). So the footer
+ * says the list's served total, takes off what rode on as debt instead of
+ * reserving, puts back what a refund spent paying such debt off, and then
+ * names the month's other legs — assignments, payments, the 1st's write-off,
+ * an import's opening — from `reserveLegs`, so their labels and signs are
+ * the breakdown's own rather than a second table of them.
+ *
+ * `listedNet` is the listing's `total_amount`: register-signed, so a month of
+ * charges is negative. Every figure is served; this chooses lines and signs
+ * and adds nothing up.
+ */
+export function reserveMonth(
+  months: readonly CardTimelineMonth[],
+  month: string,
+  listedNet: number
+): ReserveMonth {
+  const here = months.find((m) => m.month === month) ?? null
+  const prior = months.filter((m) => m.month < month).at(-1) ?? null
+  const before = prior?.set_aside ?? 0
+  const spending: CardLeg =
+    listedNet <= 0
+      ? { label: 'Spending above, net of refunds', value: Math.abs(listedNet), sign: '+' }
+      : { label: 'Refunds above, net of spending', value: listedNet, sign: '−' }
+  const between: CardLeg[] = here
+    ? [
+        { label: 'Rode on as debt, not set aside', value: here.rode, sign: '−' as const },
+        {
+          label: 'Refunds that paid that debt off instead',
+          value: here.ride_repaid,
+          sign: '+' as const,
+        },
+      ].filter((leg) => leg.value !== 0)
+    : []
+  const legs = here ? reserveLegs({ ...here, reserved: 0, released: 0, residual: 0 }) : []
+  return { before, lines: [spending, ...between, ...legs], after: here?.set_aside ?? before }
 }
 
 export interface RideMonths {

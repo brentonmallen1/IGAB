@@ -32,6 +32,11 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,
 }))
 
+vi.mock('../../../api/cardDueDismissals', () => ({ useCardDueDismissals: () => ({ data: [] }) }))
+vi.mock('../../../hooks/useMarkBillPaid', () => ({
+  useMarkBillPaid: () => ({ mark: vi.fn(), isPending: false }),
+}))
+
 import { CreditCardsSection } from './CreditCardsSection'
 import { cardStatus } from '../../../test-utils/cardFixture'
 

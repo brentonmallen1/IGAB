@@ -157,6 +157,11 @@ async def list_budget_transactions(
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
+    #: The month a row counts in for budget math (`txn_filters.BUDGET_MONTH`),
+    #: as its first day — what an envelope's Activity and a card's reserve
+    #: bucket by. A late arrival dated in the import month counts in the month
+    #: after, so a calendar window is not the list behind those figures.
+    budget_month: date | None = None,
     search: str | None = None,
     category_ids: str | None = None,
     #: The other two ways of saying which categories — resolved by the same
@@ -185,6 +190,11 @@ async def list_budget_transactions(
     #: so a Plan vs Spent, Volatility or Anomalies figure
     #: opens the rows it totals — refunds included, as the figure nets them.
     plan_spent: bool = False,
+    #: Only the card rows a spending envelope claims
+    #: (`txn_filters.CARD_RESERVING_ROW`) — what a card's Set aside is
+    #: reserved from and released by, the rows the card walk sums. Split legs
+    #: carry the category, so this needs `scope=leaf`.
+    card_reserving: bool = False,
     direction: Literal["inflow", "outflow"] | None = None,
     day_of_week: int | None = Query(None, ge=0, le=6),
     cleared: str | None = None,
@@ -226,6 +236,18 @@ async def list_budget_transactions(
     mirror the per-account listing so the all-accounts register behaves
     identically to a single account's.
     """
+    if budget_month is not None and budget_month.day != 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="budget_month is a month: give its first day (YYYY-MM-01)",
+        )
+    if card_reserving and scope != "leaf":
+        # A split parent carries no category, so on parent scope this would
+        # silently drop every split charge — a list short of the figure.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="card_reserving lists the category-carrying rows: ask with scope=leaf",
+        )
     # `category_scope`, not `scope`: this endpoint's `scope` is already the
     # parent/leaf row scope, and two meanings of one word in one signature is
     # how the wrong one gets passed.
@@ -241,6 +263,7 @@ async def list_budget_transactions(
         budget_id,
         start_date=start_date,
         end_date=end_date,
+        budget_month=budget_month,
         search=search,
         category_ids=category_scope.category_ids,
         payee_ids=parse_uuid_list(payee_ids),
@@ -252,6 +275,7 @@ async def list_budget_transactions(
         necessity_tier=necessity_tier,
         discretionary=discretionary,
         plan_spent=plan_spent,
+        card_reserving=card_reserving,
         direction=direction,
         day_of_week=day_of_week,
         cleared=cleared,

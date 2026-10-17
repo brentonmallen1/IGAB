@@ -974,7 +974,7 @@ class BudgetService:
             if a.month <= month_start:
                 assignments_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
         credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
-            spending_ids, month_end_date
+            budget_id, month_end_date
         )
         # `card_funding` runs the carryover simulation itself. The part of
         # a card inflow that repays uncovered debt has to be taken off the
@@ -1072,6 +1072,8 @@ class BudgetService:
             # each month, imported and budgeted alike.
             riding_series(walk.funding, account_id),
             start=walk.anchor.openings.opening_month if walk.anchor is not None else None,
+            rode_by_month=walk.funding.floored_by_card.get(account_id, {}),
+            repaid_by_month=walk.funding.discharged_by_card.get(account_id, {}),
         )
         timeline = [cm for cm in timeline if cm.month <= month_start]
         anchor_month = walk.anchor.month if walk.anchor is not None else None

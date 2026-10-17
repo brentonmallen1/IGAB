@@ -34,6 +34,13 @@
  *  - *Due*: the next due date is within `DUE_SOON_DAYS` and unpaid.
  *  - *Past due*: the latest due date before today is unpaid. It stays until
  *    a payment lands (or the banner is dismissed), and it wins over *due*.
+ *  - *Marked paid*: a due date somebody marked paid (`paid:` keys, served
+ *    beside the dismissals by `services/card_due_dismissals.py`) is paid,
+ *    whatever the ledger shows. It is for the payment the ledger cannot see,
+ *    and unlike a dismissal it is not about the banner: every surface reading
+ *    this rule sees that bill as settled, and the next due date reminds as
+ *    usual. It takes no payment from the ledger — see `billsPaid` for why,
+ *    and for the one way that errs quiet.
  *
  * The walk over due dates starts at the later of the served payment window
  * (`payment_window_start`) and the day the account joined the budget
@@ -210,6 +217,9 @@ export interface CardDueInputs {
   /** The first day a bill can fall due in the walk: the later of the served
    *  `payment_window_start` and the account's start (`dueWatchStart`). */
   watchFrom: string
+  /** Due dates somebody marked paid (`paidDueDates`). Each is paid whether
+   *  or not a payment matched it. */
+  markedPaid: readonly string[]
 }
 
 /** A guard, not a rule: the walk spans at most the served window, which at
@@ -232,23 +242,38 @@ function billsThrough(rule: PaymentDueRule, from: string, next: string): string[
 }
 
 /**
- * How many of `bills`, from the first, the payments pay.
+ * Which of `bills` are paid, one flag per bill.
  *
  * Each payment, oldest first, pays the earliest bill still unpaid if it is
  * dated after that bill's previous due date, and otherwise pays nothing. A
  * payment that could pay a later bill could pay the earliest unpaid one too,
- * so the paid bills are always the first few of the walk and one counter is
- * the whole match.
+ * so — walked bill by bill — each bill takes the first payment after it
+ * opened, and a payment dated before that is spent on nothing.
+ *
+ * A bill marked paid is paid and takes no payment: it was paid somewhere the
+ * ledger cannot see, so the next payment the ledger does see is free for the
+ * next bill. Taking one instead would steal the following month's payment
+ * from a card paid off an untracked account, and nag about every bill after
+ * the first one marked. The cost, named: a late payment for the marked bill
+ * that reaches the ledger afterwards is read as paying the next one.
  */
-function billsPaid(rule: PaymentDueRule, bills: string[], sortedPayments: string[]): number {
+function billsPaid(
+  rule: PaymentDueRule,
+  bills: string[],
+  sortedPayments: string[],
+  markedPaid: ReadonlySet<string>
+): boolean[] {
   const first = previousDueDate(rule, bills[0])
-  if (first === null) return 0
+  if (first === null) return bills.map((b) => markedPaid.has(b))
   const opensAfter = [first, ...bills.slice(0, -1)]
-  let paid = 0
-  for (const p of sortedPayments) {
-    if (paid < bills.length && p > opensAfter[paid]) paid++
-  }
-  return paid
+  let next = 0
+  return bills.map((bill, i) => {
+    if (markedPaid.has(bill)) return true
+    while (next < sortedPayments.length && sortedPayments[next] <= opensAfter[i]) next++
+    if (next === sortedPayments.length) return false
+    next++
+    return true
+  })
 }
 
 /**
@@ -261,7 +286,7 @@ function billsPaid(rule: PaymentDueRule, bills: string[], sortedPayments: string
  */
 export function cardDueReminder(
   rule: PaymentDueRule,
-  { today, owed, paymentDates, watchFrom }: CardDueInputs
+  { today, owed, paymentDates, watchFrom, markedPaid }: CardDueInputs
 ): CardDueReminder | null {
   if (owed <= 0) return null
   const next = nextDueDate(rule, today)
@@ -270,7 +295,7 @@ export function cardDueReminder(
   if (bills === null) return null
 
   const payments = paymentDates.filter((p) => p <= today).sort()
-  const paid = billsPaid(rule, bills, payments)
+  const paid = billsPaid(rule, bills, payments, new Set(markedPaid))
   const found = {
     lastPayment: payments.length > 0 ? payments[payments.length - 1] : null,
     watchedFrom: watchFrom,
@@ -278,15 +303,28 @@ export function cardDueReminder(
 
   // ISO dates compare as strings.
   const latestGone = bills.filter((b) => b < today).length - 1
-  if (latestGone >= 0 && latestGone >= paid) {
+  if (latestGone >= 0 && !paid[latestGone]) {
     const dueDate = bills[latestGone]
     return { state: 'past_due', dueDate, days: daysBetween(today, dueDate), ...found }
   }
   const days = daysBetween(today, next)
-  if (bills.length - 1 >= paid && days <= DUE_SOON_DAYS) {
+  if (!paid[bills.length - 1] && days <= DUE_SOON_DAYS) {
     return { state: 'due', dueDate: next, days, ...found }
   }
   return null
+}
+
+/** One key of the household's card-bill store, as served
+ *  (`api/cardDueDismissals.ts`): a reminder dismissed, or a bill marked paid. */
+export interface CardDueKey {
+  account_id: string
+  due_date: string
+  state: CardDueState | 'paid'
+}
+
+/** The due dates on one card somebody marked paid. */
+export function paidDueDates(keys: readonly CardDueKey[], accountId: string): string[] {
+  return keys.filter((k) => k.state === 'paid' && k.account_id === accountId).map((k) => k.due_date)
 }
 
 /**
@@ -311,14 +349,17 @@ export type CardDueLiability = PaymentDueRule & {
 
 /** The served fields `reminderForCard` reads off the liability's account. */
 export type CardDueAccount = AccountKindFields & {
+  id: string
   budget_start_date: string | null
   created_at: string
 }
 
 /**
- * The reminder for one card, from its liability and its account — the one
- * wiring of `cardDueReminder`'s inputs, so the banner, the strip and the
- * terms header hand it the same balance, payments and start.
+ * The reminder for one card, from its liability, its account and the
+ * household's card-bill keys — the one wiring of `cardDueReminder`'s inputs,
+ * so the banner, the strip and the terms header hand it the same balance,
+ * payments, start and bills marked paid. The dismissals among `keys` are not
+ * read here: they quiet the banner alone (`bannerLines`).
  *
  * Only for an on-budget card (`isCardAccount`), and null without the
  * account. Those are the accounts whose payments the server can see
@@ -332,7 +373,8 @@ export type CardDueAccount = AccountKindFields & {
 export function reminderForCard(
   liability: CardDueLiability,
   account: CardDueAccount | undefined,
-  today: string
+  today: string,
+  keys: readonly CardDueKey[]
 ): CardDueReminder | null {
   if (!account || !isCardAccount(account)) return null
   const joined = dueWatchStart(account) as string
@@ -342,6 +384,7 @@ export function reminderForCard(
     owed: liability.current_balance,
     paymentDates: liability.recent_payment_dates,
     watchFrom: joined > window ? joined : window,
+    markedPaid: paidDueDates(keys, account.id),
   })
 }
 

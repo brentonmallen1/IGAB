@@ -442,7 +442,7 @@
 
 .credit-cards__line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(48px, 110px) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(48px, 110px) auto;
   gap: var(--spacing-md);
   align-items: center;
   width: 100%;
@@ -543,6 +543,59 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
   min-width: 6.5em;
+}
+
+/* What the card owes, beside the pill. Secondary and small: the pill is the
+   envelope's figure and keeps the colour; this is the debt it stands behind,
+   stated, not alarmed about. */
+.credit-cards__owes {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* A figure that opens what made it — Covered, and the breakdown's Set aside —
+   the way Activity does on any envelope. Reads as the number it is, with an
+   underline on hover and a focus ring for the keyboard. */
+.credit-cards__figure-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.credit-cards__figure-btn:hover {
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
+}
+
+.credit-cards__figure-btn:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* The bill, in the opened card: the chip's sentence with Mark paid beside it.
+   The icon carries the chip's colour — amber while due, red once past due;
+   the words stay the note's, since the chip on the line already raised it. */
+.credit-cards__bill svg {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}
+
+.credit-cards__bill--past-due svg {
+  color: var(--color-negative);
+}
+
+.credit-cards__inline-link:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .credit-cards__pill--negative {
@@ -759,6 +812,38 @@
 
   .credit-cards__pill {
     min-width: 0;
+  }
+
+  /* No room for a fourth column beside the name: what the card owes sits
+     under the pill instead, so the line grows a second short row rather than
+     squeezing the name to nothing or pushing the strip sideways. Every cell
+     is placed explicitly — auto-placement around two spanning cells is not
+     a thing to leave to chance. */
+  .credit-cards__line {
+    row-gap: 0;
+  }
+
+  .credit-cards__line-name {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .credit-cards__bar {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .credit-cards__pill {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .credit-cards__owes {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    font-size: var(--font-size-2xs);
   }
 
   .credit-cards__detail {

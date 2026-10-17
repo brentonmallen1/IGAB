@@ -16,7 +16,9 @@ import {
   type LineMark,
   sectionFilterMatch,
   sectionRowShown,
+  reserveMonth,
 } from './cardRow'
+import type { CardTimelineMonth } from '../../../api/budgets'
 import type { CardStatus } from '../../../types'
 import { cardStatus } from '../../../test-utils/cardFixture'
 
@@ -61,7 +63,8 @@ describe("what a card's line says", () => {
       mark: 'not-covered',
       tone: 'positive',
     })
-    expect(got.covered).toBeCloseTo(0.25)
+    expect(got.coveredShare).toBeCloseTo(0.25)
+    expect(got.owed).toBe(1200)
   })
 
   it('marks a card with nothing set aside that owes, not only a part-funded one', () => {
@@ -79,7 +82,8 @@ describe("what a card's line says", () => {
   it('says covered when everything owed is set aside', () => {
     const got = line({ set_aside: 100, balance: -100 })
     expect(got).toMatchObject({ word: 'covered', mark: null })
-    expect(got.covered).toBe(1)
+    expect(got.coveredShare).toBe(1)
+    expect(got.owed).toBe(100)
   })
 })
 
@@ -654,5 +658,118 @@ describe('sectionFilterMatch — a section row answers the filter by its envelop
 
   it('leaves out a card with no envelope — no filter can name it', () => {
     expect(sectionFilterMatch(names, null)).toBe(false)
+  })
+})
+
+describe('reserveMonth — from the card-reserve list to Set aside', () => {
+  /** One served timeline month, zero everywhere but what a case names. */
+  function tm(month: string, over: Partial<CardTimelineMonth> = {}): CardTimelineMonth {
+    return {
+      month,
+      opening: 0,
+      assigned: 0,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 0,
+      written_off: 0,
+      reserve_delta: 0,
+      set_aside: 0,
+      balance: 0,
+      riding: 0,
+      uncovered: 0,
+      over_reserved: 0,
+      short_reserved: 0,
+      card_credit: 0,
+      rode: 0,
+      ride_repaid: 0,
+      ...over,
+    }
+  }
+  const AUG = '2026-08-01'
+  const SEP = '2026-09-01'
+
+  it('a funded month: 250 of charges reserved, 100 assigned, 300 paid, from 300 to 350', () => {
+    const months = [
+      tm(AUG, { set_aside: 300 }),
+      tm(SEP, { reserved: 250, assigned: 100, payments: 300, set_aside: 350 }),
+    ]
+    expect(reserveMonth(months, SEP, -250)).toEqual({
+      before: 300,
+      lines: [
+        { label: 'Spending above, net of refunds', value: 250, sign: '+' },
+        { label: 'Assigned to this card', value: 100, sign: '+' },
+        { label: 'Paid to the card', value: 300, sign: '−' },
+      ],
+      after: 350,
+    })
+  })
+
+  it('names what rode, so a list larger than the reserve still closes', () => {
+    // 300 charged with 100 funded: 200 rode on as debt and reserved nothing.
+    const months = [tm(SEP, { reserved: 100, rode: 200, set_aside: 100 })]
+    expect(reserveMonth(months, SEP, -300).lines).toEqual([
+      { label: 'Spending above, net of refunds', value: 300, sign: '+' },
+      { label: 'Rode on as debt, not set aside', value: 200, sign: '−' },
+    ])
+  })
+
+  it('the settle-up month: a net refund, half of it paying ridden debt off', () => {
+    // SETTLED_BY_OTHERS' last month, rescaled: 800 net came back; 400 paid
+    // off what had ridden, 400 left Set aside as residual — never summed here,
+    // the residual is inside the served closing figure.
+    const months = [
+      tm(AUG, { set_aside: 200 }),
+      tm(SEP, { residual: 400, ride_repaid: 400, set_aside: -200 }),
+    ]
+    const got = reserveMonth(months, SEP, 800)
+    expect(got.lines).toEqual([
+      { label: 'Refunds above, net of spending', value: 800, sign: '−' },
+      { label: 'Refunds that paid that debt off instead', value: 400, sign: '+' },
+    ])
+    expect([got.before, got.after]).toEqual([200, -200])
+  })
+
+  it('a month nothing moved in reads straight across from the last one that did', () => {
+    const months = [tm('2026-06-01', { set_aside: 120 })]
+    expect(reserveMonth(months, SEP, 0)).toEqual({
+      before: 120,
+      lines: [{ label: 'Spending above, net of refunds', value: 0, sign: '+' }],
+      after: 120,
+    })
+  })
+
+  it('carries the 1st’s write-off and an import’s opening, in the breakdown’s own words', () => {
+    const months = [
+      tm(AUG, { opening: -50, set_aside: -50 }),
+      tm(SEP, { written_off: 50, set_aside: 0 }),
+    ]
+    expect(reserveMonth(months, SEP, 0).lines).toContainEqual({
+      label: 'Covered from Ready to Assign on the 1st',
+      value: 50,
+      sign: '+',
+    })
+    // Imported in the red: the opening is money short, so it reads as out.
+    expect(reserveMonth(months, AUG, 0).lines).toContainEqual({
+      label: 'Where YNAB left it at import',
+      value: 50,
+      sign: '−',
+    })
+  })
+})
+
+describe('reserveLegs, a leg below zero', () => {
+  it('reads money moved back out of the card as out — it printed "+ $50.00" for −50', () => {
+    const legs = reserveLegs({
+      assigned: -50,
+      reserved: 200,
+      released: 0,
+      residual: 0,
+      payments: 0,
+      opening: 0,
+      written_off: 0,
+    })
+    expect(legs).toContainEqual({ label: 'Assigned to this card', value: 50, sign: '−' })
+    expect(legs.every((l) => l.value >= 0)).toBe(true)
   })
 })

@@ -696,6 +696,13 @@ class CardTimelineMonthOut(ApiModel):
     over_reserved: Decimal
     short_reserved: Decimal
     card_credit: Decimal
+    #: Not legs — neither moves `set_aside` — but the two terms between the
+    #: month's card rows (`card_reserving=true` on the transaction listing)
+    #: and the legs above: what rode on instead of reserving, and what a
+    #: refund repaid of an earlier ride. The rows net to `reserved − released
+    #: − residual + rode − ride_repaid` (`domain/card_timeline.CardMonth`).
+    rode: Decimal
+    ride_repaid: Decimal
 
 
 class CardBreachLegOut(ApiModel):
