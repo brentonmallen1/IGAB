@@ -37,6 +37,13 @@ vi.mock('../../../api/budgetFilters', () => ({
 vi.mock('../../../api/budgetViews', () => ({
   useBudgetViews: () => ({ data: [] }),
 }))
+let budgetMonth: unknown = undefined
+vi.mock('../../../api/budgets', () => ({
+  useBudgetMonth: () => ({ data: budgetMonth }),
+}))
+const media = vi.hoisted(() => ({ mobile: false }))
+vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => media.mobile }))
+vi.mock('../../../hooks/useHistoryDismissable', () => ({ useHistoryDismissable: () => {} }))
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -48,14 +55,26 @@ const overspent = (n: number) =>
   Array.from({ length: n }, () => ({ available: -1 })) as unknown as CategoryBalance[]
 
 function renderBar(balances: CategoryBalance[] = []) {
-  return render(<BudgetFilterBar budgetId="b1" categoryBalances={balances} />, { wrapper })
+  return render(<BudgetFilterBar budgetId="b1" month="2026-10-01" categoryBalances={balances} />, {
+    wrapper,
+  })
 }
 
 const filterSelect = () => screen.getByLabelText('Filter categories') as HTMLSelectElement
 
 beforeEach(() => {
   savedFilters = []
-  useUIStore.setState({ activeFilterId: null, activeQuickFilter: null, categorySearch: '' })
+  budgetMonth = undefined
+  media.mobile = false
+  useUIStore.setState({
+    activeFilterId: null,
+    activeQuickFilter: null,
+    activeViewId: null,
+    categorySearch: '',
+    budgetToolsOpen: false,
+    tbaDrawerOpen: false,
+    lastMonthOpen: false,
+  })
 })
 
 describe('the bar with many saved filters', () => {
@@ -144,5 +163,64 @@ describe('the status buttons', () => {
     renderBar()
     expect(statusBtn('Overspent').disabled).toBe(false)
     expect(statusBtn('Overspent').getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+/**
+ * On a phone the bar's controls live in the Tools sheet, opened from the
+ * Ready to Assign row: the bar was two rows under a hero that wrapped to two
+ * more, and the first category started a third of the way down the screen.
+ */
+describe('BudgetFilterBar on a phone', () => {
+  beforeEach(() => {
+    media.mobile = true
+  })
+
+  it('draws no bar and no strip while the grid shows everything', () => {
+    const { container } = renderBar(overspent(2))
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('says what is narrowing the grid, and undoes it from the strip', () => {
+    useUIStore.setState({ activeQuickFilter: 'overspent', categorySearch: 'groc' })
+    renderBar(overspent(2))
+    expect(screen.getByText('Showing')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop showing only Overspent' }))
+    expect(useUIStore.getState().activeQuickFilter).toBeNull()
+    // The other part stays: each chip undoes only itself.
+    expect(useUIStore.getState().categorySearch).toBe('groc')
+  })
+
+  it('offers the same statuses, counts and all, in the Tools sheet', () => {
+    useUIStore.setState({ budgetToolsOpen: true })
+    renderBar(overspent(2))
+    const row = screen.getByRole('button', { name: /Overspent/ })
+    expect(row).toHaveTextContent('2')
+    fireEvent.click(row)
+    expect(useUIStore.getState().activeQuickFilter).toBe('overspent')
+    fireEvent.click(screen.getByRole('button', { name: 'All categories' }))
+    expect(useUIStore.getState().activeQuickFilter).toBeNull()
+  })
+
+  it('keeps an empty status disabled rather than gone', () => {
+    useUIStore.setState({ budgetToolsOpen: true })
+    renderBar([])
+    expect(screen.getByRole('button', { name: /Underfunded/ })).toBeDisabled()
+  })
+
+  it("hands this month's moves to the hero's drawer", () => {
+    useUIStore.setState({ budgetToolsOpen: true })
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /Money moved this month/ }))
+    expect(useUIStore.getState().budgetToolsOpen).toBe(false)
+    expect(useUIStore.getState().tbaDrawerOpen).toBe(true)
+  })
+
+  it('offers last month only when it took something', () => {
+    useUIStore.setState({ budgetToolsOpen: true })
+    budgetMonth = { overspent_last_month: [{ category_id: 'c1', amount: 40 }] }
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: /Overspent last month/ }))
+    expect(useUIStore.getState().lastMonthOpen).toBe(true)
   })
 })

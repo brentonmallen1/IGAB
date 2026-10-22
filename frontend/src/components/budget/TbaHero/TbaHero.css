@@ -361,37 +361,42 @@
     padding: var(--spacing-sm) var(--spacing-md);
   }
 
-  /* Two rows, not one. As a single flex row the actions group (Assign,
-     overspent, history) refused to shrink and the figure —
-     `.tba-hero__info`, flex: 1 with min-width: 0 — was crushed to ~40pt: the
-     label wrapped, the amount showed only its "$", and the Assign button
-     painted over it. The figure is what this band exists to show, so it gets
-     a row of its own and the actions wrap beneath it. */
+  /* One row: the figure, then what acts on it — the overspent chip, Assign
+     and Tools. Everything else that used to wrap underneath (last month, the
+     move history, the filter bar's two rows) is in the Tools sheet, so the
+     first category starts a row below the month instead of a third of the
+     screen down.
+
+     The figure keeps its own width (`min-width: max-content`) and the row is
+     allowed to wrap, never to crush it. As a nowrap row the actions refused
+     to shrink and squeezed the amount to its "$" with Assign painted over it;
+     a five-figure Ready to Assign beside a four-figure overspend still wraps
+     the actions under it rather than doing that again. */
   .tba-hero__pill {
     width: 100%;
     padding: 0;
-    gap: var(--spacing-xs);
-    flex-direction: column;
-    align-items: stretch;
+    gap: var(--spacing-xs) var(--spacing-sm);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
     background: none;
     border: none;
     border-radius: 0;
     box-shadow: none;
   }
 
-  /* Label left, amount right, on one baseline; the future-months note takes
-     the next line on its own. */
+  /* Label over amount: the label is small, the amount is the reading. */
   .tba-hero__info {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    column-gap: var(--spacing-sm);
-    row-gap: 0;
+    flex: 1 1 auto;
+    min-width: max-content;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
   }
 
   .tba-hero__label {
     white-space: nowrap;
+    font-size: var(--font-size-xs);
   }
 
   .tba-hero__amount {
@@ -400,13 +405,12 @@
   }
 
   .tba-hero__future {
-    flex-basis: 100%;
-    white-space: normal;
+    white-space: nowrap;
   }
 
   .tba-hero__actions {
-    flex-wrap: wrap;
-    row-gap: var(--spacing-xs);
+    flex-wrap: nowrap;
+    margin-left: auto;
   }
 
   /* The chips are actions here: hold them to the tap floor. */
@@ -416,10 +420,24 @@
     min-height: var(--tap-min);
   }
 
-  .tba-hero__history-btn {
-    min-width: var(--tap-min);
+  .tba-hero__tools-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    margin-left: auto;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--surface-raised);
+    color: var(--text-primary);
+  }
+
+  /* "A filter is on": the grid below is not the whole budget. */
+  .tba-hero__tools-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
   }
 
   /* Keep the word — a bare red amount next to the TBA number is ambiguous */

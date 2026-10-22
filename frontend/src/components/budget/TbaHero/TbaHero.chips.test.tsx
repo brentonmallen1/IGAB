@@ -30,6 +30,10 @@ vi.mock('../../../api/categories', () => ({
   }),
 }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
+// The Tools button's "a filter is on" dot resolves the stored selections
+// against these; nothing is saved here.
+vi.mock('../../../api/budgetFilters', () => ({ useBudgetFilters: () => ({ data: [] }) }))
+vi.mock('../../../api/budgetViews', () => ({ useBudgetViews: () => ({ data: [] }) }))
 vi.mock('../AssignDropdown/AssignDropdown', () => ({
   AssignDropdown: () => null,
   AssignDropdownContent: () => null,

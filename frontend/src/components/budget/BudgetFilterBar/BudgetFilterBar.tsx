@@ -1,16 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
-import {
-  ArrowUpDown,
-  Funnel,
-  Layers,
-  ListFilter,
-  Plus,
-  Search,
-  Settings2,
-  X,
-  Rows3,
-} from 'lucide-react'
+import { ArrowUpDown, Funnel, Layers, ListFilter, Plus, Search, Settings2, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore, BUDGET_ROW_MODES } from '../../../stores/uiStore'
@@ -20,9 +10,16 @@ import type { CategoryBalance } from '../../../types'
 import { reorderBlock } from '../reorderAvailability'
 import './BudgetFilterBar.css'
 import { filterMenu, parseChoice, statusButtons } from '../budgetFilterMenu'
+import { useBudgetMonth } from '../../../api/budgets'
+import { overspentLastMonth } from '../budgetTotals'
+import { useGridNarrowing } from '../gridNarrowing'
+import { BudgetFilterStrip } from './BudgetFilterStrip'
+import { BudgetToolsSheet } from './BudgetToolsSheet'
 
 interface Props {
   budgetId: string
+  /** The month on screen — the Tools sheet's "overspent last month". */
+  month: string
   categoryBalances: CategoryBalance[]
   /** The grid measures this bar to offset the column header below it — the
    *  two are stacked sticky rows and this one wraps. See useMeasuredHeight. */
@@ -38,7 +35,7 @@ const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
 //: column for a notice that should disappear in a release or two.
 const RENAME_SHIPPED_AT = '2026-08-21'
 
-export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
+export function BudgetFilterBar({ budgetId, month, categoryBalances, barRef }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
   const activeViewId = useUIStore((s) => s.activeViewId)
@@ -69,6 +66,17 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   const setCategorySearch = useUIStore((s) => s.setCategorySearch)
 
   const [menuOpen, setMenuOpen] = useState(false)
+  // The phone's Tools sheet: opened from the Ready to Assign row (TbaHero),
+  // rendered here because these are the controls it holds.
+  const toolsOpen = useUIStore((s) => s.budgetToolsOpen)
+  const setToolsOpen = useUIStore((s) => s.setBudgetToolsOpen)
+  const setDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
+  const setLastMonthOpen = useUIStore((s) => s.setLastMonthOpen)
+  const narrowing = useGridNarrowing(budgetId)
+  const { data: budgetMonth } = useBudgetMonth(budgetId, month)
+  // Only the total: the names are the hero's dialog's to show.
+  const lastMonthTotal =
+    overspentLastMonth(budgetMonth?.overspent_last_month, () => '')?.total ?? null
 
   const isMobile = useIsMobile()
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
@@ -103,17 +111,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   }
 
   function handleMenuSelect(id: string) {
-    // Row density lives in this menu on a phone (the segmented control is hidden
-
-    // there — see the stylesheet), so the bar holds two rows instead of three.
-
-    if (id.startsWith('density:')) {
-      setBudgetRowMode(id.slice('density:'.length) as (typeof BUDGET_ROW_MODES)[number]['value'])
-
-      setMenuOpen(false)
-
-      return
-    }
     if (id === 'new') openModal('filter')
     else if (id === 'manage') openModal('manage-filters')
     else if (id === 'new-view') openModal('view')
@@ -152,6 +149,50 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
       setActiveFilter(null)
       setActiveQuickFilter(null)
     }
+  }
+
+  if (isMobile) {
+    return (
+      <>
+        <BudgetFilterStrip parts={narrowing.parts} onClear={narrowing.clear} stripRef={barRef} />
+        <BudgetToolsSheet
+          open={toolsOpen}
+          onClose={() => setToolsOpen(false)}
+          search={categorySearch}
+          onSearch={setCategorySearch}
+          statuses={statuses}
+          showingAll={activeQuickFilter == null && menu.value === ''}
+          onStatus={(filter) => {
+            if (filter) setActiveQuickFilter(filter)
+            else {
+              setActiveQuickFilter(null)
+              setActiveFilter(null)
+            }
+          }}
+          views={views ?? []}
+          viewId={views?.some((v) => v.id === activeViewId) ? activeViewId : null}
+          onView={setActiveView}
+          filterGroups={menu.groups}
+          filterValue={menu.value}
+          onFilter={handleFilterChange}
+          rowMode={budgetRowMode}
+          onRowMode={setBudgetRowMode}
+          onManage={(id) => {
+            setToolsOpen(false)
+            handleMenuSelect(id)
+          }}
+          onMoneyMoved={() => {
+            setToolsOpen(false)
+            setDrawerOpen(true)
+          }}
+          lastMonthTotal={lastMonthTotal}
+          onLastMonth={() => {
+            setToolsOpen(false)
+            setLastMonthOpen(true)
+          }}
+        />
+      </>
+    )
   }
 
   return (
@@ -297,16 +338,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
         {menuOpen && (
           <ContextMenu
             items={[
-              ...(isMobile
-                ? [
-                    ...BUDGET_ROW_MODES.map((mode) => ({
-                      id: `density:${mode.value}`,
-                      label: `${mode.label} rows${budgetRowMode === mode.value ? ' ✓' : ''}`,
-                      icon: Rows3,
-                    })),
-                    { id: 'sep-density', label: '', separator: true },
-                  ]
-                : []),
               { id: 'new', label: 'New Filter', icon: Plus },
               { id: 'manage', label: 'Manage Filters', icon: Settings2 },
               // Views are a different axis from filters, so they sit below a

@@ -263,7 +263,12 @@ export function BudgetTable() {
       className="budget-table"
       style={{ '--budget-filter-bar-h': `${filterBarHeight}px` } as React.CSSProperties}
     >
-      <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} barRef={filterBarRef} />
+      <BudgetFilterBar
+        budgetId={budgetId}
+        month={month}
+        categoryBalances={chipBalances}
+        barRef={filterBarRef}
+      />
       {/* Above the category headers so the cards read as part of the month,
           not an afterthought below the fold; folds shut and stays folded. */}
       <CreditCardsSection budgetId={budgetId} month={month} rowMatch={sectionRowMatch} />
