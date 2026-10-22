@@ -36,6 +36,7 @@ from igab.api.v1.schemas.transaction import (
     TransactionCreate,
     TransactionResponse,
     TransactionUpdate,
+    TransactionUpdateResponse,
 )
 from igab.db.models import Category, Transaction
 from igab.dependencies import (
@@ -491,14 +492,15 @@ async def get_transfer_candidates(
     return [TransactionResponse.model_validate(c) for c in candidates if c.id != transaction_id]
 
 
-@router.patch("/transactions/{transaction_id}", response_model=TransactionResponse)
+@router.patch("/transactions/{transaction_id}", response_model=TransactionUpdateResponse)
 async def update_transaction(
     transaction_id: TransactionAccess,
     body: TransactionUpdate,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
     budget_id: BudgetAccess,
-) -> TransactionResponse:
+) -> TransactionUpdateResponse:
+    recorded_before = txn_service.changes.recorded
     try:
         # Only fields the client actually sent: omitted fields stay untouched,
         # explicit nulls clear nullable fields (category/payee/memo).
@@ -506,7 +508,8 @@ async def update_transaction(
         txn = await txn_service.update(budget_id, transaction_id, svc_data)
     except (NotFoundError, InvariantViolation) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-    return TransactionResponse.model_validate(txn)
+    row = TransactionResponse.model_validate(txn).model_dump()
+    return TransactionUpdateResponse(**row, changed=txn_service.changes.recorded > recorded_before)
 
 
 @router.post("/transactions/{transaction_id}/split", response_model=TransactionResponse)

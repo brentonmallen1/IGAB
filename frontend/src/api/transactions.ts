@@ -314,12 +314,20 @@ export type TransactionUpdatePayload = Partial<Transaction> & {
   transfer_create_partner?: boolean
 }
 
+/** A PATCH's answer: the row as saved, and whether the request wrote
+ *  anything. Only the server knows the second — it drops unchanged fields and
+ *  records nothing for a no-op — and an editor that cannot tell a save from a
+ *  no-op is how a dropped edit looked exactly like a kept one. */
+export type TransactionUpdateResult = Transaction & { changed: boolean }
+
 export function useUpdateTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...data }: TransactionUpdatePayload) =>
       apiClient
-        .patch<Transaction>(`/transactions/${id}`, data, { params: { budget_id: budgetId } })
+        .patch<TransactionUpdateResult>(`/transactions/${id}`, data, {
+          params: { budget_id: budgetId },
+        })
         .then((r) => r.data),
     // A link/retarget/break writes the OTHER account's row too, so the
     // register goes wide rather than narrowing to `txn.account_id`.

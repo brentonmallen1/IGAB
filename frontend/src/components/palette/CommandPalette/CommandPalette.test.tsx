@@ -23,7 +23,11 @@ const apiGet = vi.hoisted(() => vi.fn())
 vi.mock('../../../api/client', () => ({ apiClient: { get: apiGet } }))
 
 const ACCOUNTS = vi.hoisted(() => [{ id: 'acc-1', name: 'Checking', on_budget: true }])
-const PAYEES = vi.hoisted(() => [{ id: 'p-1', name: 'Corner Grocer' }])
+const PAYEES = vi.hoisted(
+  (): { id: string; name: string; transfer_account_id?: string | null }[] => [
+    { id: 'p-1', name: 'Corner Grocer' },
+  ]
+)
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: ACCOUNTS }) }))
 vi.mock('../../../api/payees', () => ({ usePayees: () => ({ data: PAYEES }) }))
 vi.mock('../../../api/categories', () => ({
@@ -149,6 +153,20 @@ describe('CommandPalette search', () => {
     renderPalette()
     await type('check')
     expect(screen.getByText('Checking')).toBeInTheDocument()
+  })
+
+  it('never offers a transfer payee as a payee to jump to', async () => {
+    // It skipped the rule every other picker applies (utils/payees): the
+    // Payees page does not list these, so the jump landed nowhere.
+    apiGet.mockResolvedValue({ data: { transactions: [], total_count: 0, total_amount: '0' } })
+    PAYEES.push({ id: 'p-xfer', name: 'Transfer : Savings', transfer_account_id: 'acc-2' })
+    try {
+      renderPalette()
+      await type('Transfer')
+      expect(screen.queryByText('Transfer : Savings')).not.toBeInTheDocument()
+    } finally {
+      PAYEES.pop()
+    }
   })
 })
 

@@ -11,8 +11,14 @@ const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-txn
 // Typed payload: the transfer tests assert on the ORDER and content of two
 // separate PATCHes (break, then edit), so the calls must stay inspectable.
 const updateMutate = vi.hoisted(() =>
-  vi.fn((_payload: Record<string, unknown>) => Promise.resolve({}))
+  vi.fn((_payload: Record<string, unknown>) => Promise.resolve({ changed: true }))
 )
+/** The confirm sheet's answer; the break-a-transfer question goes through it. */
+const confirmAsk = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+vi.mock('../../../stores/confirmStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../stores/confirmStore')>()),
+  confirmAsync: confirmAsk,
+}))
 const deleteMutate = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const convertMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 const replaceSplitsMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
@@ -57,6 +63,8 @@ const ACCOUNTS = vi.hoisted(() => [
 ])
 
 let classificationData: unknown = undefined
+/** What `usePayees` serves. Empty unless a test needs payees to pick. */
+let payeesData: unknown[] = []
 /** Rows in the target account that could be a transfer's far leg. */
 let transferCandidates: unknown[] = []
 /** The lines `useTransactionSplits` serves — set by the tests that open a
@@ -71,7 +79,7 @@ vi.mock('../../../api/transactions', () => ({
   useReplaceSplits: () => ({ mutateAsync: replaceSplitsMutate, isPending: false }),
   useTransactionSplits: () => ({ data: splitLines }),
   useTransaction: () => ({ data: undefined }),
-  usePayees: () => ({ data: [] }),
+  usePayees: () => ({ data: payeesData }),
   useSimilarTransactions: () => ({ data: [] }),
   useTransactionClassification: () => ({ data: classificationData }),
   useTransferCandidates: () => ({ data: transferCandidates }),
@@ -460,7 +468,7 @@ describe('TransactionEditor transfers', () => {
 
   it('opens an existing transfer showing where it goes', () => {
     renderEditor({ transaction: linkedLeg })
-    const select = screen.getByRole('combobox', { name: 'To Account' })
+    const select = screen.getByRole('combobox', { name: 'To account' })
     expect((select as HTMLSelectElement).value).toBe('acc-2')
   })
 
@@ -468,12 +476,12 @@ describe('TransactionEditor transfers', () => {
     // transfer_id is null here — reading only that is what made the repair
     // path invisible on exactly the rows that needed it.
     renderEditor({ transaction: orphanLeg })
-    expect(screen.getByRole('combobox', { name: 'To Account' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'To account' })).toBeInTheDocument()
   })
 
   it('sends the new destination when retargeted', async () => {
     renderEditor({ transaction: linkedLeg })
-    fireEvent.change(screen.getByRole('combobox', { name: 'To Account' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'To account' }), {
       target: { value: 'acc-3' },
     })
     fireEvent.click(submitButton('Save'))
@@ -547,7 +555,7 @@ describe('TransactionEditor transfers', () => {
     const onClose = vi.fn()
     updateMutate.mockRejectedValueOnce(new Error('refused'))
     renderEditor({ transaction: linkedLeg, onClose })
-    fireEvent.change(screen.getByRole('combobox', { name: 'To Account' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'To account' }), {
       target: { value: 'acc-3' },
     })
     fireEvent.click(submitButton('Save'))
@@ -574,6 +582,167 @@ describe('TransactionEditor transfers', () => {
   it('asks nothing when there is no candidate to confuse it with', () => {
     renderEditor({ transaction: orphanLeg })
     expect(screen.queryByText(/which transaction in/i)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * The "Payee Not Sent" report: a card payment recorded from the wrong account,
+ * fixed by picking "Transfer : Harborstone Checking" in the payee box. The
+ * body took a transfer's account from the account control, the box was never
+ * read, and Save closed the dialog having changed nothing — twice.
+ */
+describe('TransactionEditor transfer payee', () => {
+  const linkedLeg = makeTransaction({
+    id: 't-xfer',
+    account_id: 'acc-1',
+    date: '2026-08-20',
+    amount: -500,
+    category_id: null,
+    payee_id: 'p-to-savings',
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: 't-far',
+    counterpart_account_id: 'acc-2',
+  })
+
+  const PAYEES = [
+    { id: 'p-to-savings', name: 'Transfer : Savings', transfer_account_id: 'acc-2' },
+    { id: 'p-to-vacation', name: 'Transfer : Vacation Fund', transfer_account_id: 'acc-3' },
+    {
+      id: 'p-grocer',
+      name: 'Harbor Grocer',
+      transfer_account_id: null,
+      default_category_id: null,
+    },
+  ]
+
+  function payeeBox() {
+    return screen.getByPlaceholderText('Search or enter payee...') as HTMLInputElement
+  }
+
+  function typePayee(value: string) {
+    fireEvent.focus(payeeBox())
+    fireEvent.change(payeeBox(), { target: { value } })
+  }
+
+  beforeEach(() => {
+    updateMutate.mockClear()
+    toastError.mockClear()
+    toastPlain.mockClear()
+    confirmAsk.mockClear()
+    confirmAsk.mockResolvedValue(true)
+    transferCandidates = []
+    payeesData = PAYEES
+  })
+
+  afterEach(() => {
+    payeesData = []
+  })
+
+  it('moves the other leg when another account is picked in the payee box', async () => {
+    renderEditor({ transaction: linkedLeg })
+    typePayee('Vac')
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Vacation Fund' }))
+
+    // The box and the account control say the same thing — one destination.
+    expect(payeeBox().value).toBe('Transfer : Vacation Fund')
+    expect((screen.getByRole('combobox', { name: 'To account' }) as HTMLSelectElement).value).toBe(
+      'acc-3'
+    )
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't-xfer', transfer_account_id: 'acc-3' })
+    )
+  })
+
+  it('offers destinations as accounts, never transfer payees by name', () => {
+    renderEditor({ transaction: linkedLeg })
+    typePayee('Transfer')
+    expect(screen.queryByRole('button', { name: 'Transfer : Vacation Fund' })).toBeNull()
+    expect(screen.getByRole('group', { name: 'Transfer to account' })).toBeInTheDocument()
+  })
+
+  it('keeps the payee box in step with the account control', () => {
+    renderEditor({ transaction: linkedLeg })
+    expect(payeeBox().value).toBe('Transfer : Savings')
+    fireEvent.change(screen.getByRole('combobox', { name: 'To account' }), {
+      target: { value: 'acc-3' },
+    })
+    expect(payeeBox().value).toBe('Transfer : Vacation Fund')
+  })
+
+  it('asks before a plain payee breaks a linked transfer', async () => {
+    confirmAsk.mockResolvedValueOnce(false)
+    renderEditor({ transaction: linkedLeg })
+    typePayee('Harbor')
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Harbor Grocer' }))
+
+    await waitFor(() => expect(confirmAsk).toHaveBeenCalled())
+    // Declined: still a transfer, still pointing where it did.
+    expect(screen.getByRole('combobox', { name: 'To account' })).toBeInTheDocument()
+  })
+
+  it('breaks the transfer, then files the payee, once the break is confirmed', async () => {
+    renderEditor({ transaction: linkedLeg })
+    typePayee('Harbor')
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Harbor Grocer' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('combobox', { name: 'To account' })).not.toBeInTheDocument()
+    )
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(2))
+    expect(updateMutate.mock.calls[0][0]).toEqual({ id: 't-xfer', transfer_account_id: null })
+    expect(updateMutate.mock.calls[1][0]).toMatchObject({ payee_id: 'p-grocer' })
+  })
+
+  it('refuses typed text it cannot send, rather than dropping it', async () => {
+    const onClose = vi.fn()
+    renderEditor({ transaction: linkedLeg, onClose })
+    typePayee('Harborstone')
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(updateMutate).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('empties a transfer payee out of the box when the toggle goes off', async () => {
+    renderEditor({ transaction: linkedLeg })
+    fireEvent.click(screen.getByLabelText('Transfer to account'))
+    expect(payeeBox().value).toBe('')
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(2))
+    // Never the transfer payee: that would name a transfer the row no longer is.
+    expect(updateMutate.mock.calls[1][0].payee_id).toBeUndefined()
+  })
+
+  it('says so when the save changed nothing', async () => {
+    updateMutate.mockResolvedValueOnce({ changed: false })
+    const onClose = vi.fn()
+    renderEditor({ transaction: linkedLeg, onClose })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(toastPlain).toHaveBeenCalledWith('Nothing changed'))
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('says nothing extra when the save changed something', async () => {
+    renderEditor({ transaction: linkedLeg })
+    fireEvent.click(submitButton('Save'))
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(toastPlain).not.toHaveBeenCalledWith('Nothing changed')
+  })
+
+  it('labels the other account by which way the money went', () => {
+    // The inflow leg of a card payment: the money came FROM the other account.
+    renderEditor({
+      transaction: makeTransaction({ ...linkedLeg, id: 't-in', amount: 500 }),
+    })
+    expect(screen.getByRole('combobox', { name: 'From account' })).toBeInTheDocument()
   })
 })
 

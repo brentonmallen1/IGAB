@@ -1,4 +1,4 @@
-import type { Account, Transaction } from '../../types'
+import type { Account, Payee, Transaction } from '../../types'
 import type { ComboboxOption } from '../common/Combobox/Combobox'
 
 /**
@@ -105,4 +105,29 @@ export function transferOptions(accounts: Account[], ownAccountId: string): Comb
 export function transferOptionAccountId(optionId: string | null): string | null {
   if (!optionId || !optionId.startsWith(TRANSFER_OPTION_PREFIX)) return null
   return optionId.slice(TRANSFER_OPTION_PREFIX.length) || null
+}
+
+/** What the payee box says for a transfer to `accountId`: the server's own
+ *  transfer payee for that account ("Transfer : Harborstone Checking",
+ *  `TransactionService._get_transfer_payee`), read rather than spelled here,
+ *  and the bare account name for an account whose payee has not been made
+ *  yet (the server makes it on the first link). */
+export function transferPayeeLabel(
+  accountId: string,
+  accounts: Pick<Account, 'id' | 'name'>[],
+  payees: Pick<Payee, 'name' | 'transfer_account_id'>[]
+): string {
+  if (!accountId) return ''
+  const payee = payees.find((p) => p.transfer_account_id === accountId)
+  if (payee) return payee.name
+  return accounts.find((a) => a.id === accountId)?.name ?? ''
+}
+
+/** The destination field's label, by which way the money moves.
+ *
+ *  On the inflow leg of a card payment the money came FROM the other account,
+ *  so "To Account" read backwards there — the Pay dialog that wrote the row
+ *  had said "From". The sign is the leg's own: negative leaves this account. */
+export function transferAccountLabel(amount: number | null): 'To account' | 'From account' {
+  return amount !== null && amount > 0 ? 'From account' : 'To account'
 }

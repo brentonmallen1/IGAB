@@ -9,7 +9,9 @@ import {
   CREATE_NEW_PARTNER,
   awaitingPartnerChoice,
   mayBecomeTransfer,
+  transferAccountLabel,
   transferLinkFields,
+  transferPayeeLabel,
   transferOptionAccountId,
   transferOptions,
   transferTargets,
@@ -108,5 +110,44 @@ describe('mayBecomeTransfer', () => {
 
   it('refuses a reconciled row, matching the editor’s toggle', () => {
     expect(mayBecomeTransfer({ ...plain, cleared: 'reconciled' })).toBe(false)
+  })
+})
+
+describe('transferPayeeLabel', () => {
+  const accounts = [
+    { id: 'acc-checking', name: 'Harborstone Checking' },
+    { id: 'acc-new', name: 'Sapphire Visa' },
+  ]
+  const payees = [
+    {
+      name: 'Transfer : Harborstone Checking',
+      transfer_account_id: 'acc-checking',
+    },
+  ]
+
+  it("reads the server's own transfer payee", () => {
+    expect(transferPayeeLabel('acc-checking', accounts, payees)).toBe(
+      'Transfer : Harborstone Checking'
+    )
+  })
+
+  it('falls back to the account name before the server has made one', () => {
+    expect(transferPayeeLabel('acc-new', accounts, payees)).toBe('Sapphire Visa')
+  })
+
+  it('says nothing for no account', () => {
+    expect(transferPayeeLabel('', accounts, payees)).toBe('')
+  })
+})
+
+describe('transferAccountLabel', () => {
+  it('reads From on an inflow — the card side of a payment', () => {
+    expect(transferAccountLabel(400)).toBe('From account')
+  })
+
+  it('reads To on an outflow, and on an amount not typed yet', () => {
+    expect(transferAccountLabel(-400)).toBe('To account')
+    expect(transferAccountLabel(0)).toBe('To account')
+    expect(transferAccountLabel(null)).toBe('To account')
   })
 })

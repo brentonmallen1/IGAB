@@ -41,6 +41,7 @@ import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { BudgetTransactionsResponse } from '../../../types'
 import './CommandPalette.css'
 import { ROOT } from '../../../api/queryKeys'
+import { choosablePayees } from '../../../utils/payees'
 
 /**
  * ⌘K command palette: navigation, budget actions, theme switching, and live
@@ -144,7 +145,9 @@ export function CommandPalette() {
   const payeeMatches = useMemo(() => {
     if (!searchOn) return []
     const q = searchTerm.toLowerCase()
-    return payees.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 6)
+    return choosablePayees(payees)
+      .filter((p) => p.name.toLowerCase().includes(q))
+      .slice(0, 6)
   }, [payees, searchOn, searchTerm])
 
   const payeeNameById = payeeMap

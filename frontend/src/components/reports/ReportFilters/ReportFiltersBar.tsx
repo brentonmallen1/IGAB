@@ -21,6 +21,7 @@ import { openAccounts } from '../../../utils/accountLists'
 import { useTags } from '../../../api/tags'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { countActiveFilters, hasAnyFilterSupport } from './activeFilters'
+import { choosablePayees } from '../../../utils/payees'
 
 interface Props {
   budgetId: string
@@ -85,9 +86,7 @@ export function ReportFiltersContent({ budgetId }: Props) {
   )
 
   const payeeOptions = useMemo<MultiSelectOption[]>(() => {
-    return (payees.data ?? [])
-      .filter((p) => !p.transfer_account_id)
-      .map((p) => ({ id: p.id, label: p.name }))
+    return choosablePayees(payees.data ?? []).map((p) => ({ id: p.id, label: p.name }))
   }, [payees.data])
 
   const accountOptions = useMemo<MultiSelectOption[]>(() => {
