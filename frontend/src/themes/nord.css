@@ -111,6 +111,9 @@
   --sidebar-text-primary: #eceff4;
   --sidebar-text-secondary: #d8dee9;
   --sidebar-text-muted: #9aa3b8;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (nord): a light page's amber disappears on it. */
+  --sidebar-warning: #ebcb8b;
 
   /* Tag color slots — Aurora and Frost, deepened for a light ground */
   --tag-red: #ac5059;
@@ -281,6 +284,9 @@
   --sidebar-text-primary: #eceff4;
   --sidebar-text-secondary: #d9d5e2;
   --sidebar-text-muted: #9d9bac;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (nord-aurora): a light page's amber disappears on it. */
+  --sidebar-warning: #f1ca78;
 
   /* Tag color slots — Aurora first, deepened for a light ground */
   --tag-red: #ac3d4d;

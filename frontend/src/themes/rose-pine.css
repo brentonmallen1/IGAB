@@ -108,6 +108,9 @@
   --sidebar-text-primary: #e0def4;
   --sidebar-text-secondary: #928eac;
   --sidebar-text-muted: #928eac;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (rose-pine): a light page's amber disappears on it. */
+  --sidebar-warning: #f6c177;
 
   /* Tag color slots — Rosé Pine Dawn */
   --tag-red: #b4637a;
@@ -179,6 +182,9 @@
   --sidebar-text-primary: #e0def4;
   --sidebar-text-secondary: #928eac;
   --sidebar-text-muted: #928eac;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (rose-pine-moon): a light page's amber disappears on it. */
+  --sidebar-warning: #f6c177;
 
   /* Tag color slots — Moon accents darkened for the light surface */
   --tag-red: #ad5a72;

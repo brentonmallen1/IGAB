@@ -119,6 +119,9 @@
   --sidebar-text-primary: #e8f0ec;
   --sidebar-text-secondary: #b8c8c0;
   --sidebar-text-muted: #70877f;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (eighties-dark): a light page's amber disappears on it. */
+  --sidebar-warning: #f1a512;
 
   /* Tag color slots — 80s palette, adjusted for light bg */
   --tag-red: #c03810;

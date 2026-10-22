@@ -99,6 +99,9 @@
   --sidebar-text-primary: #e8f0ff;
   --sidebar-text-secondary: #a8c0e0;
   --sidebar-text-muted: #6282ab;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (blueprint-dark): a light page's amber disappears on it. */
+  --sidebar-warning: #ffc060;
 
   --tag-red: #c84030;
   --tag-orange: #c86820;

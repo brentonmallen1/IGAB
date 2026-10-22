@@ -420,8 +420,8 @@ class TestACardCreditIsNeverIncome:
         w = await _world(db_session)
         await create_transaction(db_session, w.budget, w.card, "500.00", AFTER)
         await create_transaction(db_session, w.budget, w.card, "200.00", BEFORE)
-        counts = await AccountRepository(db_session).uncategorized_counts_for([w.card.id])
-        assert counts == {w.card.id: 1}
+        counts = await AccountRepository(db_session).attention_counts_for([w.card.id])
+        assert counts[w.card.id].uncategorized == 1
 
 
 class TestWhereTheySit:

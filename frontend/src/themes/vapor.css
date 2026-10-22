@@ -99,6 +99,9 @@
   --sidebar-text-primary: #e8e4f0;
   --sidebar-text-secondary: #b8b0c8;
   --sidebar-text-muted: #877f97;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (vapor-dark): a light page's amber disappears on it. */
+  --sidebar-warning: #d8c090;
 
   --tag-red: #b07070;
   --tag-orange: #b09070;

@@ -950,6 +950,31 @@ NEEDS_CATEGORY = and_(
 )
 
 
+#: Not yet approved by the person. Bank-fed and AI-made rows arrive this way.
+#: Spelled once: it was `approved == False` written out in six places.
+UNAPPROVED = Transaction.approved == False  # noqa: E712
+
+#: The two kinds of work a person can act on, as rows.
+#:
+#: Every count of "needs your attention" reads these — the account page's
+#: review banner, the budget-wide badge and the sidebar's per-account dot —
+#: so none of them can come to disagree about which rows they mean. They did:
+#: the banner scoped itself to `parent_transaction_id IS NULL` by hand, which
+#: is right for approval (a split is approved as a whole) and wrong for a
+#: category (an unfiled split LINE is real unfiled spending). The sidebar
+#: counted those lines and the banner did not.
+#:
+#: POSTED in both, on purpose: a pending row's amount is provisional and its
+#: payee often arrives with it, so it is not yet work. Pending rows are
+#: counted separately (PENDING_ROW), as something on its way rather than
+#: something waiting. The Uncategorized *filter* keeps pending rows — a
+#: filter shows what matches; a count says what is waiting — so the two can
+#: differ by the pending uncategorized rows, and only by those. Pinned in
+#: test_offbudget_categories.py.
+AWAITING_APPROVAL = and_(NOT_DELETED, PARENT_ROW, POSTED, UNAPPROVED)
+AWAITING_CATEGORY = and_(NOT_DELETED, POSTED, NEEDS_CATEGORY)
+
+
 #: An AI-created transaction still waiting for the user to look at it.
 #:
 #: Two surfaces read this and they must not be able to disagree: the count
@@ -959,15 +984,9 @@ NEEDS_CATEGORY = and_(
 #: "the badge said 3 while the register drew 930" for the category rule.
 #:
 #: `created_via LIKE 'ai%'` covers both `ai_receipt` and `ai_nl`. The
-#: exclusions mirror `_count_pending_review`: a soft-deleted row, a split child
-#: and a pending row are not things the user can act on.
-AI_NEEDS_REVIEW = and_(
-    NOT_DELETED,
-    PARENT_ROW,
-    POSTED,
-    Transaction.approved == False,  # noqa: E712
-    Transaction.created_via.like("ai%"),
-)
+#: exclusions are AWAITING_APPROVAL's: a soft-deleted row, a split child and a
+#: pending row are not things the user can act on.
+AI_NEEDS_REVIEW = and_(AWAITING_APPROVAL, Transaction.created_via.like("ai%"))
 
 
 #: A row a scanned receipt could be the paper for: posted, a whole
@@ -1558,7 +1577,7 @@ RegisterMatch = Callable[[Mapping[str, object]], bool]
 REGISTER_LADDER: tuple[tuple[str, ColumnElement[bool], RegisterMatch], ...] = (
     ("pending", Transaction.cleared == "pending", lambda r: r["cleared"] == "pending"),
     ("needs_category", NEEDS_CATEGORY, lambda r: bool(r["needs_category"])),
-    ("unapproved", Transaction.approved == False, lambda r: not r["approved"]),  # noqa: E712
+    ("unapproved", UNAPPROVED, lambda r: not r["approved"]),
     ("uncleared", Transaction.cleared == "uncleared", lambda r: r["cleared"] == "uncleared"),
     ("cleared", Transaction.cleared == "cleared", lambda r: r["cleared"] == "cleared"),
     ("reconciled", Transaction.cleared == "reconciled", lambda r: r["cleared"] == "reconciled"),

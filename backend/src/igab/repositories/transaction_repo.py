@@ -49,6 +49,8 @@ from igab.repositories.category_filters import (
 )
 from igab.repositories.txn_filters import (
     AI_NEEDS_REVIEW,
+    AWAITING_APPROVAL,
+    AWAITING_CATEGORY,
     BALANCE_ROW,
     BANK_DATE,
     BANK_UNLINKED,
@@ -78,6 +80,7 @@ from igab.repositories.txn_filters import (
     PROVISIONALLY_LINKED,
     REGISTER_RANK,
     SPENDING_ROW,
+    UNAPPROVED,
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
@@ -259,12 +262,12 @@ class TransactionRepository(BaseRepository[Transaction]):
         # Uncategorized filter still listed unpaired transfer legs while the
         # badge above it — counting the same thing — did not.
         if uncategorized and unapproved and is_or_mode:
-            q = q.where(or_(NEEDS_CATEGORY, Transaction.approved == False))  # noqa: E712
+            q = q.where(or_(NEEDS_CATEGORY, UNAPPROVED))
         else:
             if uncategorized:
                 q = q.where(NEEDS_CATEGORY)
             if unapproved:
-                q = q.where(Transaction.approved == False)  # noqa: E712
+                q = q.where(UNAPPROVED)
         if start_date:
             q = q.where(Transaction.date >= start_date)
         if end_date:
@@ -476,23 +479,11 @@ class TransactionRepository(BaseRepository[Transaction]):
 
     async def count_pending_review_for_account(self, account_id: uuid.UUID) -> dict:
         """Count transactions needing attention for a single account, with breakdown."""
-        return await self._count_pending_review(
-            and_(
-                Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-            )
-        )
+        return await self._count_pending_review(Transaction.account_id == account_id)
 
     async def count_pending_review(self, budget_id: uuid.UUID) -> dict:
         """Count transactions needing attention: unapproved and/or uncategorized, with breakdown."""
-        return await self._count_pending_review(
-            and_(
-                Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-            )
-        )
+        return await self._count_pending_review(Transaction.budget_id == budget_id)
 
     async def count_ai_needs_review(self, budget_id: uuid.UUID) -> int:
         """How many AI-created transactions are still waiting to be reviewed.
@@ -513,20 +504,13 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return result.scalar_one() or 0
 
-    async def _count_pending_review(self, base_where) -> dict:
-        # Approval still applies everywhere; a category does not. See
-        # NEEDS_CATEGORY for which rows a category is actually for.
-        #
-        # POSTED is applied here and NOT inside NEEDS_CATEGORY, on purpose.
-        # This is a count of work the user can act on, and a pending row is not
-        # actionable — the amount is provisional and the payee often arrives
-        # with it. The Uncategorized *filter* deliberately keeps pending rows,
-        # because a filter answers "show me rows matching this" rather than
-        # "how much is waiting for me". So the badge and that filter can
-        # legitimately differ by the number of pending uncategorized rows, and
-        # only by that. Pinned in test_offbudget_categories.py.
-        needs_category = NEEDS_CATEGORY
-        unapproved = Transaction.approved == False  # noqa: E712
+    async def _count_pending_review(self, scope) -> dict:
+        # Which rows are work is AWAITING_APPROVAL / AWAITING_CATEGORY's
+        # question, answered once in txn_filters for every count that asks it
+        # (this banner, the budget badge, the sidebar's per-account dot). This
+        # only scopes them and splits the overlap.
+        needs_category = AWAITING_CATEGORY
+        unapproved = AWAITING_APPROVAL
 
         result = await self.session.execute(
             select(
@@ -539,7 +523,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 func.sum(
                     cast(case((and_(~unapproved, needs_category), 1), else_=0), Integer)
                 ).label("uncategorized_only"),
-            ).where(and_(base_where, POSTED))
+            ).where(scope, or_(unapproved, needs_category))
         )
         row = result.one()
         both = row.both or 0

@@ -375,6 +375,20 @@ function checksFor(theme: string): Check[] {
     add(`${fg} on sidebar-bg`, token(theme, fg), token(theme, 'sidebar-bg'), AA_TEXT)
   }
 
+  // An account's attention dot, and the System entry's sync-fault dot: a
+  // painted mark with no text, so the non-text bar. --color-warning was never
+  // checked here, and in every light theme — which keeps a dark sidebar — it
+  // failed, down to 1.10:1: the dot that says "look here" was invisible. The
+  // sidebar reads --sidebar-warning instead (Sidebar.css sets the badge slots).
+  const sidebarGround = token(theme, 'sidebar-bg')
+  add('warning dot on sidebar-bg', token(theme, 'sidebar-warning'), sidebarGround, AA_NON_TEXT)
+  add('pending dot on sidebar-bg', token(theme, 'sidebar-text-muted'), sidebarGround, AA_NON_TEXT)
+  // The same dot on the Accounts page (also the phone's Accounts tab), which
+  // sits on the raised surface and reads the page's own tokens.
+  const raised = token(theme, 'surface-raised') ?? token(theme, 'bg-secondary')
+  add('warning dot on the accounts page', token(theme, 'color-warning'), raised, AA_NON_TEXT)
+  add('pending dot on the accounts page', token(theme, 'text-muted'), raised, AA_NON_TEXT)
+
   // The account balance chip. Its wash is derived from the sidebar's own text
   // colour, which means it moves the background TOWARD the text — so the
   // label loses a little contrast for the sake of the chip being visible at

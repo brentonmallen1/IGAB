@@ -368,7 +368,8 @@ class TestCountQueryStructure:
 
     @pytest.mark.asyncio
     async def test_count_query_excludes_deleted_and_children(self) -> None:
-        """Base WHERE must exclude soft-deleted rows and split children."""
+        """Both predicates drop soft-deleted rows, and approval is asked of
+        whole transactions (PARENT_ROW) — a split is approved as one."""
         from sqlalchemy.dialects import sqlite
 
         repo = _make_filter_repo()

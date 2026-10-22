@@ -106,7 +106,12 @@ export interface Account {
    * before the field existed. See `Account.budget_start_date` on the server.
    */
   budget_start_date: string | null
+  /** Rows waiting on this account — served by
+   *  AccountRepository.attention_counts_for on the review banner's predicates.
+   *  Drawn as one dot (utils/accountAttention); the numbers are its label. */
   uncategorized_count: number
+  unapproved_count: number
+  pending_count: number
   created_at: string
   updated_at: string
 }
