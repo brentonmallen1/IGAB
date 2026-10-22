@@ -1241,3 +1241,45 @@ DISCRETIONARY_ROW = and_(
     ACTIVITY_CLASS == ActivityClass.SPENDING.value,
     not_(category_tagged(*TIER_TAG_KEYS[NecessityTier.COST_OF_LIVING])),
 )
+
+
+#: Income Split's buckets (services/income_split.py), as rows. Every row an
+#: income split counts lands in exactly one; the report's tests hold each to
+#: the report it must agree with.
+#:
+#: Needs is the Essentials figure's own predicate — the lean tier's tag arm and
+#: `COST_OF_LIVING_CLASSES`, on `CLASS_TOTAL_ROW` (the same rows as
+#: `_necessity_rows_where`) — so Needs over the last three complete months IS
+#: the Essentials headline, and a mortgage tagged Essential is a need.
+ESSENTIAL_ROW = and_(
+    CLASS_TOTAL_ROW,
+    tier_scope(NecessityTier.ESSENTIAL),
+    ACTIVITY_CLASS.in_(COST_OF_LIVING_CLASSES),
+)
+
+#: Committed but not essential: SPENDING in a category tagged Cost of living
+#: and not Essential — the gym contract, not the dinner out. **Spending only,
+#: and by tag only.** The Cost of Living report's "non-essential" gap is the
+#: wide tier minus the lean one, and the wide tier admits every untagged debt
+#: payment BY CLASS; taking the gap here would count those payments once as a
+#: want and again as debt repaid.
+COMMITTED_ROW = and_(
+    CLASS_TOTAL_ROW,
+    ACTIVITY_CLASS == ActivityClass.SPENDING.value,
+    category_tagged(*TIER_TAG_KEYS[NecessityTier.COST_OF_LIVING]),
+    not_(category_tagged(*TIER_TAG_KEYS[NecessityTier.ESSENTIAL])),
+)
+
+#: A payment into a tracked debt that is not a need: DEBT_PRINCIPAL leaving
+#: the budget, from a category not tagged Essential — or from no category at
+#: all, which is still a payment. **Outflows only**, as `tier_scope` fences
+#: the wide tier: the class also marks money arriving FROM a loan (a HELOC
+#: draw, a disbursement), and netting that in would read $5,000 of proceeds as
+#: $5,000 of negative debt repayment. The Savings Rate's `debt_principal`
+#: nets both ways; this deliberately does not.
+NON_ESSENTIAL_DEBT_OUTFLOW = and_(
+    CLASS_TOTAL_ROW,
+    ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value,
+    Transaction.amount < 0,
+    not_(category_tagged(*TIER_TAG_KEYS[NecessityTier.ESSENTIAL])),
+)

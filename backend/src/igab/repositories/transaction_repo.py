@@ -12,6 +12,7 @@ from sqlalchemy import (
     cast,
     func,
     insert,
+    literal,
     literal_column,
     or_,
     select,
@@ -21,17 +22,23 @@ from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.selectable import Subquery
 
 from igab.db.models import (
+    Account,
     Category,
     CategoryGroup,
+    Liability,
     Payee,
     Transaction,
     TransactionAttachment,
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
+    COMMITTED_ROW,
     COST_OF_LIVING_CLASSES,
     DISCRETIONARY_ROW,
+    ESSENTIAL_ROW,
+    NON_ESSENTIAL_DEBT_OUTFLOW,
     TIER_TAG_KEYS,
+    ActivityClass,
     NecessityTier,
     apply_class_joins,
     basis_is_chosen,
@@ -1649,6 +1656,103 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis
+
+    async def necessity_basis(self, budget_id: uuid.UUID, tier: NecessityTier) -> str:
+        """How this tier's membership is decided for this budget, by the tags
+        alone (`_necessity_scope` with nothing bound): "tag" once any category
+        carries the tier's tag, else "all" — nothing chosen yet."""
+        _, basis = await self._necessity_scope(budget_id, tier, None)
+        return basis
+
+    async def income_split_by_category(
+        self, budget_id: uuid.UUID, since: date, until: date
+    ) -> list:
+        """Income Split's rows over [since, until], one per category per
+        bucket: (bucket, category_id, category_name, group_name, is_debt,
+        sinking, liability_id, counterpart_name, total, count).
+
+        Every row lands in one bucket, by the first of these it meets —
+        ESSENTIAL_ROW ("needs"), COMMITTED_ROW, DISCRETIONARY_ROW with no
+        category ("uncategorized"), DISCRETIONARY_ROW ("chosen"),
+        NON_ESSENTIAL_DEBT_OUTFLOW ("debt") — and a row none of them claims
+        (income, savings, a transfer between budget accounts) is not here at
+        all: saved and income are the Savings Rate's own figures. The order
+        only matters where predicates could overlap, and they are written not
+        to; the tests hold each bucket to the report it must agree with.
+
+        A debt payment carries the liability it pays — the category's linked
+        debt, else the tracked account it went to — and that account's name,
+        which is what names a payment with no category.
+
+        Row-level first, then grouped: the liability and the account's name are
+        correlated lookups, which a GROUP BY cannot take directly.
+        """
+        is_debt = ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value
+        bucket = case(
+            (ESSENTIAL_ROW, literal("needs")),
+            (COMMITTED_ROW, literal("committed")),
+            (and_(DISCRETIONARY_ROW, Transaction.category_id.is_(None)), literal("uncategorized")),
+            (DISCRETIONARY_ROW, literal("chosen")),
+            (NON_ESSENTIAL_DEBT_OUTFLOW, literal("debt")),
+        )
+        paid_to = (
+            select(Liability.id)
+            .where(Liability.linked_account_id == COUNTERPART_ACCOUNT_ID)
+            .correlate(Transaction)
+            .limit(1)
+            .scalar_subquery()
+        )
+        paid_to_name = (
+            select(Account.name)
+            .where(Account.id == COUNTERPART_ACCOUNT_ID)
+            .correlate(Transaction)
+            .scalar_subquery()
+        )
+        rows = apply_class_joins(
+            select(
+                bucket.label("bucket"),
+                Transaction.category_id.label("category_id"),
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+                is_debt.label("is_debt"),
+                IN_SINKING_FUND.label("sinking"),
+                case(
+                    (is_debt, func.coalesce(Category.linked_liability_id, paid_to)),
+                ).label("liability_id"),
+                case((is_debt, paid_to_name)).label("counterpart_name"),
+                Transaction.amount.label("amount"),
+                Transaction.id.label("id"),
+            )
+            .select_from(Transaction)
+            .outerjoin(Category, Category.id == Transaction.category_id)
+            .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.date >= since,
+                Transaction.date <= until,
+                or_(ESSENTIAL_ROW, COMMITTED_ROW, DISCRETIONARY_ROW, NON_ESSENTIAL_DEBT_OUTFLOW),
+            )
+        ).subquery()
+        keys = (
+            rows.c.bucket,
+            rows.c.category_id,
+            rows.c.category_name,
+            rows.c.group_name,
+            rows.c.is_debt,
+            rows.c.sinking,
+            rows.c.liability_id,
+            rows.c.counterpart_name,
+        )
+        q = (
+            select(
+                *keys,
+                func.sum(rows.c.amount).label("total"),
+                func.count(rows.c.id).label("count"),
+            )
+            .group_by(*keys)
+            .order_by(rows.c.bucket, rows.c.category_name)
+        )
+        return list((await self.session.execute(q)).all())
 
     async def spending_by_month(self, budget_id: uuid.UUID, since: date, until: date) -> list:
         """(month, total, sinking) rows of ALL spending in the window — the

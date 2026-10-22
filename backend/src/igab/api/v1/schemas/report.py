@@ -1767,3 +1767,93 @@ class EmergencyCoverageResponse(ApiModel):
     external_amount: Decimal | None = None
     external_as_of: date | None = None
     current_month: date
+
+
+class IncomeSplitLine(ApiModel):
+    """One line of Income Split's breakdown: a category (or, for a debt paid
+    with no category, the account it went to; for saved, a Savings Rate
+    contributor), and why it is in its bucket — a key the page words."""
+
+    category_id: uuid.UUID | None
+    name: str
+    group_name: str | None
+    reason: Literal[
+        "essential",
+        "essential_debt",
+        "cost_of_living",
+        "untagged",
+        "debt_not_essential",
+        "debt_no_category",
+        "saved",
+    ]
+    #: What the line counts: spread over 12 months when `spread`, with what
+    #: was paid in the window as `as_paid`.
+    total: Decimal
+    count: int
+    spread: bool
+    as_paid: Decimal | None
+    #: A debt payment with a minimum on file: the minimum per month (as of
+    #: today) and how much of the window's payments went above it.
+    minimum: Decimal | None
+    above_minimum: Decimal | None
+    minimum_unknown: bool
+
+
+class IncomeSplitNeeds(ApiModel):
+    total: Decimal
+    lines: list[IncomeSplitLine]
+
+
+class IncomeSplitWants(ApiModel):
+    total: Decimal
+    #: Tagged Cost of living, not Essential.
+    committed: list[IncomeSplitLine]
+    #: Tagged neither.
+    chosen: list[IncomeSplitLine]
+
+
+class IncomeSplitSavingsDebt(ApiModel):
+    total: Decimal
+    #: The Savings Rate's savings contributors over the same window.
+    saved: list[IncomeSplitLine]
+    #: Debt payments outside Essential.
+    debt: list[IncomeSplitLine]
+
+
+class IncomeSplitUncategorized(ApiModel):
+    total: Decimal
+    count: int
+
+
+class IncomeSplitStrict(ApiModel):
+    """The rule's own reading: only a debt's minimum is a need."""
+
+    needs: Decimal
+    savings_debt: Decimal
+
+
+class IncomeSplitResponse(ApiModel):
+    """Where take-home pay went over [start_date, end_date]
+    (services/income_split.py). The five buckets — needs, wants, savings_debt,
+    uncategorized, left_over — add up to `income` to the cent. Shares and the
+    50/30/20 rule are the page's to draw; every figure here is money."""
+
+    start_date: date
+    end_date: date
+    #: Months the window covers — counted when `whole_months`, else days over
+    #: an average month.
+    months: Decimal
+    whole_months: bool
+    running: bool
+    #: The requested start was before the budget's history and was moved.
+    clamped: bool
+    #: Anything tagged Essential. Without it there are no needs to split.
+    tagged: bool
+    spread_on: bool
+    income: Decimal
+    needs: IncomeSplitNeeds
+    wants: IncomeSplitWants
+    savings_debt: IncomeSplitSavingsDebt
+    uncategorized: IncomeSplitUncategorized
+    left_over: Decimal
+    strict: IncomeSplitStrict
