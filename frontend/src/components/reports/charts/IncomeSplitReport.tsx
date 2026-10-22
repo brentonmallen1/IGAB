@@ -8,7 +8,6 @@ import { useReportStore } from '../../../stores/reportStore'
 import { today } from '../../../utils/dates'
 import {
   BUCKET_LABEL,
-  RULE,
   barGeometry,
   gapPhrase,
   lineDetail,
@@ -22,6 +21,7 @@ import {
 } from '../../../utils/incomeSplit'
 import type { IncomeSplitLine, IncomeSplitReport as Report } from '../../../types'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import { IncomeSplitBar } from '../IncomeSplitBar'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportHeader } from '../ReportHeader'
@@ -136,7 +136,7 @@ export function IncomeSplitReport({ budgetId }: Props) {
           </p>
         </div>
       ) : (
-        <div ref={captureRef} className="report-capture income-split">
+        <div ref={captureRef} className="report-capture income-split income-split-palette">
           <SplitSummary data={data} period={period} per={per} perLabel={perLabel} />
           <section
             className="income-split__breakdown surface surface--raised"
@@ -224,54 +224,7 @@ function SplitSummary({
         </p>
       ) : (
         <>
-          <div className={`income-split__bar-wrap ${unfiled ? 'is-unfiled' : ''}`}>
-            <div className="income-split__ticks" aria-hidden="true">
-              {bar.ticks.map((t, i) => (
-                <span key={t} style={{ left: `${t}%` }}>
-                  {i === 0 ? RULE.needs : RULE.needs + RULE.wants}%
-                </span>
-              ))}
-            </div>
-            <div
-              className="income-split__bar"
-              role="img"
-              aria-label={`Needs ${pct.needs}%, wants ${pct.wants}%, savings and debt ${pct.savings}%, uncategorized ${pct.uncategorized}%, left over ${pct.left}% of take-home`}
-            >
-              {bar.segments.map((s) => (
-                <span
-                  key={s.key}
-                  className={`income-split__seg income-split__seg--${s.key}`}
-                  style={{ width: `${s.width}%` }}
-                >
-                  {s.width >= 14 && s.key !== 'committed' && s.key !== 'left' && (
-                    <span className="income-split__seg-label">
-                      {BUCKET_LABEL[s.key]} {pct[s.key]}%
-                    </span>
-                  )}
-                </span>
-              ))}
-              {bar.ticks.map((t) => (
-                <span
-                  key={t}
-                  className="income-split__tick"
-                  style={{ left: `${t}%` }}
-                  aria-hidden="true"
-                />
-              ))}
-              {bar.over > 0 && (
-                <span
-                  className="income-split__income-line"
-                  style={{ left: `${bar.incomeAt}%` }}
-                  aria-hidden="true"
-                />
-              )}
-            </div>
-            <div className="income-split__rule" aria-hidden="true">
-              <span style={{ width: `${(RULE.needs * bar.incomeAt) / 100}%` }} />
-              <span style={{ width: `${(RULE.wants * bar.incomeAt) / 100}%` }} />
-              <span style={{ width: `${(RULE.savings * bar.incomeAt) / 100}%` }} />
-            </div>
-          </div>
+          <IncomeSplitBar data={data} />
           {bar.over > 0 && (
             <p className="income-split__over">
               Outflows ran past take-home by <strong>{per(bar.over)}</strong> {perLabel} — drawn

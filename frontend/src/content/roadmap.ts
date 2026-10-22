@@ -108,6 +108,9 @@ export interface RoadmapNode {
   threshold?: 'starter'
   /** The calculator that works this node's question through with real numbers. */
   tool?: ToolId
+  /** A live figure from the budget drawn on the node — a reading, never a
+   *  signal: it lights nothing and moves no position (`roadmapPosition`). */
+  figure?: 'income-split'
   /** US-specific account types and tax rules. */
   region?: 'us'
   /** One of several parallel choices offered by the node before it, rather
@@ -155,6 +158,10 @@ export const ROADMAP_STEPS: { step: number; label: string }[] = [
  *  Pay Income Earning Expenses                -> income-earning-expenses
  *  Pay Health Care                            -> health-care
  *  Make Minimum Payments On All Debts         -> minimum-payments
+ *  (not a chart box)                          -> income-split
+ *      IGAB-native addition: the household's own split beside the 50/30/20
+ *      rule, read from its tags (Income Split). A reading, not a step — it
+ *      carries no signal, so it lights nothing and moves no position.
  *  Build Small Emergency Fund            (S1) -> starter-ef
  *  Pay Any Non-Essential Bills in Full   (S1) -> nonessential-bills
  *  Employer match?                       (S2) -> match-question
@@ -273,6 +280,17 @@ export const ROADMAP: RoadmapStage[] = [
           'Missing a minimum is uniquely expensive: a late fee, a penalty rate that can outlast the missed payment by months, and a mark on your credit report that lingers for years. This is the one line in the roadmap with no tradeoff to weigh.',
         glossary: ['apr', 'minimum-payment'],
         appLinks: [{ label: 'Your liabilities', to: '/liabilities' }],
+      },
+      {
+        id: 'income-split',
+        kind: 'note',
+        title: 'See how your income splits',
+        body: 'A common rule of thumb: about half of take-home pay to needs, up to a third to wants, and a fifth to saving and paying down debt.',
+        detail:
+          'It is a yardstick, not a grade — where you live decides a lot of the first number, and a household in an expensive city can be doing everything right at 60%. What makes it useful is which gap you have, because each one points somewhere different: needs to the slow levers (housing, the car), wants to the quick one, saving to the steps that follow this one.',
+        glossary: ['fifty-thirty-twenty', 'essential-expenses'],
+        appLinks: [{ label: 'Income Split report', to: '/reports?tab=income-split' }],
+        figure: 'income-split',
       },
     ],
   },

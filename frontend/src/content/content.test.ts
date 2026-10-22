@@ -294,6 +294,9 @@ describe('roadmap integrity', () => {
       'income-earning-expenses',
       'health-care',
       'minimum-payments',
+      // IGAB-native addition (marked "not a chart box" in the source map):
+      // the household's own split beside the 50/30/20 rule.
+      'income-split',
       // Step 1 — starter emergency fund
       'starter-ef',
       'nonessential-bills',

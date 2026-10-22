@@ -4,6 +4,7 @@ import type { RoadmapNode } from '../../content/roadmap'
 import type { ConceptInfo, Signal } from '../../api/guide'
 import { GlossaryChips } from './GlossaryChips'
 import { SignalNote } from './SignalNote'
+import { IncomeSplitNote } from './IncomeSplitNote'
 import { TOOLS } from './tools/toolRegistry'
 import { guideToolHref } from '../../utils/guideLinks'
 
@@ -148,6 +149,8 @@ export function NodeCard({
           onCorrect={onCorrectSignal}
         />
       )}
+
+      {node.figure === 'income-split' && state === 'visible' && <IncomeSplitNote />}
 
       {node.glossary && node.glossary.length > 0 && <GlossaryChips terms={node.glossary} />}
 

@@ -1,0 +1,65 @@
+/* The 50/30/20 roadmap node's live figure (IncomeSplitNote). The bar is the
+   report's (IncomeSplitBar); the palette variables are its. */
+.income-split-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+}
+
+.income-split-note__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.income-split-note__line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.income-split-note__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.income-split-note__rows li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  column-gap: var(--spacing-sm);
+  align-items: baseline;
+}
+
+.income-split-note__rows li > span:last-child {
+  grid-column: 2;
+  color: var(--text-secondary);
+}
+
+.income-split-note__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.income-split-note__swatch--needs {
+  background-color: var(--ix-needs);
+}
+
+.income-split-note__swatch--wants {
+  background-color: var(--ix-wants);
+}
+
+.income-split-note__swatch--savings {
+  background-color: var(--ix-savings);
+}

@@ -92,7 +92,7 @@ describe('flow layout', () => {
   })
 
   it('carries the spine across a stage boundary', () => {
-    expect(edge('minimum-payments', 'starter-ef')?.kind).toBe('sequence')
+    expect(edge('income-split', 'starter-ef')?.kind).toBe('sequence')
     expect(edge('starter-ef', 'nonessential-bills')?.kind).toBe('sequence')
     expect(edge('nonessential-bills', 'match-question')?.kind).toBe('sequence')
   })
@@ -132,7 +132,8 @@ describe('flow layout', () => {
     // The source chart lays its essentials out across the page rather than
     // as a tall stack; a run of plain sequential steps should do the same.
     const foundation = flow.nodes.filter((n) => n.stage.id === 'foundation')
-    expect(foundation).toHaveLength(7)
+    // The chart's seven, and the IGAB-native income split note after them.
+    expect(foundation).toHaveLength(8)
     // Four across, then the remainder on a second line.
     expect(foundation.slice(0, 4).map((n) => n.col)).toEqual([0, 1, 2, 3])
     expect(new Set(foundation.slice(0, 4).map((n) => n.row)).size).toBe(1)
@@ -144,7 +145,7 @@ describe('flow layout', () => {
     // Left-to-right then right-to-left, so the eye follows the flow instead
     // of jumping the full width of the page between lines.
     const foundation = flow.nodes.filter((n) => n.stage.id === 'foundation')
-    expect(foundation.slice(4).map((n) => n.col)).toEqual([3, 2, 1])
+    expect(foundation.slice(4).map((n) => n.col)).toEqual([3, 2, 1, 0])
   })
 
   it('keeps packed steps on the spine despite their column', () => {
@@ -164,6 +165,7 @@ describe('flow layout', () => {
       'income-earning-expenses',
       'health-care',
       'minimum-payments',
+      'income-split',
     ]
     for (let i = 0; i < chain.length - 1; i++) {
       expect(edge(chain[i], chain[i + 1])?.kind).toBe('sequence')
@@ -213,7 +215,7 @@ describe('flow layout', () => {
     it('replaces a stage with a single box', () => {
       expect(partial.collapsed.map((c) => c.stage.id)).toEqual(['foundation'])
       expect(partial.nodes.find((n) => n.stage.id === 'foundation')).toBeUndefined()
-      expect(partial.nodes).toHaveLength(flow.nodes.length - 7)
+      expect(partial.nodes).toHaveLength(flow.nodes.length - 8)
     })
 
     it('keeps the chart connected through the collapsed box', () => {

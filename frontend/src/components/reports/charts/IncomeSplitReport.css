@@ -1,14 +1,6 @@
-/* Income Split (IncomeSplitReport). Bucket colours are the chart palette's
-   first three slots — validated per theme for separation on the surface —
-   and the committed part of Wants is Wants mixed toward the text colour, so
-   it reads darker on a light theme and lighter on a dark one, never the same. */
+/* Income Split (IncomeSplitReport). The bucket colours are
+   IncomeSplitBar.css's `.income-split-palette`, which the root carries. */
 .income-split {
-  --ix-needs: var(--chart-1);
-  --ix-wants: var(--chart-2);
-  --ix-committed: color-mix(in srgb, var(--chart-2) 70%, var(--text-primary));
-  --ix-savings: var(--chart-3);
-  --ix-unfiled: repeating-linear-gradient(45deg, var(--text-muted) 0 3px, transparent 3px 6px);
-
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
@@ -52,129 +44,6 @@
 
 .income-split__period strong {
   color: var(--text-primary);
-}
-
-/* The bar: ticks above it, the rule as a faint strip under it. */
-.income-split__bar-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 18px;
-  position: relative;
-}
-
-.income-split__ticks {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 16px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-}
-
-.income-split__ticks span {
-  position: absolute;
-  transform: translateX(-50%);
-}
-
-.income-split__bar {
-  position: relative;
-  display: flex;
-  height: 36px;
-  border-radius: var(--border-radius-sm);
-  overflow: hidden;
-  outline: 1px solid var(--edge-strong);
-}
-
-.income-split__seg {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  overflow: hidden;
-  border-left: 1px solid var(--surface-raised);
-}
-
-.income-split__seg:first-child {
-  border-left: none;
-}
-
-.income-split__seg--needs {
-  background-color: var(--ix-needs);
-}
-
-.income-split__seg--committed {
-  background-color: var(--ix-committed);
-}
-
-.income-split__seg--wants {
-  background-color: var(--ix-wants);
-}
-
-.income-split__seg--savings {
-  background-color: var(--ix-savings);
-}
-
-.income-split__seg--uncategorized {
-  background: var(--ix-unfiled);
-}
-
-.income-split__seg--left {
-  background-color: var(--surface-raised);
-  border-left: 1px dashed var(--text-muted);
-}
-
-/* A label rides on the segment only where it fits, on a chip of the surface
-   colour — the chart slots are not text grounds, and a label on raw colour
-   would owe each of forty themes its own contrast check. */
-.income-split__seg-label {
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background-color: var(--surface-raised);
-  color: var(--text-primary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.income-split__tick,
-.income-split__income-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 2px solid var(--text-primary);
-  box-shadow: 0 0 0 1px var(--surface-raised);
-}
-
-.income-split__income-line {
-  border-left-width: 3px;
-}
-
-.income-split__bar-wrap.is-unfiled .income-split__tick,
-.income-split__bar-wrap.is-unfiled .income-split__ticks {
-  opacity: 0.4;
-}
-
-.income-split__rule {
-  display: flex;
-  height: 8px;
-  border-radius: 3px;
-  overflow: hidden;
-  opacity: 0.5;
-}
-
-.income-split__rule span:nth-child(1) {
-  background-color: var(--ix-needs);
-}
-
-.income-split__rule span:nth-child(2) {
-  background-color: var(--ix-wants);
-}
-
-.income-split__rule span:nth-child(3) {
-  background-color: var(--ix-savings);
 }
 
 .income-split__over {
@@ -386,12 +255,6 @@
   .income-split__summary,
   .income-split__breakdown {
     padding: var(--spacing-md);
-  }
-
-  /* The bar is too narrow to carry its labels (a 20% segment is ~70px); the
-     legend directly under it names every bucket. */
-  .income-split__seg-label {
-    display: none;
   }
 
   .income-split__legend {
