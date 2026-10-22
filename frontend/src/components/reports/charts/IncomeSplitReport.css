@@ -1,0 +1,440 @@
+/* Income Split (IncomeSplitReport). Bucket colours are the chart palette's
+   first three slots — validated per theme for separation on the surface —
+   and the committed part of Wants is Wants mixed toward the text colour, so
+   it reads darker on a light theme and lighter on a dark one, never the same. */
+.income-split {
+  --ix-needs: var(--chart-1);
+  --ix-wants: var(--chart-2);
+  --ix-committed: color-mix(in srgb, var(--chart-2) 70%, var(--text-primary));
+  --ix-savings: var(--chart-3);
+  --ix-unfiled: repeating-linear-gradient(45deg, var(--text-muted) 0 3px, transparent 3px 6px);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.income-split__lede {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.income-split__muted {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.income-split__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 72ch;
+}
+
+.income-split__summary,
+.income-split__breakdown {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.income-split__period {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.income-split__period strong {
+  color: var(--text-primary);
+}
+
+/* The bar: ticks above it, the rule as a faint strip under it. */
+.income-split__bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 18px;
+  position: relative;
+}
+
+.income-split__ticks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.income-split__ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.income-split__bar {
+  position: relative;
+  display: flex;
+  height: 36px;
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+  outline: 1px solid var(--edge-strong);
+}
+
+.income-split__seg {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--surface-raised);
+}
+
+.income-split__seg:first-child {
+  border-left: none;
+}
+
+.income-split__seg--needs {
+  background-color: var(--ix-needs);
+}
+
+.income-split__seg--committed {
+  background-color: var(--ix-committed);
+}
+
+.income-split__seg--wants {
+  background-color: var(--ix-wants);
+}
+
+.income-split__seg--savings {
+  background-color: var(--ix-savings);
+}
+
+.income-split__seg--uncategorized {
+  background: var(--ix-unfiled);
+}
+
+.income-split__seg--left {
+  background-color: var(--surface-raised);
+  border-left: 1px dashed var(--text-muted);
+}
+
+/* A label rides on the segment only where it fits, on a chip of the surface
+   colour — the chart slots are not text grounds, and a label on raw colour
+   would owe each of forty themes its own contrast check. */
+.income-split__seg-label {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.income-split__tick,
+.income-split__income-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid var(--text-primary);
+  box-shadow: 0 0 0 1px var(--surface-raised);
+}
+
+.income-split__income-line {
+  border-left-width: 3px;
+}
+
+.income-split__bar-wrap.is-unfiled .income-split__tick,
+.income-split__bar-wrap.is-unfiled .income-split__ticks {
+  opacity: 0.4;
+}
+
+.income-split__rule {
+  display: flex;
+  height: 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  opacity: 0.5;
+}
+
+.income-split__rule span:nth-child(1) {
+  background-color: var(--ix-needs);
+}
+
+.income-split__rule span:nth-child(2) {
+  background-color: var(--ix-wants);
+}
+
+.income-split__rule span:nth-child(3) {
+  background-color: var(--ix-savings);
+}
+
+.income-split__over {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+/* The legend: five cells on a hairline grid. */
+.income-split__legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background-color: var(--edge);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+}
+
+.income-split__legend-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--surface-sunken);
+}
+
+.income-split__legend-name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-weight: 500;
+}
+
+.income-split__legend-amount {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.income-split__swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.income-split__swatch--needs {
+  background-color: var(--ix-needs);
+}
+
+.income-split__swatch--wants {
+  background-color: var(--ix-wants);
+}
+
+.income-split__swatch--committed {
+  background-color: var(--ix-committed);
+}
+
+.income-split__swatch--savings {
+  background-color: var(--ix-savings);
+}
+
+.income-split__swatch--uncategorized {
+  background: var(--ix-unfiled);
+  outline: 1px solid var(--text-muted);
+}
+
+.income-split__swatch--left {
+  border: 1px dashed var(--text-muted);
+}
+
+/* Breakdown: collapsible groups, collapsed until asked. */
+.income-split__breakdown-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+}
+
+.income-split__h3,
+.income-split__note-head {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.income-split__btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.income-split__group {
+  border-top: 1px solid var(--edge);
+}
+
+.income-split__group-head {
+  display: grid;
+  grid-template-columns: 16px 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.income-split__chevron {
+  transition: transform var(--transition-fast);
+}
+
+.income-split__group-head[aria-expanded="true"] .income-split__chevron {
+  transform: rotate(90deg);
+}
+
+.income-split__group-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--spacing-sm);
+  min-width: 0;
+}
+
+.income-split__group-figures {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 2px var(--spacing-md);
+}
+
+.income-split__group-body {
+  padding: 0 0 var(--spacing-sm) 30px;
+}
+
+.income-split__subhead {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.income-split__line {
+  display: grid;
+  /* A set width for the amount: `auto` sized per row and skewed the chip
+     column by the width of each figure. */
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.5fr) 7.5em;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px 0;
+  border-top: 1px solid var(--edge);
+}
+
+.income-split__line-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.income-split__line-amount {
+  text-align: right;
+}
+
+.income-split__chip {
+  justify-self: start;
+  padding: 1px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.income-split__foot {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: flex-start;
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.income-split__foot svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.income-split__notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.income-split__notes p {
+  margin: var(--spacing-xs) 0 0;
+}
+
+@media (max-width: 768px) {
+  .income-split__summary,
+  .income-split__breakdown {
+    padding: var(--spacing-md);
+  }
+
+  /* The bar is too narrow to carry its labels (a 20% segment is ~70px); the
+     legend directly under it names every bucket. */
+  .income-split__seg-label {
+    display: none;
+  }
+
+  .income-split__legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Five cells in two columns: Left over takes the last row whole rather
+     than leave a hole beside it. */
+  .income-split__legend-cell:last-child {
+    grid-column: 1 / -1;
+  }
+
+  /* A group's head: its name, then amount and share. The description and the
+     rule figure are the legend's to say on a phone. */
+  .income-split__group-name .income-split__muted,
+  .income-split__group-figures .income-split__muted {
+    display: none;
+  }
+
+  /* A line becomes two: the name with its chip under it, the amount right. */
+  .income-split__line {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .income-split__line-group {
+    display: none;
+  }
+
+  .income-split__chip {
+    grid-column: 1;
+  }
+
+  .income-split__line-amount {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .income-split__group-body {
+    padding-left: 0;
+  }
+
+  .income-split__group-head,
+  .income-split__btn {
+    min-height: var(--tap-min);
+  }
+}

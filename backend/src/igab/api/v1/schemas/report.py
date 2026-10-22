@@ -1797,6 +1797,9 @@ class IncomeSplitLine(ApiModel):
     minimum: Decimal | None
     above_minimum: Decimal | None
     minimum_unknown: bool
+    #: A saved line's own reading from the Savings Rate ("held in a Savings
+    #: envelope"); None elsewhere.
+    note: str | None
 
 
 class IncomeSplitNeeds(ApiModel):

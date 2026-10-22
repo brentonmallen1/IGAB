@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type {
-  CostOfLivingReport,
-  DiscretionaryReport,
+  IncomeSplitReport,
   WishlistDisciplineReport,
   AccountCompositionReport,
   AnomalyReport,
@@ -721,21 +720,17 @@ export function useCategoryHistoryReport(
   })
 }
 
-export function useCostOfLivingReport(budgetId: string | null, months = 12) {
+/** Income Split over the shared range picker's window. Income and saved are
+ *  the Savings Rate's own figures over the same dates, server-side. */
+export function useIncomeSplitReport(budgetId: string | null, startDate: string, endDate: string) {
   return useQuery({
-    queryKey: [ROOT.reports, 'cost-of-living', budgetId, months],
-    queryFn: () => fetchReport<CostOfLivingReport>(budgetId, 'cost-of-living', { months }),
+    queryKey: [ROOT.reports, 'income-split', budgetId, startDate, endDate],
+    queryFn: () =>
+      fetchReport<IncomeSplitReport>(budgetId, 'income-split', {
+        start_date: startDate,
+        end_date: endDate,
+      }),
     enabled: !!budgetId,
-    staleTime: 60_000,
-  })
-}
-
-export function useDiscretionaryReport(budgetId: string | null, months = 12) {
-  return useQuery({
-    queryKey: [ROOT.reports, 'discretionary', budgetId, months],
-    queryFn: () => fetchReport<DiscretionaryReport>(budgetId, 'discretionary', { months }),
-    enabled: !!budgetId,
-    staleTime: 60_000,
   })
 }
 

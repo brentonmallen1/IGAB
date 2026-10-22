@@ -57,7 +57,6 @@ vi.mock('../../../api/reports', async (importOriginal) => {
 vi.mock('../../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
 import { AccountCompositionReport } from './AccountCompositionChart'
-import { CostOfLivingReport } from './CostOfLivingReport'
 import { IncomeSourcesReport } from './IncomeSourcesReport'
 import { SavingsRateReport } from './SavingsRateChart'
 import { SpendingTrendsReport } from './SpendingTrendsReport'
@@ -127,43 +126,6 @@ const CASES: [string, ComponentType<{ budgetId: string }>, unknown][] = [
       total: 2925,
       avg_monthly: 2925,
       months_averaged: 1,
-    },
-  ],
-  [
-    'Cost of Living — a group whose refunds beat its spending',
-    CostOfLivingReport,
-    {
-      months: ['2026-08-01'],
-      months_averaged: 1,
-      window_start: '2026-08-01',
-      window_end: '2026-08-31',
-      groups: [
-        {
-          group_id: 'g-bills',
-          group_name: 'Bills',
-          monthly_amounts: [700],
-          total: 700,
-          avg_monthly: 700,
-          share: 100,
-          category_ids: ['c1'],
-        },
-        {
-          group_id: 'g-health',
-          group_name: 'Health',
-          monthly_amounts: [-40],
-          total: -40,
-          avg_monthly: -40,
-          share: 0,
-          category_ids: ['c2'],
-        },
-      ],
-      avg_monthly_cost_of_living: 660,
-      avg_monthly_essentials: null,
-      avg_monthly_income: 1200,
-      basis: 'tag',
-      tagged: true,
-      class_excluded: [],
-      counted_classes: ['spending', 'debt_principal'],
     },
   ],
   [

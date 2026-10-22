@@ -1551,8 +1551,8 @@ export interface EssentialsReport {
    *  runway rule at (Essentials, the fund); `months` null when nothing was
    *  chosen or nothing is tagged Essential. */
   fund_runway: RunwayFigure
-  /** Tagged Essential and still not counted, by class — see
-   *  `CostOfLivingReport.class_excluded`. */
+  /** Tagged Essential and still not counted, by class — the server's
+   *  `class_excluded_note`. */
   class_excluded: SpendingClassExcluded[]
 }
 
@@ -2003,122 +2003,6 @@ export interface SimilarTransaction {
   import_description: string | null
 }
 
-export interface CostOfLivingGroup {
-  /** null for the Uncategorized bucket — the flag its drill reads (backend
-   *  `report_basics.cost_of_living`). Never test the name. */
-  group_id: string | null
-  group_name: string
-  monthly_amounts: number[]
-  total: number
-  avg_monthly: number
-  /** Share of the cost-of-living total, 0–100 — not of income, so shares add
-   *  to 100. */
-  share: number
-  /** The categories behind this bar, for the drill-down. Empty on the
-   *  Uncategorized bucket, which drills by "no category" instead — an empty
-   *  id list filters nothing and would list the whole budget. */
-  category_ids: string[]
-}
-
-export interface CostOfLivingReport {
-  months: string[]
-  /** How many months the `avg_monthly_*` figures divide by: every entry of
-   *  `months`, all of them complete, on every day (backend
-   *  `domain.dates.complete_month_window`). Served rather than derived from
-   *  `months.length`, so the page never divides for itself. */
-  months_averaged: number
-  /** The window the figures cover. Served, not re-derived: "twelve months
-   *  back from the first of that month, to today" is the report's rule and
-   *  belongs on one side of the wire. */
-  window_start: string
-  window_end: string
-  groups: CostOfLivingGroup[]
-  /** The wide tier: everything non-discretionary. */
-  avg_monthly_cost_of_living: number
-  /** The lean tier, over the SAME window — which is what makes the difference
-   *  between them a real figure rather than a calendar artifact. Null when
-   *  nothing is tagged Essential (backend `basis_is_chosen`): all spending is
-   *  not what a household could not cut. */
-  avg_monthly_essentials: number | null
-  avg_monthly_income: number
-  /** Spending outside both tiers over the same window — the Discretionary
-   *  report's own rows — so the verdict lays take-home out whole: committed,
-   *  discretionary and left over (`necessityView.takeHomeSplit`). Null when
-   *  nothing is tagged, as that report serves it. */
-  avg_monthly_discretionary: number | null
-  /* The gap between the tiers, and the two ratios against take-home, are NOT
-   * served: they are arithmetic on the three averages above, so they are
-   * composed once in `components/reports/charts/necessityView.ts`
-   * (`nonEssentialSpend`, `necessityShare`). */
-  basis: 'bound' | 'tag' | 'all'
-  /** False when no category is tagged Essential or Cost of living (basis
-   *  'all'): the figures then cover every category — the burn rate. */
-  tagged: boolean
-  /** Tagged Essential and still not counted, by class. Tagging a category is
-   *  pointing at it, so absence without this reads as a bug — which is
-   *  exactly how "I tagged ten and two showed up" was reported. */
-  class_excluded: SpendingClassExcluded[]
-  /** The activity classes these figures count, passed to the drill-down so a
-   *  bar and the panel it opens total the same. */
-  counted_classes: string[]
-  /** The necessity tier the groups roll up. Membership is per row (debt
-   *  principal joins by class), so the drill sends it too. */
-  necessity_tier: string
-}
-
-/** One category's discretionary spending over the window. */
-export interface DiscretionaryLine {
-  category_id: string
-  category_name: string
-  total: number
-  avg_monthly: number
-}
-
-export interface DiscretionaryGroup {
-  /** Null on the Uncategorized line: rows with no category at all, drilled by
-   *  `no_category` — an empty id list would filter nothing and open the whole
-   *  window. */
-  group_id: string | null
-  group_name: string
-  total: number
-  avg_monthly: number
-  /** Biggest first. Empty on the Uncategorized line, which is one line. */
-  categories: DiscretionaryLine[]
-}
-
-/** Spending outside Cost of living (backend
- *  `domain.activity_class.DISCRETIONARY_ROW`): SPENDING-class rows in no
- *  category tagged Essential or Cost of living, net of refunds. Not the Cost of
- *  Living report's "Committed, not essential", which is Cost of living minus Essentials. */
-export interface DiscretionaryReport {
-  months: string[]
-  /** How many months `avg_monthly` divides by: every entry of `months`, all
-   *  complete. */
-  months_averaged: number
-  /** The window the figures cover, served so a drill asks for the same days. */
-  window_start: string
-  window_end: string
-  /** The wide tier's basis. Never 'bound': the Guide's bindings are the
-   *  Essentials figure's, not this report's. */
-  basis: 'tag' | 'all'
-  /** False when nothing is tagged Essential or Cost of living. Every figure
-   *  below is then null and `groups` empty: "outside Cost of living" would be
-   *  the whole burn rate, so the page shows what to tag instead. */
-  tagged: boolean
-  total: number | null
-  avg_monthly: number | null
-  /** One per entry of `months`; empty when `tagged` is false. */
-  monthly_totals: number[]
-  /** The SPENDING class over the same window, which `total` is a part of. The
-   *  share between them is composed in `discretionaryView.ts`, not served. */
-  spending_total: number | null
-  /** The Cost of living tier over the same window, positive. With `total` it
-   *  is `spending_total` plus the debt payments that tier counts by class —
-   *  said in one line (`discretionaryView.tierSumLine`). Null untagged. */
-  cost_of_living_total: number | null
-  groups: DiscretionaryGroup[]
-}
-
 export interface WishlistDisciplineReport {
   cooled_then_bought: number
   cooled_then_dropped: number
@@ -2153,4 +2037,54 @@ export interface WishlistDisciplineReport {
   unplaced: number
   /** The person's own waiting period for new wishes, in days. */
   cooling_days: number
+}
+
+/** One line of Income Split's breakdown — served by
+ *  `GET /reports/income-split` (services/income_split.py). `reason` is a key
+ *  the page words (components/reports/incomeSplit.ts). */
+export interface IncomeSplitLine {
+  category_id: string | null
+  name: string
+  group_name: string | null
+  reason:
+    | 'essential'
+    | 'essential_debt'
+    | 'cost_of_living'
+    | 'untagged'
+    | 'debt_not_essential'
+    | 'debt_no_category'
+    | 'saved'
+  total: number
+  count: number
+  /** A yearly bill counted as a twelfth per month; `as_paid` is what landed. */
+  spread: boolean
+  as_paid: number | null
+  /** A debt payment's minimum per month as of today, and how much of the
+   *  window's payments went above it. */
+  minimum: number | null
+  above_minimum: number | null
+  minimum_unknown: boolean
+  /** A saved line's own reading from the Savings Rate. */
+  note: string | null
+}
+
+/** Where take-home pay went over a window. The five buckets — needs, wants,
+ *  savings_debt, uncategorized, left_over — add up to `income` to the cent;
+ *  shares and the 50/30/20 rule are the page's to draw. */
+export interface IncomeSplitReport {
+  start_date: string
+  end_date: string
+  months: number
+  whole_months: boolean
+  running: boolean
+  clamped: boolean
+  tagged: boolean
+  spread_on: boolean
+  income: number
+  needs: { total: number; lines: IncomeSplitLine[] }
+  wants: { total: number; committed: IncomeSplitLine[]; chosen: IncomeSplitLine[] }
+  savings_debt: { total: number; saved: IncomeSplitLine[]; debt: IncomeSplitLine[] }
+  uncategorized: { total: number; count: number }
+  left_over: number
+  strict: { needs: number; savings_debt: number }
 }

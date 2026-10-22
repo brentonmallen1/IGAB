@@ -66,6 +66,7 @@ export const GLOSSARY_IDS = [
   'essential-expenses',
   'cost-of-living',
   'discretionary',
+  'fifty-thirty-twenty',
   'cooling-off',
   'set-aside',
   'card-envelope',
@@ -125,6 +126,7 @@ export const TOPIC_MEMBERS: Record<GlossaryTopic, GlossaryId[]> = {
     'essential-expenses',
     'cost-of-living',
     'discretionary',
+    'fifty-thirty-twenty',
     'living-within-means',
     'cooling-off',
     'credit-overspending',
@@ -288,7 +290,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Everything that leaves your account whether or not you feel like it.',
     body: 'Wider than essentials and containing them. Rent and utilities are both; a streaming subscription, a gym membership and a storage unit are cost of living but not essential — you pay them every month and you would cancel them in a genuine emergency. Debt payments belong here too. The gap between the two tiers is the useful part: it is what a lean month could shed, which is a different question from what you spend.',
     inIgab:
-      'Tag a category Cost of living for the wider tier, Essential for the narrower one; Essential counts in both. Debt principal joins cost of living by its activity class, so a loan needs no tag at all. The Cost of Living report shows both figures over one window and the difference between them, against take-home.',
+      'Tag a category Cost of living for the wider tier, Essential for the narrower one; Essential counts in both. Debt principal joins cost of living by its activity class, so a loan needs no tag at all. Income Split shows it as Needs plus the committed part of Wants, against take-home.',
     related: ['essential-expenses', 'discretionary', 'emergency-fund'],
   },
   {
@@ -299,8 +301,19 @@ export const GLOSSARY: GlossaryEntry[] = [
       'Spending outside cost of living: what you chose to spend once the committed bills are paid.',
     body: 'The rest of your spending once cost of living is set aside — dining out, hobbies, shopping, a trip. It is not the same as committed-but-not-essential: that is the part of cost of living that is committed but sheddable, like a subscription or a gym membership, while discretionary sits outside both tiers and can change next month without cancelling anything. Savings, debt payments and transfers are neither.',
     inIgab:
-      'Spending in any category tagged neither Essential nor Cost of living, net of refunds; spending with no category counts until it is filed. The Discretionary report shows it by category and by month, with its share of all spending — once something carries one of those tags, since with nothing tagged every category would count.',
-    related: ['cost-of-living', 'essential-expenses', 'cooling-off'],
+      'Spending in any category tagged neither Essential nor Cost of living, net of refunds. Income Split shows it as the chosen part of Wants, category by category, with uncategorized spending on its own line until it is filed.',
+    related: ['cost-of-living', 'essential-expenses', 'cooling-off', 'fifty-thirty-twenty'],
+  },
+  {
+    id: 'fifty-thirty-twenty',
+    term: '50/30/20 rule',
+    aliases: ['50 30 20', '50-30-20', 'needs wants savings', 'income split'],
+    short:
+      'A rule of thumb for take-home pay: half to needs, under a third to wants, a fifth to saving.',
+    body: '50% to needs — housing, groceries, insurance, the minimum on each debt; 30% to wants — everything you could cut; 20% to saving and paying down debt. It is a yardstick, not a grade: where you live decides a lot of the first number, and a household in an expensive city can be doing everything right at 60%. Which gap you have is the useful part, because each one points somewhere different.',
+    inIgab:
+      'Income Split reads it from your tags: needs are what you tag Essential, wants are all other spending, and saving is what the Savings Rate counts plus debt payments outside Essential. The rule counts only a debt’s minimum as a need; Income Split follows your tags and shows that reading beside it.',
+    related: ['essential-expenses', 'discretionary', 'savings-rate'],
   },
   {
     id: 'cooling-off',

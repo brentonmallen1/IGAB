@@ -49,13 +49,13 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'essential',
     name: 'Essential',
     on: 'categories',
-    does: 'Spending here is what a lean month costs — what you could not cut. The Essentials report, the Overview’s essentials card, the Guide’s emergency-fund target and the Essentials tier of the Cost of Living report are all built from it. If the Guide has categories bound to Essential expenses, those win; otherwise the tag decides. With neither, the reports show no Essentials figure and the Guide uses all your spending.',
+    does: 'Spending here is what a lean month costs — what you could not cut. The Essentials report, the Overview’s essentials card, the Guide’s emergency-fund target and the Needs in Income Split are all built from it. If the Guide has categories bound to Essential expenses, those win; otherwise the tag decides. With neither, the reports show no Essentials figure and the Guide uses all your spending.',
   },
   {
     key: 'cost_of_living',
     name: 'Cost of living',
     on: 'categories',
-    does: 'Committed but not strictly necessary — a subscription, a gym, a membership you would cancel in a genuine emergency but pay every month otherwise. The Cost of Living report counts it together with your Essential categories and your debt payments; the gap between that and Essentials alone is what a lean month could shed.',
+    does: 'Committed but not strictly necessary — a subscription, a gym, a membership you would cancel in a genuine emergency but pay every month otherwise. Income Split counts it as a want — the committed part, shown apart from what you chose — and the runway can read it together with your Essential categories and debt payments.',
   },
   {
     key: 'wishlist',

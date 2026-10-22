@@ -44,7 +44,7 @@ const REPORT_TABS = [
   'emergency-fund',
   'income-expense',
   'income-sources',
-  'cost-of-living',
+  'income-split',
   'wishlist',
   'burn-rate',
   'cash-flow',

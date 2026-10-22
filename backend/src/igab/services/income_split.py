@@ -148,6 +148,7 @@ def _line(line) -> dict:
         "minimum": line.minimum,
         "above_minimum": line.above_minimum,
         "minimum_unknown": line.minimum_unknown,
+        "note": line.note,
     }
 
 

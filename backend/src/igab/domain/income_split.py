@@ -108,6 +108,9 @@ class SplitLine:
     above_minimum: Decimal | None = None
     #: A debt payment whose debt has no usable minimum on file.
     minimum_unknown: bool = False
+    #: For a saved line, how the Savings Rate counted it ("moved to a savings
+    #: account", "held in a Savings envelope") — its own words, not ours.
+    note: str | None = None
 
 
 @dataclass
@@ -260,6 +263,7 @@ def partition(
                 reason=REASON_SAVED,
                 total=quantize_cents(part.total),
                 count=0,
+                note=part.reason_label,
             )
         )
     for lines in (split.needs, split.committed, split.chosen, split.saved, split.debt):
