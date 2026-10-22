@@ -387,7 +387,10 @@ export const TransactionRow = memo(function TransactionRow({
         onMakeRepeating(txn)
         break
       case 'enter_now':
-        updateTxn.mutate({ id: txn.id, cleared: 'uncleared' })
+        // Out of pending and approved in one step: pressing it is looking at
+        // the row. Entered alone, the row became posted-and-unapproved and the
+        // account asked to approve what the person had just acted on.
+        updateTxn.mutate({ id: txn.id, cleared: 'uncleared', approved: true })
         break
       case 'approve':
         updateTxn.mutate({ id: txn.id, approved: true })
@@ -466,7 +469,7 @@ export const TransactionRow = memo(function TransactionRow({
   const contextItems = ROW_CONTEXT_ITEMS.filter((item) => {
     if (item.id === 'split') return !isReconciled
     if (item.id === 'enter_now') return isPending
-    if (item.id === 'approve') return !txn.approved
+    if (item.id === 'approve') return txn.awaiting_approval
     if (item.id === 'unlock') return isReconciled
     // The server refuses to delete a reconciled row; offering it and then
     // failing silently was worse than not offering it.
@@ -477,7 +480,7 @@ export const TransactionRow = memo(function TransactionRow({
   return (
     <div
       data-txn-id={txn.id}
-      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isAIReview ? 'transaction-row--ai-review' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${txn.cleared === 'cleared' ? 'cleared' : ''} ${txn.cleared === 'uncleared' ? 'uncleared' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
+      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${txn.awaiting_approval ? 'unapproved' : ''} ${isAIReview ? 'transaction-row--ai-review' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${txn.cleared === 'cleared' ? 'cleared' : ''} ${txn.cleared === 'uncleared' ? 'uncleared' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
       role="row"
       onDoubleClick={() => !isMobile && onEdit(txn)}
       onContextMenu={handleContextMenu}
@@ -496,7 +499,9 @@ export const TransactionRow = memo(function TransactionRow({
 
       {/* Status icons */}
       <div className="txn-col txn-col--status" onClick={(e) => e.stopPropagation()}>
-        {!txn.approved && (
+        {/* The served rule: a pending row is on its way, not waiting — it is
+            asked for approval once it posts (or by Enter Now). */}
+        {txn.awaiting_approval && (
           <Tooltip content="Unapproved — click to approve or delete">
             <button
               ref={eyeRef}

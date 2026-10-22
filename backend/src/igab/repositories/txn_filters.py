@@ -954,25 +954,43 @@ NEEDS_CATEGORY = and_(
 #: Spelled once: it was `approved == False` written out in six places.
 UNAPPROVED = Transaction.approved == False  # noqa: E712
 
-#: The two kinds of work a person can act on, as rows.
+#: The two kinds of work a person can act on — per TRANSACTION, never per
+#: split line.
 #:
 #: Every count of "needs your attention" reads these — the account page's
-#: review banner, the budget-wide badge and the sidebar's per-account dot —
-#: so none of them can come to disagree about which rows they mean. They did:
-#: the banner scoped itself to `parent_transaction_id IS NULL` by hand, which
-#: is right for approval (a split is approved as a whole) and wrong for a
-#: category (an unfiled split LINE is real unfiled spending). The sidebar
-#: counted those lines and the banner did not.
+#: review banner, the budget-wide badge, the sidebar's per-account dot — and
+#: each row carries them as `awaiting_approval` / `awaiting_category`, so the
+#: register's "load until every review row is in" loop counts the same rows
+#: the banner does. They had drifted three ways: the banner scoped itself to
+#: `parent_transaction_id IS NULL` by hand and so never saw an unfiled split
+#: line; the sidebar counted the line itself; and the register, which pages
+#: whole transactions, could never load a line, so a total that counted lines
+#: paged it through the entire history looking for one.
+#:
+#: A transaction, then: a split whose line is unfiled is ONE transaction to
+#: file, counted at its parent (`HAS_UNFILED_LINE`). Approval is a split's as a
+#: whole.
 #:
 #: POSTED in both, on purpose: a pending row's amount is provisional and its
-#: payee often arrives with it, so it is not yet work. Pending rows are
-#: counted separately (PENDING_ROW), as something on its way rather than
-#: something waiting. The Uncategorized *filter* keeps pending rows — a
+#: payee often arrives with it, so it is not yet work — not to file, and not
+#: to approve. A pending row is on its way, counted apart (PENDING_ROW); it is
+#: asked for approval once it posts, and "Enter now" takes it out of pending
+#: and approves it at once. The Uncategorized *filter* keeps pending rows — a
 #: filter shows what matches; a count says what is waiting — so the two can
 #: differ by the pending uncategorized rows, and only by those. Pinned in
 #: test_offbudget_categories.py.
-AWAITING_APPROVAL = and_(NOT_DELETED, PARENT_ROW, POSTED, UNAPPROVED)
-AWAITING_CATEGORY = and_(NOT_DELETED, POSTED, NEEDS_CATEGORY)
+_UNFILED_LINE_PARENTS = (
+    select(Transaction.parent_transaction_id)
+    .where(Transaction.parent_transaction_id.is_not(None), NOT_DELETED, POSTED, NEEDS_CATEGORY)
+    # A set of parents, not a lookup per row: the outer query's Transaction is
+    # a different row from the line this reads.
+    .correlate(None)
+)
+HAS_UNFILED_LINE = Transaction.id.in_(_UNFILED_LINE_PARENTS)
+NEEDS_APPROVAL = and_(PARENT_ROW, POSTED, UNAPPROVED)
+NEEDS_FILING = and_(PARENT_ROW, POSTED, or_(NEEDS_CATEGORY, HAS_UNFILED_LINE))
+AWAITING_APPROVAL = and_(NOT_DELETED, NEEDS_APPROVAL)
+AWAITING_CATEGORY = and_(NOT_DELETED, NEEDS_FILING)
 
 
 #: An AI-created transaction still waiting for the user to look at it.

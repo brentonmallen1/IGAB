@@ -66,7 +66,9 @@ from igab.repositories.txn_filters import (
     LEAF,
     LOAN_PAYMENT_ROW,
     MATCHABLE_ROW,
+    NEEDS_APPROVAL,
     NEEDS_CATEGORY,
+    NEEDS_FILING,
     NOT_DELETED,
     NOT_RECONCILED,
     ON_BUDGET_ACCOUNT,
@@ -80,7 +82,6 @@ from igab.repositories.txn_filters import (
     PROVISIONALLY_LINKED,
     REGISTER_RANK,
     SPENDING_ROW,
-    UNAPPROVED,
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
@@ -167,6 +168,8 @@ class TransactionRepository(BaseRepository[Transaction]):
             with_expression(Transaction.predates_import, PREDATES_IMPORT),
             with_expression(Transaction.counterpart_account_id, COUNTERPART_ACCOUNT_ID),
             with_expression(Transaction.payee_of_record_id, PAYEE_OF_RECORD_ID),
+            with_expression(Transaction.awaiting_approval, NEEDS_APPROVAL),
+            with_expression(Transaction.awaiting_category, NEEDS_FILING),
         )
 
     async def get(self, id: uuid.UUID) -> Transaction | None:
@@ -262,12 +265,12 @@ class TransactionRepository(BaseRepository[Transaction]):
         # Uncategorized filter still listed unpaired transfer legs while the
         # badge above it — counting the same thing — did not.
         if uncategorized and unapproved and is_or_mode:
-            q = q.where(or_(NEEDS_CATEGORY, UNAPPROVED))
+            q = q.where(or_(NEEDS_CATEGORY, NEEDS_APPROVAL))
         else:
             if uncategorized:
                 q = q.where(NEEDS_CATEGORY)
             if unapproved:
-                q = q.where(UNAPPROVED)
+                q = q.where(NEEDS_APPROVAL)
         if start_date:
             q = q.where(Transaction.date >= start_date)
         if end_date:

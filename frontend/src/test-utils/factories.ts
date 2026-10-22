@@ -157,6 +157,8 @@ export function makeTransaction(over: Partial<Transaction> = {}): Transaction {
     sync_id: null,
     has_sync_source: false,
     needs_category: false,
+    awaiting_approval: false,
+    awaiting_category: false,
     counts_in_month: `${date.slice(0, 7)}-01`,
     predates_import: false,
     ...over,

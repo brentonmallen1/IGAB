@@ -634,6 +634,16 @@ export interface Transaction {
    * as unfiled under a badge that counted 3.
    */
   needs_category: boolean
+  /**
+   * Does this transaction wait on the person — to approve, to file — as the
+   * review banner and the sidebar's dot count it? Served
+   * (`txn_filters.NEEDS_APPROVAL` / `NEEDS_FILING`); never rebuilt from
+   * `approved` and `cleared`. Per transaction: a split line reads false and
+   * its parent answers. A pending row reads false for both — it is on its
+   * way, and is asked for approval once it posts.
+   */
+  awaiting_approval: boolean
+  awaiting_category: boolean
   /** The month this row counts in for budget math, first-of-month ISO date.
    *  Its own month, except a late arrival — dated in the month before an
    *  import, arriving after it — which counts in the import month. Server

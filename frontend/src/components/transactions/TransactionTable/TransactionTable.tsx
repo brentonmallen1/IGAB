@@ -580,18 +580,23 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   useShortcut('delete', handleBulkDelete, { enabled: hasSelection })
   useShortcut('backspace', handleBulkDelete, { enabled: hasSelection })
 
+  // Only rows that are waiting: a pending row in the selection is on its way,
+  // and is asked for approval once it posts.
   const handleBulkApprove = useCallback(() => {
+    const waiting = [...selectedTransactionIds].filter(
+      (id) => transactionMap.get(id)?.awaiting_approval
+    )
     bulkApprove.mutate(
-      { transactionIds: [...selectedTransactionIds], accountId },
+      { transactionIds: waiting, accountId },
       { onSuccess: clearTransactionSelection }
     )
-  }, [bulkApprove, selectedTransactionIds, accountId, clearTransactionSelection])
+  }, [bulkApprove, selectedTransactionIds, transactionMap, accountId, clearTransactionSelection])
 
   const canApprove = useMemo(
     () =>
       [...selectedTransactionIds].some((id) => {
         const t = transactionMap.get(id)
-        return t && !t.approved && t.cleared !== 'reconciled'
+        return t && t.awaiting_approval && t.cleared !== 'reconciled'
       }),
     [selectedTransactionIds, transactionMap]
   )

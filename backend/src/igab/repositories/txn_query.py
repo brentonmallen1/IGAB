@@ -58,6 +58,7 @@ from igab.repositories.txn_filters import (
     CARD_RESERVING_ROW,
     CASH_FLOW_ROW,
     LEAF,
+    NEEDS_APPROVAL,
     NEEDS_CATEGORY,
     NOT_DELETED,
     NOT_RECONCILED,
@@ -66,7 +67,6 @@ from igab.repositories.txn_filters import (
     PAYEE_OF_RECORD,
     POSTED,
     TRANSFER_LEG,
-    UNAPPROVED,
     UNPAIRED_TRANSFER_LEG,
     in_category_scope,
     join_split_parent,
@@ -272,12 +272,12 @@ def _state(f: TransactionFilters) -> list:
     # excluded neither transfers nor off-budget rows, so pressing the badge
     # opened a list longer than the badge promised.
     if f.uncategorized and f.unapproved and f.is_or_mode:
-        where.append(or_(NEEDS_CATEGORY, UNAPPROVED))
+        where.append(or_(NEEDS_CATEGORY, NEEDS_APPROVAL))
     else:
         if f.uncategorized:
             where.append(NEEDS_CATEGORY)
         if f.unapproved:
-            where.append(UNAPPROVED)
+            where.append(NEEDS_APPROVAL)
     if f.has_attachment is not None:
         attachment_exists = (
             select(TransactionAttachment.id)

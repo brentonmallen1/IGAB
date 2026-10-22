@@ -25,6 +25,8 @@ function txn(overrides: Partial<Transaction> = {}): Transaction {
     cleared: 'uncleared',
     approved: false,
     needs_category: true,
+    awaiting_approval: false,
+    awaiting_category: false,
     ...overrides,
   } as unknown as Transaction
 }
@@ -101,44 +103,39 @@ describe('the server owns the rule', () => {
 
 describe('counting the same population the badge counts', () => {
   // The register auto-paginates while `countsAsPendingReview` finds fewer rows
-  // than the badge's total. The two must range over the same population or the
-  // loop either stops early (rows missing from the section) or never stops.
-  it('counts an unfiled posted parent row', () => {
-    expect(countsAsPendingReview(txn({ approved: true, needs_category: true }))).toBe(true)
+  // than the badge's total. It reads the badge's own served predicates, so the
+  // two range over the same transactions and the loop stops where it should.
+  it('counts a transaction waiting to be filed', () => {
+    expect(countsAsPendingReview(txn({ awaiting_category: true }))).toBe(true)
   })
 
-  it('counts an unapproved row that is already filed', () => {
-    expect(countsAsPendingReview(txn({ approved: false, needs_category: false }))).toBe(true)
+  it('counts a transaction waiting to be approved', () => {
+    expect(countsAsPendingReview(txn({ approved: false, awaiting_approval: true }))).toBe(true)
   })
 
-  it('ignores a row that is filed and approved', () => {
-    expect(countsAsPendingReview(txn({ approved: true, needs_category: false }))).toBe(false)
-  })
-
-  it('ignores a pending row, because the badge applies POSTED', () => {
-    // The badge counts work the user can act on, and a pending amount is
-    // provisional. Counting it here made the loop fetch pages forever.
-    expect(countsAsPendingReview(txn({ cleared: 'pending', needs_category: true }))).toBe(false)
-  })
-
-  it('ignores a split child, because the badge counts parent rows', () => {
-    expect(countsAsPendingReview(txn({ parent_transaction_id: 'p1', needs_category: true }))).toBe(
+  it('ignores one that waits on nothing', () => {
+    expect(countsAsPendingReview(txn({ awaiting_approval: false, awaiting_category: false }))).toBe(
       false
     )
   })
 
-  it('does not count an unpaired transfer leg as work', () => {
-    // The regression this function was extracted to fix. The old inline rule
-    // was `!category_id && !transfer_id && !is_split`, which called every
-    // unpaired YNAB leg unfiled — a real import produced 1,117 of them, so the
-    // loop chased a total it could never reach and paged through the register.
-    const unpairedLeg = txn({
-      approved: true,
-      category_id: null,
-      transfer_id: null,
-      is_split: false,
-      needs_category: false,
-    })
-    expect(countsAsPendingReview(unpairedLeg)).toBe(false)
+  it('counts a split whose line is unfiled, at its parent', () => {
+    // The regression: the badge counts this split once, and the parent is the
+    // row the register loads. The old mirror read `needs_category`, which is
+    // false on a split parent, and paged the whole history looking for the line.
+    const split = txn({ is_split: true, needs_category: false, awaiting_category: true })
+    expect(countsAsPendingReview(split)).toBe(true)
+  })
+
+  it('ignores a pending row, which the server says waits on nothing yet', () => {
+    const hold = txn({ cleared: 'pending', approved: false, needs_category: true })
+    expect(countsAsPendingReview(hold)).toBe(false)
+  })
+
+  it('does not rebuild the rule from approved or needs_category', () => {
+    // A split line: unfiled and unapproved in its own columns, waiting on
+    // nothing as a transaction — its parent carries the answer.
+    const line = txn({ parent_transaction_id: 'p1', approved: false, needs_category: true })
+    expect(countsAsPendingReview(line)).toBe(false)
   })
 })
