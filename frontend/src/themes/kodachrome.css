@@ -99,9 +99,11 @@
   --sidebar-text-primary: #f0e8dc;
   --sidebar-text-secondary: #c8b8a8;
   --sidebar-text-muted: #888070;
-  /* The sidebar stays dark in this light theme, so its warning is the dark
-     variant's (kodachrome-dark): a light page's amber disappears on it. */
+  /* The sidebar stays dark in this light theme, so its warning and info
+     marks are the dark variant's (kodachrome-dark): a light page's amber and blue
+     all but vanish on it. */
   --sidebar-warning: #d89830;
+  --sidebar-info: #6aa8e2;
 
   --tag-red: #b03020;
   --tag-orange: #b86020;

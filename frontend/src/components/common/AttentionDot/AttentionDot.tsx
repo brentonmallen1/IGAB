@@ -5,12 +5,19 @@ import {
 } from '../../../utils/accountAttention'
 
 /**
- * One account's attention dot: warning when rows wait on the person, muted
- * when rows are only pending, nothing when the account is clear
- * (utils/accountAttention). The shared `.count-badge--dot` geometry; the
- * surface it sits on picks the colour through `--badge-warning` /
- * `--badge-muted` (the sidebar sets its own).
+ * One account's attention dot: warning when rows wait to be filed, info when
+ * they wait only to be approved, a muted ring when rows are only pending,
+ * nothing when the account is clear (utils/accountAttention). The shared
+ * `.count-badge--dot` geometry; the surface it sits on picks the colour
+ * through `--badge-warning` / `--badge-info` / `--badge-muted` (the sidebar
+ * sets its own).
  */
+const TONE = {
+  categorize: 'count-badge--warning',
+  approve: 'count-badge--info',
+  pending: 'count-badge--muted',
+} as const
+
 export function AttentionDot({
   counts,
   className = '',
@@ -22,7 +29,7 @@ export function AttentionDot({
   const level = attentionLevel(counts)
   if (!level) return null
   const label = attentionSummary(counts)
-  const tone = level === 'review' ? 'count-badge--warning' : 'count-badge--muted'
+  const tone = TONE[level]
   return (
     <span
       className={`count-badge count-badge--dot ${tone} ${className}`.trim()}

@@ -99,9 +99,11 @@
   --sidebar-text-primary: #e8e8e8;
   --sidebar-text-secondary: #b0b0b0;
   --sidebar-text-muted: #7f7f7f;
-  /* The sidebar stays dark in this light theme, so its warning is the dark
-     variant's (eink-dark): a light page's amber disappears on it. */
+  /* The sidebar stays dark in this light theme, so its warning and info
+     marks are the dark variant's (eink-dark): a light page's amber and blue
+     all but vanish on it. */
   --sidebar-warning: #a89868;
+  --sidebar-info: #7a9ab3;
 
   --tag-red: #804848;
   --tag-orange: #805838;

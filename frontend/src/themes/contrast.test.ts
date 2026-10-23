@@ -25,6 +25,9 @@ const SRC_DIR = join(THEMES_DIR, '..')
 
 const AA_TEXT = 4.5
 const AA_NON_TEXT = 3.0 // WCAG 1.4.11, for a border that is the only cue a control exists
+/** Degrees of hue between the attention dot's warning and info discs. Every
+ *  shipped pair clears 110°; 90° is a quarter turn, plainly two colours. */
+const DOT_HUE_GAP = 90
 
 /** Kept in step with the caps applied in component CSS. */
 const BADGE_TINT = 12
@@ -214,6 +217,21 @@ function contrast(fg: RGBA, bg: RGBA): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+/** HSL hue in degrees; NaN for a grey, which has none. */
+function hue([r, g, b]: RGBA): number {
+  const max = Math.max(r, g, b)
+  const d = max - Math.min(r, g, b)
+  if (d === 0) return NaN
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return h * 60
+}
+
+/** How far apart two hues sit around the wheel, 0–180. */
+function hueGap(a: RGBA, b: RGBA): number {
+  const x = Math.abs(hue(a) - hue(b))
+  return Math.min(x, 360 - x)
+}
+
 /** `color-mix(in srgb, colour pct%, transparent)` painted onto a surface */
 function tint(colour: RGBA, surface: RGBA, pct: number): RGBA {
   const a = colour[3] * (pct / 100)
@@ -382,11 +400,13 @@ function checksFor(theme: string): Check[] {
   // sidebar reads --sidebar-warning instead (Sidebar.css sets the badge slots).
   const sidebarGround = token(theme, 'sidebar-bg')
   add('warning dot on sidebar-bg', token(theme, 'sidebar-warning'), sidebarGround, AA_NON_TEXT)
+  add('approve dot on sidebar-bg', token(theme, 'sidebar-info'), sidebarGround, AA_NON_TEXT)
   add('pending dot on sidebar-bg', token(theme, 'sidebar-text-muted'), sidebarGround, AA_NON_TEXT)
   // The same dot on the Accounts page (also the phone's Accounts tab), which
   // sits on the raised surface and reads the page's own tokens.
   const raised = token(theme, 'surface-raised') ?? token(theme, 'bg-secondary')
   add('warning dot on the accounts page', token(theme, 'color-warning'), raised, AA_NON_TEXT)
+  add('approve dot on the accounts page', token(theme, 'color-info'), raised, AA_NON_TEXT)
   add('pending dot on the accounts page', token(theme, 'text-muted'), raised, AA_NON_TEXT)
 
   // The account balance chip. Its wash is derived from the sidebar's own text
@@ -584,6 +604,21 @@ describe('theme palettes', () => {
       .filter((c) => c.ratio < c.min)
       .map((c) => `${c.label} — ${c.ratio.toFixed(2)}:1 (needs ${c.min}:1)`)
     expect(failures).toEqual([])
+  })
+
+  // An account's dot is amber for rows to file and info for rows to approve,
+  // and both are filled discs of one size: hue is all that tells them apart.
+  // The accent was the first candidate and is amber in Cozy, Desert, Gruvbox,
+  // Kodachrome and Phosphor — it would have drawn the same dot for both.
+  it.each(THEME_NAMES)('%s tells the file dot from the approve dot', (theme) => {
+    const grounds: [string, string, string][] = [
+      ['sidebar', 'sidebar-warning', 'sidebar-info'],
+      ['accounts page', 'color-warning', 'color-info'],
+    ]
+    for (const [where, warn, info] of grounds) {
+      const gap = hueGap(token(theme, warn)!, token(theme, info)!)
+      expect(gap, `${where}: ${warn} vs ${info}`).toBeGreaterThanOrEqual(DOT_HUE_GAP)
+    }
   })
 
   it.each(THEME_NAMES)('%s meets WCAG AA', (theme) => {

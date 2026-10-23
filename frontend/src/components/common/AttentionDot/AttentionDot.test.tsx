@@ -10,11 +10,19 @@ describe('AttentionDot', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('is a warning dot, named for what is waiting, when rows need the person', () => {
-    render(<AttentionDot counts={{ ...clear, unapproved_count: 5, pending_count: 2 }} />)
-    const dot = screen.getByRole('img', { name: '5 to approve · 2 pending' })
+  it('is a warning dot, named for what is waiting, when rows wait to be filed', () => {
+    render(<AttentionDot counts={{ ...clear, uncategorized_count: 1, unapproved_count: 5 }} />)
+    const dot = screen.getByRole('img', { name: '1 to categorize · 5 to approve' })
     expect(dot).toHaveClass('count-badge--dot', 'count-badge--warning')
     // No number on the row: the count is the label, not the mark.
+    expect(dot).toBeEmptyDOMElement()
+  })
+
+  it('is an info dot when rows wait only to be approved', () => {
+    render(<AttentionDot counts={{ ...clear, unapproved_count: 5, pending_count: 2 }} />)
+    const dot = screen.getByRole('img', { name: '5 to approve · 2 pending' })
+    expect(dot).toHaveClass('count-badge--dot', 'count-badge--info')
+    expect(dot).not.toHaveClass('count-badge--warning')
     expect(dot).toBeEmptyDOMElement()
   })
 

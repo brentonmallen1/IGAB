@@ -39,9 +39,11 @@
   --sidebar-text-primary: #e8eaf0;
   --sidebar-text-secondary: #b0b5c4;
   --sidebar-text-muted: #7f8696;
-  /* The sidebar stays dark in this light theme, so its warning is the dark
-     variant's (dark): a light page's amber disappears on it. */
+  /* The sidebar stays dark in this light theme, so its warning and info
+     marks are the dark variant's (dark): a light page's amber and blue
+     all but vanish on it. */
   --sidebar-warning: #fbbf24;
+  --sidebar-info: #60a5fa;
 
   /* Tag color slots */
   --tag-red: #dc2626;

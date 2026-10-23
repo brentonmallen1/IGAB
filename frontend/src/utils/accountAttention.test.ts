@@ -8,22 +8,32 @@ describe('attentionLevel', () => {
     expect(attentionLevel(clear)).toBeNull()
   })
 
-  it('wants the person for a row to file', () => {
-    expect(attentionLevel({ ...clear, uncategorized_count: 1 })).toBe('review')
+  it('is the warning for a row to file', () => {
+    expect(attentionLevel({ ...clear, uncategorized_count: 1 })).toBe('categorize')
   })
 
   // The case the old count badge missed: it counted uncategorized rows only,
   // so an account full of bank rows to approve looked clear.
-  it('wants the person for a row to approve', () => {
-    expect(attentionLevel({ ...clear, unapproved_count: 4 })).toBe('review')
+  it('is info, not the warning, for a row to approve', () => {
+    expect(attentionLevel({ ...clear, unapproved_count: 4 })).toBe('approve')
+  })
+
+  // The case the first dot got wrong: a checking account with 39 rows to
+  // approve, nothing unfiled, three holds. It drew the warning, and the warning read
+  // as "a category is missing" on an account with none missing.
+  it('does not warn when nothing is unfiled, however much waits to be approved', () => {
+    expect(attentionLevel({ ...clear, unapproved_count: 39, pending_count: 3 })).toBe('approve')
   })
 
   it('is muted for rows that are only on their way', () => {
     expect(attentionLevel({ ...clear, pending_count: 2 })).toBe('pending')
   })
 
-  it('shows the most urgent when both are true', () => {
-    expect(attentionLevel({ ...clear, pending_count: 2, unapproved_count: 1 })).toBe('review')
+  it('shows the most urgent when several are true', () => {
+    expect(attentionLevel({ ...clear, pending_count: 2, unapproved_count: 1 })).toBe('approve')
+    expect(attentionLevel({ uncategorized_count: 1, unapproved_count: 9, pending_count: 2 })).toBe(
+      'categorize'
+    )
   })
 })
 
