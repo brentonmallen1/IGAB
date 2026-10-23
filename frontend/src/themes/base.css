@@ -120,6 +120,8 @@
      vanishes there (1.10:1 at worst). Those themes set their dark variant's
      warning here; contrast.test.ts holds every theme to 3:1. */
   --sidebar-warning: var(--color-warning);
+  /* The same for an info mark — an account's rows to approve. */
+  --sidebar-info: var(--color-info);
 
   /* Tag color slots — fallbacks; each theme overrides with its own palette */
   --tag-red: #e57373;
@@ -1117,6 +1119,14 @@ html[data-keyboard="open"] {
    theme and sets these to its own validated colours (Sidebar.css). */
 .count-badge--warning {
   background-color: var(--badge-warning, var(--color-warning));
+}
+
+/* Waiting on a look rather than on a fix — an account's rows to approve. Info,
+   not warning: approving changes no money, so it must not read like an
+   unfiled row (which does). Blue or teal in every theme, never near amber;
+   contrast.test.ts holds the two apart. */
+.count-badge--info {
+  background-color: var(--badge-info, var(--color-info));
 }
 
 /* Something on its way rather than waiting on anyone — an account's pending

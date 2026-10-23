@@ -99,6 +99,9 @@
   --sidebar-text-primary: #f0f0f0;
   --sidebar-text-secondary: #b0b0b0;
   --sidebar-text-muted: #7a7a7a;
+  /* The sidebar stays dark in this light theme, so its info mark is the dark
+     variant's (bauhaus-dark): a light page's blue disappears on it. */
+  --sidebar-info: #5a90ff;
 
   --tag-red: #cc0000;
   --tag-orange: #cc5500;

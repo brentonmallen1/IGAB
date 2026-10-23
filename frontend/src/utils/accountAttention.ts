@@ -20,13 +20,18 @@ export type AttentionCounts = Pick<
   'uncategorized_count' | 'unapproved_count' | 'pending_count'
 >
 
-/** `review`: rows wait on the person (to file or approve) — the warning
- *  colour. `pending`: rows on their way in from the bank and nothing else —
- *  muted. Null: nothing to say. */
-export type AttentionLevel = 'review' | 'pending'
+/** Most urgent first. `categorize`: rows wait to be filed, so the budget is
+ *  not yet right — the warning colour. `approve`: rows wait only for a look;
+ *  approving moves no money — the info colour. Both used to share the
+ *  warning, so a dot that was amber over 39 rows to approve read as "a
+ *  category is missing" on an account with none missing. `pending`: rows on
+ *  their way in from the bank and nothing else — a muted ring. Null: nothing
+ *  to say. */
+export type AttentionLevel = 'categorize' | 'approve' | 'pending'
 
 export function attentionLevel(c: AttentionCounts): AttentionLevel | null {
-  if (c.uncategorized_count > 0 || c.unapproved_count > 0) return 'review'
+  if (c.uncategorized_count > 0) return 'categorize'
+  if (c.unapproved_count > 0) return 'approve'
   if (c.pending_count > 0) return 'pending'
   return null
 }

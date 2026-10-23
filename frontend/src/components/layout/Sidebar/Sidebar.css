@@ -9,6 +9,7 @@
   --sidebar-hover-strong: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
   /* Badges and dots in here sit on the dark sidebar, not on the page. */
   --badge-warning: var(--sidebar-warning);
+  --badge-info: var(--sidebar-info);
   --badge-muted: var(--sidebar-text-muted);
 
   /* One column for the whole account list: the disclosure chevron sits at

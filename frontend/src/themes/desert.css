@@ -99,9 +99,11 @@
   --sidebar-text-primary: #f0e4d8;
   --sidebar-text-secondary: #c8b8a8;
   --sidebar-text-muted: #8f7f6e;
-  /* The sidebar stays dark in this light theme, so its warning is the dark
-     variant's (desert-dark): a light page's amber disappears on it. */
+  /* The sidebar stays dark in this light theme, so its warning and info
+     marks are the dark variant's (desert-dark): a light page's amber and blue
+     all but vanish on it. */
   --sidebar-warning: #d8a050;
+  --sidebar-info: #6eadbd;
 
   --tag-red: #a84838;
   --tag-orange: #a86040;
