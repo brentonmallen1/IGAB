@@ -36,8 +36,7 @@ import { PlanVsSpentReport } from '../../components/reports/charts/PlanVsSpentRe
 import { CashProjectionReport } from '../../components/reports/charts/CashProjectionReport'
 import { SpendingTrendsReport } from '../../components/reports/charts/SpendingTrendsReport'
 import { CategoryHistoryReport } from '../../components/reports/charts/CategoryHistoryReport'
-import { CostOfLivingReport } from '../../components/reports/charts/CostOfLivingReport'
-import { DiscretionaryReport } from '../../components/reports/charts/DiscretionaryReport'
+import { IncomeSplitReport } from '../../components/reports/charts/IncomeSplitReport'
 import { WishlistDisciplineReport } from '../../components/reports/charts/WishlistDisciplineReport'
 import { IncomeSourcesReport } from '../../components/reports/charts/IncomeSourcesReport'
 import { ChevronDown, Star } from 'lucide-react'
@@ -177,10 +176,8 @@ export function ReportsPage() {
         return <CategoryHistoryReport budgetId={budgetId!} />
       case 'income-sources':
         return <IncomeSourcesReport budgetId={budgetId!} />
-      case 'cost-of-living':
-        return <CostOfLivingReport budgetId={budgetId!} />
-      case 'discretionary':
-        return <DiscretionaryReport budgetId={budgetId!} />
+      case 'income-split':
+        return <IncomeSplitReport budgetId={budgetId!} />
       case 'wishlist':
         return <WishlistDisciplineReport budgetId={budgetId!} />
     }

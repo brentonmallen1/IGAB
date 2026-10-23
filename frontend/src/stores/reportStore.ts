@@ -32,8 +32,7 @@ export type ReportTab =
   | 'spending-trends'
   | 'category-history'
   | 'income-sources'
-  | 'cost-of-living'
-  | 'discretionary'
+  | 'income-split'
   | 'wishlist'
 
 export type TabGroup = 'overview' | 'financial' | 'cashflow' | 'budget' | 'spending' | 'insights'
@@ -52,8 +51,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'savings', label: 'Savings', group: 'financial' },
   { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },
   { id: 'essentials', label: 'Essentials', group: 'financial' },
-  { id: 'cost-of-living', label: 'Cost of Living', group: 'financial' },
-  { id: 'discretionary', label: 'Discretionary', group: 'financial' },
+  { id: 'income-split', label: 'Income Split', group: 'financial' },
   { id: 'emergency-fund', label: 'Emergency Fund', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'income-sources', label: 'Income by Source', group: 'cashflow' },
@@ -293,20 +291,10 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     accounts: false,
     groupBy: false,
   },
-  // These drive their own window (or none at all), so the shared filter bar
-  // has nothing to offer them.
-  'cost-of-living': {
-    dates: false,
-    categories: false,
-    payees: false,
-    accounts: false,
-    groupBy: false,
-  },
-  // Its scope is the Essential and Cost of living tags, like Cost of Living's;
-  // a category filter narrowing it would make the share of spending mean
-  // something else.
-  discretionary: {
-    dates: false,
+  // The shared range picker, and nothing else: a category, payee or account
+  // filter would change what a share of take-home means.
+  'income-split': {
+    dates: true,
     categories: false,
     payees: false,
     accounts: false,
@@ -378,6 +366,12 @@ export interface RetiredTab {
 }
 
 export const RETIRED_REPORT_TABS: Readonly<Record<string, RetiredTab>> = {
+  // Income Split is both, beside the 50/30/20 rule: Cost of Living is its
+  // Needs plus the committed part of Wants, Discretionary the chosen part.
+  // Each read a months selector of its own; the split reads the shared range
+  // picker, so there is no setting to restate.
+  'cost-of-living': { tab: 'income-split' },
+  discretionary: { tab: 'income-split' },
   // Plan vs Spent is Budget vs Actual, Cumulative Variance and Plan vs
   // Reality made one report: the three were one dataset at three grains, with
   // identical twelve-month totals and synonym titles. Its months selector is

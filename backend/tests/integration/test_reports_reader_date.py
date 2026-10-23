@@ -247,6 +247,17 @@ CASES: list[Case] = [
         {"start_date": READER_MONTH.isoformat(), "end_date": AHEAD.isoformat()},
         lambda d: _eq(d["end_date"], READER.isoformat()),
     ),
+    # Read through the reader's today: the window stops there, and the spike
+    # on the reader's tomorrow is in no bucket.
+    (
+        "income-split",
+        "income-split",
+        {"start_date": READER_MONTH.isoformat(), "end_date": AHEAD.isoformat()},
+        lambda d: (
+            _eq(d["end_date"], READER.isoformat()),
+            _no_spike(num(d["needs"]["total"]) + num(d["wants"]["total"])),
+        ),
+    ),
     (
         "savings",
         "savings",

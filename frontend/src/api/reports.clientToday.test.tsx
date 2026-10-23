@@ -56,8 +56,7 @@ const HOOKS: Record<string, () => unknown> = {
   useSpendingTrendsReport: () => reports.useSpendingTrendsReport('b1'),
   useIncomeBySourceReport: () => reports.useIncomeBySourceReport('b1'),
   useCategoryHistoryReport: () => reports.useCategoryHistoryReport('b1', 'c1'),
-  useCostOfLivingReport: () => reports.useCostOfLivingReport('b1'),
-  useDiscretionaryReport: () => reports.useDiscretionaryReport('b1'),
+  useIncomeSplitReport: () => reports.useIncomeSplitReport('b1', '2026-07-01', '2026-09-30'),
   useWishlistDisciplineReport: () => reports.useWishlistDisciplineReport('b1'),
 }
 

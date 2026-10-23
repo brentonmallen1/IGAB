@@ -433,6 +433,32 @@ class LiabilityService:
         )
 
     @staticmethod
+    def minimum_due_now(
+        liability: Liability, balance: Decimal, interest: Decimal | None
+    ) -> Decimal | None:
+        """What the issuer asks for at today's balance, or None with no usable
+        rule on file.
+
+        `billed`, not `due`: nobody is asked for $35 against a $12 balance, and
+        the number on screen should be one a person could actually be charged.
+        The scheduling answer — what the rule consumes in a payoff cascade — is
+        `due`, and it stays inside the projections.
+
+        `interest` is the month's modelled charge (`modelled_interest_this_month`),
+        the figure a "plus interest" rule adds — not a second computation at
+        today's balance, which charged the post-payment balance and charged a
+        0% promo month at the full rate.
+
+        Here rather than in the liabilities router because two readers quote
+        it: the liability listing, and Income Split's debt rows ("minimum
+        $325 — $75 paid above it").
+        """
+        rule = LiabilityService.minimum_payment_rule(liability)
+        if not rule.usable:
+            return None
+        return rule.billed(balance, interest if interest is not None else Decimal("0"))
+
+    @staticmethod
     def minimum_payment_rule(liability: Liability) -> MinimumPaymentRule:
         """The only place a rule is built from columns."""
         return MinimumPaymentRule(

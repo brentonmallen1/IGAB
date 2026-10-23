@@ -33,6 +33,7 @@ from igab.api.v1.schemas.report import (
     IncomeExpenseMonth,
     IncomeExpenseResponse,
     IncomeSource,
+    IncomeSplitResponse,
     LiabilitiesBalancePoint,
     LiabilitiesReportItem,
     LiabilitiesReportResponse,
@@ -88,6 +89,7 @@ from igab.repositories.tag_repo import TagRepository
 from igab.services.budget_service import BudgetService
 from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.essentials import essentials_summary
+from igab.services.income_split import income_split
 from igab.services.liability_service import LiabilityService
 from igab.services.plan_ledger import spent_series
 from igab.services.report_basics import (
@@ -854,6 +856,23 @@ async def savings_contributors_report(
     a third spelling of which window that is."""
     data = await savings_contributors(report_svc.session, budget_id, start_date, end_date, today)
     return SavingsContributorsResponse.model_validate(data)
+
+
+@router.get("/{budget_id}/reports/income-split", response_model=IncomeSplitResponse)
+async def income_split_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    today: ReaderToday,
+    start_date: date,
+    end_date: date,
+) -> IncomeSplitResponse:
+    """Where take-home pay went over the window: needs, wants, savings & debt,
+    uncategorized and left over, each line saying why it is where it is. The
+    window is the shared range picker's, read through today and never before
+    the budget's first month."""
+    data = await income_split(report_svc.session, budget_id, start_date, end_date, today)
+    return IncomeSplitResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/savings", response_model=SavingsReportResponse)

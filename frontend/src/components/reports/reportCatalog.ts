@@ -97,22 +97,14 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     counts: 'Spending and debt payments in categories tagged Essential.',
     leavesOut: 'Money that counts as saved, and everything not tagged Essential.',
   },
-  'cost-of-living': {
+  'income-split': {
     scope: 'on-budget',
     summary:
-      'Everything committed each month, Essential or committed-but-not-essential, against income.',
+      'Where take-home pay went — needs, wants, savings & debt — beside the 50/30/20 rule of thumb.',
     counts:
-      'Categories tagged Essential or Cost of living, plus every debt payment, vs average income.',
-    leavesOut: 'Savings, and untagged spending — that is the Discretionary report.',
-  },
-  discretionary: {
-    scope: 'on-budget',
-    summary:
-      'What you chose to spend: spending outside Essential and Cost of living, by category and month.',
-    counts:
-      'Spending in categories tagged neither Essential nor Cost of living, net of refunds, and uncategorized spending on its own line.',
+      'Needs: categories tagged Essential, debt payments in them included. Wants: all other spending, Cost of living first, then untagged. Savings & debt: what Savings Rate counts as saved, plus debt payments outside Essential. Replaces Cost of Living and Discretionary.',
     leavesOut:
-      'Everything Cost of Living counts, savings, debt payments and transfers; with nothing tagged, it shows no figure at all.',
+      'Saving that never reaches the budget (a 401(k) deferral), transfers between budget accounts, and money arriving from a loan.',
   },
   'emergency-fund': {
     scope: 'emergency-fund',
