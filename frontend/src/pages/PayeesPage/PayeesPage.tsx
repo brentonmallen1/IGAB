@@ -32,6 +32,7 @@ import {
 import './PayeesPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import toast from 'react-hot-toast'
+import { choosablePayees } from '../../utils/payees'
 
 type WizardGroup = {
   label: string
@@ -105,9 +106,8 @@ export function PayeesPage() {
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase()
-    return payees
+    return choosablePayees(payees)
       .filter((p) => {
-        if (p.transfer_account_id) return false
         const searchTarget =
           `${p.name} ${p.mapping_samples.join(' ')} ${p.match_pattern || ''}`.toLowerCase()
         return searchTarget.includes(term)
@@ -136,7 +136,7 @@ export function PayeesPage() {
     )
   }
 
-  const totalPayees = payees.filter((p) => !p.transfer_account_id).length
+  const totalPayees = choosablePayees(payees).length
   const filteredIds = filtered.map((p) => p.id)
   const allOrderedIds = filtered.map((p) => p.id)
   const selectedInFiltered = filteredIds.filter((id) => selectedPayeeIds.has(id))
@@ -599,9 +599,7 @@ export function PayeesPage() {
             const editNames = editing
               ? [editName.trim() || p.name, ...samplesFromLines(editMappings)]
               : []
-            const editOthers = editing
-              ? payees.filter((x) => x.id !== p.id && !x.transfer_account_id)
-              : []
+            const editOthers = editing ? choosablePayees(payees).filter((x) => x.id !== p.id) : []
             const editCandidates = editing
               ? patternCandidates(editAiCandidates, suggestPayeeRegex(editNames))
               : []

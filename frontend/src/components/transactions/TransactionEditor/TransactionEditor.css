@@ -320,6 +320,16 @@
   background-color: var(--row-hover-bg);
 }
 
+/* Destinations are accounts, not payees, so they sit under their own heading
+   rather than among the names. */
+.txn-editor__payee-heading {
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .txn-editor__toggle-row {
   display: flex;
   align-items: center;

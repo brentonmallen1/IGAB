@@ -219,6 +219,21 @@ class TransactionResponse(ApiModel):
     model_config = {"from_attributes": True}
 
 
+class TransactionUpdateResponse(TransactionResponse):
+    """A PATCH's answer: the row as saved, and whether the request wrote anything.
+
+    The service drops fields that did not change (the editor sends every one it
+    shows) and records no change-log row for a PATCH that changed nothing, so a
+    200 alone cannot tell a save from a no-op. The editor needs to: a transfer
+    whose payee was edited in a box the body never read came back 200 with
+    nothing written, and the dialog closed as if it had worked.
+
+    Required — a path that forgot to say would report nothing as a save.
+    """
+
+    changed: bool
+
+
 class BudgetTransactionListResponse(ApiModel):
     """Paged drill-down listing; totals cover the full filter match, not just the page."""
 

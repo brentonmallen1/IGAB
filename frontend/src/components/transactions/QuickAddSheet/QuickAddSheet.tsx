@@ -62,6 +62,7 @@ import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
+import { choosablePayees } from '../../../utils/payees'
 
 type Direction = 'outflow' | 'inflow'
 
@@ -190,7 +191,7 @@ export function QuickAddSheet() {
   }, [open])
 
   const payeeOptions = useMemo<SelectionSheetOption[]>(
-    () => payees.filter((p) => !p.transfer_account_id).map((p) => ({ id: p.id, label: p.name })),
+    () => choosablePayees(payees).map((p) => ({ id: p.id, label: p.name })),
     [payees]
   )
 
@@ -211,8 +212,8 @@ export function QuickAddSheet() {
   // the top slot when available; recent covers the no-location case.
   const recentOptions = useMemo<SelectionSheetOption[]>(() => {
     const nearbyIds = new Set(nearbyPayees.map((p) => p.id))
-    return payees
-      .filter((p) => !p.transfer_account_id && p.last_used && !nearbyIds.has(p.id))
+    return choosablePayees(payees)
+      .filter((p) => p.last_used && !nearbyIds.has(p.id))
       .sort((a, b) => b.last_used!.localeCompare(a.last_used!))
       .slice(0, 6)
       .map((p) => ({ id: p.id, label: p.name }))

@@ -512,6 +512,11 @@ class ChangeRecorder:
         # (where CurrentUser is in scope); worker/scheduler recorders leave it
         # None, which renders as the source ('AI', 'system') in the UI.
         self.actor_user_id: uuid.UUID | None = None
+        # How many rows this recorder has written. A request reads it either
+        # side of a mutation to learn whether anything was recorded — the only
+        # reliable "did this change anything", since `_record_txn` and its
+        # siblings already decline to record a no-op.
+        self.recorded = 0
 
     @contextmanager
     def batch(self, batch_id: uuid.UUID | None = None):
@@ -566,4 +571,5 @@ class ChangeRecorder:
             user_id=self.actor_user_id,
         )
         self.session.add(row)
+        self.recorded += 1
         return row

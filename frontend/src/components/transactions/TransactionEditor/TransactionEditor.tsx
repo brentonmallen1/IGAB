@@ -2,9 +2,13 @@ import { filingCategoryOptions, groupedCategorySections } from '../../../utils/c
 import {
   CREATE_NEW_PARTNER,
   awaitingPartnerChoice,
+  transferAccountLabel,
   transferLinkFields,
+  transferPayeeLabel,
   transferTargets,
 } from '../transferConversion'
+import { isTransferPayee } from '../../../utils/payees'
+import { confirmAsync } from '../../../stores/confirmStore'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { PROJECTED_INTEREST_NOTE } from '../../../utils/projectedInterest'
 import {
@@ -13,6 +17,7 @@ import {
   PREDATES_IMPORT_NOTE,
 } from '../../../utils/lateArrival'
 import { AccountField } from './AccountField'
+import { PayeeField } from './PayeeField'
 import { accountLockReason, categoryDropNote } from './accountMove'
 import { editorAmount } from './editorAmount'
 import { useState, useRef, useEffect, useMemo } from 'react'
@@ -201,7 +206,6 @@ export function TransactionEditor({
    *  CREATE_NEW_PARTNER for "none of these". */
   const [partnerChoice, setPartnerChoice] = useState<string | null>(null)
   const wasTransfer = !!transaction?.counterpart_account_id
-  const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
   const [showSimilar, setShowSimilar] = useState(false)
   const [showAttachments, setShowAttachments] = useState(false)
   // An existing split opens AS a split, with its lines from the server —
@@ -242,7 +246,6 @@ export function TransactionEditor({
   const [pristine, setPristine] = useState<EntryFields>(fields)
   const started = !isEdit && entryStarted(fields, pristine, { isSplit, isTransfer })
 
-  const payeeRef = useRef<HTMLDivElement>(null)
   const payeeInitialized = useRef(false)
 
   // Scanning is queued, so it needs AI set up, not answering right now.
@@ -276,22 +279,6 @@ export function TransactionEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentPayee])
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (payeeRef.current && !payeeRef.current.contains(e.target as Node)) {
-        setShowPayeeDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const filteredPayees =
-    payeeQuery.length > 0
-      ? payees.filter((p) => p.name.toLowerCase().includes(payeeQuery.toLowerCase())).slice(0, 8)
-      : payees.slice(0, 8)
-
   const groupedCategories = groupedCategorySections(
     categories.filter((c) => c.is_categorizable),
     categoryGroups
@@ -299,6 +286,11 @@ export function TransactionEditor({
 
   const transferAccounts = transferTargets(accounts, accountId)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
+  // What the payee box says while this is a transfer: the server's name for
+  // the destination. A box that says anything else holds an edit the save
+  // would not send, so Save refuses it (doSubmit) rather than drop it.
+  const transferLabel = transferPayeeLabel(transferAccountId, accounts, payees)
+  const destinationLabel = transferAccountLabel(typed?.dollars ?? transaction?.amount ?? null)
   // Only for a row that isn't linked yet — an already-linked leg has its
   // partner, and retargeting moves that partner rather than adopting another.
   const needsPartner = isEdit && isTransfer && !transaction?.transfer_id && !!transferAccountId
@@ -336,19 +328,69 @@ export function TransactionEditor({
       )
     : null
 
-  function handlePayeeSelect(p: Payee) {
+  async function handlePayeeSelect(p: Payee) {
+    if (isTransfer) {
+      // A payee on a linked transfer means the row is not a transfer any
+      // more. Both rows survive a break, so the other side would be left
+      // unpaired in its account — the person says so, not the picker.
+      if (transaction?.transfer_id && wasTransfer) {
+        const ok = await confirmAsync({
+          title: 'Break this transfer?',
+          message: `Both rows stay. The one in ${transferTarget?.name ?? 'the other account'} is left unpaired, and this one is paid to ${p.name}.`,
+          confirmLabel: 'Break transfer',
+          destructive: true,
+        })
+        if (!ok) return
+      }
+      setIsTransfer(false)
+      setPartnerChoice(null)
+    }
     setPayeeQuery(p.name)
     setSelectedPayeeId(p.id)
-    setShowPayeeDropdown(false)
     if (p.default_category_id && !categoryId) {
       setCategoryId(p.default_category_id)
     }
   }
 
-  function handlePayeeChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setPayeeQuery(e.target.value)
+  /** The other account, picked where the register shows it: in the payee box.
+   *  The same three steps as the account control's own onChange, plus the box
+   *  reading back what was picked. */
+  function handleTransferPick(targetId: string) {
+    setIsTransfer(true)
+    setTransferAccountId(targetId)
+    setPartnerChoice(null)
+    setPayeeQuery(transferPayeeLabel(targetId, accounts, payees))
     setSelectedPayeeId(null)
-    setShowPayeeDropdown(true)
+  }
+
+  /** The account control, with the payee box following it — one destination,
+   *  two places it is shown, never two answers. */
+  function handleTransferAccountChange(targetId: string) {
+    setTransferAccountId(targetId)
+    setPartnerChoice(null)
+    setPayeeQuery(transferPayeeLabel(targetId, accounts, payees))
+    setSelectedPayeeId(null)
+  }
+
+  function handleTransferToggle(on: boolean) {
+    setIsTransfer(on)
+    if (on) {
+      setPayeeQuery(transferPayeeLabel(transferAccountId, accounts, payees))
+      setSelectedPayeeId(null)
+      return
+    }
+    // Off: a transfer payee left in the box would be sent as this row's payee
+    // and name a transfer the row no longer is. The box empties for a real one.
+    const current = payees.find((p) => p.id === selectedPayeeId)
+    if (payeeQuery === transferLabel || (current && isTransferPayee(current))) {
+      setPayeeQuery('')
+      setSelectedPayeeId(null)
+    }
+  }
+
+  function handlePayeeChange(value: string) {
+    setPayeeQuery(value)
+    setSelectedPayeeId(null)
   }
 
   function handleOutflowChange(v: string) {
@@ -444,6 +486,15 @@ export function TransactionEditor({
     // can still arrive by Enter, and an unparseable amount must never reach
     // a save that would book it as zero (editorAmount).
     if (!accountId || typed === null) return
+    // While this is a transfer the payee box only shows the destination; the
+    // body sends the account (transferLinkFields). Typed text there is an edit
+    // the save cannot carry, so it is refused here instead of dropped.
+    if (isTransfer && payeeQuery.trim() && payeeQuery !== transferLabel) {
+      toast.error(
+        'Pick the other account from the Payee list, or turn off Transfer to use a payee.'
+      )
+      return
+    }
     const amount = typed.dollars
     const sign = amount < 0 ? -1 : 1
 
@@ -566,14 +617,18 @@ export function TransactionEditor({
     if (!proceed) return
 
     if (isEdit) {
+      // Whether ANY step wrote something — the server says (`changed`), since
+      // only it knows whether a field it was sent was a change.
+      let changed = false
       // Turning the toggle OFF: break the link as its own step. The payee of
       // a linked leg IS its destination, so the server refuses to take a new
       // payee and a link instruction together — break first, then edit.
       if (wasTransfer && !isTransfer) {
-        await updateTxn.mutateAsync({
+        const r = await updateTxn.mutateAsync({
           id: transaction!.id,
           transfer_account_id: null,
         })
+        changed ||= r.changed
       }
       // Same shape for a transfer that also moved: the server refuses to
       // change the account a row is IN and the account it points AT in one
@@ -581,9 +636,15 @@ export function TransactionEditor({
       // first. The account in `payload` is then the row's own and is dropped
       // server-side as "not a move".
       if (isTransfer && accountId !== transaction!.account_id) {
-        await updateTxn.mutateAsync({ id: transaction!.id, account_id: accountId })
+        const r = await updateTxn.mutateAsync({ id: transaction!.id, account_id: accountId })
+        changed ||= r.changed
       }
-      await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
+      const r = await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
+      changed ||= r.changed
+      // A save that wrote nothing must not look like one that worked. Every
+      // control the editor shows reaches the body, so this is "you changed
+      // nothing" — said, because the last time it was silent it hid a bug.
+      if (!changed) toast('Nothing changed')
     } else {
       // A new row is never reconciled; restate the money so the type says so.
       // `category_id: null` is the PATCH spelling of "clear it"; on a create
@@ -888,41 +949,25 @@ export function TransactionEditor({
                   </div>
                 </div>
 
-                <div className="txn-editor__field">
-                  <label className="txn-editor__label">Payee</label>
-                  <div className="txn-editor__payee-wrap" ref={payeeRef}>
-                    <input
-                      type="text"
-                      className="txn-editor__input"
-                      value={payeeQuery}
-                      onChange={handlePayeeChange}
-                      onFocus={() => setShowPayeeDropdown(true)}
-                      placeholder="Search or enter payee..."
-                      autoComplete="off"
-                    />
-                    {showPayeeDropdown && filteredPayees.length > 0 && (
-                      <div className="txn-editor__payee-dropdown">
-                        {filteredPayees.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="txn-editor__payee-option"
-                            onMouseDown={() => handlePayeeSelect(p)}
-                          >
-                            {p.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <PayeeField
+                  value={payeeQuery}
+                  onType={handlePayeeChange}
+                  payees={payees}
+                  accounts={accounts}
+                  targets={transferAccounts}
+                  shownTransferLabel={isTransfer ? transferLabel : null}
+                  // The reconciled toggle is locked, and these turn it on.
+                  offerTransfers={!isReconciled}
+                  onPickPayee={(p) => void handlePayeeSelect(p)}
+                  onPickTransfer={handleTransferPick}
+                />
 
                 <div className="txn-editor__toggle-row">
                   <label className="txn-editor__toggle" aria-label="Transfer to account">
                     <input
                       type="checkbox"
                       checked={isTransfer}
-                      onChange={(e) => setIsTransfer(e.target.checked)}
+                      onChange={(e) => handleTransferToggle(e.target.checked)}
                       disabled={isReconciled}
                     />
                     <span className="txn-editor__toggle-slider" />
@@ -933,16 +978,13 @@ export function TransactionEditor({
                 {isTransfer ? (
                   <>
                     <div className="txn-editor__field">
-                      <label className="txn-editor__label">To Account</label>
+                      <label className="txn-editor__label">{destinationLabel}</label>
                       <select
                         className="txn-editor__select"
                         value={transferAccountId}
-                        onChange={(e) => {
-                          setTransferAccountId(e.target.value)
-                          setPartnerChoice(null)
-                        }}
+                        onChange={(e) => handleTransferAccountChange(e.target.value)}
                         required={isTransfer}
-                        aria-label="To Account"
+                        aria-label={destinationLabel}
                       >
                         <option value="">Select account…</option>
                         {transferAccounts.map((a) => (

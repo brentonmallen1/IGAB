@@ -1,5 +1,6 @@
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Payee } from '../../../types'
+import { choosablePayees } from '../../../utils/payees'
 
 /**
  * What the register row's payee picker offers — pure, so the filter is
@@ -14,5 +15,5 @@ import type { Payee } from '../../../types'
 /** Real payees only. A transfer payee is a destination, not a payee; picking
  *  one would name a transfer the row is not. */
 export function payeeOptions(payees: Payee[]): ComboboxOption[] {
-  return payees.filter((p) => !p.transfer_account_id).map((p) => ({ id: p.id, label: p.name }))
+  return choosablePayees(payees).map((p) => ({ id: p.id, label: p.name }))
 }

@@ -16,6 +16,7 @@ import { PatternCandidates, PatternMatchPreview } from '../PatternSuggest/Patter
 import { NO_PATTERN_MESSAGE, patternCandidates } from '../PatternSuggest/patternCandidates'
 import { Dialog } from '../../common/Dialog/Dialog'
 import './PayeeMergeModal.css'
+import { choosablePayees } from '../../../utils/payees'
 
 export interface MergeConfig {
   targetId: string
@@ -69,8 +70,8 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   // (transfer payees are managed automatically and can't absorb merges).
   const externalOptions = useMemo(() => {
     const groupIds = new Set(payees.map((p) => p.id))
-    return allPayees
-      .filter((p) => !groupIds.has(p.id) && !p.transfer_account_id)
+    return choosablePayees(allPayees)
+      .filter((p) => !groupIds.has(p.id))
       .map((p) => ({ id: p.id, label: p.name }))
   }, [allPayees, payees])
 
@@ -169,8 +170,8 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   // Payees uninvolved in this merge — the ones a pattern must not claim.
   const others = useMemo(() => {
     const groupIds = new Set(payees.map((p) => p.id))
-    return allPayees.filter(
-      (p) => !groupIds.has(p.id) && p.id !== effectiveTargetId && !p.transfer_account_id
+    return choosablePayees(allPayees).filter(
+      (p) => !groupIds.has(p.id) && p.id !== effectiveTargetId
     )
   }, [allPayees, payees, effectiveTargetId])
 
