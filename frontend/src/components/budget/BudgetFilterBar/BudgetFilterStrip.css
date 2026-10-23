@@ -1,0 +1,52 @@
+.budget-filter-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  /* Same place in the sticky stack as the desktop filter bar it stands in
+     for: one step above the column header, which is offset by this strip's
+     measured height (useMeasuredHeight in BudgetTable). */
+  position: sticky;
+  top: 0;
+  z-index: calc(var(--z-sticky) + 1);
+}
+
+.budget-filter-strip__label {
+  flex: none;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* Several at once wrap rather than scroll: a sideways scroller inside the
+   grid's sticky band is a second scroller (see the one-scroller rule). */
+.budget-filter-strip__parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.budget-filter-strip__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 var(--spacing-sm);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 768px) {
+  .budget-filter-strip__chip {
+    min-height: var(--tap-min);
+  }
+}

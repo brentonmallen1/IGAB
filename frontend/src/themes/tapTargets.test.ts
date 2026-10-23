@@ -31,6 +31,21 @@ const CASES: Array<[file: string, selector: string, prop: string]> = [
     '.view-editor__chip-move',
     'min-height',
   ],
+  // The phone's budget header (M2): one row, and the Tools sheet behind it.
+  ['components/budget/TbaHero/TbaHero.css', '.tba-hero__tools-btn', 'min-height'],
+  ['components/budget/TbaHero/TbaHero.css', '.tba-hero__tools-btn', 'min-width'],
+  ['components/budget/BudgetFilterBar/BudgetToolsSheet.css', '.budget-tools__row', 'min-height'],
+  ['components/budget/BudgetFilterBar/BudgetToolsSheet.css', '.budget-tools__link', 'min-height'],
+  [
+    'components/budget/BudgetFilterBar/BudgetToolsSheet.css',
+    '.budget-tools__density button',
+    'min-height',
+  ],
+  [
+    'components/budget/BudgetFilterBar/BudgetFilterStrip.css',
+    '.budget-filter-strip__chip',
+    'min-height',
+  ],
 ]
 
 const isTouch = (atRules: string[]) =>

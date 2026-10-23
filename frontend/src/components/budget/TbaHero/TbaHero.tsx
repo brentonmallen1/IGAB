@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { CalendarRange, ChevronDown, History, Wand2, X } from 'lucide-react'
+import { useRef } from 'react'
+import { CalendarRange, ChevronDown, History, SlidersHorizontal, Wand2, X } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories } from '../../../api/categories'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
@@ -13,6 +13,7 @@ import { overspending, overspentLastMonth } from '../budgetTotals'
 import { CoverOverspentModal } from './CoverOverspentModal'
 import { LastMonthModal } from './LastMonthModal'
 import { TbaDrawer } from './TbaDrawer'
+import { useGridNarrowing } from '../gridNarrowing'
 import type { AssignStrategy } from '../../../types'
 import './TbaHero.css'
 
@@ -45,7 +46,13 @@ export function TbaHero({ budgetId, month }: Props) {
   const setShowCover = useUIStore((s) => s.setCoverOverspentOpen)
   const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const assignRef = useRef<HTMLDivElement>(null)
-  const [showLastMonth, setShowLastMonth] = useState(false)
+  // In the store, not here: on a phone the Tools sheet opens it.
+  const showLastMonth = useUIStore((s) => s.lastMonthOpen)
+  const setShowLastMonth = useUIStore((s) => s.setLastMonthOpen)
+  const setToolsOpen = useUIStore((s) => s.setBudgetToolsOpen)
+  // The Tools button says when the grid is narrowed — the controls that did
+  // it are behind the button on a phone.
+  const narrowed = useGridNarrowing(budgetId).parts.length > 0
 
   const tba = budgetMonth?.to_be_assigned ?? 0
   // One implementation of "how much is overspent" (budgetTotals), shared with
@@ -111,7 +118,7 @@ export function TbaHero({ budgetId, month }: Props) {
               aria-haspopup="menu"
               title="Assign money"
             >
-              <Wand2 size={13} />
+              {!isMobile && <Wand2 size={13} />}
               Assign
               <ChevronDown size={13} />
             </button>
@@ -135,14 +142,18 @@ export function TbaHero({ budgetId, month }: Props) {
               title="Cover overspending"
             >
               {formatMoney(-overspent)}
-              <span className="tba-hero__chip-word">overspent</span>
+              {/* "over" on a phone, where the row holds four things: still a
+                  word, so the red amount never reads as a second balance. */}
+              <span className="tba-hero__chip-word">{isMobile ? 'over' : 'overspent'}</span>
             </button>
           )}
 
           {/* What the 1st took, as a pill like the one beside it. It was a
               sentence listing every envelope, which wrapped into two ragged
               lines under the number; the list is one tap away instead. */}
-          {lastMonth && (
+          {/* On a phone these two live in the Tools sheet: they are things to
+              look at, and the row is for the figure and what acts on it. */}
+          {lastMonth && !isMobile && (
             <button
               type="button"
               className="tba-hero__last-month"
@@ -154,15 +165,32 @@ export function TbaHero({ budgetId, month }: Props) {
             </button>
           )}
 
-          <button
-            className="tba-hero__history-btn"
-            onClick={() => setDrawerOpen(true)}
-            aria-haspopup="dialog"
-            aria-label="Money moved this month"
-            title="Money moved this month"
-          >
-            <History size={15} />
-          </button>
+          {!isMobile && (
+            <button
+              className="tba-hero__history-btn"
+              onClick={() => setDrawerOpen(true)}
+              aria-haspopup="dialog"
+              aria-label="Money moved this month"
+              title="Money moved this month"
+            >
+              <History size={15} />
+            </button>
+          )}
+
+          {isMobile && (
+            <button
+              type="button"
+              className="tba-hero__tools-btn"
+              onClick={() => setToolsOpen(true)}
+              aria-haspopup="dialog"
+              aria-label={narrowed ? 'Budget tools, a filter is on' : 'Budget tools'}
+            >
+              <SlidersHorizontal size={18} />
+              {narrowed && (
+                <span className="count-badge count-badge--dot count-badge--accent tba-hero__tools-dot" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 

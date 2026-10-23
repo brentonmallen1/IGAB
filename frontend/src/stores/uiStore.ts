@@ -257,6 +257,14 @@ interface UIState {
   setCoverOverspentOpen: (open: boolean) => void
   tbaDrawerOpen: boolean
   setTbaDrawerOpen: (open: boolean) => void
+  /** What last month's overspending took — opened from the hero's chip on a
+   *  desktop and from the Tools sheet on a phone. */
+  lastMonthOpen: boolean
+  setLastMonthOpen: (open: boolean) => void
+  /** The phone's Tools sheet: the budget's filters, statuses, views, density
+   *  and this month's moves, which take a row of their own on a desktop. */
+  budgetToolsOpen: boolean
+  setBudgetToolsOpen: (open: boolean) => void
 
   // Multi-month side-by-side view (desktop only)
   multiMonthOpen: boolean
@@ -541,6 +549,10 @@ export const useUIStore = create<UIState>()(
       setCoverOverspentOpen: (open) => set({ isCoverOverspentOpen: open }),
       tbaDrawerOpen: false,
       setTbaDrawerOpen: (open) => set({ tbaDrawerOpen: open }),
+      lastMonthOpen: false,
+      setLastMonthOpen: (open) => set({ lastMonthOpen: open }),
+      budgetToolsOpen: false,
+      setBudgetToolsOpen: (open) => set({ budgetToolsOpen: open }),
 
       multiMonthOpen: false,
       setMultiMonthOpen: (open) => set({ multiMonthOpen: open }),

@@ -72,7 +72,7 @@ const TRIGGERS = {
     { name: 'quick-add', open: 'button[aria-label="Add transaction"]' },
     { name: 'more', open: '.bottom-nav button:last-child' },
     { name: 'assign', open: '.tba-hero__assign-main' },
-    { name: 'filters', open: '.budget-filter-bar__views-trigger, .budget-filter-bar button' },
+    { name: 'tools', open: '.tba-hero__tools-btn' },
   ],
   '/accounts/:id': [
     { name: 'editor', open: '.transaction-row' },
