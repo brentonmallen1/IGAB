@@ -921,6 +921,15 @@ class Transaction(Base):
     #: instead of quietly reporting everything as filed.
     needs_category: Mapped[bool] = query_expression()
 
+    #: Whether this transaction waits on the person — to approve, to file —
+    #: as the review banner and the sidebar's dot count it
+    #: (`txn_filters.NEEDS_APPROVAL` / `NEEDS_FILING`). Per transaction: a split
+    #: line reads False and its parent carries the answer. A pending row reads
+    #: False for both: it is on its way, not waiting. Required on the response,
+    #: populated by `TransactionRepository.with_computed`, like needs_category.
+    awaiting_approval: Mapped[bool] = query_expression()
+    awaiting_category: Mapped[bool] = query_expression()
+
     #: The month this row counts in for budget math — `txn_filters.BUDGET_MONTH`,
     #: its own month except a late arrival, which counts in the import month.
     #: And whether it counts before the import month on an anchored budget

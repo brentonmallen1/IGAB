@@ -64,8 +64,8 @@ async def test_offbudget_rows_never_count_as_uncategorized(db_session):
 
     # Badge: checking counts its plain row + the category-less spending
     # transfer; the brokerage never asks for categories
-    assert await services.account_repo.get_uncategorized_count(checking.id) == 2
-    assert await services.account_repo.get_uncategorized_count(brokerage.id) == 0
+    assert (await services.account_repo.get_attention(checking.id)).uncategorized == 2
+    assert (await services.account_repo.get_attention(brokerage.id)).uncategorized == 0
 
     # Review inbox: the same two the badge counted, and no more. These used to
     # disagree — the badge said 2, the inbox said 1 — because the inbox decided
@@ -75,8 +75,9 @@ async def test_offbudget_rows_never_count_as_uncategorized(db_session):
     review = await services.transaction_repo.count_pending_review(budget.id)
     assert review["uncategorized"] == 2
     assert review["unapproved"] == 1
-    assert review["uncategorized"] == await services.account_repo.get_uncategorized_count(
-        checking.id
+    assert (
+        review["uncategorized"]
+        == (await services.account_repo.get_attention(checking.id)).uncategorized
     ), "the badge and the review inbox must count the same rows"
 
 
@@ -118,7 +119,7 @@ class TestAnUnpairedTransferLegIsStillATransfer:
         await create_transaction(db_session, budget, checking, "-500.00", OLD, payee=to_savings)
         await db_session.flush()
 
-        assert await services.account_repo.get_uncategorized_count(checking.id) == 0
+        assert (await services.account_repo.get_attention(checking.id)).uncategorized == 0
         review = await services.transaction_repo.count_pending_review(budget.id)
         assert review["uncategorized"] == 0
 
@@ -130,7 +131,7 @@ class TestAnUnpairedTransferLegIsStillATransfer:
         await create_transaction(db_session, budget, checking, "-1200.00", OLD, payee=to_loan)
         await db_session.flush()
 
-        assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+        assert (await services.account_repo.get_attention(checking.id)).uncategorized == 1
         review = await services.transaction_repo.count_pending_review(budget.id)
         assert review["uncategorized"] == 1
 
@@ -144,7 +145,7 @@ class TestAnUnpairedTransferLegIsStillATransfer:
         out.transfer_id = back.id
         await db_session.flush()
 
-        assert await services.account_repo.get_uncategorized_count(checking.id) == 0
+        assert (await services.account_repo.get_attention(checking.id)).uncategorized == 0
         review = await services.transaction_repo.count_pending_review(budget.id)
         assert review["uncategorized"] == 0
 
@@ -157,7 +158,7 @@ class TestAnUnpairedTransferLegIsStillATransfer:
         await create_transaction(db_session, budget, checking, "-8.00", OLD)
         await db_session.flush()
 
-        assert await services.account_repo.get_uncategorized_count(checking.id) == 2
+        assert (await services.account_repo.get_attention(checking.id)).uncategorized == 2
         review = await services.transaction_repo.count_pending_review(budget.id)
         assert review["uncategorized"] == 2
 
@@ -223,7 +224,9 @@ class TestTheServedFlagIsTheOnlyRule:
         flagged = [t for t in rows if t.needs_category]
 
         assert len(flagged) == 2, "the mortgage leg and the plain row, not the savings leg"
-        assert len(flagged) == await services.account_repo.get_uncategorized_count(checking.id)
+        assert (
+            len(flagged) == (await services.account_repo.get_attention(checking.id)).uncategorized
+        )
 
     async def test_the_account_register_filter_agrees_with_its_badge(self, db_session):
         """The sixth site. Every other copy of the rule moved to NEEDS_CATEGORY;
@@ -234,7 +237,9 @@ class TestTheServedFlagIsTheOnlyRule:
 
         filtered = await services.transaction_repo.get_for_account(checking.id, uncategorized=True)
 
-        assert len(filtered) == await services.account_repo.get_uncategorized_count(checking.id)
+        assert (
+            len(filtered) == (await services.account_repo.get_attention(checking.id)).uncategorized
+        )
         assert all(t.needs_category for t in filtered)
 
     async def test_every_listing_path_carries_the_flag(self, db_session):
@@ -541,7 +546,7 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
 
         rows = await services.transaction_repo.get_for_account(card.id)
         assert [t.needs_category for t in rows] == [True, True]
-        assert await services.account_repo.get_uncategorized_count(card.id) == 2
+        assert (await services.account_repo.get_attention(card.id)).uncategorized == 2
 
     async def test_a_row_before_the_start_date_is_not_unfiled_work(self, db_session):
         services, card = await self._world(db_session, start=TODAY - timedelta(days=7))
@@ -553,7 +558,7 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
         assert flagged[0].amount == Decimal("-25.00")
         # The badge and the register filter read the same expression, so they
         # cannot disagree with the flag above or with each other.
-        assert await services.account_repo.get_uncategorized_count(card.id) == 1
+        assert (await services.account_repo.get_attention(card.id)).uncategorized == 1
         filtered = await services.transaction_repo.get_for_account(card.id, uncategorized=True)
         assert [t.amount for t in filtered] == [Decimal("-25.00")]
 
@@ -561,7 +566,7 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
         """The boundary is inclusive: the day you joined is a day you budgeted."""
         services, card = await self._world(db_session, start=TODAY - timedelta(days=30))
 
-        assert await services.account_repo.get_uncategorized_count(card.id) == 2
+        assert (await services.account_repo.get_attention(card.id)).uncategorized == 2
 
     async def test_one_account_start_date_does_not_reach_another(self, db_session):
         """The predicate is correlated to the row's own account. Written as a
@@ -577,8 +582,8 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
         await create_transaction(db_session, budget, checking, "-40.00", TODAY - timedelta(days=30))
         await db_session.flush()
 
-        assert await services.account_repo.get_uncategorized_count(card.id) == 0
-        assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+        assert (await services.account_repo.get_attention(card.id)).uncategorized == 0
+        assert (await services.account_repo.get_attention(checking.id)).uncategorized == 1
 
 
 class TestEveryAccountResponseCarriesTheSavingsFlag:

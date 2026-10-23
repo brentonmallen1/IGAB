@@ -30,7 +30,11 @@ from igab.dependencies import (
 from igab.domain.bank_absence import REMOVED
 from igab.domain.bank_balance import DriftExplanation, drift_is_a_fault
 from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError, UndoConflict
-from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
+from igab.repositories.account_repo import (
+    AccountAttention,
+    AccountRepository,
+    LiabilityDisposition,
+)
 from igab.services.account_hygiene import AccountHygieneService
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.bank_absence_listing import open_absences
@@ -103,6 +107,12 @@ def _apply_drift(
     resp.bank_drift_is_fault = drift_is_a_fault(explanation, reconciled=reconciled)
 
 
+def _apply_attention(resp: AccountResponse, attention: AccountAttention) -> None:
+    resp.uncategorized_count = attention.uncategorized
+    resp.unapproved_count = attention.unapproved
+    resp.pending_count = attention.pending
+
+
 @router.get("/{budget_id}/accounts", response_model=list[AccountResponse])
 async def list_accounts(
     budget_id: BudgetAccess,
@@ -119,7 +129,7 @@ async def list_accounts(
     cleared_balances = await account_repo.cleared_balances_for(ids)
     pending_balances = await account_repo.pending_balances_for(ids)
     drifts = await account_repo.drift_for(accounts)
-    uncategorized = await account_repo.uncategorized_counts_for(ids)
+    attention = await account_repo.attention_counts_for(ids)
     result = []
     for acc in accounts:
         balance = balances[acc.id]
@@ -130,7 +140,7 @@ async def list_accounts(
         resp.uncleared_balance = balance - cleared
         resp.pending_balance = pending_balances[acc.id]
         _apply_drift(resp, drifts[acc.id], reconciled=acc.last_reconciled_at is not None)
-        resp.uncategorized_count = uncategorized[acc.id]
+        _apply_attention(resp, attention[acc.id])
         result.append(resp)
     return result
 
@@ -403,7 +413,7 @@ async def get_account(
         (await account_repo.drift_for([acc]))[acc.id],
         reconciled=acc.last_reconciled_at is not None,
     )
-    resp.uncategorized_count = await account_repo.get_uncategorized_count(acc.id)
+    _apply_attention(resp, await account_repo.get_attention(acc.id))
     return resp
 
 

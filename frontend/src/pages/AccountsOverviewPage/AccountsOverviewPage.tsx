@@ -43,6 +43,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
 import { openAccounts } from '../../utils/accountLists'
+import { AttentionDot } from '../../components/common/AttentionDot/AttentionDot'
 
 function formatReconciled(
   lastReconciledAt: string | null,
@@ -90,14 +91,7 @@ function AccountRow({
           {account.is_closed && (
             <span className="accounts-overview__tag accounts-overview__tag--closed">Closed</span>
           )}
-          {account.uncategorized_count > 0 && (
-            <span
-              className="accounts-overview__uncat-badge"
-              title={`${account.uncategorized_count} uncategorized transaction${account.uncategorized_count !== 1 ? 's' : ''}`}
-            >
-              {account.uncategorized_count}
-            </span>
-          )}
+          <AttentionDot counts={account} />
         </div>
 
         <div className="accounts-overview__row-meta">

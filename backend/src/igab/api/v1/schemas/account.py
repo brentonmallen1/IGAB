@@ -126,7 +126,13 @@ class AccountResponse(ApiModel):
     #: exactly why the register needs it stated: the rows are visible and
     #: count for nothing.
     pending_balance: Decimal = Decimal("0")
+    #: Rows waiting on this account (AccountRepository.attention_counts_for):
+    #: to file, to approve, and still pending at the bank. The sidebar draws
+    #: these as one dot coloured by the most urgent; the numbers are its
+    #: accessible name. Same predicates as the review banner's counts.
     uncategorized_count: int = 0
+    unapproved_count: int = 0
+    pending_count: int = 0
 
     model_config = {"from_attributes": True}
 

@@ -73,6 +73,7 @@ import { useSidebarResize } from './useSidebarResize'
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './sidebarWidth'
 import { SidebarAccountRow } from './SidebarAccountRow'
 import { SidebarGroupHeader } from './SidebarGroupHeader'
+import { AttentionDot } from '../../common/AttentionDot/AttentionDot'
 
 export function Sidebar() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -488,7 +489,7 @@ export function Sidebar() {
                           name={acc.name}
                           balance={acc.balance}
                           kind={accountKind(acc)}
-                          badgeCount={acc.uncategorized_count}
+                          attention={acc}
                           onClick={() => handleAccountClick(acc)}
                           isActive={isRowActive(accountTarget(acc.id), null, sidebarLocation)}
                           trailing={syncIconFor(acc.id)}
@@ -649,7 +650,7 @@ export function Sidebar() {
                   <span className="sidebar__account-mini-letter">
                     {acc.name.charAt(0).toUpperCase()}
                   </span>
-                  {acc.uncategorized_count > 0 && <span className="sidebar__account-mini-dot" />}
+                  <AttentionDot counts={acc} className="sidebar__account-mini-dot" />
                 </button>
               )
             })}

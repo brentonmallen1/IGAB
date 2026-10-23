@@ -168,6 +168,10 @@ class TransactionResponse(ApiModel):
     #: here rather than reach the register as a quiet False. See
     #: `Transaction.needs_category` and `NEEDS_CATEGORY`.
     needs_category: bool
+    #: Waits on the person, as the review counts say (`Transaction.awaiting_*`).
+    #: Required: a path that forgets raises rather than hiding work.
+    awaiting_approval: bool
+    awaiting_category: bool
     #: The month this row counts in for budget math, and whether that is before
     #: the import month of an anchored budget (where editing it moves no
     #: envelope). Server-computed (`BUDGET_MONTH`, `PREDATES_IMPORT` in

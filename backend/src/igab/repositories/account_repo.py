@@ -1,11 +1,12 @@
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from itertools import accumulate
 from typing import Any, Literal
 
-from sqlalchemy import and_, case, func, not_, select, update
+from sqlalchemy import Integer, and_, case, cast, func, not_, select, update
 
 from igab.db.models import (
     Account,
@@ -18,6 +19,8 @@ from igab.domain.bank_balance import DriftExplanation, as_of_date, explain_drift
 from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
+    AWAITING_APPROVAL,
+    AWAITING_CATEGORY,
     BALANCE_ROW,
     BUDGET_MONTH,
     CARD_ACCOUNT,
@@ -27,7 +30,6 @@ from igab.repositories.txn_filters import (
     EMERGENCY_FUND_ACCOUNT_SHAPE,
     IN_REVIEW_CLEARED,
     LIVE_ACCOUNT,
-    NEEDS_CATEGORY,
     NOT_DELETED,
     PARENT_ROW,
     PENDING_ROW,
@@ -37,6 +39,21 @@ from igab.repositories.txn_filters import (
 )
 
 LiabilityDisposition = Literal["keep", "delete"]
+
+
+@dataclass(frozen=True)
+class AccountAttention:
+    """Rows waiting on an account: to file, to approve, and still pending.
+
+    Which rows count is txn_filters' (AWAITING_CATEGORY, AWAITING_APPROVAL,
+    PENDING_ROW); how urgent that looks is the client's to draw
+    (utils/accountAttention.ts), since the server never decides it.
+    """
+
+    uncategorized: int = 0
+    unapproved: int = 0
+    pending: int = 0
+
 
 #: Account type → the unmanaged liability kind that means the same thing.
 #: Needed only when an account is deleted: its companion stops being able to
@@ -259,31 +276,40 @@ class AccountRepository(BaseRepository[Account]):
         newest = {account_id: value for account_id, value in result.all()}
         return {account_id: newest.get(account_id) for account_id in account_ids}
 
-    async def uncategorized_counts_for(
+    async def attention_counts_for(
         self, account_ids: Sequence[uuid.UUID]
-    ) -> dict[uuid.UUID, int]:
-        """Unfiled leaf rows per account.
+    ) -> dict[uuid.UUID, AccountAttention]:
+        """What is waiting on each account, in one grouped SELECT.
 
-        No on-budget check here or in the caller: `NEEDS_CATEGORY` already
-        carries `ON_BUDGET_ACCOUNT`, so an off-budget account matches no rows
-        and lands on the zero default — which is what the per-account version
-        spent an extra SELECT to discover.
+        The same row predicates the review banner splits (AWAITING_CATEGORY,
+        AWAITING_APPROVAL) plus the pending rows on their way in, so the
+        sidebar's dot and the banner inside the account cannot describe two
+        different sets. No on-budget check: AWAITING_CATEGORY carries
+        `ON_BUDGET_ACCOUNT`, so an off-budget account files nothing.
         """
         if not account_ids:
             return {}
+
+        def tally(cond):
+            return func.coalesce(func.sum(cast(case((cond, 1), else_=0), Integer)), 0)
+
         result = await self.session.execute(
-            select(Transaction.account_id, func.count(Transaction.id))
-            .select_from(Transaction)
-            .where(
-                Transaction.account_id.in_(account_ids),
-                NOT_DELETED,
-                POSTED,
-                NEEDS_CATEGORY,
+            select(
+                Transaction.account_id,
+                tally(AWAITING_CATEGORY),
+                tally(AWAITING_APPROVAL),
+                tally(PENDING_ROW),
             )
+            .where(Transaction.account_id.in_(account_ids))
             .group_by(Transaction.account_id)
         )
-        counts = {account_id: n for account_id, n in result.all()}
-        return {account_id: counts.get(account_id, 0) for account_id in account_ids}
+        counts = {
+            account_id: AccountAttention(uncategorized=c, unapproved=a, pending=p)
+            for account_id, c, a, p in result.all()
+        }
+        return {
+            account_id: counts.get(account_id, AccountAttention()) for account_id in account_ids
+        }
 
     async def require_emergency_fund_shape(self, account_id: uuid.UUID) -> None:
         """Refuse an emergency-fund flag on an account of the wrong shape.
@@ -327,19 +353,9 @@ class AccountRepository(BaseRepository[Account]):
         """One account's `newest_cleared_on_for`."""
         return (await self.newest_cleared_on_for([account_id]))[account_id]
 
-    async def get_uncategorized_count(self, account_id: uuid.UUID) -> int:
-        # Leaf rows: split parents legitimately have no category, while an
-        # uncategorized split child is a real gap the user should fill.
-        # Transfer legs whose partner account is OFF-budget are spending and
-        # need a category too; on-budget↔on-budget legs never do.
-        # Off-budget accounts don't use categories at all — the categorized
-        # side of a spending transfer lives on the on-budget leg, and plain
-        # rows here are net-worth movement, not unfiled spending.
-        # Was a hand-rolled partner join reading `transfer_id IS NULL`, which
-        # counted an unpaired transfer leg as unfiled. NEEDS_CATEGORY reaches
-        # the counterpart through the transfer payee as well as the link, so a
-        # leg whose partner never imported is still recognised as a transfer.
-        return (await self.uncategorized_counts_for([account_id]))[account_id]
+    async def get_attention(self, account_id: uuid.UUID) -> AccountAttention:
+        """One account's `attention_counts_for`."""
+        return (await self.attention_counts_for([account_id]))[account_id]
 
     async def sum_on_budget_balance(self, budget_id: uuid.UUID, as_of: date) -> Decimal:
         """The budget's cash as of the end of a day — the balance term of

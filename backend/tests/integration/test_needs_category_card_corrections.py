@@ -53,12 +53,12 @@ async def test_a_cards_ledger_corrections_need_no_category(db_session):
     rows = await services.transaction_repo.get_for_account(card.id)
     flagged = {t.amount for t in rows if t.needs_category}
     assert [str(a) for a in flagged] == ["-12.0000"], "only the Corner Shop charge"
-    assert await services.account_repo.get_uncategorized_count(card.id) == 1
+    assert (await services.account_repo.get_attention(card.id)).uncategorized == 1
 
 
 async def test_a_starting_balance_on_cash_still_asks(db_session):
     services, _, _, checking = await _world(db_session)
-    assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+    assert (await services.account_repo.get_attention(checking.id)).uncategorized == 1
 
 
 async def test_the_badge_the_filter_and_the_flag_still_agree(db_session):

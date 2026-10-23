@@ -1637,7 +1637,7 @@ async def test_history_before_the_budget_start_date_arrives_uncategorized(db_ses
     assert rows["t-old"].category_id is None, "before the start date: opening position"
     assert rows["t-new"].category_id == groceries.id, "after it: an ordinary guess"
     # And the one that arrived bare is not then nagged about forever.
-    assert await services.account_repo.get_uncategorized_count(account.id) == 0
+    assert (await services.account_repo.get_attention(account.id)).uncategorized == 0
 
 
 async def test_without_a_budget_start_date_every_row_is_categorized_as_before(db_session):

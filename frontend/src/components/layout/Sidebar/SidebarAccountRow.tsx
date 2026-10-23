@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { balanceTone } from './sidebarGroups'
+import { AttentionDot } from '../../common/AttentionDot/AttentionDot'
+import type { AttentionCounts } from '../../../utils/accountAttention'
 
 interface Props {
   name: string
@@ -15,8 +17,9 @@ interface Props {
   isActive?: boolean
   /** Liability mode marker (managed / manual); nothing elsewhere. */
   leadingIcon?: ReactNode
-  /** Uncategorized count; 0 or absent draws no badge. */
-  badgeCount?: number
+  /** What is waiting on the account; absent (liability and asset rows) or
+   *  clear draws no dot. */
+  attention?: AttentionCounts
   /** Row-level action drawn before the balance — sync status, register shortcut. */
   trailing?: ReactNode
 }
@@ -48,7 +51,7 @@ export function SidebarAccountRow({
   onClick,
   isActive = false,
   leadingIcon,
-  badgeCount = 0,
+  attention,
   trailing,
 }: Props) {
   const { formatMoney } = useFormatters()
@@ -74,11 +77,7 @@ export function SidebarAccountRow({
       <span className="sidebar__account-name">
         {leadingIcon}
         <span className="sidebar__account-label">{name}</span>
-        {badgeCount > 0 && (
-          <span className="count-badge count-badge--warning" title={`${badgeCount} uncategorized`}>
-            {badgeCount}
-          </span>
-        )}
+        {attention && <AttentionDot counts={attention} />}
       </span>
       <span className="sidebar__account-right">
         {trailing}

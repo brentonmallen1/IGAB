@@ -33,7 +33,12 @@ vi.mock('../../simplefin/BankRecordIcon', () => ({ BankRecordIcon: () => null })
 const MARKER = 'Extracted from an image by AI — needs review'
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
-  return makeTransaction({ approved: false, created_via: 'ai_receipt', ...overrides })
+  return makeTransaction({
+    approved: false,
+    awaiting_approval: true,
+    created_via: 'ai_receipt',
+    ...overrides,
+  })
 }
 
 function renderRow(t: Transaction) {

@@ -106,7 +106,12 @@ export interface Account {
    * before the field existed. See `Account.budget_start_date` on the server.
    */
   budget_start_date: string | null
+  /** Rows waiting on this account — served by
+   *  AccountRepository.attention_counts_for on the review banner's predicates.
+   *  Drawn as one dot (utils/accountAttention); the numbers are its label. */
   uncategorized_count: number
+  unapproved_count: number
+  pending_count: number
   created_at: string
   updated_at: string
 }
@@ -629,6 +634,16 @@ export interface Transaction {
    * as unfiled under a badge that counted 3.
    */
   needs_category: boolean
+  /**
+   * Does this transaction wait on the person — to approve, to file — as the
+   * review banner and the sidebar's dot count it? Served
+   * (`txn_filters.NEEDS_APPROVAL` / `NEEDS_FILING`); never rebuilt from
+   * `approved` and `cleared`. Per transaction: a split line reads false and
+   * its parent answers. A pending row reads false for both — it is on its
+   * way, and is asked for approval once it posts.
+   */
+  awaiting_approval: boolean
+  awaiting_category: boolean
   /** The month this row counts in for budget math, first-of-month ISO date.
    *  Its own month, except a late arrival — dated in the month before an
    *  import, arriving after it — which counts in the import month. Server

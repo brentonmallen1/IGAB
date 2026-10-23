@@ -188,21 +188,6 @@
   border: 1px solid var(--border-subtle);
 }
 
-.accounts-overview__uncat-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--color-warning);
-  color: var(--text-inverse);
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
-  cursor: help;
-}
-
 .accounts-overview__row-meta {
   display: flex;
   align-items: center;

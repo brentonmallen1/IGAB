@@ -7,6 +7,9 @@
   --sidebar-hairline: color-mix(in srgb, var(--sidebar-text-muted) 22%, transparent);
   --sidebar-hover: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
   --sidebar-hover-strong: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
+  /* Badges and dots in here sit on the dark sidebar, not on the page. */
+  --badge-warning: var(--sidebar-warning);
+  --badge-muted: var(--sidebar-text-muted);
 
   /* One column for the whole account list: the disclosure chevron sits at
      --sidebar-edge and every label — section header, type group, account
@@ -548,15 +551,15 @@ button.sidebar__group-label:hover {
   line-height: 1;
 }
 
+/* Where the account's attention dot sits on its letter tile. The dot itself
+   is the shared `.count-badge--dot` (AttentionDot); this only places it and
+   sets it off the tile — with an outline, because the pending dot's ring is
+   its border. */
 .sidebar__account-mini-dot {
   position: absolute;
   top: 4px;
   right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--color-warning);
-  border: 1px solid var(--sidebar-bg);
+  outline: 1px solid var(--sidebar-bg);
 }
 
 .sidebar--collapsed {

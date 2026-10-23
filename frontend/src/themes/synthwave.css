@@ -190,6 +190,9 @@
   --sidebar-text-primary: #f0ede8;
   --sidebar-text-secondary: #c4bdb5;
   --sidebar-text-muted: #87808a;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (synthwave-dark): a light page's amber disappears on it. */
+  --sidebar-warning: #f5cd89;
 
   /* Tag color slots — 90s palette, adjusted for light bg */
   --tag-red: #d04050;

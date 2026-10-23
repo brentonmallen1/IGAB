@@ -104,6 +104,9 @@
   --sidebar-text-primary: #eff1f5;
   --sidebar-text-secondary: #ccd0da;
   --sidebar-text-muted: #c0c4d5;
+  /* The sidebar stays dark in this light theme, so its warning is the dark
+     variant's (catppuccin-mocha): a light page's amber disappears on it. */
+  --sidebar-warning: #fab387;
 
   /* Tag color slots — Catppuccin Latte */
   --tag-red: #d20f39;

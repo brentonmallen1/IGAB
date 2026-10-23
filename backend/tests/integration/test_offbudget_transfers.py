@@ -179,7 +179,7 @@ async def test_uncategorized_offbudget_leg_counts_as_uncategorized(db_session):
         ),
     )
 
-    count = await services.account_repo.get_uncategorized_count(checking.id)
+    count = (await services.account_repo.get_attention(checking.id)).uncategorized
     assert count == 1, "only the off-budget leg needs categorization"
 
 
@@ -217,7 +217,7 @@ async def test_an_uncategorized_car_sale_is_money_to_assign_and_still_unfiled(db
     [leg] = await services.transaction_repo.get_for_account(checking.id)
     assert leg.transfer_id is not None
     assert leg.needs_category is True
-    assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+    assert (await services.account_repo.get_attention(checking.id)).uncategorized == 1
 
     results = await ReportService(db_session).income_vs_expense(budget.id, months=1)
     assert results[-1]["income"] == Decimal("4500.00")
