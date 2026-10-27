@@ -9,21 +9,15 @@ interface Props {
   onAdd: () => void
   /** From `registerPayAction` — null on registers that take no payment. */
   pay: { label: string; onClick: () => void } | null
-  /** Draw each split's lines under it (uiStore `showSplitLines`). */
-  showSplitLines: boolean
-  onShowSplitLinesChange: (show: boolean) => void
+  /** Draw each split's lines under it (uiStore `showSplitLines`). Null where
+   *  the toggle lives elsewhere — the phone account page's Tools sheet, which
+   *  leaves this row to the search box. */
+  splitLines: { show: boolean; onChange: (show: boolean) => void } | null
 }
 
 /** The register's top row: search, how the rows are drawn, and the actions
  *  done to this account. */
-export function RegisterToolbar({
-  searchQuery,
-  onSearchChange,
-  onAdd,
-  pay,
-  showSplitLines,
-  onShowSplitLinesChange,
-}: Props) {
+export function RegisterToolbar({ searchQuery, onSearchChange, onAdd, pay, splitLines }: Props) {
   return (
     <div className="transaction-table__toolbar">
       {/* The ⓘ sits beside the box, not inside it: inside, it shared an edge
@@ -35,19 +29,21 @@ export function RegisterToolbar({
         </span>
       </div>
       {/* A toggle, so its name stays put and aria-pressed carries the state;
-          the tooltip says what a click will do. Kept on phones too: the
-          register toolbar has no overflow menu to fold it into, and the
-          button is one icon wide. */}
-      <button
-        type="button"
-        className="transaction-table__toggle-btn"
-        aria-pressed={showSplitLines}
-        aria-label="Show split lines"
-        title={showSplitLines ? 'Hide split lines' : 'Show split lines'}
-        onClick={() => onShowSplitLinesChange(!showSplitLines)}
-      >
-        <ListTree size={14} aria-hidden />
-      </button>
+          the tooltip says what a click will do. On the phone account page it
+          moves into Tools; the all-accounts register has no such sheet, so it
+          stays here there. */}
+      {splitLines && (
+        <button
+          type="button"
+          className="transaction-table__toggle-btn"
+          aria-pressed={splitLines.show}
+          aria-label="Show split lines"
+          title={splitLines.show ? 'Hide split lines' : 'Show split lines'}
+          onClick={() => splitLines.onChange(!splitLines.show)}
+        >
+          <ListTree size={14} aria-hidden />
+        </button>
+      )}
       {pay && (
         <button type="button" className="transaction-table__pay-btn" onClick={pay.onClick}>
           <Banknote size={14} />

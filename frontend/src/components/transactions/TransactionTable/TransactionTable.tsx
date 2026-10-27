@@ -1021,8 +1021,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
               ? { label: payAction.label, onClick: () => openModal('card-payment', accountId) }
               : null
           }
-          showSplitLines={showSplitLines}
-          onShowSplitLinesChange={setShowSplitLines}
+          // The phone account page draws this toggle in its Tools sheet.
+          splitLines={
+            isMobile && accountId !== null
+              ? null
+              : { show: showSplitLines, onChange: setShowSplitLines }
+          }
         />
 
         <SearchFilterChips

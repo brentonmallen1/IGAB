@@ -44,6 +44,7 @@ function renderTools(over: Partial<Parameters<typeof AccountToolsSheet>[0]> = {}
     scanning: false,
     onEdit: vi.fn(),
     onReconcile: null,
+    splitLines: { show: false, onChange: vi.fn() },
     ...over,
   }
   render(<AccountToolsSheet {...props} />)
@@ -79,6 +80,16 @@ describe('AccountToolsSheet', () => {
   it('offers Reconcile only where the header row does not', () => {
     renderTools({ onReconcile: vi.fn() })
     expect(screen.getByRole('button', { name: 'Reconcile' })).toBeInTheDocument()
+  })
+
+  // Moved here from beside the search box, which on a phone keeps its row.
+  it('toggles split lines in place, without closing', () => {
+    const props = renderTools()
+    const toggle = screen.getByRole('button', { name: 'Show split lines' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(toggle)
+    expect(props.splitLines.onChange).toHaveBeenCalledWith(true)
+    expect(props.onClose).not.toHaveBeenCalled()
   })
 
   it('shows a debt account’s terms', () => {

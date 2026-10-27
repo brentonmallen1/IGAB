@@ -102,6 +102,8 @@ export function AccountPage() {
     }
   }
   const [showCsvImport, setShowCsvImport] = useState(false)
+  const showSplitLines = useUIStore((s) => s.showSplitLines)
+  const setShowSplitLines = useUIStore((s) => s.setShowSplitLines)
   const storedHeaderCollapsed = useUIStore((s) => s.accountHeaderCollapsed)
   const setHeaderCollapsed = useUIStore((s) => s.setAccountHeaderCollapsed)
 
@@ -258,6 +260,7 @@ export function AccountPage() {
             onReconcile={
               payAction && !isReconcilingHere ? () => startReconciliation(accountId) : null
             }
+            splitLines={{ show: showSplitLines, onChange: setShowSplitLines }}
           />
           <AccountNoticesSheet
             open={noticesOpen}
