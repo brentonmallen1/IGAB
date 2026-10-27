@@ -56,6 +56,24 @@ export function sectionOpen(
 }
 
 /**
+ * Whether the Upcoming section renders open.
+ *
+ * A phone starts it folded and a desktop starts it open: on a 390pt screen
+ * the sample checking account's six scheduled rows put its first real
+ * transaction below the fold. Each viewport keeps its own choice (the phone's
+ * in `phoneUpcomingOpen`), so folding it on a phone never folds it on the
+ * desktop. Scheduled rows are never a highlight target, so there is no
+ * highlight to reveal here.
+ */
+export function upcomingOpen(
+  collapsed: ReadonlySet<string>,
+  phoneOpen: boolean,
+  isMobile: boolean
+): boolean {
+  return isMobile ? phoneOpen : sectionOpen(collapsed, 'upcoming', [], null)
+}
+
+/**
  * Should the register drop the search it is carrying?
  *
  * **An arrival, not a state.** Written as a standing condition — "there is a

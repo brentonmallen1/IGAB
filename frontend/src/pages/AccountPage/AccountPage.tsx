@@ -1,31 +1,22 @@
 import { useCallback, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import {
-  AlertTriangle,
-  CalendarClock,
-  Hourglass,
-  Link as LinkIcon,
-  Lock,
-  Pencil,
-  ScanSearch,
-  Telescope,
-  Upload,
-  Wallet,
-} from 'lucide-react'
+import { Pencil, ScanSearch, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { CsvImportDialog } from '../../components/imports/CsvImportDialog/CsvImportDialog'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
+import { registerPayAction } from '../../components/transactions/TransactionTable/payButton'
 import { ReconcileModal } from '../../components/accounts/ReconcileModal'
 import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar'
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
+import { REVIEW_SEARCH } from '../../components/accounts/pendingReview'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { CardPaymentModal } from '../../components/accounts/CardPaymentModal'
-import { BUDGET_START_NOTE } from '../../components/accounts/budgetStartNote'
 import { LiabilityTermsHeader } from '../../components/liabilities/LiabilityTermsHeader'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
 import { useAccounts, useScanDuplicates } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
+import { usePendingReviewCountForAccount } from '../../api/transactions'
 import {
   formatSyncSummary,
   useSimpleFINConnections,
@@ -37,18 +28,16 @@ import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { resolveHeaderCollapsed } from './headerCollapse'
 import { AccountBalances } from './AccountBalances'
+import { AccountStatusPills, BankDriftLine, PendingLine } from './AccountFacts'
+import { AccountPhoneHeader } from './AccountPhoneHeader'
+import { AccountToolsSheet } from './AccountToolsSheet'
+import { AccountNoticesSheet } from './AccountNoticesSheet'
+import { accountNotices, duplicatesPhrase } from './accountNotices'
 import { bankDriftNotice } from './bankDriftNotice'
 import './AccountPage.css'
-import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
 import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useIsMobile } from '../../hooks/useMediaQuery'
-import { ageLabel } from '../../utils/age'
-
-function formatReconcileAge(lastReconciledAt: string | null): string {
-  if (!lastReconciledAt) return 'Never reconciled'
-  return `Reconciled ${ageLabel(lastReconciledAt)}`
-}
 
 export function AccountPage() {
   const { formatMoney, formatDate, formatDateTime } = useFormatters()
@@ -90,7 +79,12 @@ export function AccountPage() {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   // This account's, not the budget's: the banner sits on one register.
   const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId ?? null)
+  // The banner's own query (react-query shares it): the phone's notice pill
+  // counts what the desktop banner counts.
+  const { data: reviewCounts } = usePendingReviewCountForAccount(accountId ?? null)
   const [showMatchModal, setShowMatchModal] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [noticesOpen, setNoticesOpen] = useState(false)
   const scanDuplicates = useScanDuplicates()
   // The scan lived at the bottom of the Edit account dialog, where nobody
   // found it; the page said nothing about duplicates until some were pending.
@@ -116,10 +110,10 @@ export function AccountPage() {
   const isReconcilingHere = isReconciling && reconcileAccountId === accountId
   const showReconcileModal = isReconcilingHere && reconcileStatementBalance === null
   const showReconcileBar = isReconcilingHere && reconcileStatementBalance !== null
-  // One rule, three inputs — see headerCollapse.ts. Derived rather than
+  // One rule, two inputs — see headerCollapse.ts. Derived rather than
   // stored, so finishing a reconcile restores whatever the person had chosen
-  // without anything having to remember it.
-  const headerCollapsed = resolveHeaderCollapsed(storedHeaderCollapsed, isMobile, isReconcilingHere)
+  // without anything having to remember it. Desktop only: a phone has no fold.
+  const headerCollapsed = resolveHeaderCollapsed(storedHeaderCollapsed, isReconcilingHere)
 
   async function handleSync() {
     if (!firstConnection || !account?.simplefin_account_id) return
@@ -162,205 +156,217 @@ export function AccountPage() {
     )
   }
 
-  const isConnected = account.simplefin_account_id && account.simplefin_sync_enabled
+  const isConnected = Boolean(account.simplefin_account_id && account.simplefin_sync_enabled)
+  const payAction = registerPayAction(accounts ?? [], accountId)
+  const showUnreconciled = () => setTransactionSearch('is: unreconciled')
+
+  // The bank's own figure, written every sync. Said only when it disagrees
+  // with the cleared balance — agreement is the normal state and needs no
+  // line. Every figure here is served, including WHY the two differ and
+  // whether the sync calls it a fault: the sync decides both on the same
+  // rule, and a page that decided for itself would be free to disagree with
+  // the sync badge.
+  //
+  // The wording is the fix. One sentence used to serve all three causes, and
+  // it named the one that means missing rows — so a ledger running AHEAD of a
+  // lagging feed (ticking a hold cleared that the bank's site already shows
+  // posted) told the user to refetch 90 days and find nothing. See
+  // ./bankDriftNotice.ts.
+  const driftNotice =
+    account.simplefin_balance !== null && account.bank_drift !== null
+      ? bankDriftNotice(
+          {
+            reported: account.simplefin_balance,
+            drift: account.bank_drift,
+            unexplained: account.bank_drift_unexplained ?? account.bank_drift,
+            unposted: account.bank_unposted_cleared ?? 0,
+            inReview: account.bank_in_review ?? 0,
+            reason: account.bank_drift_reason ?? 'unexplained',
+            isFault: account.bank_drift_is_fault,
+            asOf: account.simplefin_balance_date
+              ? formatDateTime(account.simplefin_balance_date)
+              : null,
+            reconciled: account.last_reconciled_at !== null,
+          },
+          formatMoney
+        )
+      : null
+
+  // What the phone's notice pill stands for. While reconciling the review
+  // banner steps aside; so does its notice.
+  const notices = accountNotices({
+    review: isReconcilingHere ? null : reviewCounts,
+    duplicates: pendingMatches.length,
+    drift: driftNotice,
+  })
+
+  // A debt account has APR and a minimum payment whether or not anyone has
+  // entered them, so the page has a place for them either way. Cards get the
+  // same header loans do — one pattern, no "add your APR" banner. On a phone
+  // it moves into Tools: it never folded, and it was the card page's tallest
+  // band.
+  const terms =
+    account.classification === 'liability' ? (
+      <LiabilityTermsHeader budgetId={budgetId} accountId={accountId} isLoan={!account.on_budget} />
+    ) : null
 
   return (
     <div className="account-page">
-      <Surface variant="chrome" className="account-page__header">
-        {/* One row: identity, the balance, the actions. Folded, that is the
-            whole header — the balance sits inline and nothing else renders.
-            Open, the balance block takes a full line of its own so the
-            equation lands predictably rather than by wrap luck. */}
-        <div className="account-page__header-left">
-          <div className="account-page__identity">
-            {/* The name goes to the app header on a phone, with a back chevron
-                to Accounts; the pills stay as the page's own first line. */}
-            <PageHeader
-              title={account.name}
-              back
-              className="account-page__name-header"
-              meta={
-                headerCollapsed ? null : (
-                  <div className="account-page__status-row">
-                    {account.on_budget ? (
-                      <Pill
-                        tone="outline"
-                        title="On budget — spending here comes out of your envelope categories"
-                      >
-                        <Wallet size={12} />
-                        On budget
-                      </Pill>
-                    ) : (
-                      <Pill
-                        tone="outline"
-                        title="Tracking — counted in net worth only; transactions here don't need categories"
-                      >
-                        <Telescope size={12} />
-                        Tracking
-                      </Pill>
-                    )}
-                    {isConnected && (
-                      <Pill tone="positive">
-                        <LinkIcon size={12} />
-                        Connected
-                      </Pill>
-                    )}
-                    {/* The pill states a fact and now offers the question it
-                        raises: what is still waiting to be reconciled. A button
-                        around it rather than on it — Pill renders a span, and
-                        a click handler on a span is not reachable by keyboard. */}
-                    <button
-                      type="button"
-                      className="account-page__pill-button"
-                      onClick={() => setTransactionSearch('is: unreconciled')}
-                      title="Show everything this account still has to reconcile"
-                    >
-                      <Pill tone="outline">
-                        <Lock size={12} />
-                        {formatReconcileAge(account.last_reconciled_at)}
-                      </Pill>
-                    </button>
-                    {/* Rows before this date are deliberately not flagged as
-                        needing a category, nor counted in reports, so the
-                        date has to be visible somewhere. An unexplained
-                        absence of nagging is as confusing as the nagging it
-                        replaced. */}
-                    {account.budget_start_date && (
-                      <Pill tone="outline" title={BUDGET_START_NOTE}>
-                        <CalendarClock size={12} />
-                        Budget starts {formatDate(account.budget_start_date)}
-                      </Pill>
-                    )}
-                  </div>
-                )
-              }
-            />
-          </div>
-          {/* The working balance is stated ONCE, and which spelling you get
-              is the fold: folded it is the headline beside the name, open it
-              is the `=` term of the equation. Rendering both is what made the
-              old header repeat the same number twice, at the same size, three
-              lines apart. AccountBalances.test.tsx holds it to once. */}
-          <AccountBalances
+      {isMobile ? (
+        <>
+          {/* The name and the back chevron, portalled into the app bar. No
+              meta: on a phone the pills live in Tools, so PageHeader draws no
+              band of its own here. */}
+          <PageHeader title={account.name} back />
+          <AccountPhoneHeader
             balance={account.balance}
-            clearedBalance={account.cleared_balance}
-            unclearedBalance={account.uncleared_balance}
-            collapsed={headerCollapsed}
-            onToggle={() => setHeaderCollapsed(!headerCollapsed)}
             formatMoney={formatMoney}
+            notices={notices}
+            // A debt account's main action is its payment; Reconcile moves
+            // into Tools there. Everywhere else Reconcile is the button.
+            primary={
+              payAction
+                ? {
+                    label: payAction.shortLabel,
+                    onClick: () => openModal('card-payment', accountId),
+                  }
+                : {
+                    label: 'Reconcile',
+                    onClick: () => startReconciliation(accountId),
+                    disabled: isReconcilingHere,
+                  }
+            }
+            onOpenTools={() => setToolsOpen(true)}
+            onOpenNotices={() => setNoticesOpen(true)}
           />
-          {/* Outside the equation on purpose. Pending rows are visible in the
-              register and counted in none of the three figures above — an
-              auth hold is provisional and the money moves once, at posting
-              (backend: txn_filters.PENDING_ROW). That is defensible and it is
-              also why the total has to be said: otherwise the register shows
-              rows that add up to nothing anywhere. */}
-          {!headerCollapsed && account.pending_balance !== 0 && (
-            <div className="account-page__pending">
-              <Hourglass size={11} aria-hidden />
-              <span className="account-page__pending-value tabular">
-                {formatMoney(account.pending_balance)}
-              </span>
-              <span>pending — not in the balances above until it posts</span>
+          <AccountToolsSheet
+            open={toolsOpen}
+            onClose={() => setToolsOpen(false)}
+            account={account}
+            isConnected={isConnected}
+            formatMoney={formatMoney}
+            formatDate={formatDate}
+            drift={driftNotice}
+            terms={terms}
+            onShowUnreconciled={showUnreconciled}
+            onSync={isConnected && firstConnection ? () => void handleSync() : null}
+            syncing={sync.isPending}
+            onImport={() => setShowCsvImport(true)}
+            onScanDuplicates={() => void handleScanDuplicates()}
+            scanning={scanDuplicates.isPending}
+            onEdit={() => openModal('account', accountId)}
+            onReconcile={
+              payAction && !isReconcilingHere ? () => startReconciliation(accountId) : null
+            }
+          />
+          <AccountNoticesSheet
+            open={noticesOpen}
+            onClose={() => setNoticesOpen(false)}
+            notices={notices}
+            onReviewDuplicates={() => setShowMatchModal(true)}
+            onViewReview={() => setTransactionSearch(REVIEW_SEARCH)}
+          />
+        </>
+      ) : (
+        <Surface variant="chrome" className="account-page__header">
+          {/* One row: identity, the balance, the actions. Folded, that is the
+              whole header — the balance sits inline and nothing else renders.
+              Open, the balance block takes a full line of its own so the
+              equation lands predictably rather than by wrap luck. */}
+          <div className="account-page__header-left">
+            <div className="account-page__identity">
+              <PageHeader
+                title={account.name}
+                back
+                className="account-page__name-header"
+                meta={
+                  headerCollapsed ? null : (
+                    <AccountStatusPills
+                      account={account}
+                      isConnected={isConnected}
+                      formatDate={formatDate}
+                      onShowUnreconciled={showUnreconciled}
+                    />
+                  )
+                }
+              />
             </div>
-          )}
-          {/* The bank's own figure, written every sync. Shown only when it
-              disagrees with the cleared balance — agreement is the normal
-              state and needs no line. Every figure here is served, including
-              WHY the two differ and whether the sync calls it a fault: the
-              sync decides both on the same rule, and a page that decided for
-              itself would be free to disagree with the sync badge.
+            {/* The working balance is stated ONCE, and which spelling you get
+                is the fold: folded it is the headline beside the name, open it
+                is the `=` term of the equation. Rendering both is what made the
+                old header repeat the same number twice, at the same size, three
+                lines apart. AccountBalances.test.tsx holds it to once. */}
+            <AccountBalances
+              balance={account.balance}
+              clearedBalance={account.cleared_balance}
+              unclearedBalance={account.uncleared_balance}
+              collapsed={headerCollapsed}
+              onToggle={() => setHeaderCollapsed(!headerCollapsed)}
+              formatMoney={formatMoney}
+            />
+            {!headerCollapsed && (
+              <>
+                <PendingLine
+                  amount={account.pending_balance}
+                  formatted={formatMoney(account.pending_balance)}
+                />
+                <BankDriftLine notice={driftNotice} />
+              </>
+            )}
+          </div>
 
-              The wording is the fix. One sentence used to serve all three
-              causes, and it named the one that means missing rows — so a
-              ledger running AHEAD of a lagging feed (ticking a hold cleared
-              that the bank's site already shows posted) told the user to
-              refetch 90 days and find nothing. See ./bankDriftNotice.ts. */}
-          {!headerCollapsed &&
-            account.simplefin_balance !== null &&
-            account.bank_drift !== null &&
-            (() => {
-              const notice = bankDriftNotice(
-                {
-                  reported: account.simplefin_balance,
-                  drift: account.bank_drift,
-                  unexplained: account.bank_drift_unexplained ?? account.bank_drift,
-                  unposted: account.bank_unposted_cleared ?? 0,
-                  inReview: account.bank_in_review ?? 0,
-                  reason: account.bank_drift_reason ?? 'unexplained',
-                  isFault: account.bank_drift_is_fault,
-                  asOf: account.simplefin_balance_date
-                    ? formatDateTime(account.simplefin_balance_date)
-                    : null,
-                  reconciled: account.last_reconciled_at !== null,
-                },
-                formatMoney
-              )
-              if (notice === null) return null
-              return (
-                <div
-                  className={`account-page__bank-reports${
-                    notice.tone === 'fault' ? ' account-page__bank-reports--fault' : ''
-                  }`}
-                >
-                  <AlertTriangle size={11} aria-hidden />
-                  <span>{notice.text}</span>
-                </div>
-              )
-            })()}
-        </div>
-
-        {/* Right: Actions (vertically centered) */}
-        <div className="account-page__actions">
-          <button
-            className="account-page__action-btn"
-            onClick={() => openModal('account', accountId!)}
-            aria-label="Edit account"
-            title="Edit account"
-          >
-            <Pencil size={16} />
-          </button>
-          {isConnected && (
+          {/* Right: Actions (vertically centered) */}
+          <div className="account-page__actions">
             <button
-              className="account-page__action-btn account-page__action-btn--sync"
-              onClick={handleSync}
-              disabled={sync.isPending || !firstConnection}
+              className="account-page__action-btn"
+              onClick={() => openModal('account', accountId)}
+              aria-label="Edit account"
+              title="Edit account"
             >
-              {sync.isPending ? 'Syncing…' : 'Sync'}
+              <Pencil size={16} />
             </button>
-          )}
-          {/* The file a bank exports IS this account's transactions, so the
-              import belongs here rather than on a page that has to ask which
-              account you meant. */}
-          <button
-            className="account-page__action-btn"
-            onClick={() => setShowCsvImport(true)}
-            aria-label="Import transactions from CSV"
-            title="Import transactions from CSV"
-          >
-            <Upload size={16} />
-          </button>
-          <button
-            className="account-page__action-btn"
-            onClick={() => void handleScanDuplicates()}
-            disabled={scanDuplicates.isPending}
-            aria-label="Find possible duplicates"
-            title="Find possible duplicates"
-          >
-            <ScanSearch size={16} />
-          </button>
-          <button
-            className="account-page__reconcile-btn"
-            onClick={() => startReconciliation(accountId!)}
-            disabled={isReconcilingHere}
-          >
-            Reconcile
-          </button>
-          {syncMsg && <span className="account-page__sync-msg">{syncMsg}</span>}
-        </div>
-      </Surface>
+            {isConnected && (
+              <button
+                className="account-page__action-btn account-page__action-btn--sync"
+                onClick={handleSync}
+                disabled={sync.isPending || !firstConnection}
+              >
+                {sync.isPending ? 'Syncing…' : 'Sync'}
+              </button>
+            )}
+            {/* The file a bank exports IS this account's transactions, so the
+                import belongs here rather than on a page that has to ask which
+                account you meant. */}
+            <button
+              className="account-page__action-btn"
+              onClick={() => setShowCsvImport(true)}
+              aria-label="Import transactions from CSV"
+              title="Import transactions from CSV"
+            >
+              <Upload size={16} />
+            </button>
+            <button
+              className="account-page__action-btn"
+              onClick={() => void handleScanDuplicates()}
+              disabled={scanDuplicates.isPending}
+              aria-label="Find possible duplicates"
+              title="Find possible duplicates"
+            >
+              <ScanSearch size={16} />
+            </button>
+            <button
+              className="account-page__reconcile-btn"
+              onClick={() => startReconciliation(accountId)}
+              disabled={isReconcilingHere}
+            >
+              Reconcile
+            </button>
+            {syncMsg && <span className="account-page__sync-msg">{syncMsg}</span>}
+          </div>
+        </Surface>
+      )}
 
-      {showReconcileModal && accountId && (
+      {showReconcileModal && (
         <ReconcileModal
           accountId={accountId}
           accountName={account.name}
@@ -373,7 +379,7 @@ export function AccountPage() {
         />
       )}
 
-      {showCsvImport && accountId && budgetId && (
+      {showCsvImport && (
         <CsvImportDialog
           budgetId={budgetId}
           accountId={accountId}
@@ -382,7 +388,7 @@ export function AccountPage() {
         />
       )}
 
-      {showReconcileBar && accountId && (
+      {showReconcileBar && (
         <ReconcileStatusBar
           accountId={accountId}
           onReviewDuplicates={() => setShowMatchModal(true)}
@@ -390,42 +396,37 @@ export function AccountPage() {
       )}
 
       {/* Everything the page wants to say before the register, as one stack
-          with one rhythm — terms, a review count, possible duplicates. */}
-      <div className="account-page__notices">
-        {/* A debt account has APR and a minimum payment whether or not anyone has
-          entered them, so the page has a place for them either way. Cards get
-          the same header loans do — one pattern, no "add your APR" banner. */}
-        {account.classification === 'liability' && budgetId && accountId && (
-          <LiabilityTermsHeader
-            budgetId={budgetId}
-            accountId={accountId}
-            isLoan={!account.on_budget}
-          />
-        )}
+          with one rhythm — terms, a review count, possible duplicates. On a
+          phone all three live behind the header row instead (the notice pill
+          and Tools), so nothing stacks above the register there. */}
+      {!isMobile && (
+        <div className="account-page__notices">
+          {terms}
 
-        {!isReconcilingHere && budgetId && (
-          <PendingReviewBanner
-            budgetId={budgetId}
-            accountId={accountId ?? undefined}
-            onView={setTransactionSearch}
-          />
-        )}
+          {!isReconcilingHere && (
+            <PendingReviewBanner
+              budgetId={budgetId}
+              accountId={accountId}
+              onView={setTransactionSearch}
+            />
+          )}
 
-        {pendingMatches.length > 0 && (
-          <div className="account-page__match-banner">
-            <span>
-              {pendingMatches.length} possible duplicate{pendingMatches.length !== 1 ? 's' : ''}{' '}
-              found — may match a manually entered transaction
-            </span>
-            <button
-              className="account-page__match-btn account-page__match-btn--review"
-              onClick={() => setShowMatchModal(true)}
-            >
-              Review
-            </button>
-          </div>
-        )}
-      </div>
+          {pendingMatches.length > 0 && (
+            <div className="account-page__match-banner">
+              <span>
+                {duplicatesPhrase(pendingMatches.length)} found — may match a manually entered
+                transaction
+              </span>
+              <button
+                className="account-page__match-btn account-page__match-btn--review"
+                onClick={() => setShowMatchModal(true)}
+              >
+                Review
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {showMatchModal && pendingMatches.length > 0 && (
         <MatchReviewModal
@@ -448,7 +449,7 @@ export function AccountPage() {
         <AccountSettingsModal accountId={activeModal.editingId} onClose={closeModal} />
       )}
 
-      {activeModal?.kind === 'card-payment' && activeModal.editingId && budgetId && (
+      {activeModal?.kind === 'card-payment' && activeModal.editingId && (
         <CardPaymentModal
           budgetId={budgetId}
           accountId={activeModal.editingId}
@@ -456,7 +457,7 @@ export function AccountPage() {
         />
       )}
 
-      {activeModal?.kind === 'liability' && activeModal.editingId && budgetId && (
+      {activeModal?.kind === 'liability' && activeModal.editingId && (
         <LiabilitySettingsModal
           budgetId={budgetId}
           liability={liabilities.find((l) => l.id === activeModal.editingId) ?? null}

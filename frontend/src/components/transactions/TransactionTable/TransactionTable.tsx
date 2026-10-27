@@ -66,7 +66,13 @@ import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
 import { registerPayAction } from './payButton'
-import { sectionOpen, shouldDropSearch, shouldPageForHighlight } from './highlightReveal'
+import {
+  sectionOpen,
+  shouldDropSearch,
+  shouldPageForHighlight,
+  upcomingOpen,
+} from './highlightReveal'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
 import { accountNameMap, openAccounts } from '../../../utils/accountLists'
@@ -162,6 +168,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const notify = useUndoToast(accountId)
   const bulkApprove = useBulkApprove(budgetId)
   const mergeTxns = useMergeTransactions(budgetId)
+  const isMobile = useIsMobile()
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [matchModalInitialId, setMatchModalInitialId] = useState<string | null>(null)
   const [showAttachmentPanel, setShowAttachmentPanel] = useState(false)
@@ -179,6 +186,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     selectAllTransactions,
     clearTransactionSelection,
     toggleSection,
+    phoneUpcomingOpen,
+    setPhoneUpcomingOpen,
     setTransactionSort,
     setTransactionSearch,
     activeModal,
@@ -197,6 +206,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       selectAllTransactions: s.selectAllTransactions,
       clearTransactionSelection: s.clearTransactionSelection,
       toggleSection: s.toggleSection,
+      phoneUpcomingOpen: s.phoneUpcomingOpen,
+      setPhoneUpcomingOpen: s.setPhoneUpcomingOpen,
       setTransactionSort: s.setTransactionSort,
       setTransactionSearch: s.setTransactionSearch,
       activeModal: s.activeModal,
@@ -462,10 +473,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // something else now.
   const handleSectionToggle = useCallback(
     (section: 'pending' | 'uncategorized' | 'upcoming') => {
-      toggleSection(section)
+      // A phone keeps its own Upcoming fold — see `upcomingOpen`.
+      if (section === 'upcoming' && isMobile) setPhoneUpcomingOpen(!phoneUpcomingOpen)
+      else toggleSection(section)
       onInteraction?.()
     },
-    [toggleSection, onInteraction]
+    [toggleSection, isMobile, phoneUpcomingOpen, setPhoneUpcomingOpen, onInteraction]
   )
 
   const handleSearchChange = useCallback(
@@ -1001,8 +1014,10 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           searchQuery={transactionSearchQuery}
           onSearchChange={handleSearchChange}
           onAdd={() => openModal('transaction')}
+          // On a phone the payment is the account header's own button
+          // (AccountPhoneHeader), so the toolbar keeps its width for search.
           pay={
-            payAction && accountId !== null
+            payAction && accountId !== null && !isMobile
               ? { label: payAction.label, onClick: () => openModal('card-payment', accountId) }
               : null
           }
@@ -1117,7 +1132,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Upcoming"
               count={upcomingScheduled.length}
-              isOpen={sectionOpen(collapsedSections, 'upcoming', [], highlightId)}
+              isOpen={upcomingOpen(collapsedSections, phoneUpcomingOpen, isMobile)}
               onToggle={() => handleSectionToggle('upcoming')}
             >
               {upcomingScheduled.map(renderUpcomingRow)}

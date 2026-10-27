@@ -75,6 +75,7 @@ const TRIGGERS = {
     { name: 'tools', open: '.tba-hero__tools-btn' },
   ],
   '/accounts/:id': [
+    { name: 'tools', open: '.account-phone-header__tools' },
     { name: 'editor', open: '.transaction-row' },
     { name: 'row-menu', open: '.txn-more-btn' },
   ],

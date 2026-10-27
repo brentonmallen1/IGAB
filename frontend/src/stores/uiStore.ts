@@ -118,13 +118,19 @@ interface UIState {
   toggleCreditCardsCollapsed: () => void
   /** The account header, folded away — null until the person has chosen.
    *
-   *  Null is not false. It is what lets a phone start folded and a desktop
-   *  start open without either being a decision anyone made, and it is what
-   *  a reconcile can override without erasing. See
-   *  `pages/AccountPage/headerCollapse.ts`, which is the only place these
-   *  three inputs are combined. */
+   *  Null is not false: it is what a reconcile can override without erasing.
+   *  Desktop only — a phone's header has no fold. See
+   *  `pages/AccountPage/headerCollapse.ts`, the only place these inputs are
+   *  combined. */
   accountHeaderCollapsed: boolean | null
   setAccountHeaderCollapsed: (collapsed: boolean) => void
+  /** Whether the register's Upcoming section is open on a phone. Its own
+   *  flag, not a member of `collapsedSections`: a phone starts it folded
+   *  (six scheduled rows pushed the first real transaction off a 390pt
+   *  screen) while a desktop starts it open, and one stored set cannot hold
+   *  two defaults. See `upcomingOpen` (TransactionTable/highlightReveal). */
+  phoneUpcomingOpen: boolean
+  setPhoneUpcomingOpen: (open: boolean) => void
   /** One slot, so opening a dialog closes whatever was open.
    *
    *  This was eight independent booleans, each with its own editing-id and its
@@ -300,6 +306,7 @@ export const useUIStore = create<UIState>()(
       collapsedGroups: new Set(),
       creditCardsCollapsed: false,
       accountHeaderCollapsed: null,
+      phoneUpcomingOpen: false,
       activeModal: null,
       sidebarCollapsed: false,
       sidebarWidth: SIDEBAR_MIN_WIDTH,
@@ -350,6 +357,7 @@ export const useUIStore = create<UIState>()(
       // reliably "the opposite of what you can see" — during a reconcile the
       // header is folded whatever the stored value says.
       setAccountHeaderCollapsed: (collapsed) => set({ accountHeaderCollapsed: collapsed }),
+      setPhoneUpcomingOpen: (open) => set({ phoneUpcomingOpen: open }),
 
       openModal: (kind, editingId) => set({ activeModal: { kind, editingId: editingId ?? null } }),
       closeModal: () => set({ activeModal: null }),
@@ -613,6 +621,7 @@ export const useUIStore = create<UIState>()(
         // As is folding the account header — someone who works from the
         // register should not refold it every visit.
         accountHeaderCollapsed: s.accountHeaderCollapsed,
+        phoneUpcomingOpen: s.phoneUpcomingOpen,
         // Register section folds, for the same reason — and with a sharper
         // edge: 'pending' is the one section that *starts* folded, so without
         // this, opening it lasts until the next reload and then hides the

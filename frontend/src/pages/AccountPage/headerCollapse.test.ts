@@ -3,30 +3,21 @@ import { describe, expect, it } from 'vitest'
 import { resolveHeaderCollapsed } from './headerCollapse'
 
 describe('resolveHeaderCollapsed', () => {
-  describe('when nobody has chosen', () => {
-    it('folds on a phone', () => {
-      // The full header left the register one row tall on a 390pt screen.
-      expect(resolveHeaderCollapsed(null, true, false)).toBe(true)
-    })
-
-    it('stays open on a desktop', () => {
-      expect(resolveHeaderCollapsed(null, false, false)).toBe(false)
-    })
+  it('stays open when nobody has chosen', () => {
+    expect(resolveHeaderCollapsed(null, false)).toBe(false)
   })
 
-  describe('once someone has chosen', () => {
-    it('honours the choice over the viewport', () => {
-      expect(resolveHeaderCollapsed(false, true, false)).toBe(false)
-      expect(resolveHeaderCollapsed(true, false, false)).toBe(true)
-    })
+  it('honours a choice once someone has made one', () => {
+    expect(resolveHeaderCollapsed(false, false)).toBe(false)
+    expect(resolveHeaderCollapsed(true, false)).toBe(true)
   })
 
   describe('while reconciling', () => {
     it('folds regardless of the stored choice', () => {
       // Someone who likes the header open still wants the rows while they
       // are ticking off a statement.
-      expect(resolveHeaderCollapsed(false, false, true)).toBe(true)
-      expect(resolveHeaderCollapsed(null, false, true)).toBe(true)
+      expect(resolveHeaderCollapsed(false, true)).toBe(true)
+      expect(resolveHeaderCollapsed(null, true)).toBe(true)
     })
 
     it('restores the choice when the reconcile ends', () => {
@@ -35,8 +26,8 @@ describe('resolveHeaderCollapsed', () => {
       // chance of a reconcile that is interrupted leaving the header folded
       // forever.
       const chosen = false
-      expect(resolveHeaderCollapsed(chosen, false, true)).toBe(true)
-      expect(resolveHeaderCollapsed(chosen, false, false)).toBe(chosen)
+      expect(resolveHeaderCollapsed(chosen, true)).toBe(true)
+      expect(resolveHeaderCollapsed(chosen, false)).toBe(chosen)
     })
   })
 })
