@@ -14,31 +14,20 @@
 }
 
 .account-phone-header__balance {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  /* Grows into the free space, but never below its own figure: a balance
-     is never truncated, so a long one wraps the buttons instead. */
+  /* Takes the free space, but never below its own figure: a balance is
+     never truncated, so a long one wraps the buttons instead. */
   flex: 1 0 auto;
   min-width: max-content;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.account-phone-header__balance-value {
   font-size: var(--font-size-xl);
   font-weight: 700;
   line-height: 1.1;
 }
 
-.account-phone-header__balance-value.positive {
+.account-phone-header__balance.positive {
   color: var(--color-positive);
 }
 
-.account-phone-header__balance-value.negative {
+.account-phone-header__balance.negative {
   color: var(--color-negative);
 }
 
@@ -96,7 +85,6 @@
 }
 
 @media (max-width: 768px) {
-  .account-phone-header__balance,
   .account-phone-header__notice,
   .account-phone-header__primary {
     min-height: var(--tap-min);

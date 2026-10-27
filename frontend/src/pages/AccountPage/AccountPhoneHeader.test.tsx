@@ -34,11 +34,12 @@ function renderHeader(notices: AccountNotice[] = [], primary = { label: 'Reconci
 }
 
 describe('AccountPhoneHeader', () => {
-  it('shows the working balance once, and it opens Tools', () => {
-    const { onOpenTools } = renderHeader()
+  // A figure, not a control: the chevron that used to open Tools from here
+  // read as "expand the header", and there is no fold to expand.
+  it('shows the working balance once, as a figure with no control on it', () => {
+    renderHeader()
     expect(screen.getAllByText('$6193.41')).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: /Working balance \$6193\.41/ }))
-    expect(onOpenTools).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: /Working balance/ })).toBeNull()
   })
 
   it('draws no pill when nothing is waiting', () => {

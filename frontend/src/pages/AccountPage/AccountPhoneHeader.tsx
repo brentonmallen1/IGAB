@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, Info, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, Info, SlidersHorizontal } from 'lucide-react'
 import { type AccountNotice, noticesLabel, noticesTone } from './accountNotices'
 import './AccountPhoneHeader.css'
 
@@ -36,22 +36,15 @@ export function AccountPhoneHeader({
   const formatted = formatMoney(balance)
   return (
     <section className="account-phone-header" aria-label="Account">
-      {/* The balance opens Tools, where the equation behind it lives: the
-          figure is what you would tap to ask "made of what?". */}
-      <button
-        type="button"
-        className="account-phone-header__balance"
-        onClick={onOpenTools}
-        aria-haspopup="dialog"
-        aria-label={`Working balance ${formatted}. Show balances and tools`}
+      {/* A figure, not a control. It once carried a chevron that opened
+          Tools, and the chevron read as "expand the header" — a fold this
+          row no longer has. Tools is the one way in. */}
+      <span
+        className={`account-phone-header__balance tabular ${balance < 0 ? 'negative' : 'positive'}`}
+        title="Working balance"
       >
-        <span
-          className={`account-phone-header__balance-value tabular ${balance < 0 ? 'negative' : 'positive'}`}
-        >
-          {formatted}
-        </span>
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>
+        {formatted}
+      </span>
       {tone && (
         <button
           type="button"

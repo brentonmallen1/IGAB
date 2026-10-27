@@ -101,3 +101,11 @@
 .collapsible__header--hiding:hover {
   background-color: var(--bg-hover);
 }
+
+/* A section header is the only way into its rows, and on a phone the
+   register's Upcoming starts folded — so the fold owes the tap floor. */
+@media (max-width: 768px) {
+  .collapsible__header {
+    min-height: var(--tap-min);
+  }
+}

@@ -18,7 +18,6 @@ const CASES: Array<[file: string, selector: string, prop: string]> = [
   // The phone's account header: one row, and the two sheets behind it. The
   // desktop header (its fold control, its action buttons, the duplicates
   // banner) is not drawn on a phone, so it owes the floor nowhere.
-  ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__balance', 'min-height'],
   ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__notice', 'min-height'],
   ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__notice', 'min-width'],
   ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__primary', 'min-height'],
@@ -34,6 +33,8 @@ const CASES: Array<[file: string, selector: string, prop: string]> = [
   ['pages/AccountPage/AccountSheets.css', '.account-sheet .liability-terms__btn', 'min-height'],
   ['pages/AccountPage/AccountSheets.css', '.account-sheet .liability-terms__link', 'min-height'],
   ['components/accounts/PendingReviewBanner.css', '.pending-review-banner__btn', 'min-height'],
+  // Every section fold — on a phone the register's Upcoming starts folded.
+  ['components/common/Collapsible/Collapsible.css', '.collapsible__header', 'min-height'],
   ['pages/GuidePage/GuidePage.css', '.guide-nav__tab', 'min-height'],
   ['pages/ReportsPage/ReportsPage.css', '.reports-nav__tab', 'min-height'],
   ['pages/BudgetSelectorPage/BudgetSelectorPage.css', '.ynab-mapping__disposition', 'min-height'],
