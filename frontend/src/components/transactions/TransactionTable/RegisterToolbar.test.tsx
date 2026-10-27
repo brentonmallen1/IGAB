@@ -13,8 +13,7 @@ const base = {
   searchQuery: '',
   onSearchChange: vi.fn(),
   onAdd: vi.fn(),
-  showSplitLines: false,
-  onShowSplitLinesChange: vi.fn(),
+  splitLines: { show: false, onChange: vi.fn() },
 }
 
 describe('RegisterToolbar', () => {
@@ -48,7 +47,11 @@ describe('RegisterToolbar', () => {
   it('toggles split lines: a pressed state, a name that stays put, a tooltip saying what a click does', () => {
     const onShowSplitLinesChange = vi.fn()
     const { rerender } = render(
-      <RegisterToolbar {...base} pay={null} onShowSplitLinesChange={onShowSplitLinesChange} />
+      <RegisterToolbar
+        {...base}
+        pay={null}
+        splitLines={{ show: false, onChange: onShowSplitLinesChange }}
+      />
     )
     const toggle = screen.getByRole('button', { name: 'Show split lines' })
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
@@ -60,8 +63,7 @@ describe('RegisterToolbar', () => {
       <RegisterToolbar
         {...base}
         pay={null}
-        showSplitLines
-        onShowSplitLinesChange={onShowSplitLinesChange}
+        splitLines={{ show: true, onChange: onShowSplitLinesChange }}
       />
     )
     const pressed = screen.getByRole('button', { name: 'Show split lines' })
@@ -69,5 +71,12 @@ describe('RegisterToolbar', () => {
     expect(pressed).toHaveAttribute('title', 'Hide split lines')
     fireEvent.click(pressed)
     expect(onShowSplitLinesChange).toHaveBeenLastCalledWith(false)
+  })
+
+  // On the phone account page the toggle lives in Tools, leaving this row to
+  // the search box.
+  it('draws no split-lines toggle where the page puts it elsewhere', () => {
+    render(<RegisterToolbar {...base} pay={null} splitLines={null} />)
+    expect(screen.queryByRole('button', { name: 'Show split lines' })).toBeNull()
   })
 })

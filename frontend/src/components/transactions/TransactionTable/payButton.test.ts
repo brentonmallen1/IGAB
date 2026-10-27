@@ -10,8 +10,14 @@ const acct = (id: string, on_budget: boolean, classification: 'asset' | 'liabili
 describe('registerPayAction', () => {
   it('a card register makes a payment; a loan register records one', () => {
     const accounts = [acct('card', true, 'liability'), acct('loan', false, 'liability')]
-    expect(registerPayAction(accounts, 'card')).toEqual({ label: 'Make a payment' })
-    expect(registerPayAction(accounts, 'loan')).toEqual({ label: 'Record a payment' })
+    expect(registerPayAction(accounts, 'card')).toEqual({
+      label: 'Make a payment',
+      shortLabel: 'Pay',
+    })
+    expect(registerPayAction(accounts, 'loan')).toEqual({
+      label: 'Record a payment',
+      shortLabel: 'Record payment',
+    })
   })
 
   it('cash and tracking registers pay nobody', () => {

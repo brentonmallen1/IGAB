@@ -1,0 +1,185 @@
+/* The phone's two account sheets (AccountToolsSheet, AccountNoticesSheet).
+   They render only on a phone, so every control carries the tap floor, under
+   the phone query where tapTargets.test.ts looks for it. The sheet body is
+   unpadded (BottomSheet); this sets its own gutter, as the budget sheets do. */
+
+.account-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0 var(--spacing-md) var(--spacing-md);
+  list-style: none;
+}
+
+.account-sheet__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.account-sheet__heading {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* The desktop's pill row runs on one line beside the name; in a sheet it
+   has the width to itself and wraps. */
+.account-sheet .account-page__status-row {
+  flex-wrap: wrap;
+}
+
+.account-sheet__action {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: 0 var(--spacing-xs);
+  border: none;
+  border-top: 1px solid var(--edge);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-sheet__action:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* The split-lines toggle: a row like the actions, with a switch at its end
+   that carries the state (aria-pressed on the row says it to a reader). */
+.account-sheet__switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin-left: auto;
+  border-radius: 10px;
+  border: 1px solid var(--input-border);
+  background-color: var(--input-bg);
+  flex-shrink: 0;
+}
+
+.account-sheet__switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.account-sheet__toggle[aria-pressed="true"] .account-sheet__switch {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+}
+
+.account-sheet__toggle[aria-pressed="true"] .account-sheet__switch::after {
+  background-color: var(--text-inverse);
+  transform: translateX(16px);
+}
+
+.account-sheet__notices {
+  gap: 0;
+}
+
+.account-sheet__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-top: 1px solid var(--edge);
+}
+
+.account-sheet__notice:first-of-type {
+  border-top: none;
+}
+
+.account-sheet__notice-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.account-sheet__notice-icon--warning {
+  color: var(--color-warning);
+}
+
+.account-sheet__notice-icon--info {
+  color: var(--color-info);
+}
+
+.account-sheet__notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.account-sheet__notice-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.account-sheet__notice-detail {
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.account-sheet__notice-btn {
+  flex-shrink: 0;
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-sheet__empty {
+  padding: var(--spacing-sm) 0;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .account-sheet__action,
+  .account-sheet__notice-btn {
+    min-height: var(--tap-min);
+  }
+}
+
+/* The Reconciled pill is a button (it shows what is left to reconcile); in a
+   phone sheet it owes the tap floor like every other control. */
+@media (max-width: 768px) {
+  .account-sheet .account-page__pill-button {
+    min-height: var(--tap-min);
+  }
+}
+
+/* A debt's terms, drawn in the sheet: the block's page band (its gutter,
+   ground and rule) is the sheet's job here. */
+.account-sheet .liability-terms {
+  padding: 0;
+  border-bottom: none;
+  background: none;
+}
+
+@media (max-width: 768px) {
+  .account-sheet .liability-terms__btn,
+  .account-sheet .liability-terms__link {
+    min-height: var(--tap-min);
+  }
+}

@@ -16,9 +16,13 @@ import { isCardAccount, isLiabilityAccount } from '../../../utils/accountKinds'
 export function registerPayAction(
   accounts: Pick<Account, 'id' | 'on_budget' | 'classification'>[],
   accountId: string | null
-): { label: string } | null {
+): { label: string; shortLabel: string } | null {
   if (accountId === null) return null // the all-accounts register pays nobody
   const account = accounts.find((a) => a.id === accountId)
   if (!account || !isLiabilityAccount(account)) return null
-  return { label: isCardAccount(account) ? 'Make a payment' : 'Record a payment' }
+  // `shortLabel` is the phone header's button, which shares one row with the
+  // balance, the notice pill and Tools.
+  return isCardAccount(account)
+    ? { label: 'Make a payment', shortLabel: 'Pay' }
+    : { label: 'Record a payment', shortLabel: 'Record payment' }
 }

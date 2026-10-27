@@ -15,13 +15,26 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CASES: Array<[file: string, selector: string, prop: string]> = [
   ['pages/PayeesPage/PayeesPage.css', '.payees-search', 'min-height'],
   ['pages/PayeesPage/PayeesPage.css', '.payees-btn', 'min-height'],
-  ['pages/AccountPage/AccountPage.css', '.account-page__action-btn', 'min-height'],
-  ['pages/AccountPage/AccountPage.css', '.account-page__match-btn', 'min-height'],
-  // The account header's fold control. AccountPage.css claimed this test held
-  // it to the floor and it did not — the selector was never in this list, so
-  // restructuring the control would have failed nothing.
-  ['pages/AccountPage/AccountPage.css', '.account-page__header-toggle', 'min-height'],
+  // The phone's account header: one row, and the two sheets behind it. The
+  // desktop header (its fold control, its action buttons, the duplicates
+  // banner) is not drawn on a phone, so it owes the floor nowhere.
+  ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__notice', 'min-height'],
+  ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__notice', 'min-width'],
+  ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__primary', 'min-height'],
+  ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__tools', 'min-height'],
+  ['pages/AccountPage/AccountPhoneHeader.css', '.account-phone-header__tools', 'min-width'],
+  ['pages/AccountPage/AccountSheets.css', '.account-sheet__action', 'min-height'],
+  ['pages/AccountPage/AccountSheets.css', '.account-sheet__notice-btn', 'min-height'],
+  [
+    'pages/AccountPage/AccountSheets.css',
+    '.account-sheet .account-page__pill-button',
+    'min-height',
+  ],
+  ['pages/AccountPage/AccountSheets.css', '.account-sheet .liability-terms__btn', 'min-height'],
+  ['pages/AccountPage/AccountSheets.css', '.account-sheet .liability-terms__link', 'min-height'],
   ['components/accounts/PendingReviewBanner.css', '.pending-review-banner__btn', 'min-height'],
+  // Every section fold — on a phone the register's Upcoming starts folded.
+  ['components/common/Collapsible/Collapsible.css', '.collapsible__header', 'min-height'],
   ['pages/GuidePage/GuidePage.css', '.guide-nav__tab', 'min-height'],
   ['pages/ReportsPage/ReportsPage.css', '.reports-nav__tab', 'min-height'],
   ['pages/BudgetSelectorPage/BudgetSelectorPage.css', '.ynab-mapping__disposition', 'min-height'],
@@ -65,17 +78,19 @@ describe('phone tap targets', () => {
 })
 
 describe('banners wrap on phones instead of pushing their buttons off the edge', () => {
-  it.each([
-    ['pages/AccountPage/AccountPage.css', '.account-page__match-banner'],
-    ['components/accounts/PendingReviewBanner.css', '.pending-review-banner'],
-  ])('%s %s', (file, selector) => {
-    const rules = rulesWithContext(stripComments(readFileSync(join(SRC, file), 'utf8')))
-    const hit = rules.find(
-      (r) =>
-        r.selector.trim() === selector && isTouch(r.atRules) && /flex-wrap:\s*wrap/.test(r.body)
-    )
-    expect(hit).toBeDefined()
-  })
+  // The account page's duplicates banner is not drawn on a phone any more —
+  // its notice lives behind the header's pill (AccountNoticesSheet).
+  it.each([['components/accounts/PendingReviewBanner.css', '.pending-review-banner']])(
+    '%s %s',
+    (file, selector) => {
+      const rules = rulesWithContext(stripComments(readFileSync(join(SRC, file), 'utf8')))
+      const hit = rules.find(
+        (r) =>
+          r.selector.trim() === selector && isTouch(r.atRules) && /flex-wrap:\s*wrap/.test(r.body)
+      )
+      expect(hit).toBeDefined()
+    }
+  )
 })
 
 describe('the YNAB mapping row restacks on phones', () => {

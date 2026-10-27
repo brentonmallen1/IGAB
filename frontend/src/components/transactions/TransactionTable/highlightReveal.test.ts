@@ -5,6 +5,7 @@ import {
   sectionOpen,
   shouldDropSearch,
   shouldPageForHighlight,
+  upcomingOpen,
 } from './highlightReveal'
 
 const rows = [{ id: 't1' }, { id: 't2' }]
@@ -125,5 +126,20 @@ describe('shouldPageForHighlight', () => {
     // A deleted transaction, or an id from another budget. Without the cap
     // this walks the whole account one request at a time and never stops.
     expect(shouldPageForHighlight({ ...base, pagesLoaded: HIGHLIGHT_PAGE_BUDGET })).toBe(false)
+  })
+})
+
+describe('upcomingOpen', () => {
+  // Six scheduled rows put the sample checking account's first real
+  // transaction below the fold of a 390pt screen.
+  it('starts folded on a phone and open on a desktop', () => {
+    expect(upcomingOpen(new Set(), false, true)).toBe(false)
+    expect(upcomingOpen(new Set(), false, false)).toBe(true)
+  })
+
+  it("keeps each viewport's own choice", () => {
+    // Opened on the phone; folded on the desktop. Neither reads the other.
+    expect(upcomingOpen(new Set(['upcoming']), true, true)).toBe(true)
+    expect(upcomingOpen(new Set(['upcoming']), true, false)).toBe(false)
   })
 })

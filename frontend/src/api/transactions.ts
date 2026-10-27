@@ -593,18 +593,24 @@ export function useUnreconcileTransaction(budgetId: string) {
   })
 }
 
+/** Rows waiting on a look, split by why. Served the same for a budget and
+ *  for one account; `total` counts a row that is both once. */
+export interface PendingReviewCounts {
+  unapproved_only: number
+  uncategorized_only: number
+  both: number
+  total: number
+  unapproved: number
+  uncategorized: number
+}
+
 export function usePendingReviewCount(budgetId: string | null) {
   return useQuery({
     queryKey: [ROOT.pendingReviewCount, budgetId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{
-        unapproved_only: number
-        uncategorized_only: number
-        both: number
-        total: number
-        unapproved: number
-        uncategorized: number
-      }>(`/${budgetId}/transactions/pending-review-count`)
+      const { data } = await apiClient.get<PendingReviewCounts>(
+        `/${budgetId}/transactions/pending-review-count`
+      )
       return data
     },
     enabled: !!budgetId,
@@ -616,14 +622,9 @@ export function usePendingReviewCountForAccount(accountId: string | null) {
   return useQuery({
     queryKey: [ROOT.pendingReviewCountAccount, accountId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{
-        unapproved_only: number
-        uncategorized_only: number
-        both: number
-        total: number
-        unapproved: number
-        uncategorized: number
-      }>(`/accounts/${accountId}/pending-review-count`)
+      const { data } = await apiClient.get<PendingReviewCounts>(
+        `/accounts/${accountId}/pending-review-count`
+      )
       return data
     },
     enabled: !!accountId,

@@ -49,16 +49,6 @@ export function AccountBalances({
   onToggle,
   formatMoney,
 }: AccountBalancesProps) {
-  /* One figure, one spelling. This markup was written out four times. */
-  const figure = (value: number, label: ReactNode, colour?: string, working?: boolean) => (
-    <div
-      className={`account-page__balance-item${working ? ' account-page__balance-item--working' : ''}`}
-    >
-      <span className={`account-page__balance-value ${colour ?? ''}`}>{formatMoney(value)}</span>
-      <span className="account-page__balance-label">{label}</span>
-    </div>
-  )
-
   return (
     <>
       {collapsed && (
@@ -83,29 +73,70 @@ export function AccountBalances({
       {/* Mounted in both states so `aria-controls` always resolves — hidden by
           class, never unmounted. Open, it takes a full line of its own, which
           is what keeps the control above it on the top row. */}
-      <div
+      <BalanceEquation
         id={DETAIL_ID}
-        className={`account-page__balances ${collapsed ? 'account-page__balances--collapsed' : ''}`}
-      >
-        {figure(
-          clearedBalance,
-          <>
-            <CheckCircle size={10} />
-            Cleared
-          </>,
-          tone(clearedBalance)
-        )}
-        <span className="account-page__balance-op">+</span>
-        {figure(
-          unclearedBalance,
-          <>
-            <CircleDot size={10} />
-            Uncleared
-          </>
-        )}
-        <span className="account-page__balance-op">=</span>
-        {figure(balance, 'Working balance', tone(balance), true)}
-      </div>
+        hidden={collapsed}
+        balance={balance}
+        clearedBalance={clearedBalance}
+        unclearedBalance={unclearedBalance}
+        formatMoney={formatMoney}
+      />
     </>
+  )
+}
+
+/**
+ * Cleared + Uncleared = Working: the account's three figures, once.
+ *
+ * The desktop header draws it under the fold; the phone's Tools sheet draws
+ * it at the top. One component, so the two cannot label or colour a figure
+ * differently.
+ */
+export function BalanceEquation({
+  balance,
+  clearedBalance,
+  unclearedBalance,
+  formatMoney,
+  id,
+  hidden = false,
+}: Pick<AccountBalancesProps, 'balance' | 'clearedBalance' | 'unclearedBalance' | 'formatMoney'> & {
+  id?: string
+  /** Kept mounted but not drawn — the desktop fold's `aria-controls` target. */
+  hidden?: boolean
+}) {
+  /* One figure, one spelling. This markup was written out four times. */
+  const figure = (value: number, label: ReactNode, colour?: string, working?: boolean) => (
+    <div
+      className={`account-page__balance-item${working ? ' account-page__balance-item--working' : ''}`}
+    >
+      <span className={`account-page__balance-value ${colour ?? ''}`}>{formatMoney(value)}</span>
+      <span className="account-page__balance-label">{label}</span>
+    </div>
+  )
+
+  return (
+    <div
+      id={id}
+      className={`account-page__balances ${hidden ? 'account-page__balances--collapsed' : ''}`}
+    >
+      {figure(
+        clearedBalance,
+        <>
+          <CheckCircle size={10} />
+          Cleared
+        </>,
+        tone(clearedBalance)
+      )}
+      <span className="account-page__balance-op">+</span>
+      {figure(
+        unclearedBalance,
+        <>
+          <CircleDot size={10} />
+          Uncleared
+        </>
+      )}
+      <span className="account-page__balance-op">=</span>
+      {figure(balance, 'Working balance', tone(balance), true)}
+    </div>
   )
 }

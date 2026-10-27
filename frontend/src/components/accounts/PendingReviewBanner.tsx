@@ -1,6 +1,7 @@
 import { Info } from 'lucide-react'
 import { usePendingReviewCount, usePendingReviewCountForAccount } from '../../api/transactions'
 import { Tooltip } from '../common/Tooltip/Tooltip'
+import { REVIEW_SEARCH, reviewPhrase } from './pendingReview'
 import './PendingReviewBanner.css'
 
 interface Props {
@@ -14,9 +15,7 @@ export function PendingReviewBanner({ budgetId, accountId, onView }: Props) {
   const accountCounts = usePendingReviewCountForAccount(accountId ?? null)
   const counts = accountId ? accountCounts.data : budgetCounts.data
 
-  const total = counts?.total ?? (counts ? counts.unapproved + counts.uncategorized : 0)
-
-  if (!counts || total === 0) {
+  if (!counts || counts.total === 0) {
     return null
   }
 
@@ -34,10 +33,10 @@ export function PendingReviewBanner({ budgetId, accountId, onView }: Props) {
       </>
     ) : null
 
-  const message = total === 1 ? '1 transaction to review.' : `${total} transactions to review.`
+  const message = `${reviewPhrase(counts.total)}.`
 
   function handleView() {
-    onView('is: unapproved OR is: uncategorized NOT is: pending')
+    onView(REVIEW_SEARCH)
   }
 
   return (

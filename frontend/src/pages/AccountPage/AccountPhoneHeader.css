@@ -1,0 +1,102 @@
+/* The phone's one-row account header (AccountPhoneHeader). It renders only
+   on a phone, so every control carries the tap floor; the rules sit under the
+   phone query because that is where tapTargets.test.ts looks for the floor. */
+
+.account-phone-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  flex-shrink: 0;
+  background-color: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge);
+}
+
+.account-phone-header__balance {
+  /* Takes the free space, but never below its own figure: a balance is
+     never truncated, so a long one wraps the buttons instead. */
+  flex: 1 0 auto;
+  min-width: max-content;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.account-phone-header__balance.positive {
+  color: var(--color-positive);
+}
+
+.account-phone-header__balance.negative {
+  color: var(--color-negative);
+}
+
+/* One pill for everything waiting. The hue on a 12% wash of itself — the
+   badge recipe contrast.test.ts holds every theme to. */
+.account-phone-header__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--spacing-sm);
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-phone-header__notice--warning {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+}
+
+.account-phone-header__notice--info {
+  color: var(--color-info);
+  background-color: color-mix(in srgb, var(--color-info) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-info) 40%, transparent);
+}
+
+.account-phone-header__primary {
+  padding: 0 var(--spacing-md);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background-color: var(--color-accent);
+  color: var(--text-inverse);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.account-phone-header__primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.account-phone-header__tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .account-phone-header__notice,
+  .account-phone-header__primary {
+    min-height: var(--tap-min);
+  }
+
+  .account-phone-header__notice {
+    min-width: var(--tap-min);
+    justify-content: center;
+  }
+
+  .account-phone-header__tools {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}
