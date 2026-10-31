@@ -316,13 +316,23 @@ async def _place(
     # thinking transcript exists only here.
     result.update(debug_view(svcs["ai"].gateway.last_result))
 
-    if txn is None and account_id is None:
-        # No account chosen: the card that paid decides, if it is on file —
-        # and the bank's own row for it, if it has already arrived, takes
-        # the receipt rather than a duplicate beside it.
+    if txn is None:
+        # The card that paid decides, when it is on file — over no account,
+        # and over the one the scan was submitted against: an ending belongs
+        # to one account, so a receipt paid with it is that account's, and
+        # the scan sitting in the account picked before the photo is the
+        # mistake (the review used to only offer the move). The move is
+        # recorded for the AI activity card. The bank's own row, if it has
+        # already arrived, takes the receipt rather than a duplicate beside it.
         card = await card_account(session, job.budget_id, draft.card_last4)
-        if card is not None:
+        if card is not None and card.id != account_id:
             result["placed_by"] = "card_ending"
+            if account_id is not None:
+                result["account_switched"] = {
+                    "from_account_id": str(account_id),
+                    "to_account_id": str(card.id),
+                    "card_last4": draft.card_last4,
+                }
             match = await bank_match(
                 session, job.budget_id, draft.amount, draft.date, account_id=card.id
             )

@@ -51,10 +51,23 @@ export interface AIJobRequest {
   format?: string | null
 }
 
+/** The scan was submitted against one account and the card that paid is on
+ *  file for another, so the worker placed it there (`ai_worker._place`). */
+export interface AIJobAccountSwitch {
+  from_account_id: string
+  to_account_id: string
+  card_last4: string
+}
+
 export interface AIJobResult {
   extraction?: Record<string, unknown>
   draft?: AIJobDraft
+  /** The model's split as checked at read time. Filed as the row's split when
+   *  the scan lands, where its category could be; otherwise a suggestion. */
   suggested_split?: AIJobSplitLine[] | null
+  /** Set when the card that paid decided where the scan landed. */
+  placed_by?: 'card_ending'
+  account_switched?: AIJobAccountSwitch
   request?: AIJobRequest
   /** Exactly what the model returned, pre-parse — present on success AND on
    * failure, so a structured-output problem is distinguishable from

@@ -23,6 +23,11 @@ What both obey, and what this module says once:
   works.
 - **A split's category is its lines'**, and its amount is their sum, so a
   read sends neither to a split parent.
+- **A read's split stands where its category would.** The model's split is
+  the category, itemised: it is filed on exactly the rows a category may be
+  written to (`may_file_split`), and only when the lines sum to the row's
+  amount as it will stand — a bank's amount the receipt cannot move, or a
+  confirmed one, refuses a split that adds up to something else.
 - **A linked transfer's payee is its destination** and its category follows
   the pair rule, so a read sends neither to a transfer leg.
 """
@@ -77,6 +82,19 @@ def _has_memo(row: ExistingRow) -> bool:
     return bool(row.memo and row.memo.strip()) and row.memo not in STUB_MEMO.values()
 
 
+def _category_writable(row: ExistingRow, *, refresh: bool) -> bool:
+    return not row.is_transfer and not row.is_split and (refresh or not row.has_category)
+
+
+def may_file_split(
+    row: ExistingRow, *, refresh: bool, row_amount: Decimal, split_total: Decimal
+) -> bool:
+    """Whether the read's split may be filed on `row`: where its category
+    could be (the split is that category, itemised), and only when the lines
+    — which sum to `split_total` — sum to what the row's amount will be."""
+    return _category_writable(row, refresh=refresh) and row_amount == split_total
+
+
 def writable_fields(row: ExistingRow, *, refresh: bool) -> frozenset[str]:
     """The fields a read may write onto `row`.
 
@@ -90,7 +108,7 @@ def writable_fields(row: ExistingRow, *, refresh: bool) -> frozenset[str]:
             fields.discard("amount")
     if not row.is_transfer and (refresh or not row.has_payee):
         fields.add("payee_id")
-    if not row.is_transfer and not row.is_split and (refresh or not row.has_category):
+    if _category_writable(row, refresh=refresh):
         fields.add("category_id")
     if refresh or not _has_memo(row):
         fields.add("memo")

@@ -175,17 +175,82 @@ class TestTheWorker:
         await process_one_job(db_session, job)
         assert job.status == "unplaced"
 
-    async def test_a_chosen_account_still_wins_over_the_card(
+    async def test_the_card_moves_a_scan_off_the_account_chosen_before_the_photo(
         self, db_session, attachments_dir, extraction, api_client
     ):
-        # The card warns in review; it never overrides what a person chose.
+        # An ending belongs to one account, so the receipt is that account's.
+        # The review used to only offer the move, and a scan approved without
+        # it left the money in the wrong account.
         budget, checking, card, _ = await _budget(db_session, api_client.test_user)
         await _remember(db_session, budget, card)
         job = await _job(db_session, attachments_dir, budget, checking)
         await process_one_job(db_session, job)
         txn = await db_session.get(Transaction, job.transaction_id)
-        assert txn.account_id == checking.id
+        assert (txn.account_id, txn.approved) == (card.id, False)
+        assert job.result["placed_by"] == "card_ending"
+        assert job.result["account_switched"] == {
+            "from_account_id": str(checking.id),
+            "to_account_id": str(card.id),
+            "card_last4": "4417",
+        }
+
+    async def test_the_switch_lands_on_the_cards_bank_row(
+        self, db_session, attachments_dir, extraction, api_client
+    ):
+        budget, checking, card, _ = await _budget(db_session, api_client.test_user)
+        await _remember(db_session, budget, card)
+        bank_row = await create_transaction(db_session, budget, card, "-24.00", date(2026, 9, 21))
+        job = await _job(db_session, attachments_dir, budget, checking)
+        await process_one_job(db_session, job)
+        assert job.transaction_id == bank_row.id
+        assert job.result["account_switched"]["to_account_id"] == str(card.id)
+
+    async def test_the_chosen_account_stays_when_the_card_is_its_own(
+        self, db_session, attachments_dir, extraction, api_client
+    ):
+        budget, _, card, _ = await _budget(db_session, api_client.test_user)
+        await _remember(db_session, budget, card)
+        job = await _job(db_session, attachments_dir, budget, card)
+        await process_one_job(db_session, job)
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.account_id == card.id
         assert "placed_by" not in job.result
+        assert "account_switched" not in job.result
+
+    async def test_the_chosen_account_stays_when_the_card_is_not_on_file(
+        self, db_session, attachments_dir, extraction, api_client
+    ):
+        budget, checking, _, _ = await _budget(db_session, api_client.test_user)
+        job = await _job(db_session, attachments_dir, budget, checking)
+        await process_one_job(db_session, job)
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.account_id == checking.id
+        assert "account_switched" not in job.result
+
+    async def test_reprocessing_never_moves_the_row(
+        self, db_session, attachments_dir, extraction, api_client
+    ):
+        # The switch is where a scan first lands. A fresh read of a row that
+        # already exists — maybe moved back by hand — refreshes it in place.
+        budget, checking, card, _ = await _budget(db_session, api_client.test_user)
+        await _remember(db_session, budget, card)
+        own = await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-24.00",
+            date(2026, 9, 20),
+            approved=False,
+            cleared="uncleared",
+            created_via="ai_receipt",
+        )
+        job = await _job(db_session, attachments_dir, budget, checking)
+        job.transaction_id = own.id
+        await db_session.flush()
+        await process_one_job(db_session, job)
+        await db_session.refresh(own)
+        assert (job.transaction_id, own.account_id) == (own.id, checking.id)
+        assert "account_switched" not in job.result
 
     async def test_a_failed_scan_with_no_account_waits_with_its_image(
         self, db_session, attachments_dir, api_client
