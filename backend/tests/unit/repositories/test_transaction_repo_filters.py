@@ -20,12 +20,21 @@ from sqlalchemy.dialects import sqlite
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import amount_search_text
 
+#: One budget for every repo, so two compiled statements compare equal.
+_BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-00000000b0d9")
+
 
 def _make_repo() -> TransactionRepository:
     session = AsyncMock()
     result_mock = MagicMock()
     result_mock.scalars.return_value.all.return_value = []
+    # `get_for_account` is a view of `list_for_budget`: it looks up the
+    # account's budget, then runs the page and its count/sum. The count query
+    # is the last statement and carries the same WHERE, which is what these
+    # tests read.
+    result_mock.one.return_value = (0, 0)
     session.execute = AsyncMock(return_value=result_mock)
+    session.scalar = AsyncMock(return_value=_BUDGET_ID)
     repo = TransactionRepository.__new__(TransactionRepository)
     repo.session = session
     return repo

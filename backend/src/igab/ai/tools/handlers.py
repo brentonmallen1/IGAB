@@ -22,6 +22,7 @@ from igab.ai.tools.shape import (
     with_notes,
 )
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES
+from igab.repositories.txn_filters import ListingOrder
 from igab.repositories.txn_query import MAX_GROUPS, TransactionFilters, UnknownDimension
 
 #: Ceiling on any `months` argument, matching the reports router's own bound.
@@ -268,6 +269,10 @@ DIRECTIONS = ("inflow", "outflow")
 #: The orders a grouped query accepts; "value" is by size, largest first.
 #: The registry's enum reads this, so the schema and the check cannot drift.
 GROUP_ORDERS = ("value", "group", "rows")
+#: The orders `search_transactions` offers: keys of `txn_filters.LISTING_ORDERS`,
+#: read by the registry's enum. The schema offered "amount" for a long time
+#: while the handler had nothing that sorted by it.
+ROW_ORDERS: tuple[ListingOrder, ...] = ("date", "amount")
 
 
 def _enum(args: dict, key: str, allowed: tuple[str, ...]) -> str | None:
@@ -431,7 +436,7 @@ async def search_transactions(ctx: ToolContext, args: dict) -> dict:
         ctx.budget_id,
         **{f.name: getattr(filters, f.name) for f in fields(filters)},
         scope="leaf",
-        order="amount" if args.get("order") == "amount" else "date",
+        order=next((o for o in ROW_ORDERS if o == args.get("order")), "date"),
         limit=DEFAULT_ROW_LIMIT,
     )
     shaped = [

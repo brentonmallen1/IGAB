@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from sqlalchemy import (
     Boolean,
@@ -1619,3 +1619,51 @@ def register_rank(row: Mapping[str, object]) -> int:
         if matches(row):
             return rank
     return len(REGISTER_LADDER)
+
+
+#: The rungs that still want a person: pending, unfiled, unapproved. They are
+#: the register's Pending and Needs Review sections, and the ledger order below
+#: keeps them on the first pages for the same reason the ladder does — the
+#: register keeps fetching until it holds every row the review badge counts,
+#: and in plain date order one old unapproved row would page in the whole
+#: history to find it.
+ATTENTION_RUNGS = [name for name, _, _ in REGISTER_LADDER].index("uncleared")
+
+#: The order a register with a running balance pages in: the attention rungs
+#: first, as in the ladder, then every other row in pure date order. Below the
+#: attention rungs the ladder's state ranks would interleave a running total
+#: out of order — uncleared above cleared above reconciled — so they collapse
+#: into one rank and the date tiebreak decides.
+LEDGER_RANK = case(
+    (REGISTER_RANK < ATTENTION_RUNGS, REGISTER_RANK),
+    else_=ATTENTION_RUNGS,
+)
+
+
+def ledger_rank(row: Mapping[str, object]) -> int:
+    """The pure half of `LEDGER_RANK`, run by the shared cases."""
+    return min(register_rank(row), ATTENTION_RUNGS)
+
+
+#: Oldest first: the order money moved through an account. The running
+#: balance's window runs it ascending and every listing order ends on it
+#: descending, so a running total is never computed in a different order than
+#: its rows are drawn in. `id` last because a bulk import gives thousands of
+#: rows one `created_at`, and offset pagination over a non-unique order skips
+#: and repeats rows across pages.
+DATE_TIEBREAK = (Transaction.date, Transaction.created_at, Transaction.id)
+DATE_TIEBREAK_DESC = tuple(col.desc() for col in DATE_TIEBREAK)
+
+#: The orders a listing pages in, as ORDER BY terms. One table so the API's
+#: accepted values and the repository's orderings cannot name different sets.
+#:
+#: "amount" is largest first by size, either sign — the assistant's
+#: `search_transactions` offered "sort rows by size" while the listing's
+#: if/else had no such branch, so every such call came back by date.
+ListingOrder = Literal["date", "register", "ledger", "amount"]
+LISTING_ORDERS: dict[str, tuple[Any, ...]] = {
+    "date": DATE_TIEBREAK_DESC,
+    "register": (REGISTER_RANK, *DATE_TIEBREAK_DESC),
+    "ledger": (LEDGER_RANK, *DATE_TIEBREAK_DESC),
+    "amount": (func.abs(Transaction.amount).desc(), *DATE_TIEBREAK_DESC),
+}

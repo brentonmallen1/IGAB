@@ -1,12 +1,57 @@
 {
   "_comment": "The register's default order is the state ladder: pending, then unfiled, then unapproved, then uncleared, then cleared, and reconciled last — finished work sinks. The server pages rows in this order (`REGISTER_LADDER` in backend/src/igab/repositories/txn_filters.py, run by backend/tests/unit/test_register_order.py) and the client re-sorts the pages it has loaded the same way (frontend/src/components/transactions/TransactionTable/registerOrder.ts, run by registerOrder.test.ts). The two must agree or a row changes place as you scroll. Rank is an index into the ladder, so the numbers here are the ladder itself.",
   "ladder": ["pending", "needs_category", "unapproved", "uncleared", "cleared", "reconciled"],
+  "_ledger_comment": "A register showing a running balance pages in the LEDGER order instead: the attention rungs (pending, unfiled, unapproved — the Pending and Needs Review sections) keep their ladder ranks, and every rung below collapses into one, so the rest of the account reads in pure date order and a running total steps row by row. `attention_rungs` is the index of the first collapsed rung; `ledger_rank` is min(rank, attention_rungs).",
+  "attention_rungs": 3,
+  "tiebreak": {
+    "_comment": "Within a rank, newest first by date, then created_at, then id — the order the running balance's SQL window runs in reverse (`DATE_TIEBREAK` in txn_filters.py). created_at arrives as the server serialises it: the fraction is OMITTED when the microseconds are zero, so compared as raw strings '09:00:00Z' sorts above '09:00:00.500000Z' ('Z' > '.'). The client compared date then id and skipped created_at entirely until this table existed. Ids compare as lowercase hex, byte for byte, which is how Postgres orders a uuid.",
+    "rows": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "date": "2026-03-10",
+        "created_at": "2026-03-10T09:00:00Z",
+        "note": "whole second: no fraction in the string"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "date": "2026-03-10",
+        "created_at": "2026-03-10T09:00:00.500000Z",
+        "note": "half a second later — newer, though its string sorts lower"
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "date": "2026-03-10",
+        "created_at": "2026-03-10T09:00:00.500000Z",
+        "note": "same instant as ...0009: the id decides, and hex a is above 9"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "date": "2026-03-10",
+        "created_at": "2026-03-10T08:59:59.999999Z",
+        "note": "a microsecond before the whole second"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "date": "2026-03-09",
+        "created_at": "2026-03-12T08:00:00Z",
+        "note": "an older date entered later: date wins over created_at"
+      }
+    ],
+    "newest_first": [
+      "00000000-0000-4000-8000-00000000000a",
+      "00000000-0000-4000-8000-000000000009",
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000005",
+      "00000000-0000-4000-8000-000000000004"
+    ]
+  },
   "cases": [
     {
       "cleared": "pending",
       "approved": true,
       "needs_category": false,
       "rank": 0,
+      "ledger_rank": 0,
       "note": "a pending row is provisional and sits above everything"
     },
     {
@@ -14,6 +59,7 @@
       "approved": false,
       "needs_category": true,
       "rank": 0,
+      "ledger_rank": 0,
       "note": "pending wins over both work states — it has its own section"
     },
     {
@@ -21,6 +67,7 @@
       "approved": true,
       "needs_category": true,
       "rank": 1,
+      "ledger_rank": 1,
       "note": "unfiled work outranks every cleared state"
     },
     {
@@ -28,6 +75,7 @@
       "approved": true,
       "needs_category": true,
       "rank": 1,
+      "ledger_rank": 1,
       "note": "a reconciled row that is still unfiled does NOT sink — the sink is for finished work, and this is not finished"
     },
     {
@@ -35,6 +83,7 @@
       "approved": false,
       "needs_category": false,
       "rank": 2,
+      "ledger_rank": 2,
       "note": "filed but unapproved: the row is categorized, so it is not in the review section, but it still wants a look"
     },
     {
@@ -42,6 +91,7 @@
       "approved": false,
       "needs_category": false,
       "rank": 2,
+      "ledger_rank": 2,
       "note": "unapproved beats reconciled — an import can land both on one row, and the unread half is what matters"
     },
     {
@@ -49,6 +99,7 @@
       "approved": true,
       "needs_category": false,
       "rank": 3,
+      "ledger_rank": 3,
       "note": "the ordinary typed row, waiting for the bank"
     },
     {
@@ -56,6 +107,7 @@
       "approved": true,
       "needs_category": false,
       "rank": 4,
+      "ledger_rank": 3,
       "note": "the bank has it; nothing left to do until reconciling"
     },
     {
@@ -63,6 +115,7 @@
       "approved": true,
       "needs_category": false,
       "rank": 5,
+      "ledger_rank": 3,
       "note": "the whole point: settled rows fall below everything else"
     }
   ]

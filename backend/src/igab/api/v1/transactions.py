@@ -71,6 +71,7 @@ from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import ListingOrder
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import ids_in_budget, require_in_budget
 from igab.services.report_scope import resolve_category_scope
@@ -219,7 +220,9 @@ async def list_budget_transactions(
     #: `is_transfer`, which tests transfer_id alone — this is what the account
     #: hygiene panel links to.
     unpaired_transfers: bool = False,
-    order: Literal["date", "register"] = "date",
+    #: "ledger" is a register with a running balance: the rows that still want
+    #: a person first, then pure date order. See `txn_filters.LISTING_ORDERS`.
+    order: ListingOrder = "date",
     limit: int = Query(200, le=5000),
     offset: int = 0,
     #: Ask for the account's balance as of each returned row. Honoured only
@@ -234,8 +237,8 @@ async def list_budget_transactions(
     category-keyed drills, parent scope for payee/month drills; posted_only
     and cash_flow_only reproduce the POSTED / CASH_FLOW_ROW predicates.
     cleared/uncategorized/unapproved/amount filters and order="register"
-    mirror the per-account listing so the all-accounts register behaves
-    identically to a single account's.
+    are the register's: both registers read this listing (`account_ids`
+    scopes it to one account), and `get_for_account` is a view of it.
     """
     if budget_month is not None and budget_month.day != 1:
         raise HTTPException(

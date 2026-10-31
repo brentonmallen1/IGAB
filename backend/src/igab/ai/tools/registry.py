@@ -71,8 +71,8 @@ _END = {"type": "string", "description": "End date, YYYY-MM-DD."}
 
 _ROW_ORDER = {
     "type": "string",
-    "enum": ["date", "amount"],
-    "description": "Sort rows by date (default) or by size.",
+    "enum": list(handlers.ROW_ORDERS),
+    "description": "Sort rows by date (default) or by size, largest first.",
 }
 
 #: The filter vocabulary, shared by the listing and the rollup so a model
