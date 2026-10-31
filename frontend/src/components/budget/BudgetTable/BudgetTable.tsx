@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { Archive, ChevronsDownUp, ChevronsUpDown, Plus } from 'lucide-react'
+import { Archive, ChevronsDownUp, ChevronsUpDown, Plus, Search } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useBudgetMonth } from '../../../api/budgets'
@@ -24,11 +24,13 @@ import { canReorderCategories, canReorderGroups } from '../reorderAvailability'
 import { parseBudgetSearch, isBudgetSearchActive, matchesBudgetSearch } from '../budgetSearch'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useMeasuredHeight } from '../../../hooks/useMeasuredHeight'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { CategoryDragProvider } from '../CategoryDrag/CategoryDragContext'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
+import { CategorySearch } from '../CategorySearch/CategorySearch'
 import { ArchivedCategoriesModal } from '../ArchivedCategoriesModal/ArchivedCategoriesModal'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import type { Category, CategoryGroup } from '../../../types'
@@ -49,6 +51,10 @@ export function BudgetTable() {
   const categorySearch = useUIStore((s) => s.categorySearch)
 
   const [archivedOpen, setArchivedOpen] = useState(false)
+  // A phone's search lives in this header row, behind a magnifier: open, the
+  // row is the field. Closing keeps the query — the strip above says it is on.
+  const isMobile = useIsMobile()
+  const [searchOpen, setSearchOpen] = useState(false)
   // The archived listing's Delete hands straight to the delete flow, so the
   // app has one delete dialog rather than a second that could disagree with
   // it about what a delete does.
@@ -268,6 +274,7 @@ export function BudgetTable() {
         month={month}
         categoryBalances={chipBalances}
         barRef={filterBarRef}
+        searchOpen={isMobile && searchOpen}
       />
       {/* Above the category headers so the cards read as part of the month,
           not an afterthought below the fold; folds shut and stays folded. */}
@@ -293,41 +300,72 @@ export function BudgetTable() {
           {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
         </button>
         <div className="budget-table__col budget-table__col--name budget-grid__name">
-          Category
-          <div className="budget-table__header-actions">
-            {/* Add Group creates a group in the budget's own arrangement. With
-                a view active that is not what the user is looking at, so it is
-                hidden rather than quietly editing the thing behind the view. */}
-            {activeView ? null : isAddingGroup ? (
-              <input
-                ref={addGroupRef}
-                className="budget-table__add-group-input"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onBlur={commitAddGroup}
-                onKeyDown={handleAddGroupKey}
-                placeholder="Group name…"
+          {isMobile && searchOpen ? (
+            <>
+              <CategorySearch
+                className="budget-table__search"
+                autoFocus
+                onEscape={() => setSearchOpen(false)}
               />
-            ) : (
               <button
-                className="budget-table__header-btn"
-                onClick={startAddGroup}
-                title="Add group"
+                type="button"
+                className="budget-table__search-done"
+                onClick={() => setSearchOpen(false)}
               >
-                <Plus size={11} /> Add Group
+                Done
               </button>
-            )}
-            {/* Archived envelopes are not in the grid at all — greyed,
-                unusable rows mixed into the live budget were the worst of
-                both states. They get their own room instead. */}
-            <button
-              className="budget-table__header-btn"
-              onClick={() => setArchivedOpen(true)}
-              title="Archived envelopes: their history, and anything left in them"
-            >
-              <Archive size={11} /> See archived
-            </button>
-          </div>
+            </>
+          ) : (
+            <>
+              Category
+              {isMobile && (
+                <button
+                  type="button"
+                  className={`budget-table__search-btn ${categorySearch ? 'active' : ''}`}
+                  onClick={() => setSearchOpen(true)}
+                  aria-label={
+                    categorySearch ? 'Find a category, a search is on' : 'Find a category'
+                  }
+                >
+                  <Search size={16} aria-hidden="true" />
+                </button>
+              )}
+              <div className="budget-table__header-actions">
+                {/* Add Group creates a group in the budget's own arrangement. With
+                    a view active that is not what the user is looking at, so it is
+                    hidden rather than quietly editing the thing behind the view. */}
+                {activeView ? null : isAddingGroup ? (
+                  <input
+                    ref={addGroupRef}
+                    className="budget-table__add-group-input"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onBlur={commitAddGroup}
+                    onKeyDown={handleAddGroupKey}
+                    placeholder="Group name…"
+                  />
+                ) : (
+                  <button
+                    className="budget-table__header-btn"
+                    onClick={startAddGroup}
+                    title="Add group"
+                  >
+                    <Plus size={11} /> Add Group
+                  </button>
+                )}
+                {/* Archived envelopes are not in the grid at all — greyed,
+                    unusable rows mixed into the live budget were the worst of
+                    both states. They get their own room instead. */}
+                <button
+                  className="budget-table__header-btn"
+                  onClick={() => setArchivedOpen(true)}
+                  title="Archived envelopes: their history, and anything left in them"
+                >
+                  <Archive size={11} /> See archived
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <div className="budget-table__col budget-table__col--money budget-grid__assigned">
           Assigned

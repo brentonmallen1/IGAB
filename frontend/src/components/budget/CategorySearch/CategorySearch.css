@@ -1,0 +1,86 @@
+/* The field's own look. Its size and place belong to whoever draws it: the
+   desktop filter bar (`.budget-filter-bar__search`) and the phone's column
+   header row (`.budget-table__search`). */
+.category-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background-color: var(--bg-secondary);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  transition: border-color var(--transition-fast);
+}
+
+.category-search:focus-within {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+
+/* The ring is the box's border above; the input's own would draw a second,
+   smaller box inside it. */
+.category-search__input:focus-visible {
+  box-shadow: none;
+}
+
+.category-search__icon {
+  flex-shrink: 0;
+}
+
+.category-search__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+  /* The clear button is ours; the browser's search-field X would be a second. */
+  appearance: none;
+}
+
+.category-search__input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.category-search__input::placeholder {
+  color: var(--text-muted);
+}
+
+.category-search__clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.category-search__clear:hover {
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .category-search {
+    min-height: var(--tap-min);
+    padding: 0 0 0 var(--spacing-sm);
+  }
+
+  /* Overhangs the box's 1px border top and bottom, so the field is the same
+     height with a query in it as without. */
+  .category-search__clear {
+    width: var(--tap-min);
+    height: var(--tap-min);
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    margin-block: -1px;
+  }
+}

@@ -202,6 +202,32 @@ describe('BudgetFilterBar on a phone', () => {
     expect(useUIStore.getState().activeQuickFilter).toBeNull()
   })
 
+  it('leaves the search out of the strip while the header field shows it', () => {
+    useUIStore.setState({ activeQuickFilter: 'overspent', categorySearch: 'groc' })
+    render(<BudgetFilterBar budgetId="b1" month="2026-10-01" categoryBalances={[]} searchOpen />, {
+      wrapper,
+    })
+    expect(screen.getByRole('button', { name: 'Stop showing only Overspent' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /groc/ })).toBeNull()
+  })
+
+  it('has no search in the Tools sheet — it is in the column header row', () => {
+    useUIStore.setState({ budgetToolsOpen: true })
+    renderBar()
+    expect(screen.queryByRole('searchbox')).toBeNull()
+  })
+
+  // The native select's face read blank on iOS with nothing chosen.
+  it('names its pickers Views and Filters, and says None for no filter', () => {
+    useUIStore.setState({ budgetToolsOpen: true })
+    renderBar()
+    expect(screen.getByText('Views')).toBeInTheDocument()
+    expect(screen.getByText('Filters')).toBeInTheDocument()
+    // The face, not the option list: the face is what read blank.
+    const faces = [...document.querySelectorAll('.budget-tools__picker .select-chip__label')]
+    expect(faces.map((f) => f.textContent)).toEqual(['Default groups', 'None'])
+  })
+
   it('keeps an empty status disabled rather than gone', () => {
     useUIStore.setState({ budgetToolsOpen: true })
     renderBar([])
