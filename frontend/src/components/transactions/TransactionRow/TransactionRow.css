@@ -221,6 +221,13 @@
   pointer-events: none;
 }
 
+/* The account's balance as of the row: derived, so quieter than the amount
+   that moved it. */
+.txn-col--balance {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .txn-col--cleared {
   display: flex;
   align-items: center;
@@ -631,6 +638,21 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
+  }
+
+  /* The running balance sits under the amount it follows from, and the
+     category gives up the column to it. */
+  .transaction-row .txn-col--balance {
+    grid-column: 4;
+    grid-row: 2;
+    justify-self: end;
+    text-align: right;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+  }
+
+  .transaction-table--running .transaction-row .txn-col--category {
+    grid-column: 2 / span 2;
   }
 
   /* All-accounts register: account gets its own card line under the date row */

@@ -8,12 +8,23 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { RegisterToolbar } from './RegisterToolbar'
+import { registerToggles } from './registerToggles'
+
+function toggleState(over: { showSplitLines?: boolean; showRunningBalance?: boolean } = {}) {
+  return {
+    showSplitLines: false,
+    setShowSplitLines: vi.fn(),
+    showRunningBalance: false,
+    setShowRunningBalance: vi.fn(),
+    ...over,
+  }
+}
 
 const base = {
   searchQuery: '',
   onSearchChange: vi.fn(),
   onAdd: vi.fn(),
-  splitLines: { show: false, onChange: vi.fn() },
+  toggles: registerToggles(toggleState(), false),
 }
 
 describe('RegisterToolbar', () => {
@@ -44,39 +55,44 @@ describe('RegisterToolbar', () => {
     expect(onAdd).toHaveBeenCalledOnce()
   })
 
-  it('toggles split lines: a pressed state, a name that stays put, a tooltip saying what a click does', () => {
-    const onShowSplitLinesChange = vi.fn()
-    const { rerender } = render(
-      <RegisterToolbar
-        {...base}
-        pay={null}
-        splitLines={{ show: false, onChange: onShowSplitLinesChange }}
-      />
-    )
-    const toggle = screen.getByRole('button', { name: 'Show split lines' })
-    expect(toggle).toHaveAttribute('aria-pressed', 'false')
-    expect(toggle).toHaveAttribute('title', 'Show split lines')
-    fireEvent.click(toggle)
-    expect(onShowSplitLinesChange).toHaveBeenLastCalledWith(true)
+  it.each([
+    ['split lines', 'showSplitLines', 'setShowSplitLines'],
+    ['running balance', 'showRunningBalance', 'setShowRunningBalance'],
+  ] as const)(
+    'toggles %s: a pressed state, a name that stays put, a tooltip saying what a click does',
+    (noun, key, setter) => {
+      const off = toggleState()
+      const { rerender } = render(
+        <RegisterToolbar {...base} pay={null} toggles={registerToggles(off, false)} />
+      )
+      const toggle = screen.getByRole('button', { name: `Show ${noun}` })
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      expect(toggle).toHaveAttribute('title', `Show ${noun}`)
+      fireEvent.click(toggle)
+      expect(off[setter]).toHaveBeenLastCalledWith(true)
 
-    rerender(
-      <RegisterToolbar
-        {...base}
-        pay={null}
-        splitLines={{ show: true, onChange: onShowSplitLinesChange }}
-      />
-    )
-    const pressed = screen.getByRole('button', { name: 'Show split lines' })
-    expect(pressed).toHaveAttribute('aria-pressed', 'true')
-    expect(pressed).toHaveAttribute('title', 'Hide split lines')
-    fireEvent.click(pressed)
-    expect(onShowSplitLinesChange).toHaveBeenLastCalledWith(false)
+      const on = toggleState({ [key]: true })
+      rerender(<RegisterToolbar {...base} pay={null} toggles={registerToggles(on, false)} />)
+      const pressed = screen.getByRole('button', { name: `Show ${noun}` })
+      expect(pressed).toHaveAttribute('aria-pressed', 'true')
+      expect(pressed).toHaveAttribute('title', `Hide ${noun}`)
+      fireEvent.click(pressed)
+      expect(on[setter]).toHaveBeenLastCalledWith(false)
+    }
+  )
+
+  it('offers no running balance on the all-accounts register', () => {
+    // Across accounts a running total is not a balance of anything.
+    render(<RegisterToolbar {...base} pay={null} toggles={registerToggles(toggleState(), true)} />)
+    expect(screen.getByRole('button', { name: 'Show split lines' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show running balance' })).toBeNull()
   })
 
-  // On the phone account page the toggle lives in Tools, leaving this row to
+  // On the phone account page the toggles live in Tools, leaving this row to
   // the search box.
-  it('draws no split-lines toggle where the page puts it elsewhere', () => {
-    render(<RegisterToolbar {...base} pay={null} splitLines={null} />)
+  it('draws no toggles where the page puts them elsewhere', () => {
+    render(<RegisterToolbar {...base} pay={null} toggles={[]} />)
     expect(screen.queryByRole('button', { name: 'Show split lines' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show running balance' })).toBeNull()
   })
 })

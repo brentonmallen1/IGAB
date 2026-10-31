@@ -51,6 +51,8 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { wishlistToggleOutcome } from './wishlistToggle'
 import { historyModeToggleOutcome } from '../../utils/historyModeToggle'
 import { useUIStore } from '../../stores/uiStore'
+import { useShallow } from 'zustand/react/shallow'
+import { registerToggles } from '../../components/transactions/TransactionTable/registerToggles'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
 import { apiErrorMessage } from '../../api/client'
 import { useUsers } from '../../api/users'
@@ -124,6 +126,16 @@ export function SettingsPage() {
   const updateBudget = useUpdateBudget()
 
   const activeModal = useUIStore((s) => s.activeModal)
+  // The register's own toggles (registerToggles.ts), so the toolbar, the
+  // phone's Tools sheet and this page cannot name or describe them apart.
+  const registerToggleState = useUIStore(
+    useShallow((s) => ({
+      showSplitLines: s.showSplitLines,
+      setShowSplitLines: s.setShowSplitLines,
+      showRunningBalance: s.showRunningBalance,
+      setShowRunningBalance: s.setShowRunningBalance,
+    }))
+  )
   const openModal = useUIStore((s) => s.openModal)
   const closeModal = useUIStore((s) => s.closeModal)
 
@@ -233,6 +245,7 @@ export function SettingsPage() {
   )
   const hints: Partial<Record<SettingsSectionId, ReactNode>> = {
     appearance: getPaletteForTheme(theme).label,
+    display: registerToggleState.showRunningBalance ? 'Running balance' : undefined,
     account: me?.display_name || me?.email,
     budget: currentBudget?.name,
     accounts: openAccounts,
@@ -281,6 +294,23 @@ export function SettingsPage() {
             </select>
           </div>
         </>
+      ),
+    },
+
+    display: {
+      body: (
+        <div className="settings-subsection">
+          <div className="settings-subsection__title">Register</div>
+          {registerToggles(registerToggleState, false).map((t) => (
+            <SettingsToggle
+              key={t.id}
+              label={`Show ${t.noun}`}
+              desc={t.description}
+              checked={t.show}
+              onChange={t.onChange}
+            />
+          ))}
+        </div>
       ),
     },
 

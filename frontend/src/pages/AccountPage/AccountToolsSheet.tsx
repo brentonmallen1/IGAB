@@ -1,18 +1,11 @@
 import type { ReactNode } from 'react'
-import {
-  ListTree,
-  Lock,
-  Pencil,
-  RefreshCw,
-  ScanSearch,
-  Upload,
-  type LucideIcon,
-} from 'lucide-react'
+import { Lock, Pencil, RefreshCw, ScanSearch, Upload, type LucideIcon } from 'lucide-react'
 import type { Account } from '../../types'
 import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BalanceEquation } from './AccountBalances'
 import { AccountStatusPills, BankDriftLine, PendingLine } from './AccountFacts'
 import type { DriftNotice } from './bankDriftNotice'
+import type { RegisterToggle } from '../../components/transactions/TransactionTable/registerToggles'
 import './AccountSheets.css'
 
 interface Props {
@@ -45,9 +38,9 @@ interface Props {
   onEdit: () => void
   /** Null where Reconcile is already the header row's button. */
   onReconcile: (() => void) | null
-  /** How the register draws splits (uiStore `showSplitLines`). Here rather
-   *  than beside the search box, which on a phone keeps the row to itself. */
-  splitLines: { show: boolean; onChange: (show: boolean) => void }
+  /** How the register draws its rows (`registerToggles`). Here rather than
+   *  beside the search box, which on a phone keeps the row to itself. */
+  toggles: RegisterToggle[]
 }
 
 interface Action {
@@ -85,7 +78,7 @@ export function AccountToolsSheet({
   scanning,
   onEdit,
   onReconcile,
-  splitLines,
+  toggles,
 }: Props) {
   const actions: Action[] = [
     ...(onReconcile ? [{ id: 'reconcile', label: 'Reconcile', icon: Lock, run: onReconcile }] : []),
@@ -157,18 +150,21 @@ export function AccountToolsSheet({
 
         <section className="account-sheet__section" aria-label="Register">
           <h3 className="account-sheet__heading">Register</h3>
-          {/* A toggle, not an action: the sheet stays open so the change is
+          {/* Toggles, not actions: the sheet stays open so the change is
               seen to take. */}
-          <button
-            type="button"
-            className="account-sheet__action account-sheet__toggle"
-            aria-pressed={splitLines.show}
-            onClick={() => splitLines.onChange(!splitLines.show)}
-          >
-            <ListTree size={18} aria-hidden="true" />
-            <span>Show split lines</span>
-            <span className="account-sheet__switch" aria-hidden="true" />
-          </button>
+          {toggles.map(({ id, noun, icon: Icon, show, onChange }) => (
+            <button
+              key={id}
+              type="button"
+              className="account-sheet__action account-sheet__toggle"
+              aria-pressed={show}
+              onClick={() => onChange(!show)}
+            >
+              <Icon size={18} aria-hidden="true" />
+              <span>Show {noun}</span>
+              <span className="account-sheet__switch" aria-hidden="true" />
+            </button>
+          ))}
         </section>
 
         <section className="account-sheet__section" aria-label="Actions">

@@ -41,3 +41,32 @@ describe('the register row grid', () => {
     expect(card).toBeDefined()
   })
 })
+
+/**
+ * The running balance is one more track, appended LAST, by redefining the
+ * variable every register grid reads — never a template of its own. The
+ * upcoming and split-line rows place their cells by column number, so a
+ * track inserted mid-list, or a second track list typed out beside the
+ * first, would leave them captioned by the wrong header.
+ */
+describe('the running-balance track', () => {
+  const read = (path: string) => stripComments(readFileSync(resolve(__dirname, path), 'utf8'))
+  const table = read('../TransactionTable/TransactionTable.css')
+  const base = read('../../../themes/base.css')
+
+  it('is the base tracks plus one, appended', () => {
+    const rule = topLevelRules(table).find(([sel]) => sel.trim() === '.transaction-table--running')
+    expect(rule).toBeDefined()
+    expect(rule![1]).toMatch(
+      /--register-cols\s*:\s*var\(--register-tracks\)\s+var\(--register-col-balance\)\s*;/
+    )
+  })
+
+  it('leaves the base list defined once, as the tracks', () => {
+    expect(base).toMatch(/--register-cols\s*:\s*var\(--register-tracks\)\s*;/)
+    const redefinitions = [table, css].flatMap((source) =>
+      topLevelRules(source).filter(([, body]) => /--register-cols\s*:/.test(body))
+    )
+    expect(redefinitions.map(([sel]) => sel.trim())).toEqual(['.transaction-table--running'])
+  })
+})

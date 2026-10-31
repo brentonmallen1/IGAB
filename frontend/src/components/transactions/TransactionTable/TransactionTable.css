@@ -156,8 +156,16 @@
 }
 
 .txn-col--outflow,
-.txn-col--inflow {
+.txn-col--inflow,
+.txn-col--balance {
   text-align: center;
+}
+
+/* The running balance's track, last (see base.css). Redefined on the table,
+   so the header, rows, split lines and upcoming rows inside it all take it;
+   the rows with no figure simply leave the tenth track empty. */
+.transaction-table--running {
+  --register-cols: var(--register-tracks) var(--register-col-balance);
 }
 
 .txn-col--cleared {

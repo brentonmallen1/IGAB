@@ -2,9 +2,11 @@ import { useCallback, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Pencil, ScanSearch, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useShallow } from 'zustand/react/shallow'
 import { CsvImportDialog } from '../../components/imports/CsvImportDialog/CsvImportDialog'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
 import { registerPayAction } from '../../components/transactions/TransactionTable/payButton'
+import { registerToggles } from '../../components/transactions/TransactionTable/registerToggles'
 import { ReconcileModal } from '../../components/accounts/ReconcileModal'
 import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar'
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
@@ -102,8 +104,14 @@ export function AccountPage() {
     }
   }
   const [showCsvImport, setShowCsvImport] = useState(false)
-  const showSplitLines = useUIStore((s) => s.showSplitLines)
-  const setShowSplitLines = useUIStore((s) => s.setShowSplitLines)
+  const registerToggleState = useUIStore(
+    useShallow((s) => ({
+      showSplitLines: s.showSplitLines,
+      setShowSplitLines: s.setShowSplitLines,
+      showRunningBalance: s.showRunningBalance,
+      setShowRunningBalance: s.setShowRunningBalance,
+    }))
+  )
   const storedHeaderCollapsed = useUIStore((s) => s.accountHeaderCollapsed)
   const setHeaderCollapsed = useUIStore((s) => s.setAccountHeaderCollapsed)
 
@@ -260,7 +268,7 @@ export function AccountPage() {
             onReconcile={
               payAction && !isReconcilingHere ? () => startReconciliation(accountId) : null
             }
-            splitLines={{ show: showSplitLines, onChange: setShowSplitLines }}
+            toggles={registerToggles(registerToggleState, false)}
           />
           <AccountNoticesSheet
             open={noticesOpen}

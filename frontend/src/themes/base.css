@@ -71,8 +71,13 @@
      as "Acm…" at full desktop width.
 
      Columns: checkbox, icon, date, payee, category, memo, outflow, inflow,
-     cleared. */
-  --register-cols: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;
+     cleared. A register showing a running balance appends one more track,
+     LAST (TransactionTable.css, `.transaction-table--running`): the upcoming
+     and split-line rows place their cells by column number, and a track
+     inserted in the middle would renumber every one of them. */
+  --register-tracks: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;
+  --register-cols: var(--register-tracks);
+  --register-col-balance: 100px;
   /* The all-accounts register names each row's account, after the date. */
   --register-cols-all-accounts: 32px 54px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
   /* Rows, header and upcoming rows must share this too, or the tracks line

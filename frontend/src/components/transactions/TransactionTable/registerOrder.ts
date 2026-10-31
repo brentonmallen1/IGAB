@@ -67,7 +67,116 @@ export function compareByRegisterOrder(a: Transaction, b: Transaction): number {
 export function compareByDateDesc(a: Transaction, b: Transaction): number {
   const date = b.date.localeCompare(a.date)
   if (date !== 0) return date
-  return b.id.localeCompare(a.id)
+  const entered = compareText(instantKey(b.created_at), instantKey(a.created_at))
+  if (entered !== 0) return entered
+  return compareText(b.id, a.id)
+}
+
+/**
+ * A served timestamp as a string that sorts the way the instant does.
+ *
+ * The server omits the fraction when the microseconds are zero, so the raw
+ * strings put `09:00:00Z` above `09:00:00.500000Z` (`Z` > `.`). The key is
+ * the whole seconds since the epoch, zero-padded, then the fraction padded to
+ * six digits — which also folds any offset into one instant. Kept as a string
+ * rather than a `Date` because a `Date` stops at milliseconds and a bulk
+ * import separates rows by microseconds.
+ */
+export function instantKey(timestamp: string | null | undefined): string {
+  if (!timestamp) return ''
+  const m = /^(.+?T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})?$/.exec(timestamp)
+  if (!m) return timestamp
+  const ms = Date.parse(`${m[1]}${m[3] ?? 'Z'}`)
+  if (Number.isNaN(ms)) return timestamp
+  const seconds = String(Math.floor(ms / 1000)).padStart(12, '0')
+  return `${seconds}.${(m[2] ?? '').padEnd(6, '0').slice(0, 6)}`
+}
+
+/** Code-point order, which is how Postgres compares a uuid's hex: a locale
+ *  collation is free to rank characters some other way. */
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+// ─── The ledger order: a register with a running balance ────────────────────
+
+/**
+ * The rungs that still want a person — pending, unfiled, unapproved — which are
+ * the register's Pending and Needs Review sections. The client half of
+ * `ATTENTION_RUNGS` in txn_filters.py; the shared table pins both.
+ */
+export const ATTENTION_RUNGS = REGISTER_LADDER.indexOf('uncleared')
+
+/**
+ * The order a register with a running balance pages in: the attention rungs
+ * first, as in the ladder, then everything else by date alone. Below them the
+ * ladder would put yesterday's uncleared row above last week's cleared one,
+ * and a running total drawn in that order does not step from row to row.
+ */
+export function ledgerRank(t: Transaction): number {
+  return Math.min(registerRank(t), ATTENTION_RUNGS)
+}
+
+/** The server's `order=ledger`, for re-sorting the pages that have loaded. */
+export function compareByLedgerOrder(a: Transaction, b: Transaction): number {
+  const rank = ledgerRank(a) - ledgerRank(b)
+  if (rank !== 0) return rank
+  return compareByDateDesc(a, b)
+}
+
+/**
+ * The main list's rows that are safe to draw beside a running balance.
+ *
+ * In the ledger order the attention rows all arrive first, whatever their
+ * date, and the rest arrive newest first. So an unapproved row from last year
+ * that is not in the Needs Review section (a tracking account's, say) is
+ * loaded long before its neighbours — drawn at its date, it would sit below a
+ * gap, with a figure that does not follow from the row above it. Rows older
+ * than the oldest date-ordered row loaded so far wait until paging reaches
+ * them. Order is preserved, so this works under either date direction.
+ */
+export function withinLedgerFrontier(
+  rows: Transaction[],
+  loaded: Transaction[],
+  hasNextPage: boolean
+): Transaction[] {
+  if (!hasNextPage) return rows
+  let frontier: Transaction | null = null
+  for (const t of loaded) {
+    if (ledgerRank(t) !== ATTENTION_RUNGS) continue
+    if (frontier === null || compareByDateDesc(t, frontier) > 0) frontier = t
+  }
+  if (frontier === null) return []
+  const oldest = frontier
+  return rows.filter((t) => compareByDateDesc(t, oldest) <= 0)
+}
+
+/**
+ * Whether to fetch again without waiting for a scroll: nothing in date order
+ * has arrived yet, so the main list is empty and the virtualizer's
+ * near-the-bottom trigger has no rows to fire from.
+ */
+export function ledgerNeedsMore(loaded: Transaction[], hasNextPage: boolean): boolean {
+  return hasNextPage && !loaded.some((t) => ledgerRank(t) === ATTENTION_RUNGS)
+}
+
+/**
+ * The sort a register actually draws in, and whether its Balance column shows.
+ *
+ * With a running balance the default order is date, newest first — so the
+ * header reads Date ▼, a click flips it, and the next returns to the default.
+ * Any other header hides the column: a running total beside rows in payee
+ * order is arithmetic about nothing. Without one, the store's sort is drawn
+ * as it is, and nothing about today's register changes.
+ */
+export function registerView(
+  ledger: boolean,
+  column: TransactionSortColumn,
+  direction: SortDirection
+): { column: TransactionSortColumn; direction: SortDirection; showsBalance: boolean } {
+  if (!ledger) return { column, direction, showsBalance: false }
+  if (column === 'state') return { column: 'date', direction: 'desc', showsBalance: true }
+  return { column, direction, showsBalance: column === 'date' }
 }
 
 /** The order the register starts in, and the order a third click on a sorted

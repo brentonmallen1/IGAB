@@ -36,6 +36,7 @@ export const SETTINGS_PAGES: Record<SettingsPageId, { path: string; label: strin
 
 export type SettingsSectionId =
   | 'appearance'
+  | 'display'
   | 'budget'
   | 'tags'
   | 'guide'
@@ -99,6 +100,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     group: 'you',
     description: 'How the app looks on this device. Nothing here changes the budget.',
     keywords: 'theme palette dark light font text size',
+  },
+  {
+    id: 'display',
+    label: 'Budget & register',
+    page: 'settings',
+    group: 'you',
+    description: 'How the register draws its rows on this device. Nothing here changes the budget.',
+    keywords: 'running balance register split lines column date order statement',
   },
   {
     id: 'mobile',

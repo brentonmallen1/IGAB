@@ -193,6 +193,11 @@ interface UIState {
   /** The register draws each split's lines under it. Off by default: most
    *  registers want one row per bank line. A standing choice, per device. */
   showSplitLines: boolean
+  /** One account's register draws a Balance column and reads in date order
+   *  (registerOrder.ts `registerView`). Off by default, which leaves the
+   *  register in its state order exactly as it was. Per device, like split
+   *  lines. */
+  showRunningBalance: boolean
 
   toggleGroupExpanded: (groupId: string) => void
   /** Both scoped to the ids on screen, symmetrically: collapse-all used to
@@ -208,6 +213,10 @@ interface UIState {
   toggleSidebarGroup: (groupId: string) => void
   setBudgetRowMode: (mode: BudgetRowMode) => void
   setShowSplitLines: (show: boolean) => void
+  /** Also returns the register to its default sort: the setting changes what
+   *  the default IS, and a column sort left from before would hide the new
+   *  column the moment it was asked for. */
+  setShowRunningBalance: (show: boolean) => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
   selectOnlyCategory: (id: string) => void
   selectGroupCategories: (ids: string[]) => void
@@ -316,6 +325,7 @@ export const useUIStore = create<UIState>()(
       activeChatTab: FIRST_CHAT_TAB.key,
       budgetRowMode: 'expanded',
       showSplitLines: false,
+      showRunningBalance: false,
       selectedCategoryIds: new Set(),
       categoryInspectorOpen: true,
       inspectorUserClosed: false,
@@ -397,6 +407,12 @@ export const useUIStore = create<UIState>()(
       closeMobileInspector: () => set({ mobileInspectorOpen: false }),
       setBudgetRowMode: (mode) => set({ budgetRowMode: mode }),
       setShowSplitLines: (show) => set({ showSplitLines: show }),
+      setShowRunningBalance: (show) =>
+        set({
+          showRunningBalance: show,
+          transactionSortColumn: DEFAULT_TRANSACTION_SORT.column,
+          transactionSortDirection: DEFAULT_TRANSACTION_SORT.direction,
+        }),
 
       toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
         const { selectedCategoryIds, lastSelectedCategoryId } = get()
@@ -600,6 +616,7 @@ export const useUIStore = create<UIState>()(
         budgetRowMode: s.budgetRowMode,
         // So is drawing split lines in the register.
         showSplitLines: s.showSplitLines,
+        showRunningBalance: s.showRunningBalance,
         // A width someone dragged to is a deliberate choice, like a filter.
         sidebarWidth: s.sidebarWidth,
         // The panel being open, and how wide, are standing choices like the
@@ -645,6 +662,7 @@ export const useUIStore = create<UIState>()(
           // Only a real `true` turns it on: anything else stored there (a
           // hand-edited value, a future shape) reads as the default, off.
           showSplitLines: saved.showSplitLines === true,
+          showRunningBalance: saved.showRunningBalance === true,
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
           collapsedGroups: new Set(saved.collapsedGroups ?? []),
           // `?? current.collapsedSections`, not `?? []`: an empty array is a

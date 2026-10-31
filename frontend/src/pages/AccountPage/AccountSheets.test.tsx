@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AccountNoticesSheet } from './AccountNoticesSheet'
 import { AccountToolsSheet } from './AccountToolsSheet'
 import { accountNotices } from './accountNotices'
+import { registerToggles } from '../../components/transactions/TransactionTable/registerToggles'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
@@ -27,6 +28,12 @@ const account = {
 }
 
 function renderTools(over: Partial<Parameters<typeof AccountToolsSheet>[0]> = {}) {
+  const toggleState = {
+    showSplitLines: false,
+    setShowSplitLines: vi.fn(),
+    showRunningBalance: false,
+    setShowRunningBalance: vi.fn(),
+  }
   const props = {
     open: true,
     onClose: vi.fn(),
@@ -44,11 +51,11 @@ function renderTools(over: Partial<Parameters<typeof AccountToolsSheet>[0]> = {}
     scanning: false,
     onEdit: vi.fn(),
     onReconcile: null,
-    splitLines: { show: false, onChange: vi.fn() },
+    toggles: registerToggles(toggleState, false),
     ...over,
   }
   render(<AccountToolsSheet {...props} />)
-  return props
+  return { ...props, toggleState }
 }
 
 describe('AccountToolsSheet', () => {
@@ -83,12 +90,15 @@ describe('AccountToolsSheet', () => {
   })
 
   // Moved here from beside the search box, which on a phone keeps its row.
-  it('toggles split lines in place, without closing', () => {
+  it.each([
+    ['split lines', 'setShowSplitLines'],
+    ['running balance', 'setShowRunningBalance'],
+  ] as const)('toggles %s in place, without closing', (noun, setter) => {
     const props = renderTools()
-    const toggle = screen.getByRole('button', { name: 'Show split lines' })
+    const toggle = screen.getByRole('button', { name: `Show ${noun}` })
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
     fireEvent.click(toggle)
-    expect(props.splitLines.onChange).toHaveBeenCalledWith(true)
+    expect(props.toggleState[setter]).toHaveBeenCalledWith(true)
     expect(props.onClose).not.toHaveBeenCalled()
   })
 

@@ -45,9 +45,9 @@ const FILTERED_LIMIT = 2000
  * was correct and unmarked, so every new filter had to be remembered in two
  * places and the omission would have looked exactly like the intended one.
  *
- * `account_ids` is emitted unconditionally now — the per-account register
- * never sets `accountIds`, so there is nothing to omit, and the endpoint
- * scopes by its path parameter regardless.
+ * `account_ids` is emitted unconditionally — the per-account register never
+ * sets `accountIds` (it is the `account:` search token, all-accounts only), and
+ * `useInfiniteRegister` scopes one account's register by setting it after.
  *
  * `hasActiveFilters` is the third list that has to agree with this one: it
  * picks FILTERED_LIMIT over PAGE_SIZE, so a filter missing from it makes a
@@ -76,56 +76,59 @@ export function transactionFilterParams(filters: TransactionFilters): Record<str
   return params
 }
 
-export function useInfiniteTransactions(
-  accountId: string | null,
-  filters: TransactionFilters = {}
-) {
-  const filtered = hasActiveFilters(filters)
-  const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
-
-  return useInfiniteQuery({
-    queryKey: [ROOT.transactions, accountId, filters],
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, unknown> = { limit, offset: pageParam }
-      Object.assign(params, transactionFilterParams(filters))
-      const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, {
-        params,
-      })
-      return data
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      if (filtered || lastPage.length < limit) return undefined
-      return allPages.flat().length
-    },
-    initialPageParam: 0,
-    enabled: !!accountId,
-    staleTime: 10_000,
-  })
+/**
+ * A register's rows, page by page: one account's (`accountId`) or every
+ * account's (`null`).
+ *
+ * Both read `GET /{budget_id}/transactions`. The per-account register used
+ * `/accounts/{id}/transactions`, a second listing whose filter clause had
+ * drifted from this one's; it is now a view of this one on the server, kept
+ * for API keys, and the register no longer needs it.
+ *
+ * `ledger` is the running-balance register: the server pages in its ledger
+ * order (attention rows first, then date) and sends each row's balance. Only
+ * for one account — a running total across accounts is not a balance of
+ * anything. The order is in the key, so turning it on does not reuse pages
+ * that arrived in the other order.
+ *
+ * The keys stay `[transactions, accountId, …]` and `[allTransactions, budgetId,
+ * …]`: every invalidation in the app addresses those prefixes.
+ */
+const registerKeys = {
+  account: (accountId: string, filters: TransactionFilters, order: string) =>
+    [ROOT.transactions, accountId, filters, order] as const,
+  all: (budgetId: string | null, filters: TransactionFilters) =>
+    [ROOT.allTransactions, budgetId, filters] as const,
 }
 
-/** All-accounts register: infinite listing across every account in the budget.
- * Same filter semantics and register ordering as the per-account listing. */
-export function useInfiniteBudgetTransactions(
+export function useInfiniteRegister(
   budgetId: string | null,
-  filters: TransactionFilters = {}
+  accountId: string | null,
+  filters: TransactionFilters = {},
+  { ledger = false }: { ledger?: boolean } = {}
 ) {
   const filtered = hasActiveFilters(filters)
   const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
+  const order = accountId && ledger ? 'ledger' : 'register'
 
   return useInfiniteQuery({
-    queryKey: [ROOT.allTransactions, budgetId, filters],
+    queryKey: accountId
+      ? registerKeys.account(accountId, filters, order)
+      : registerKeys.all(budgetId, filters),
     queryFn: async ({ pageParam }) => {
-      const params: Record<string, unknown> = { limit, offset: pageParam, order: 'register' }
+      const params: Record<string, unknown> = { limit, offset: pageParam, order }
       Object.assign(params, transactionFilterParams(filters))
+      if (accountId) params.account_ids = accountId
+      if (order === 'ledger') params.running_balance = true
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params }
       )
-      return data.transactions
+      return data
     },
     getNextPageParam: (lastPage, allPages) => {
-      if (filtered || lastPage.length < limit) return undefined
-      return allPages.flat().length
+      if (filtered || lastPage.transactions.length < limit) return undefined
+      return allPages.reduce((n, page) => n + page.transactions.length, 0)
     },
     initialPageParam: 0,
     enabled: !!budgetId,
