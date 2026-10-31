@@ -10,9 +10,11 @@ import { cardEndingNote } from './draftNotes'
 import './CardEndingNotice.css'
 
 /**
- * The card that paid, beside a scan still waiting for review: "this is
- * another account's card" with a move, or "remember this card" for an
- * ending nobody has on file. Silent when the card is this account's own.
+ * The card that paid, beside a scan: "moved here from Checking" when the
+ * worker placed it by its card (a record, said after approval too); and, while
+ * the scan waits for review, "this is another account's card" with a move, or
+ * "remember this card" for an ending nobody has on file. Silent when the card
+ * is this account's own.
  *
  * `canMove` is off inside the transaction editor, which has its own Account
  * field and its own unsaved state — a move committed from under it would be
@@ -31,9 +33,30 @@ export function CardEndingNotice({
   const remember = useCreateCardEnding(budgetId)
   const move = useAccountMove(budgetId)
   const note = cardEndingNote(job)
-  if (!note || !job.needs_review) return null
+  if (!note || (note.kind !== 'switched' && !job.needs_review)) return null
   const names = accountNameMap(accounts)
   const here = names.get(note.hereId) ?? 'this account'
+
+  if (note.kind === 'switched') {
+    const from = names.get(note.fromId) ?? 'another account'
+    return (
+      <div className="card-ending-notice" role="status">
+        <CreditCard size={13} aria-hidden />
+        <span>
+          Moved here from {from}: paid with the card ending {note.last4}, which is on {here}.
+        </span>
+        {canMove && job.needs_review && job.transaction_id && (
+          <button
+            type="button"
+            className="card-ending-notice__action"
+            onClick={() => move({ id: job.transaction_id!, account_id: note.hereId }, note.fromId)}
+          >
+            Move back to {from}
+          </button>
+        )}
+      </div>
+    )
+  }
 
   if (note.kind === 'elsewhere') {
     const owner = names.get(note.ownerId) ?? 'another account'

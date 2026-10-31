@@ -37,6 +37,7 @@ from igab.domain.receipt_fields import (
     STUB_MEMO,
     ExistingRow,
     ReceiptRead,
+    may_file_split,
     receipt_changes,
     writable_fields,
 )
@@ -147,8 +148,9 @@ async def apply_read(
 ) -> Transaction:
     """Write a read onto an existing row, under the one rule in
     `domain.receipt_fields`: `refresh` overwrites what the read resolved,
-    otherwise only what the row is missing is filled. Recorded through
-    TransactionService, so ⌘Z takes it back."""
+    otherwise only what the row is missing is filled. The read's split, when
+    it has one, goes where its category would (`may_file_split`). Recorded
+    through TransactionService, so ⌘Z takes it back."""
     from igab.services.transaction_service import TransactionUpdate
 
     row = ExistingRow(
@@ -182,6 +184,19 @@ async def apply_read(
         memo=draft.memo,
     )
     changes = receipt_changes(row, read, refresh=refresh)
-    if not changes:
-        return txn
-    return await txn_svc.update(job.budget_id, txn.id, TransactionUpdate(**changes))
+    lines = await svcs["drafts"].split_lines(job.budget_id, draft)
+    split = lines is not None and may_file_split(
+        row,
+        refresh=refresh,
+        row_amount=changes.get("amount", txn.amount),
+        split_total=draft.amount,
+    )
+    if split:
+        # The lines carry the categories; the parent takes none.
+        changes.pop("category_id", None)
+    if changes:
+        txn = await txn_svc.update(job.budget_id, txn.id, TransactionUpdate(**changes))
+    if split:
+        assert lines is not None
+        txn = await txn_svc.convert_to_split(job.budget_id, txn.id, lines)
+    return txn

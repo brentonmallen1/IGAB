@@ -22,7 +22,7 @@ from igab.domain.card_endings import card_last4
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.splits import split_balances
 from igab.services.category_matching import Candidate, canonical_label, match_category
-from igab.services.transaction_service import TransactionCreate, TransactionService
+from igab.services.transaction_service import SplitSpec, TransactionCreate, TransactionService
 
 _CENT = Decimal("0.01")
 #: How far a model's own arithmetic may be off before we refuse its split.
@@ -120,8 +120,9 @@ class AIDraft:
     category_name: str | None
     memo: str | None
     confidence: float
-    # Only present when every line resolved cleanly and sums matched; never
-    # auto-applied — offered to the user in the review modal.
+    # Only present when every line resolved cleanly and sums matched. Filed
+    # as the row's split when the scan lands (`AIDraftService.split_lines`),
+    # still unapproved, so the review is where a person checks it.
     suggested_split: list[SplitLine] | None
     raw: dict = field(default_factory=dict)
     #: The category the model NAMED when it named one this budget could not
@@ -341,6 +342,24 @@ class AIDraftService:
         matched = match_category(name, [(cat.name, group) for cat, group in pairs])
         return pairs[matched][0].id if matched is not None else None
 
+    async def split_lines(self, budget_id: uuid.UUID, draft: AIDraft) -> list[SplitSpec] | None:
+        """The draft's split as lines to file, or None when there is none to
+        file: no split, or a line whose category no longer resolves — renamed
+        or archived between the read and now. A split is filed whole or not
+        at all; half of one would be a row the receipt never described.
+
+        `_parse_split` already held the lines to the ledger's exact sum, so
+        `create_split` / `convert_to_split` accept them as they are."""
+        if not draft.suggested_split:
+            return None
+        lines: list[SplitSpec] = []
+        for line in draft.suggested_split:
+            category_id = await self.resolve_category(budget_id, line.category_name)
+            if category_id is None:
+                return None
+            lines.append(SplitSpec(amount=line.amount, category_id=category_id))
+        return lines
+
     async def create_transaction(
         self,
         budget_id: uuid.UUID,
@@ -349,6 +368,31 @@ class AIDraftService:
         *,
         created_via: str,
     ) -> Transaction:
+        lines = await self.split_lines(budget_id, draft)
+        if lines is not None:
+            header = TransactionCreate(
+                account_id=account_id,
+                date=draft.date,
+                amount=draft.amount,
+                payee_name=draft.payee_name,
+                memo=draft.memo,
+                approved=False,
+                created_via=created_via,
+                auto_categorize=False,
+            )
+            return await self.transactions.create_split(
+                budget_id,
+                header,
+                [
+                    TransactionCreate(
+                        account_id=account_id,
+                        date=draft.date,
+                        amount=line.amount,
+                        category_id=line.category_id,
+                    )
+                    for line in lines
+                ],
+            )
         category_id = await self.resolve_category(budget_id, draft.category_name)
         data = TransactionCreate(
             account_id=account_id,

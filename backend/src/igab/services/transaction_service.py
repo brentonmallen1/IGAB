@@ -428,12 +428,16 @@ class TransactionService:
         # categorization in create() may have applied a payee default, so
         # force category back to NULL alongside the is_split flag.
         header.category_id = None
+        # Who acted, from where the row came from — as `create` records it. A
+        # receipt scan's split recorded as "manual" would be the next bare
+        # ⌘Z, taking back a row the person never typed.
+        source = source_for(header.created_via)
         async with self._mutation():
             parent = await self.create(budget_id, header, record=False)
             parent = await self.transaction_repo.update(parent.id, is_split=True, category_id=None)
             # Recorded after the is_split flip so the snapshot holds final state.
-            await self._record_txn(parent, "create", refresh=False)
-            await self._apply_split_legs(budget_id, parent, specs, existing=[])
+            await self._record_txn(parent, "create", refresh=False, source=source)
+            await self._apply_split_legs(budget_id, parent, specs, existing=[], source=source)
         await self.transaction_repo.refresh(parent)
         return parent
 
@@ -572,6 +576,7 @@ class TransactionService:
         specs: list[SplitSpec],
         *,
         existing: list[Transaction],
+        source: str = "manual",
     ) -> list[Transaction]:
         """The one place a split's lines are written.
 
@@ -584,7 +589,8 @@ class TransactionService:
         parent and remembered so undo puts them back. Lines list oldest first;
         lines written in one request share a created_at and order by id.
         Three creation-time copies of the mirror rule used to exist; this is
-        the one. Records every step; callers own the batch.
+        the one. Records every step, as `source` (who acted); callers own the
+        batch.
         """
         require_split_balances(parent.amount, [s.amount for s in specs])
         existing_by_id = {child.id: child for child in existing}
@@ -604,7 +610,7 @@ class TransactionService:
                     payee = await self._resolve_payee(budget_id, spec.payee_id, spec.payee_name)
                     changes["payee_id"] = payee.id if payee else None
                 updated = await self.transaction_repo.update(child.id, **changes)
-                await self._record_txn(updated, "update", before=child_before)
+                await self._record_txn(updated, "update", before=child_before, source=source)
                 kept.append(updated)
             else:
                 child = await self.create(
@@ -624,7 +630,7 @@ class TransactionService:
                     ),
                     record=False,
                 )
-                await self._record_txn(child, "create")
+                await self._record_txn(child, "create", source=source)
                 kept.append(child)
 
         kept_ids = {child.id for child in kept}

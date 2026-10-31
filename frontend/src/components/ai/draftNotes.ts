@@ -64,13 +64,17 @@ export function unresolvedCategoryNote(draft: AIJobDraft | undefined): string | 
 }
 
 /** What the receipt's card ending says about the account a scan sits in:
+ *  - `switched` — the scan was submitted against another account and the
+ *    worker moved it here, to the account the card is on file for. A record,
+ *    so it is said after approval too;
  *  - `elsewhere` — the card that paid is on file for a different account;
  *  - `unknown` — the receipt printed an ending nobody has on file, so the
  *    review offers to remember it for this account.
  *  Null when the receipt showed no card, the scan has no account yet, or the
  *  ending is this account's own. Which account owns an ending is served
- *  (`card_ending_account_id`); this only compares two served ids. */
+ *  (`card_ending_account_id`); this only compares served ids. */
 export type CardEndingNote =
+  | { kind: 'switched'; last4: string; fromId: string; hereId: string }
   | { kind: 'elsewhere'; last4: string; ownerId: string; hereId: string }
   | { kind: 'unknown'; last4: string; hereId: string }
 
@@ -78,6 +82,12 @@ export function cardEndingNote(job: AIJob): CardEndingNote | null {
   const last4 = job.result?.draft?.card_last4
   const hereId = job.transaction_account_id
   if (!last4 || !hereId) return null
+  // Only while the row is still where the switch put it: moved back by hand,
+  // the row is somewhere the card is not, and `elsewhere` says so.
+  const switched = job.result?.account_switched
+  if (switched && switched.to_account_id === hereId) {
+    return { kind: 'switched', last4, fromId: switched.from_account_id, hereId }
+  }
   const ownerId = job.card_ending_account_id
   if (!ownerId) return { kind: 'unknown', last4, hereId }
   if (ownerId !== hereId) return { kind: 'elsewhere', last4, ownerId, hereId }

@@ -61,6 +61,29 @@ describe('cardEndingNote', () => {
     expect(cardEndingNote(job({ card_ending_account_id: 'sapphire' }))).toBeNull()
   })
 
+  const switched = {
+    from_account_id: 'harborstone',
+    to_account_id: 'sapphire',
+    card_last4: '4417',
+  }
+
+  it('records a scan the worker moved here by its card', () => {
+    const moved = job({ card_ending_account_id: 'sapphire' })
+    moved.result = { ...moved.result, account_switched: switched }
+    expect(cardEndingNote(moved)).toEqual({
+      kind: 'switched',
+      last4: '4417',
+      fromId: 'harborstone',
+      hereId: 'sapphire',
+    })
+  })
+
+  it('stops saying it was moved here once the row is moved back by hand', () => {
+    const back = job({ transaction_account_id: 'harborstone', card_ending_account_id: 'sapphire' })
+    back.result = { ...back.result, account_switched: switched }
+    expect(cardEndingNote(back)?.kind).toBe('elsewhere')
+  })
+
   it('is silent with no card on the receipt, or no account to compare with', () => {
     expect(cardEndingNote(job({}, null))).toBeNull()
     expect(cardEndingNote(job({ transaction_account_id: null }))).toBeNull()

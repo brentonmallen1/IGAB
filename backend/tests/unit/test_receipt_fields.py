@@ -16,6 +16,7 @@ from igab.domain.receipt_fields import (
     FAILURE_STUB_MEMO,
     ExistingRow,
     ReceiptRead,
+    may_file_split,
     receipt_changes,
     writable_fields,
 )
@@ -131,3 +132,39 @@ class TestFailureStubMemo:
     def test_a_users_memo_is_not_cleared(self):
         changes = receipt_changes(OWN, replace(READ, memo=None), refresh=True)
         assert "memo" not in changes
+
+
+class TestTheReadsSplit:
+    """The model's split is its category, itemised: it goes where the
+    category may, and only when its lines sum to the row's amount."""
+
+    def split(self, row, *, refresh, row_amount="-44.00", total="-44.00"):
+        return may_file_split(
+            row, refresh=refresh, row_amount=Decimal(row_amount), split_total=Decimal(total)
+        )
+
+    def test_it_fills_a_bank_row_with_no_category(self):
+        assert self.split(replace(BANK, has_category=False), refresh=False)
+
+    def test_it_never_replaces_a_category_a_row_already_has(self):
+        assert not self.split(BANK, refresh=False)
+
+    def test_a_fresh_read_splits_the_scans_own_row(self):
+        assert self.split(OWN, refresh=True)
+
+    def test_it_leaves_a_split_and_a_transfer_alone(self):
+        assert not self.split(replace(OWN, is_split=True), refresh=True)
+        assert not self.split(replace(OWN, is_transfer=True), refresh=True)
+
+    def test_it_refuses_lines_that_sum_to_something_else(self):
+        # A confirmed row keeps its amount, so a re-read of a different total
+        # cannot itemise it.
+        confirmed = replace(OWN, confirmed=True, has_category=False)
+        assert not self.split(confirmed, refresh=True, row_amount="-40.00")
+
+    def test_it_goes_exactly_where_the_category_would(self):
+        for row in (OWN, BANK, replace(BANK, has_category=False), replace(OWN, is_split=True)):
+            for refresh in (True, False):
+                assert self.split(row, refresh=refresh) == (
+                    "category_id" in writable_fields(row, refresh=refresh)
+                )

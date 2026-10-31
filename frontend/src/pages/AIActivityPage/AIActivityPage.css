@@ -182,6 +182,52 @@
   color: var(--text-secondary);
 }
 
+/* A split under the card: its envelopes and amounts, so a split the scan filed
+   is checked without opening the row. A heading, then the lines as compact
+   name/amount pairs that wrap. */
+.ai-activity__split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--spacing-sm);
+  margin-top: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.ai-activity__split-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+/* Read but not filed: the model's, so set apart like the model's pick. */
+.ai-activity__split--suggested .ai-activity__split-head {
+  font-weight: 400;
+  font-style: italic;
+}
+
+.ai-activity__split-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-activity__split-line {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-activity__split-name {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
 /* Raw typed/dictated input for text entries — the source the draft came from */
 .ai-activity__source {
   margin-top: 2px;

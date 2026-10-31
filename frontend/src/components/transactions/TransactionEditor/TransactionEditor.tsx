@@ -412,8 +412,10 @@ export function TransactionEditor({
     else setActiveTab(tab)
   }
 
-  // AI-suggested split from receipt line items — offered, never auto-applied.
-  // Each line's label is read back against the categories a line may be
+  // AI-suggested split from receipt line items. The worker files it when the
+  // scan lands wherever the row's category could be set (receipt_fields
+  // `may_file_split`); this offer is for the rows it did not reach — one that
+  // already had a category. Each line's label is read back against the categories a line may be
   // filed to (the list the picker offers); a category renamed or archived
   // since leaves that line's picker empty for the user to fill. The bare-name
   // comparison this used missed every group-qualified label ("Gifts

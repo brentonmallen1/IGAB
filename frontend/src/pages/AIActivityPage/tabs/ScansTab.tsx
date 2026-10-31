@@ -26,9 +26,12 @@ import {
   type AIJob,
   type AIJobStatus,
 } from '../../../api/aiJobs'
-import { useBulkApprove } from '../../../api/transactions'
+import { useBulkApprove, useSplitLinesFor } from '../../../api/transactions'
+import type { Transaction } from '../../../types'
 import { JobAccount } from './JobAccount'
 import { JobCategory } from './JobCategory'
+import { JobSplit } from './JobSplit'
+import { splitParentIds } from './jobSplitView'
 import { fetchAttachmentBlob, useAttachmentUrl } from '../../../api/attachments'
 import { AttachmentLightbox } from '../../../components/attachments/Lightbox'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -103,7 +106,29 @@ function JobThumbnail({ attachmentId, onOpen }: { attachmentId: string; onOpen: 
   )
 }
 
-function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
+/**
+ * The lines of every split row among a list's jobs, in one request — the
+ * register's own loader, keyed on the list's freshness so an edit that
+ * refreshes the list refreshes its lines.
+ */
+function useJobSplitLines(
+  budgetId: string,
+  jobs: readonly AIJob[] | undefined,
+  updatedAt: number
+): Record<string, Transaction[]> | undefined {
+  const ids = useMemo(() => splitParentIds(jobs ?? []), [jobs])
+  return useSplitLinesFor(budgetId, ids, true, updatedAt).data
+}
+
+function JobRow({
+  job,
+  budgetId,
+  splitLines,
+}: {
+  job: AIJob
+  budgetId: string
+  splitLines: readonly Transaction[] | undefined
+}) {
   const navigate = useNavigate()
   const { formatMoney, formatDateTime } = useFormatters()
   const reprocess = useReprocessAIJob(budgetId)
@@ -241,6 +266,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             </span>
           )}
         </div>
+        <JobSplit job={job} budgetId={budgetId} lines={splitLines} />
         {typeof reason === 'string' && reason && (
           <div
             className="ai-activity__reason"
@@ -394,8 +420,12 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
  * nav badge counts — so this list and that number are one population.
  */
 function NeedsApprovalSection({ budgetId }: { budgetId: string }) {
-  const { data, isLoading } = useAIJobs(budgetId, { needsReview: true, limit: 200 })
+  const { data, isLoading, dataUpdatedAt } = useAIJobs(budgetId, {
+    needsReview: true,
+    limit: 200,
+  })
   const { data: counts } = useAIJobCounts(budgetId)
+  const splitLines = useJobSplitLines(budgetId, data?.jobs, dataUpdatedAt)
 
   // A receipt waiting for an account first: nothing else here can happen
   // until it has one, and it is the one thing on the list not yet in the
@@ -428,7 +458,12 @@ function NeedsApprovalSection({ budgetId }: { budgetId: string }) {
       </h2>
       <div className="ai-activity__list">
         {jobs.map((job) => (
-          <JobRow key={job.id} job={job} budgetId={budgetId} />
+          <JobRow
+            key={job.id}
+            job={job}
+            budgetId={budgetId}
+            splitLines={job.transaction_id ? splitLines?.[job.transaction_id] : undefined}
+          />
         ))}
       </div>
       {orphaned > 0 && (
@@ -449,7 +484,7 @@ export function ScansTab({ budgetId }: { budgetId: string }) {
 
   // History is everything NOT waiting on the user, so a job appears in exactly
   // one of the two sections.
-  const { data, isLoading } = useAIJobs(budgetId, {
+  const { data, isLoading, dataUpdatedAt } = useAIJobs(budgetId, {
     status: statusFilter || undefined,
     needsReview: false,
     limit: PAGE_SIZE,
@@ -458,6 +493,7 @@ export function ScansTab({ budgetId }: { budgetId: string }) {
 
   const jobs = useMemo(() => data?.jobs ?? [], [data])
   const total = data?.total_count ?? 0
+  const splitLines = useJobSplitLines(budgetId, historyOpen ? jobs : undefined, dataUpdatedAt)
 
   return (
     <>
@@ -508,7 +544,12 @@ export function ScansTab({ budgetId }: { budgetId: string }) {
             ) : (
               <div className="ai-activity__list scroll-fill">
                 {jobs.map((job) => (
-                  <JobRow key={job.id} job={job} budgetId={budgetId} />
+                  <JobRow
+                    key={job.id}
+                    job={job}
+                    budgetId={budgetId}
+                    splitLines={job.transaction_id ? splitLines?.[job.transaction_id] : undefined}
+                  />
                 ))}
               </div>
             )}

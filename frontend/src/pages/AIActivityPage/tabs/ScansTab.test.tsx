@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
   history: [] as unknown[],
   categories: [] as unknown[],
   groups: [] as unknown[],
+  splitLines: {} as Record<string, unknown[]>,
+  splitAsked: [] as string[][],
 }))
 
 vi.mock('../../../api/aiJobs', () => ({
@@ -37,6 +39,10 @@ vi.mock('../../../api/aiJobs', () => ({
 vi.mock('../../../api/transactions', () => ({
   useBulkApprove: () => ({ mutateAsync: h.approve, isPending: false }),
   useUpdateTransaction: () => ({ mutate: h.update, isPending: false }),
+  useSplitLinesFor: (_budgetId: string, ids: string[]) => {
+    h.splitAsked.push([...ids])
+    return { data: h.splitLines }
+  },
 }))
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: h.categories }),
@@ -230,5 +236,51 @@ describe('changing it while the scan waits', () => {
     const options = screen.getAllByText('Dining Out')
     fireEvent.mouseDown(options[options.length - 1])
     expect(h.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('a scan’s split', () => {
+  beforeEach(() => {
+    h.categories = CATEGORIES
+    h.groups = GROUPS
+    h.splitAsked = []
+  })
+
+  it('lists the lines of a split row as they stand, from one request for the list', () => {
+    h.splitLines = {
+      'txn-1': [
+        { id: 'l1', category_id: 'groceries', amount: -4.5 },
+        { id: 'l2', category_id: 'dining', amount: -8 },
+      ],
+    }
+    renderTab({ waiting: [scan({ transaction_is_split: true, transaction_category_id: null })] })
+    const split = row().querySelector('.ai-activity__split') as HTMLElement
+    expect(split.className).toContain('ai-activity__split--filed')
+    expect(within(split).getByText('Split 2 ways')).toBeTruthy()
+    expect(within(split).getByText('Groceries')).toBeTruthy()
+    expect(within(split).getByText('$8.00')).toBeTruthy()
+    expect(h.splitAsked).toContainEqual(['txn-1'])
+  })
+
+  it('shows a split the model read but the row did not take', () => {
+    h.splitLines = {}
+    const job = scan()
+    job.result = {
+      ...job.result,
+      suggested_split: [
+        { category: 'Groceries', amount: '-4.50' },
+        { category: 'Dining Out', amount: '-8.00' },
+      ],
+    }
+    renderTab({ waiting: [job] })
+    const split = row().querySelector('.ai-activity__split') as HTMLElement
+    expect(within(split).getByText('AI suggested a split, not applied')).toBeTruthy()
+    expect(within(split).getByText('Dining Out')).toBeTruthy()
+  })
+
+  it('says nothing about a split on a row that has none', () => {
+    h.splitLines = {}
+    renderTab({ waiting: [scan()] })
+    expect(row().querySelector('.ai-activity__split')).toBeNull()
   })
 })

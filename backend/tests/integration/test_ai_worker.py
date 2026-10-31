@@ -81,6 +81,9 @@ GOOD_EXTRACTION = {
     ],
 }
 
+#: The same read with no split: the row it files is in one category.
+UNSPLIT_EXTRACTION = {**GOOD_EXTRACTION, "suggested_split": []}
+
 
 def tiny_jpeg() -> bytes:
     buf = BytesIO()
@@ -162,7 +165,9 @@ class TestReceiptSuccess:
         assert txn.amount == Decimal("-42.50")
         assert txn.date == date(2026, 8, 1)
         assert txn.payee_id is not None
-        assert txn.category_id is not None
+        # The read's split checked out, so the row is filed split; its lines
+        # are test_receipt_splits.py's subject.
+        assert (txn.is_split, txn.category_id) == (True, None)
 
         attachment = await db_session.get(TransactionAttachment, job.attachment_id)
         assert attachment is not None
@@ -660,7 +665,13 @@ class TestStubRefillOnRetry:
 
 
 class TestReprocess:
-    async def _process_to_done(self, db_session, attachments_dir, budget, account) -> AIJob:
+    async def _process_to_done(
+        self, db_session, attachments_dir, budget, account, mock_extraction=None
+    ) -> AIJob:
+        # With the mock, the first read carries no split, so the row it files
+        # is in one category — what the single-category refresh cases start from.
+        if mock_extraction is not None:
+            mock_extraction.return_value = UNSPLIT_EXTRACTION
         job = await _make_job(db_session, attachments_dir, budget, account)
         await process_one_job(db_session, job)
         assert job.status == "done"
@@ -749,12 +760,16 @@ class TestReprocess:
         # whatever the new read could not resolve — a second, worse read
         # blanked what the first had filed.
         budget, account = await _setup(db_session, attachments_dir)
-        job = await self._process_to_done(db_session, attachments_dir, budget, account)
+        job = await self._process_to_done(
+            db_session, attachments_dir, budget, account, mock_extraction
+        )
         txn = await db_session.get(Transaction, job.transaction_id)
         payee_id, category_id = txn.payee_id, txn.category_id
         assert payee_id is not None and category_id is not None
 
-        await self._reprocess_reading(db_session, mock_extraction, job, total=45.00, **unread)
+        await self._reprocess_reading(
+            db_session, mock_extraction, job, total=45.00, suggested_split=[], **unread
+        )
 
         await db_session.refresh(txn)
         assert (txn.payee_id, txn.category_id) == (payee_id, category_id)
@@ -774,7 +789,7 @@ class TestReprocess:
             db_session, budget, card, "-42.50", date(2026, 8, 1), approved=False
         )
         mock_extraction.return_value = {
-            **GOOD_EXTRACTION,
+            **UNSPLIT_EXTRACTION,
             "category": "Pet Supplies",
             "card_last4": "4417",
         }
@@ -788,7 +803,13 @@ class TestReprocess:
         rows_before = await _row_count(db_session, budget)
 
         await self._reprocess_reading(
-            db_session, mock_extraction, job, total=44.00, date="2026-08-03", card_last4="4417"
+            db_session,
+            mock_extraction,
+            job,
+            total=44.00,
+            date="2026-08-03",
+            card_last4="4417",
+            suggested_split=[],
         )
 
         assert job.transaction_id == bank_row.id
@@ -806,7 +827,9 @@ class TestReprocess:
         from igab.services.transaction_service import SplitSpec, build_transaction_service
 
         budget, account = await _setup(db_session, attachments_dir)
-        job = await self._process_to_done(db_session, attachments_dir, budget, account)
+        job = await self._process_to_done(
+            db_session, attachments_dir, budget, account, mock_extraction
+        )
         groceries = await _category_named(db_session, budget, "Groceries")
         household = await _category_named(db_session, budget, "Household")
         svc = build_transaction_service(db_session)
