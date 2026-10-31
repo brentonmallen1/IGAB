@@ -18,7 +18,7 @@ import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
-import { availableTone } from '../../../utils/categoryBalances'
+import { availableTone, figureClass, signTone } from '../../../utils/figureTone'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
@@ -495,7 +495,7 @@ export const CategoryRow = memo(function CategoryRow({
             {activity === 0 ? (
               <span className="category-row__zero">—</span>
             ) : (
-              <span className={activity < 0 ? 'negative' : 'positive'}>
+              <span className={figureClass('flow', signTone(activity))}>
                 {formatMoney(activity)}
               </span>
             )}
@@ -503,7 +503,7 @@ export const CategoryRow = memo(function CategoryRow({
         </div>
 
         <div
-          className={`category-row__available budget-grid__available tabular ${availableClass} category-row__available--clickable`}
+          className={`category-row__available budget-grid__available tabular ${figureClass('balance', availableClass)} category-row__available--clickable`}
           onClick={(e) => {
             e.stopPropagation()
             if (isMobile) {

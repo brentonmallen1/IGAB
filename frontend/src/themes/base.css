@@ -719,18 +719,113 @@ a {
   box-shadow: var(--glow-accent);
 }
 
+/* ── Budget figures ───────────────────────────────────────────────────────
+   The sign colours, and the setting that quiets them.
+
+   The bare tone classes are every amount's: account balances, the sidebar,
+   scheduled rows and the budget all wear them. A budget figure carries two
+   more (figureTone.ts `figureClass`): `budget-figure`, and its role —
+   `--flow` for money that moved (Activity, an assignment's delta), `--balance`
+   for money that is there (Available, Ready to Assign, a card's Set aside).
+   The role rules below colour through variables, and `data-budget-colors`
+   (appStore, on <html>) re-points them:
+
+     full       flows and balances painted (the default)
+     available  balances only — a flow draws in its row's own text colour
+     none       nothing painted; an overspent envelope keeps its weight and
+                its left edge, which turns neutral
+
+   Variables, not ancestor selectors, so a mode nests: the Settings preview
+   draws each mode inside a page set to another, and the nearest
+   `data-budget-colors` wins because custom properties inherit from it. An
+   ancestor selector would match <html> inside every preview.
+
+   Zero and on-card red are muted in every mode — they are not hue signals.
+   Account balances and the sidebar carry no role, so no mode touches them. */
+.positive {
+  color: var(--color-positive);
+}
+
+.negative {
+  color: var(--color-negative);
+}
+
+.zero {
+  color: var(--text-muted);
+}
+
+/* Red that was swiped on a card and rides there as debt. Still negative, still
+   reads as money owed — but not the alarm colour, because nothing is owed that
+   the card was not already owed and Ready to Assign is never charged for it.
+   The same restraint the cards section gives Uncovered, which is this money
+   seen from the other side. */
+.negative-on-card {
+  color: var(--text-secondary);
+}
+
+:root,
+[data-budget-colors] {
+  --figure-flow-positive: var(--color-positive);
+  --figure-flow-negative: var(--color-negative);
+  --figure-flow-glow-positive: var(--glow-text-positive);
+  --figure-flow-glow-negative: var(--glow-text-negative);
+  --figure-balance-positive: var(--color-positive);
+  --figure-balance-negative: var(--color-negative);
+  --figure-balance-glow-positive: var(--glow-text-positive);
+  --figure-balance-glow-negative: var(--glow-text-negative);
+  --budget-overspent-marker: var(--color-negative);
+}
+
+[data-budget-colors="available"] {
+  --figure-flow-positive: currentColor;
+  --figure-flow-negative: currentColor;
+  --figure-flow-glow-positive: none;
+  --figure-flow-glow-negative: none;
+}
+
+[data-budget-colors="none"] {
+  --figure-flow-positive: currentColor;
+  --figure-flow-negative: currentColor;
+  --figure-flow-glow-positive: none;
+  --figure-flow-glow-negative: none;
+  --figure-balance-positive: currentColor;
+  --figure-balance-negative: currentColor;
+  --figure-balance-glow-positive: none;
+  --figure-balance-glow-negative: none;
+  --budget-overspent-marker: var(--text-secondary);
+}
+
+.budget-figure--flow.positive {
+  color: var(--figure-flow-positive);
+  text-shadow: var(--figure-flow-glow-positive);
+}
+
+.budget-figure--flow.negative {
+  color: var(--figure-flow-negative);
+  text-shadow: var(--figure-flow-glow-negative);
+}
+
+.budget-figure--balance.positive {
+  color: var(--figure-balance-positive);
+  text-shadow: var(--figure-balance-glow-positive);
+}
+
+.budget-figure--balance.negative {
+  color: var(--figure-balance-negative);
+  text-shadow: var(--figure-balance-glow-negative);
+}
+
 /* Amount text. 168 rules in this app colour text positive/negative, and only
    ~50 are amounts. The rest are error messages, danger button labels, status
    icons and verdicts — a glowing "Password incorrect" is exactly the wrong
    outcome, so the EXCLUSION is the design here, not an oversight.
 
-   Two buckets. Most amounts are `<block>.positive` / `<block>.negative`
-   compounds over the bare global classes declared in CategoryRow.css and
-   ScheduledTransactionsPage.css, so matching the bare class covers all of
-   them at once — sidebar totals, group available, TBA, category activity,
-   month summary, available breakdown, the multi-month grid, the selection
-   action bar and the scheduled register. Every use of the bare class in this
-   app is an amount; nothing else borrows it.
+   Two buckets. Most amounts wear the bare global classes declared above
+   ("Budget figures"), so matching the bare class covers all of them at once —
+   sidebar totals, account balances, the selection action bar, the scheduled
+   register, and every budget figure (whose role rules above re-point the glow
+   through the colour setting). Every use of the bare class in this app is an
+   amount; nothing else borrows it.
 
    The second bucket is the amounts that named their own sign modifier instead
    (--pos/--neg, --income/--expense, or a sign-fixed class). Those have to be
@@ -749,7 +844,6 @@ a {
 .ddp__amount--pos,
 .timeline__amount--income,
 .projection-event__amount--positive,
-.assign-preview-modal__delta--positive,
 /* Interest saved and months shaved off — a gain, and it renders in
    --color-positive. It was in the NEGATIVE list under its old name, so in
    every glow theme a green figure carried a red halo. */
@@ -766,8 +860,6 @@ a {
 .ddp__amount--neg,
 .timeline__amount--expense,
 .projection-event__amount,
-.assign-preview-modal__delta--negative,
-.cover-modal__overspent,
 .liability-card__balance,
 .amort-table__interest,
 .anomaly-card__actual--high {

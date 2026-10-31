@@ -2,6 +2,7 @@ import type { CardStatus } from '../../../types'
 import type { CardTimelineMonth } from '../../../api/budgets'
 import { dueInPhrase, reminderWords, type CardDueReminder } from '../../../utils/paymentDue'
 import { cardCoverage } from '../../../utils/cardCoverage'
+import { signTone, type Tone } from '../../../utils/figureTone'
 
 /**
  * What a card's row says about itself, decided once and away from the DOM.
@@ -15,11 +16,6 @@ import { cardCoverage } from '../../../utils/cardCoverage'
  */
 
 type Money = (n: number) => string
-
-/** How a card's Set aside pill is coloured: red is overspent, green is
- *  money waiting, grey is nothing either way. The same three a spending
- *  envelope's Available uses, so a card reads like any envelope. */
-export type PillTone = 'negative' | 'positive' | 'zero'
 
 /** Why a card's line carries a dot: it needs you. */
 export type LineMark = 'overspent' | 'past-due' | 'to-file' | 'not-covered'
@@ -88,7 +84,8 @@ export interface CardLine {
   word: string
   /** Set only when there is something to act on this month. */
   mark: LineMark | null
-  tone: PillTone
+  /** The Set aside pill's tone (figureTone.ts `signTone`). */
+  tone: Tone
   /** What the card owes, drawn beside the Set aside pill — a folded line
    *  that showed only the reserve left the debt it stands behind unsaid. */
   owed: number
@@ -116,7 +113,10 @@ export function cardLine(
 ): CardLine {
   const { owed, share } = cardCoverage(card)
   const figures = { owed, coveredShare: share }
-  const tone: PillTone = card.set_aside < 0 ? 'negative' : card.set_aside > 0 ? 'positive' : 'zero'
+  // How the Set aside pill is coloured: red is overspent, green is money
+  // waiting, grey is nothing either way — sign alone, as a spending
+  // envelope's Available reads, so a card reads like any envelope.
+  const tone = signTone(card.set_aside)
   const said = (word: string, mark: LineMark | null): CardLine => ({ word, mark, tone, ...figures })
   if (card.set_aside < 0) return said('overspent', 'overspent')
   if (toCategorize > 0) {

@@ -9,7 +9,13 @@ function bal(assigned: number, activity: number, available: number): CategoryBal
 
 describe('sumBalances', () => {
   it('is all zeroes for an empty set', () => {
-    expect(sumBalances([])).toEqual({ assigned: 0, activity: 0, available: 0, carriedOver: 0 })
+    expect(sumBalances([])).toEqual({
+      assigned: 0,
+      activity: 0,
+      available: 0,
+      carriedOver: 0,
+      credit_overspent: 0,
+    })
   })
 
   it('carries nothing when available is exactly this month', () => {
@@ -28,7 +34,13 @@ describe('sumBalances', () => {
 
   it('sums across categories before inverting', () => {
     const totals = sumBalances([bal(100, -30, 120), bal(50, -10, 40)])
-    expect(totals).toEqual({ assigned: 150, activity: -40, available: 160, carriedOver: 50 })
+    expect(totals).toEqual({
+      assigned: 150,
+      activity: -40,
+      available: 160,
+      carriedOver: 50,
+      credit_overspent: 0,
+    })
   })
 
   it('leaves an income row out entirely — its activity is income, not spending', () => {
@@ -38,7 +50,14 @@ describe('sumBalances', () => {
       activity: -30,
       available: 120,
       carriedOver: 50,
+      credit_overspent: 0,
     })
+  })
+
+  it('sums the card part of the red, so a total can read calm', () => {
+    const onCard = { ...bal(0, -42, -42), credit_overspent: 42 }
+    const cash = { ...bal(0, -8, -8), credit_overspent: 0 }
+    expect(sumBalances([onCard, cash]).credit_overspent).toBe(42)
   })
 
   it('sums the numbers the API now actually sends', () => {

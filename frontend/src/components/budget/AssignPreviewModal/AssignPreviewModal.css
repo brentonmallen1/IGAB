@@ -6,13 +6,7 @@
   --dialog-w: 560px;
 }
 
-.assign-preview-modal__delta--positive {
-  color: var(--color-positive);
-  font-weight: 500;
-}
-
-.assign-preview-modal__delta--negative {
-  color: var(--color-negative);
+.assign-preview-modal__delta {
   font-weight: 500;
 }
 

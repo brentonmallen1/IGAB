@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useImportHistoryMonth } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { formatMonth } from '../../../utils/dates'
+import { alarmOnly, figureClass, signTone } from '../../../utils/figureTone'
 import { Surface } from '../../common/Surface/Surface'
 import { groupImportHistory } from './importHistoryGroups'
 import './ImportHistoryView.css'
@@ -73,11 +74,7 @@ export function ImportHistoryView({ budgetId, month, importMonth }: Props) {
                     <td className="import-history__num">{formatMoney(row.assigned)}</td>
                     <td className="import-history__num">{formatMoneyOrDash(row.activity)}</td>
                     <td
-                      className={`import-history__num${
-                        row.available !== null && row.available < 0
-                          ? ' import-history__num--negative'
-                          : ''
-                      }`}
+                      className={`import-history__num ${figureClass('balance', alarmOnly(signTone(row.available ?? 0)))}`}
                     >
                       {formatMoneyOrDash(row.available)}
                     </td>

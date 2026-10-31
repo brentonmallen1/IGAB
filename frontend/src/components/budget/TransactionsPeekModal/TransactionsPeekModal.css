@@ -158,14 +158,6 @@
   white-space: nowrap;
 }
 
-.category-txns__amount.negative {
-  color: var(--color-negative);
-}
-
-.category-txns__amount.positive {
-  color: var(--color-positive);
-}
-
 .category-txns__footer {
   display: flex;
   align-items: center;

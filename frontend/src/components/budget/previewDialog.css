@@ -75,14 +75,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.preview-dialog__tba-value.positive {
-  color: var(--color-positive);
-}
-
-.preview-dialog__tba-value.negative {
-  color: var(--color-negative);
-}
-
 /* A phone's footer cannot hold the summary and a "Cover — $1,234.00" button
    on one line; the buttons wrap below it and stay at the end. */
 @media (max-width: 768px) {

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
 import { currentMonthStart } from '../utils/dates'
+import { normalizeBudgetColorMode, type BudgetColorMode } from '../utils/figureTone'
 
 export type Theme =
   | 'dark'
@@ -196,6 +197,9 @@ interface AppState {
   privacyMode: boolean
   /** Device-local diagnostic: draw the viewport ruler over every page (see ViewportRuler) */
   viewportRulerOn: boolean
+  /** Device-local: which budget figures are coloured (figureTone.ts
+   *  `BudgetColorMode`), applied as `data-budget-colors` on <html>. */
+  budgetColors: BudgetColorMode
 
   setTheme: (theme: Theme) => void
   toggleThemeMode: () => void
@@ -211,6 +215,7 @@ interface AppState {
   setLocationEnabled: (val: boolean) => void
   togglePrivacyMode: () => void
   setViewportRuler: (on: boolean) => void
+  setBudgetColors: (mode: BudgetColorMode) => void
 }
 
 /** The earliest month the budget page can show: the first month of YNAB's
@@ -237,6 +242,7 @@ export const useAppStore = create<AppState>()(
       locationEnabled: false,
       privacyMode: false,
       viewportRulerOn: false,
+      budgetColors: 'full',
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)
@@ -252,6 +258,10 @@ export const useAppStore = create<AppState>()(
       setFontScale: (scale) => {
         document.documentElement.setAttribute('data-font-size', scale)
         set({ fontScale: scale })
+      },
+      setBudgetColors: (mode) => {
+        document.documentElement.setAttribute('data-budget-colors', mode)
+        set({ budgetColors: mode })
       },
       // The anchor belongs to the open budget, so changing budgets drops it:
       // BudgetPage sets it from the month query, but the register or reports
@@ -304,7 +314,15 @@ export const useAppStore = create<AppState>()(
         locationEnabled: s.locationEnabled,
         privacyMode: s.privacyMode,
         viewportRulerOn: s.viewportRulerOn,
+        budgetColors: s.budgetColors,
       }),
+      // A stored mode this build does not know reads as the default, rather
+      // than an attribute no rule matches — which would leave the figures in
+      // whatever the variables happened to default to.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<AppState>
+        return { ...current, ...saved, budgetColors: normalizeBudgetColorMode(saved.budgetColors) }
+      },
       migrate: (persisted: unknown, from: number) => {
         const state = persisted as { fontScale?: string } | null
         if (from < 1 && state?.fontScale) {
@@ -319,6 +337,9 @@ export const useAppStore = create<AppState>()(
         }
         if (state?.fontScale) {
           document.documentElement.setAttribute('data-font-size', state.fontScale)
+        }
+        if (state?.budgetColors) {
+          document.documentElement.setAttribute('data-budget-colors', state.budgetColors)
         }
         syncThemeColorMeta()
       },

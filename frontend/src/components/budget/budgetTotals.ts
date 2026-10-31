@@ -26,19 +26,31 @@ export interface BalanceTotals {
   available: number
   /** available − assigned − activity: what came in from previous months. */
   carriedOver: number
+  /** The summed card part of the red (`credit_overspent`), so a total reads
+   *  calm exactly when the card is the whole reason it is negative
+   *  (figureTone.ts `availableTone`). */
+  credit_overspent: number
 }
 
 export function sumBalances(balances: CategoryBalance[]): BalanceTotals {
   let assigned = 0
   let activity = 0
   let available = 0
+  let creditOverspent = 0
   for (const b of balances) {
     if (b.assigned === null || b.available === null) continue
     assigned += b.assigned
     activity += b.activity
     available += b.available
+    creditOverspent += b.credit_overspent
   }
-  return { assigned, activity, available, carriedOver: available - assigned - activity }
+  return {
+    assigned,
+    activity,
+    available,
+    carriedOver: available - assigned - activity,
+    credit_overspent: creditOverspent,
+  }
 }
 
 /**

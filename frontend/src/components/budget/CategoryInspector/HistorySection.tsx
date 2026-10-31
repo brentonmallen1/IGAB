@@ -1,4 +1,5 @@
 import { useCategoryHistoryReport } from '../../../api/reports'
+import { alarmOnly, figureClass, signTone } from '../../../utils/figureTone'
 import { useFormatters } from '../../../hooks/useFormatters'
 
 interface Props {
@@ -32,7 +33,7 @@ export function HistorySection({ categoryId, budgetId }: Props) {
               <td>{formatMoney(Math.abs(Math.min(m.activity, 0)))}</td>
               {/* Null for an income category, which holds no money — an em
                   dash rather than a lifetime carryover dressed as a balance. */}
-              <td className={(m.available ?? 0) < 0 ? 'inspector-history__neg' : ''}>
+              <td className={figureClass('balance', alarmOnly(signTone(m.available ?? 0)))}>
                 {formatMoneyOrDash(m.available)}
               </td>
             </tr>

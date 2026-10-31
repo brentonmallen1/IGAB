@@ -7,6 +7,7 @@ import type { AssignStrategy } from '../../../types'
 import { STRATEGY_META } from '../AssignDropdown/strategyMeta'
 import { Dialog } from '../../common/Dialog/Dialog'
 import '../previewDialog.css'
+import { figureClass, signTone } from '../../../utils/figureTone'
 import './AssignPreviewModal.css'
 
 interface Props {
@@ -79,7 +80,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
             <span className="preview-dialog__tba-value">{formatMoney(preview.tba_before)}</span>
             <span className="preview-dialog__tba-label">→</span>
             <span
-              className={`preview-dialog__tba-value ${tbaAfter >= 0 ? 'positive' : 'negative'}`}
+              className={`preview-dialog__tba-value ${figureClass('balance', signTone(tbaAfter))}`}
             >
               {formatMoney(tbaAfter)}
             </span>
@@ -163,11 +164,9 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                       </td>
                       <td
                         className={`preview-dialog__col-num ${
-                          delta > 0
-                            ? 'assign-preview-modal__delta--positive'
-                            : delta < 0
-                              ? 'assign-preview-modal__delta--negative'
-                              : ''
+                          delta === 0
+                            ? ''
+                            : `assign-preview-modal__delta ${figureClass('flow', signTone(delta))}`
                         }`}
                       >
                         {delta > 0 ? '+' : ''}

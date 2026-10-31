@@ -15,6 +15,7 @@ import { LastMonthModal } from './LastMonthModal'
 import { TbaDrawer } from './TbaDrawer'
 import { useGridNarrowing } from '../gridNarrowing'
 import type { AssignStrategy } from '../../../types'
+import { figureClass, signTone } from '../../../utils/figureTone'
 import './TbaHero.css'
 
 interface Props {
@@ -62,7 +63,7 @@ export function TbaHero({ budgetId, month }: Props) {
   // where it is acted on — the cards band and each card's detail.
   const { total: overspent } = overspending(budgetMonth)
   const assignedInFuture = Number(budgetMonth?.assigned_in_future ?? 0)
-  const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
+  const tbaClass = figureClass('balance', signTone(tba))
 
   // Counted server-side beside total_overspent, over the same set. Rebuilt
   // here it read the client's category list, which excludes hidden categories

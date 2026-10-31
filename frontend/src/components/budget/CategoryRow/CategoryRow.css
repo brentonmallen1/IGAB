@@ -324,9 +324,11 @@
   color: var(--text-primary);
 }
 
-/* Overspent category */
+/* Overspent category. The edge and the weight are the non-colour half of the
+   cue: with the budget's colours off (base.css, "Budget figures") the edge
+   turns neutral and the bold figure is what is left. */
 .category-row--overspent {
-  border-left: 1px solid var(--color-negative);
+  border-left: 1px solid var(--budget-overspent-marker);
 }
 
 .category-row--overspent .category-row__available {
@@ -374,27 +376,6 @@
 
 .category-row__zero {
   color: var(--text-muted);
-}
-
-.positive {
-  color: var(--color-positive);
-}
-
-.negative {
-  color: var(--color-negative);
-}
-
-.zero {
-  color: var(--text-muted);
-}
-
-/* Red that was swiped on a card and rides there as debt. Still negative, still
-   reads as money owed — but not the alarm colour, because nothing is owed that
-   the card was not already owed and Ready to Assign is never charged for it.
-   The same restraint the cards section gives Uncovered, which is this money
-   seen from the other side. */
-.negative-on-card {
-  color: var(--text-secondary);
 }
 
 /* ─── Compressed row mode ───────────────────────────────────────────────── */

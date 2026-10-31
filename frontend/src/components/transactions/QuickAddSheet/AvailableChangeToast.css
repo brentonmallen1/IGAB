@@ -33,13 +33,3 @@
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
-
-/* The grid's reading of a negative Available: red is an overspend to act on,
-   red that rides on a card is a fact and stays calm (CategoryRow.css). */
-.available-change-toast__after--negative {
-  color: var(--color-negative);
-}
-
-.available-change-toast__after--negative-on-card {
-  color: var(--text-secondary);
-}

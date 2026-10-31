@@ -53,6 +53,8 @@ import { historyModeToggleOutcome } from '../../utils/historyModeToggle'
 import { useUIStore } from '../../stores/uiStore'
 import { useShallow } from 'zustand/react/shallow'
 import { registerToggles } from '../../components/transactions/TransactionTable/registerToggles'
+import { BudgetColorsPicker } from '../../components/settings/BudgetColorsPicker/BudgetColorsPicker'
+import { BUDGET_COLOR_MODE_COPY } from '../../utils/figureTone'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
 import { apiErrorMessage } from '../../api/client'
 import { useUsers } from '../../api/users'
@@ -109,6 +111,8 @@ export function SettingsPage() {
   const setTheme = useAppStore((s) => s.setTheme)
   const fontScale = useAppStore((s) => s.fontScale)
   const setFontScale = useAppStore((s) => s.setFontScale)
+  const budgetColors = useAppStore((s) => s.budgetColors)
+  const setBudgetColors = useAppStore((s) => s.setBudgetColors)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const autoOpenLastBudget = useAppStore((s) => s.autoOpenLastBudget)
   const setAutoOpenLastBudget = useAppStore((s) => s.setAutoOpenLastBudget)
@@ -245,7 +249,7 @@ export function SettingsPage() {
   )
   const hints: Partial<Record<SettingsSectionId, ReactNode>> = {
     appearance: getPaletteForTheme(theme).label,
-    display: registerToggleState.showRunningBalance ? 'Running balance' : undefined,
+    display: BUDGET_COLOR_MODE_COPY[budgetColors].label,
     account: me?.display_name || me?.email,
     budget: currentBudget?.name,
     accounts: openAccounts,
@@ -299,18 +303,24 @@ export function SettingsPage() {
 
     display: {
       body: (
-        <div className="settings-subsection">
-          <div className="settings-subsection__title">Register</div>
-          {registerToggles(registerToggleState, false).map((t) => (
-            <SettingsToggle
-              key={t.id}
-              label={`Show ${t.noun}`}
-              desc={t.description}
-              checked={t.show}
-              onChange={t.onChange}
-            />
-          ))}
-        </div>
+        <>
+          <div className="settings-subsection">
+            <div className="settings-subsection__title">Budget colours</div>
+            <BudgetColorsPicker value={budgetColors} onChange={setBudgetColors} />
+          </div>
+          <div className="settings-subsection">
+            <div className="settings-subsection__title">Register</div>
+            {registerToggles(registerToggleState, false).map((t) => (
+              <SettingsToggle
+                key={t.id}
+                label={`Show ${t.noun}`}
+                desc={t.description}
+                checked={t.show}
+                onChange={t.onChange}
+              />
+            ))}
+          </div>
+        </>
       ),
     },
 

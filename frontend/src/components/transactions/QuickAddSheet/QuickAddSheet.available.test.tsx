@@ -344,7 +344,7 @@ describe('the toast after Save', () => {
     await monthLoaded()
     chooseCategory('Groceries')
     const toast = renderToast((await saveOutflow('242'))[0])
-    expect(toast.querySelector('.available-change-toast__after--negative')).not.toBeNull()
+    expect(toast.querySelector('.available-change-toast__after.negative')).not.toBeNull()
   })
 
   it('stays calm when the red rode on a card', async () => {
@@ -358,8 +358,8 @@ describe('the toast after Save', () => {
     await monthLoaded()
     chooseCategory('Groceries')
     const toast = renderToast((await saveOutflow('242'))[0])
-    expect(toast.querySelector('.available-change-toast__after--negative')).toBeNull()
-    expect(toast.querySelector('.available-change-toast__after--negative-on-card')).not.toBeNull()
+    expect(toast.querySelector('.available-change-toast__after.negative')).toBeNull()
+    expect(toast.querySelector('.available-change-toast__after.negative-on-card')).not.toBeNull()
   })
 
   it('shows the final figure immediately under reduced motion', async () => {
