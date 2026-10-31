@@ -28,7 +28,6 @@ from igab.db.models import (
     Liability,
     Payee,
     Transaction,
-    TransactionAttachment,
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
@@ -67,10 +66,12 @@ from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     CLASS_TOTAL_ROW,
     COUNTERPART_ACCOUNT_ID,
+    DATE_TIEBREAK,
     DEBT_INTEREST_ROW,
     IN_SINKING_FUND,
     LATE_ARRIVAL,
     LEAF,
+    LISTING_ORDERS,
     LOAN_PAYMENT_ROW,
     MATCHABLE_ROW,
     NEEDS_APPROVAL,
@@ -87,19 +88,17 @@ from igab.repositories.txn_filters import (
     POSTED,
     PREDATES_IMPORT,
     PROVISIONALLY_LINKED,
-    REGISTER_RANK,
     SPENDING_ROW,
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
-    in_category_scope,
+    ListingOrder,
     join_split_parent,
     linked_to_a_hold,
     on_alias,
     opening_position,
     orphaned_link,
     posted_bank_link,
-    search_matches,
     sync_created_pending,
     user_row_linked_to_hold,
 )
@@ -238,83 +237,43 @@ class TransactionRepository(BaseRepository[Transaction]):
         is_transfer: bool | None = None,
         unpaired_transfers: bool = False,
     ) -> list[Transaction]:
-        q = self.with_computed(select(Transaction)).where(
-            Transaction.account_id == account_id,
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.parent_transaction_id.is_(None),
+        """One account's register, in the ladder's order.
+
+        A view of `list_for_budget`, not a second listing: this was a copy of
+        `build_where`'s clause and the ladder's ORDER BY, and the copy had
+        already drifted — `payee_ids` was read by truthiness, so a scope that
+        named no payees listed every row instead of none.
+        """
+        budget_id = await self.session.scalar(
+            select(Account.budget_id).where(Account.id == account_id)
         )
-        if direction == "outflow":
-            q = q.where(Transaction.amount < 0)
-        elif direction == "inflow":
-            q = q.where(Transaction.amount > 0)
-        if is_transfer is not None:
-            q = q.where(
-                Transaction.transfer_id.is_not(None)
-                if is_transfer
-                else Transaction.transfer_id.is_(None)
-            )
-        # Supported here as well as budget-wide: the register sends the same
-        # parsed filters either way, and a filter the account view silently
-        # ignored would return every row under a heading promising otherwise.
-        if unpaired_transfers:
-            q = q.where(UNPAIRED_TRANSFER_LEG)
-        if search:
-            q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
-            q = q.where(search_matches(search))
-        if cleared:
-            q = q.where(Transaction.cleared == cleared)
-        if exclude_cleared:
-            q = q.where(Transaction.cleared != exclude_cleared)
-        if unreconciled:
-            q = q.where(NOT_RECONCILED)
-        # NEEDS_CATEGORY, not a local spelling of it. This filter kept the
-        # pre-fix rule after every other site moved, so the account register's
-        # Uncategorized filter still listed unpaired transfer legs while the
-        # badge above it — counting the same thing — did not.
-        if uncategorized and unapproved and is_or_mode:
-            q = q.where(or_(NEEDS_CATEGORY, NEEDS_APPROVAL))
-        else:
-            if uncategorized:
-                q = q.where(NEEDS_CATEGORY)
-            if unapproved:
-                q = q.where(NEEDS_APPROVAL)
-        if start_date:
-            q = q.where(Transaction.date >= start_date)
-        if end_date:
-            q = q.where(Transaction.date <= end_date)
-        # `is not None`, not truthiness: None means no category scope was asked
-        # for, an empty list means one was and nothing matched. Conflating them
-        # hands back the whole window for a scope that should return nothing —
-        # the same distinction `report_scope.scoped` states for the reports,
-        # and the drill-down panel reads this listing.
-        if category_ids is not None:
-            # `in_category_scope`: these are parent rows, and a split parent
-            # carries no category of its own — the plain IN dropped every split.
-            q = q.where(in_category_scope(category_ids))
-        if payee_ids:
-            q = q.where(Transaction.payee_id.in_(payee_ids))
-        if amount_min is not None:
-            q = q.where(func.abs(Transaction.amount) >= amount_min)
-        if amount_max is not None:
-            q = q.where(func.abs(Transaction.amount) <= amount_max)
-        if has_attachment is not None:
-            attachment_exists = (
-                select(TransactionAttachment.id)
-                .where(TransactionAttachment.transaction_id == Transaction.id)
-                .exists()
-            )
-            q = q.where(attachment_exists if has_attachment else ~attachment_exists)
-        # id as final tiebreaker: bulk imports give thousands of rows identical
-        # created_at, and offset pagination over a non-unique order silently
-        # skips/duplicates rows across pages.
-        q = q.order_by(
-            REGISTER_RANK,
-            Transaction.date.desc(),
-            Transaction.created_at.desc(),
-            Transaction.id.desc(),
+        if budget_id is None:
+            return []
+        rows, _, _ = await self.list_for_budget(
+            budget_id,
+            account_ids=[account_id],
+            order="register",
+            limit=limit,
+            offset=offset,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            cleared=cleared,
+            exclude_cleared=exclude_cleared,
+            unreconciled=unreconciled,
+            uncategorized=uncategorized,
+            unapproved=unapproved,
+            is_or_mode=is_or_mode,
+            category_ids=category_ids,
+            payee_ids=payee_ids,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            has_attachment=has_attachment,
+            direction=direction,
+            is_transfer=is_transfer,
+            unpaired_transfers=unpaired_transfers,
         )
-        result = await self.session.execute(q.limit(limit).offset(offset))
-        return list(result.scalars().all())
+        return rows
 
     async def list_for_budget(
         self,
@@ -350,7 +309,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         has_attachment: bool | None = None,
         is_transfer: bool | None = None,
         unpaired_transfers: bool = False,
-        order: str = "date",
+        order: ListingOrder = "date",
         limit: int = 200,
         offset: int = 0,
     ) -> tuple[list[Transaction], int, Decimal]:
@@ -367,9 +326,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         absence of a category — the Sankey's Uncategorized node counts those
         rows, so its drill must list them.
 
-        order="register" sorts pending → needs-category → uncleared → rest
-        (same priority as the per-account register) so paginated clients load
-        rows needing attention first; order="date" is plain date-desc.
+        `order` is a key of `LISTING_ORDERS`: "register" pages the state
+        ladder, "ledger" the attention rungs then pure date (a register with a
+        running balance), "date" plain date-desc.
         """
         # The clause itself lives in txn_query.build_where, because the
         # grouped rollup behind `query_transactions` has to filter rows the
@@ -431,24 +390,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         if parts.split_parent_join:
             rows_q = join_split_parent(rows_q)
             totals_q = join_split_parent(totals_q)
-        if order == "register":
-            # The ladder lives in txn_filters (REGISTER_LADDER): pending,
-            # unfiled, unapproved, uncleared, cleared, reconciled. Paging in
-            # that order is what lets the client's loaded pages be re-sorted
-            # the same way without a row changing place as you scroll.
-            ordering = (
-                REGISTER_RANK,
-                Transaction.date.desc(),
-                Transaction.created_at.desc(),
-                Transaction.id.desc(),
-            )
-        else:
-            ordering = (
-                Transaction.date.desc(),
-                Transaction.created_at.desc(),
-                Transaction.id.desc(),
-            )
-        rows_q = rows_q.where(*where).order_by(*ordering).limit(limit).offset(offset)
+        rows_q = rows_q.where(*where).order_by(*LISTING_ORDERS[order]).limit(limit).offset(offset)
         totals_q = totals_q.where(*where)
 
         rows = list((await self.session.execute(rows_q)).scalars().all())
@@ -591,10 +533,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         an arbitrary point, and any filter would silently make every figure
         wrong while still looking like a balance.
 
-        Ordered by the exact inverse of the register's own tiebreak
-        (`list_for_budget`, date/created_at/id), because a running total in a
-        different order than the rows are drawn in is nonsense that reads as
-        arithmetic.
+        Ordered by `DATE_TIEBREAK`, the tiebreak every listing order ends on,
+        because a running total in a different order than the rows are drawn
+        in is nonsense that reads as arithmetic.
 
         `BALANCE_ROW` excludes pending rows, so they are absent rather than
         zero: a row the bank has not posted has not moved the balance, and
@@ -602,9 +543,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         if not txn_ids:
             return {}
-        running = func.sum(Transaction.amount).over(
-            order_by=(Transaction.date, Transaction.created_at, Transaction.id)
-        )
+        running = func.sum(Transaction.amount).over(order_by=DATE_TIEBREAK)
         ledger = (
             select(Transaction.id.label("id"), running.label("running"))
             .where(Transaction.account_id == account_id, BALANCE_ROW)

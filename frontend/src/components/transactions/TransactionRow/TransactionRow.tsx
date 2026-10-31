@@ -94,6 +94,12 @@ interface Props {
   accountColor?: string
   /** Off-budget accounts don't use categories: no yellow chip, no editor */
   accountOnBudget?: boolean
+  /** The register draws a Balance column (registerOrder.ts `registerView`).
+   *  Separate from the figure, so "no column" and "no figure for this row"
+   *  cannot be confused: a pending row has a column and a dash. */
+  balanceColumn?: boolean
+  /** The account's balance as of this row, served (`running_balances`). */
+  runningBalance?: number
 }
 
 /** Stand-in until the menu is opened; a closed menu is never placed. */
@@ -191,6 +197,10 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
   if (prev.accountLabel !== next.accountLabel) return false
   if (prev.accountColor !== next.accountColor) return false
   if (prev.accountOnBudget !== next.accountOnBudget) return false
+  // Served per row; an edit to an older row moves every newer row's figure
+  // with nothing on those rows changing.
+  if (prev.balanceColumn !== next.balanceColumn) return false
+  if (prev.runningBalance !== next.runningBalance) return false
   return true
 }
 
@@ -215,9 +225,11 @@ export const TransactionRow = memo(function TransactionRow({
   accountLabel,
   accountColor,
   accountOnBudget = true,
+  balanceColumn = false,
+  runningBalance,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
-  const { formatMoney, formatDate } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatDate } = useFormatters()
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
   const notify = useUndoToast(txn.account_id)
@@ -854,6 +866,10 @@ export const TransactionRow = memo(function TransactionRow({
           </button>
         </Tooltip>
       </div>
+
+      {balanceColumn && (
+        <div className="txn-col txn-col--balance tabular">{formatMoneyOrDash(runningBalance)}</div>
+      )}
 
       {contextMenuOpen && (
         <ContextMenu

@@ -6,9 +6,15 @@ scope for payee/month charts (one row per real purchase), and POSTED /
 CASH_FLOW_ROW semantics identical to report_service.
 """
 
-from datetime import date, timedelta
+import itertools
+import json
+import uuid
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
+from igab.db.models import Transaction
+from igab.repositories.account_repo import AccountRepository
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -793,3 +799,158 @@ class TestTheRunningBalance:
 
         body = await _fetch(api_client, budget.id, account_ids=str(checking.id))
         assert body["running_balances"] == {}
+
+
+TIEBREAK = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared" / "register_order_cases.json").read_text()
+)["tiebreak"]
+
+
+async def _ledger(api_client, budget_id, account, **params):
+    return await _fetch(
+        api_client,
+        budget_id,
+        account_ids=str(account.id),
+        order="ledger",
+        running_balance=True,
+        **params,
+    )
+
+
+def _chains(body) -> bool:
+    """Each row's figure, less its own amount, is the next older row's: the
+    figures step by exactly the rows drawn between them."""
+    rows = body["transactions"]
+    running = body["running_balances"]
+    return all(
+        money(running[newer["id"]]) - money(newer["amount"]) == money(running[older["id"]])
+        for newer, older in itertools.pairwise(rows)
+    )
+
+
+class TestTheLedgerOrder:
+    """The order a register with a running balance pages in.
+
+    The ladder sorts by state, so its figures do not step from row to row —
+    an uncleared row from yesterday sits above a cleared one from last week.
+    The ledger keeps the rows that still want a person on the first pages
+    (the register keeps fetching until it holds every one the review badge
+    counts) and puts everything else in plain date order.
+    """
+
+    async def test_attention_rows_first_then_pure_date(self, api_client, db_session):
+        _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+
+        async def row(days_ago, amount, **kw):
+            kw.setdefault("category", groceries)
+            return await create_transaction(
+                db_session, budget, checking, amount, TODAY - timedelta(days=days_ago), **kw
+            )
+
+        reconciled = await row(1, "-10.00", cleared="reconciled")
+        uncleared = await row(4, "-20.00", cleared="uncleared")
+        cleared = await row(2, "-30.00", cleared="cleared")
+        unapproved = await row(9, "-40.00", approved=False)
+        unfiled = await row(8, "-50.00", category=None)
+        pending = await row(12, "-60.00", cleared="pending")
+        await db_session.flush()
+
+        body = await _ledger(api_client, budget.id, checking)
+        assert [t["id"] for t in body["transactions"]] == [
+            str(pending.id),
+            str(unfiled.id),
+            str(unapproved.id),
+            # The ladder would put uncleared (4 days ago) above both of these.
+            str(reconciled.id),
+            str(cleared.id),
+            str(uncleared.id),
+        ]
+        # The settled rows chain; the pending row has not moved the balance and
+        # is absent rather than zero.
+        settled = {**body, "transactions": body["transactions"][3:]}
+        assert _chains(settled)
+        assert str(pending.id) not in body["running_balances"]
+
+    async def test_same_day_rows_follow_the_shared_tiebreak(self, api_client, db_session):
+        """The client sorts loaded pages by the same table; a disagreement
+        here is a row that changes place as you scroll and a figure that
+        does not follow from its neighbour."""
+        _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+        for n, case in enumerate(TIEBREAK["rows"], start=1):
+            db_session.add(
+                Transaction(
+                    id=uuid.UUID(case["id"]),
+                    budget_id=budget.id,
+                    account_id=checking.id,
+                    category_id=groceries.id,
+                    date=date.fromisoformat(case["date"]),
+                    created_at=datetime.fromisoformat(case["created_at"]),
+                    amount=Decimal(-n),
+                    cleared="cleared",
+                    approved=True,
+                )
+            )
+        await db_session.flush()
+
+        body = await _ledger(api_client, budget.id, checking)
+        assert [t["id"] for t in body["transactions"]] == TIEBREAK["newest_first"]
+        assert _chains(body)
+
+    async def test_page_two_continues_page_one(self, api_client, db_session):
+        _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+        for day in range(1, 6):
+            await create_transaction(
+                db_session,
+                budget,
+                checking,
+                f"-{day}0.00",
+                START + timedelta(days=day),
+                category=groceries,
+                cleared="reconciled" if day % 2 else "uncleared",
+            )
+        await db_session.flush()
+
+        first = await _ledger(api_client, budget.id, checking, limit=2)
+        second = await _ledger(api_client, budget.id, checking, limit=2, offset=2)
+        joined = {
+            "transactions": first["transactions"] + second["transactions"],
+            "running_balances": {**first["running_balances"], **second["running_balances"]},
+        }
+        assert len(joined["transactions"]) == 4
+        assert _chains(joined)
+
+    async def test_the_newest_row_is_the_working_balance(self, api_client, db_session):
+        """The header's working balance has no date cutoff, and neither does
+        the window — so a future-dated row is the newest, and carries it."""
+        _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+        await create_transaction(
+            db_session, budget, checking, "500.00", TODAY - timedelta(days=3), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, checking, "-80.00", TODAY + timedelta(days=6), category=groceries
+        )
+        await db_session.flush()
+
+        body = await _ledger(api_client, budget.id, checking)
+        newest = body["transactions"][0]
+        assert newest["date"] == (TODAY + timedelta(days=6)).isoformat()
+        balance = await AccountRepository(db_session).get_balance(checking.id)
+        assert money(body["running_balances"][newest["id"]]) == balance == Decimal("420.00")
+
+    async def test_a_split_parent_carries_the_figure_and_its_lines_are_not_listed(
+        self, api_client, db_session
+    ):
+        services, budget, checking, _, groceries, gas = await _setup(api_client, db_session)
+        parent = await _create_split(services, budget, checking, groceries, gas)
+        await db_session.flush()
+
+        body = await _ledger(api_client, budget.id, checking)
+        assert [t["id"] for t in body["transactions"]] == [str(parent.id)]
+        assert money(body["running_balances"][str(parent.id)]) == Decimal("-100.00")
+
+    async def test_an_unknown_order_is_refused(self, api_client, db_session):
+        _, budget, *_ = await _setup(api_client, db_session)
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/transactions", params={"order": "chronological"}
+        )
+        assert resp.status_code == 422

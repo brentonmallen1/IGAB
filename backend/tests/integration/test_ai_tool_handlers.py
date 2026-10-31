@@ -5,7 +5,7 @@ these tests do not assert hand-written numbers; they assert the handler and the
 service the UI uses return the *same* number. A tool that drifts fails here.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -116,6 +116,19 @@ class TestTheFiguresMatchTheApp:
         result = await handlers.search_transactions(ctx, {})
         assert result["total_rows"] == count
         assert result["total_amount"] == float(amount)
+
+    async def test_search_by_size_sorts_by_size(self, ctx):
+        """The schema offered "amount" while the listing had no such order,
+        so the newer -45 came back above the -120 either way."""
+        rows, _, _ = await ctx.transactions.list_for_budget(ctx.budget_id)
+        larger = next(t for t in rows if t.amount == Decimal("-120.00"))
+        larger.date = TODAY - timedelta(days=1)
+        await ctx.transactions.session.flush()
+
+        by_date = await handlers.search_transactions(ctx, {})
+        by_size = await handlers.search_transactions(ctx, {"order": "amount"})
+        assert [r["amount"] for r in by_date["rows"]] == [-45.0, -120.0]
+        assert [r["amount"] for r in by_size["rows"]] == [-120.0, -45.0]
 
     async def test_search_by_category_name_resolves_without_an_id(self, ctx):
         result = await handlers.search_transactions(ctx, {"category_name": "Groceries"})

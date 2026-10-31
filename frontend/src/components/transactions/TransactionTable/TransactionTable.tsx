@@ -3,8 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import {
-  useInfiniteTransactions,
-  useInfiniteBudgetTransactions,
+  useInfiniteRegister,
   usePayees,
   useBulkUpdateCleared,
   useBulkCategorize,
@@ -41,6 +40,7 @@ import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { RegisterToolbar } from './RegisterToolbar'
+import { registerToggles } from './registerToggles'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { ScheduledRow } from '../../scheduled/ScheduledRow/ScheduledRow'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
@@ -64,7 +64,14 @@ import { filingCategoryOptions } from '../../../utils/categoryPickers'
 import { categoryDisplay, categoryNames } from '../../../utils/categoryLabels'
 import { useCategoryLabels } from '../../../hooks/useCategoryLabels'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
-import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
+import {
+  compareByDateDesc,
+  compareByRegisterOrder,
+  ledgerNeedsMore,
+  nextTransactionSort,
+  registerView,
+  withinLedgerFrontier,
+} from './registerOrder'
 import { registerPayAction } from './payButton'
 import {
   sectionOpen,
@@ -182,6 +189,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     transactionSearchQuery,
     showSplitLines,
     setShowSplitLines,
+    showRunningBalance,
+    setShowRunningBalance,
     toggleTransactionSelection,
     selectAllTransactions,
     clearTransactionSelection,
@@ -202,6 +211,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       transactionSearchQuery: s.transactionSearchQuery,
       showSplitLines: s.showSplitLines,
       setShowSplitLines: s.setShowSplitLines,
+      showRunningBalance: s.showRunningBalance,
+      setShowRunningBalance: s.setShowRunningBalance,
       toggleTransactionSelection: s.toggleTransactionSelection,
       selectAllTransactions: s.selectAllTransactions,
       clearTransactionSelection: s.clearTransactionSelection,
@@ -273,8 +284,10 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [transactionSearchQuery, categoryMap, payeeMap, allAccounts, accountMap]
   )
 
-  const accountScopedQuery = useInfiniteTransactions(allAccounts ? null : accountId, filters)
-  const budgetScopedQuery = useInfiniteBudgetTransactions(allAccounts ? budgetId : null, filters)
+  // The running balance is one account's: across accounts it is not a
+  // balance of anything, so the all-accounts register never asks for it.
+  const ledger = showRunningBalance && !allAccounts
+  const view = registerView(ledger, transactionSortColumn, transactionSortDirection)
   const {
     data: txnPages,
     dataUpdatedAt: rowsUpdatedAt,
@@ -283,9 +296,16 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-  } = allAccounts ? budgetScopedQuery : accountScopedQuery
+  } = useInfiniteRegister(budgetId, accountId, filters, { ledger })
 
-  const transactions = useMemo(() => txnPages?.pages.flat() ?? [], [txnPages])
+  const transactions = useMemo(
+    () => txnPages?.pages.flatMap((page) => page.transactions) ?? [],
+    [txnPages]
+  )
+  const runningBalances = useMemo(
+    () => Object.assign({}, ...(txnPages?.pages.map((page) => page.running_balances) ?? [])),
+    [txnPages]
+  ) as Record<string, number>
   const transactionMap = useMemo(() => new Map(transactions.map((t) => [t.id, t])), [transactions])
   const transactionIds = useMemo(() => transactions.map((t) => t.id), [transactions])
   const { data: attachmentMap = {} } = useCheckAttachments(transactionIds)
@@ -332,15 +352,20 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   // Sort. The server pages in the ladder's order; this re-sorts the pages that
   // have loaded, by the same ladder unless a column header is active.
+  //
+  // `view` is the sort as drawn: with a running balance the default reads as
+  // Date, newest first (registerOrder.ts `registerView`).
   const sorted = useMemo(() => {
-    if (transactionSortColumn === 'state') {
+    if (view.column === 'state') {
       return [...transactions].sort(compareByRegisterOrder)
     }
     return [...transactions].sort((a, b) => {
       let cmp = 0
-      switch (transactionSortColumn) {
+      switch (view.column) {
         case 'date':
-          cmp = a.date.localeCompare(b.date)
+          // The full tiebreak, oldest first: the date alone left same-day
+          // rows in whatever order they arrived.
+          cmp = compareByDateDesc(b, a)
           break
         case 'account':
           cmp = (accountMap.get(a.account_id) ?? '').localeCompare(
@@ -364,16 +389,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           cmp = a.amount - b.amount
           break
       }
-      return transactionSortDirection === 'asc' ? cmp : -cmp
+      return view.direction === 'asc' ? cmp : -cmp
     })
-  }, [
-    transactions,
-    transactionSortColumn,
-    transactionSortDirection,
-    payeeMap,
-    categoryMap,
-    accountMap,
-  ])
+  }, [transactions, view.column, view.direction, payeeMap, categoryMap, accountMap])
 
   // Off-budget accounts don't use categories — their rows never land in the
   // "Needs Review" section or wear the yellow chip
@@ -398,8 +416,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // the default order — see compareByDateDesc for why ranking inside them
   // would fight the review section's hold-in-place rule.
   const sectionOrdered = useMemo(
-    () => (transactionSortColumn === 'state' ? [...sorted].sort(compareByDateDesc) : sorted),
-    [sorted, transactionSortColumn]
+    () => (view.column === 'state' ? [...sorted].sort(compareByDateDesc) : sorted),
+    [sorted, view.column]
   )
   const pendingTxns = useMemo(
     () => sectionOrdered.filter((t) => t.cleared === 'pending'),
@@ -409,10 +427,18 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     () => sectionOrdered.filter(isInReviewSection),
     [sectionOrdered, isInReviewSection]
   )
-  const regularTxns = useMemo(
-    () => sorted.filter((t) => t.cleared !== 'pending' && !isInReviewSection(t)),
-    [sorted, isInReviewSection]
-  )
+  const regularTxns = useMemo(() => {
+    const main = sorted.filter((t) => t.cleared !== 'pending' && !isInReviewSection(t))
+    // Beside a running balance, a row paged early as an attention row waits
+    // until paging reaches its date — see withinLedgerFrontier.
+    return view.showsBalance ? withinLedgerFrontier(main, transactions, !!hasNextPage) : main
+  }, [sorted, isInReviewSection, view.showsBalance, transactions, hasNextPage])
+
+  // The main list can be empty while pages remain (only attention rows have
+  // arrived), and then the virtualizer has no row to trigger the next fetch.
+  useEffect(() => {
+    if (ledger && !isFetching && ledgerNeedsMore(transactions, !!hasNextPage)) fetchNextPage()
+  }, [ledger, isFetching, transactions, hasNextPage, fetchNextPage])
 
   // Build map: txn_id → TransactionMatch for pending duplicate pairs
   const pendingMatchMap = useMemo(() => {
@@ -491,10 +517,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   const handleSort = useCallback(
     (col: SortColumn) => {
-      const next = nextTransactionSort(col, transactionSortColumn, transactionSortDirection)
+      // From the sort as drawn: with a running balance the default reads as
+      // Date ▼, so the first click on Date flips it rather than re-selecting it.
+      const next = nextTransactionSort(col, view.column, view.direction)
       setTransactionSort(next.column, next.direction)
     },
-    [transactionSortColumn, transactionSortDirection, setTransactionSort]
+    [view.column, view.direction, setTransactionSort]
   )
 
   const handleStartSplit = useCallback(
@@ -730,6 +758,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           onMakeRepeating={setMakeRepeatingTxn}
           onMakeTransfer={handleMakeTransfer}
           hasAttachment={attachmentMap[txn.id]}
+          balanceColumn={view.showsBalance}
+          runningBalance={view.showsBalance ? runningBalances[txn.id] : undefined}
           highlighted={txn.id === highlightId}
           accountLabel={allAccounts ? (accountMap.get(txn.account_id) ?? '—') : undefined}
           accountColor={allAccounts ? accountColorMap.get(txn.account_id) : undefined}
@@ -950,7 +980,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }, [virtualItems, regularItems.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
-    <div className={`transaction-table ${allAccounts ? 'transaction-table--all-accounts' : ''}`}>
+    <div
+      className={`transaction-table ${allAccounts ? 'transaction-table--all-accounts' : ''} ${view.showsBalance ? 'transaction-table--running' : ''}`}
+    >
       {showMergeModal && mergeEligiblePair && (
         <MergePreviewModal
           transactions={mergeEligiblePair}
@@ -1021,11 +1053,14 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
               ? { label: payAction.label, onClick: () => openModal('card-payment', accountId) }
               : null
           }
-          // The phone account page draws this toggle in its Tools sheet.
-          splitLines={
+          // The phone account page draws these in its Tools sheet.
+          toggles={
             isMobile && accountId !== null
-              ? null
-              : { show: showSplitLines, onChange: setShowSplitLines }
+              ? []
+              : registerToggles(
+                  { showSplitLines, setShowSplitLines, showRunningBalance, setShowRunningBalance },
+                  allAccounts
+                )
           }
         />
 
@@ -1102,25 +1137,24 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
               key={key}
               col={key}
               label={label}
-              currentCol={transactionSortColumn}
-              currentDir={transactionSortDirection}
+              currentCol={view.column}
+              currentDir={view.direction}
               onSort={handleSort}
             />
           ))}
           <button
-            className={`txn-col txn-col--amount txn-col--header-center txn-sort-header ${transactionSortColumn === 'amount' ? 'txn-sort-header--active' : ''}`}
+            className={`txn-col txn-col--amount txn-col--header-center txn-sort-header ${view.column === 'amount' ? 'txn-sort-header--active' : ''}`}
             onClick={() => handleSort('amount')}
           >
             Outflow
-            {transactionSortColumn === 'amount' &&
-              (transactionSortDirection === 'asc' ? (
-                <ChevronUp size={11} />
-              ) : (
-                <ChevronDown size={11} />
-              ))}
+            {view.column === 'amount' &&
+              (view.direction === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
           </button>
           <div className="txn-col txn-col--inflow txn-col--header-center">Inflow</div>
           <div className="txn-col txn-col--cleared txn-col--header-center">Cleared</div>
+          {view.showsBalance && (
+            <div className="txn-col txn-col--balance txn-col--header-center">Balance</div>
+          )}
         </div>
       </Surface>
 

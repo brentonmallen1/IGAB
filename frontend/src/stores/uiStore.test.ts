@@ -5,6 +5,7 @@ import {
   normalizeBudgetRowMode,
   useUIStore,
 } from './uiStore'
+import { DEFAULT_TRANSACTION_SORT } from '../components/transactions/TransactionTable/registerOrder'
 
 describe('mergeQuickFilterOrder', () => {
   it('a persisted order without pending gains it', () => {
@@ -117,39 +118,56 @@ describe('register section folds', () => {
   })
 })
 
-describe('register split lines', () => {
+describe.each([
+  { key: 'showSplitLines', set: 'setShowSplitLines', reads: 'one row per bank line' },
+  { key: 'showRunningBalance', set: 'setShowRunningBalance', reads: 'the state order' },
+] as const)('the register setting $key', ({ key, set, reads }) => {
   const partialize = () => useUIStore.persist.getOptions().partialize!
   const merge = () => useUIStore.persist.getOptions().merge!
 
-  it('start hidden — one row per bank line is the default register', () => {
-    expect(useUIStore.getState().showSplitLines).toBe(false)
-    const fresh = merge()({}, useUIStore.getState()) as { showSplitLines: boolean }
-    expect(fresh.showSplitLines).toBe(false)
+  it(`starts off — ${reads} is the default register`, () => {
+    expect(useUIStore.getState()[key]).toBe(false)
+    const fresh = merge()({}, useUIStore.getState()) as unknown as Record<string, unknown>
+    expect(fresh[key]).toBe(false)
   })
 
-  it('survive a reload once switched on', () => {
+  it('survives a reload once switched on', () => {
     const kept = partialize()({
       ...useUIStore.getState(),
-      showSplitLines: true,
+      [key]: true,
     } as never) as Record<string, unknown>
-    expect(kept.showSplitLines).toBe(true)
-    const restored = merge()(kept, useUIStore.getState()) as { showSplitLines: boolean }
-    expect(restored.showSplitLines).toBe(true)
+    expect(kept[key]).toBe(true)
+    const restored = merge()(kept, useUIStore.getState()) as unknown as Record<string, unknown>
+    expect(restored[key]).toBe(true)
   })
 
-  it('read anything but a stored true as off', () => {
+  it('reads anything but a stored true as off', () => {
     for (const junk of ['true', 1, null, {}]) {
-      const state = merge()({ showSplitLines: junk }, useUIStore.getState()) as {
-        showSplitLines: boolean
-      }
-      expect(state.showSplitLines).toBe(false)
+      const state = merge()({ [key]: junk }, useUIStore.getState()) as unknown as Record<
+        string,
+        unknown
+      >
+      expect(state[key]).toBe(false)
     }
   })
 
-  it('take a value rather than toggling', () => {
-    useUIStore.getState().setShowSplitLines(true)
-    expect(useUIStore.getState().showSplitLines).toBe(true)
-    useUIStore.getState().setShowSplitLines(false)
-    expect(useUIStore.getState().showSplitLines).toBe(false)
+  it('takes a value rather than toggling', () => {
+    useUIStore.getState()[set](true)
+    expect(useUIStore.getState()[key]).toBe(true)
+    useUIStore.getState()[set](false)
+    expect(useUIStore.getState()[key]).toBe(false)
+  })
+})
+
+describe('turning the running balance on', () => {
+  it('returns the register to its default sort, which now draws the column', () => {
+    // A payee sort left from before would hide the column it just asked for.
+    useUIStore.getState().setTransactionSort('payee', 'asc')
+    useUIStore.getState().setShowRunningBalance(true)
+    const { transactionSortColumn, transactionSortDirection } = useUIStore.getState()
+    expect({ column: transactionSortColumn, direction: transactionSortDirection }).toEqual(
+      DEFAULT_TRANSACTION_SORT
+    )
+    useUIStore.getState().setShowRunningBalance(false)
   })
 })

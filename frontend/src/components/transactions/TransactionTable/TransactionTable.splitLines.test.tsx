@@ -4,6 +4,9 @@
  * and draws the lines under their row, and an open split editor replaces its
  * row's lines rather than stacking under them.
  *
+ * The running-balance toggle rides on the same harness: the order it asks
+ * for, the column it draws, and the order the rows are drawn in.
+ *
  * The network is the mocked `apiClient`, and `useSplitLinesFor` is the real
  * hook — "no request" is asserted on the wire, not on a stubbed hook.
  */
@@ -19,6 +22,8 @@ const h = vi.hoisted(() => ({
   post: vi.fn(),
   get: vi.fn(),
   rows: [] as unknown[],
+  running: {} as Record<string, number>,
+  ledgerAsked: [] as boolean[],
 }))
 
 vi.mock('../../../api/client', () => ({
@@ -41,7 +46,11 @@ vi.mock('../../../api/transactions', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../../api/transactions')>()
   const idle = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false })
   const page = () => ({
-    data: { pages: [h.rows] },
+    data: {
+      pages: [
+        { transactions: h.rows, running_balances: h.running, total_count: 0, total_amount: 0 },
+      ],
+    },
     dataUpdatedAt: 1,
     isLoading: false,
     isFetching: false,
@@ -51,8 +60,15 @@ vi.mock('../../../api/transactions', async (importOriginal) => {
   })
   return {
     ...real,
-    useInfiniteTransactions: page,
-    useInfiniteBudgetTransactions: page,
+    useInfiniteRegister: (
+      _budgetId: string,
+      _accountId: string | null,
+      _filters: unknown,
+      opts?: { ledger?: boolean }
+    ) => {
+      h.ledgerAsked.push(!!opts?.ledger)
+      return page()
+    },
     usePayees: () => ({ data: [] }),
     useBulkUpdateCleared: idle,
     useBulkCategorize: idle,
@@ -153,6 +169,8 @@ const splitLineCalls = () =>
 
 beforeEach(() => {
   h.rows = [split, plain]
+  h.running = {}
+  h.ledgerAsked = []
   h.post.mockReset()
   h.get.mockReset()
   h.post.mockImplementation(async (url: string) =>
@@ -165,12 +183,12 @@ beforeEach(() => {
     data: String(url) === '/transactions/split-1/splits' ? lines : [],
   }))
   useAppStore.setState({ currentBudgetId: 'budget-1' })
-  useUIStore.setState({ showSplitLines: false })
+  useUIStore.setState({ showSplitLines: false, showRunningBalance: false })
   useTransactionEditStore.getState().stopSplitEditing()
 })
 
 afterEach(() => {
-  useUIStore.setState({ showSplitLines: false })
+  useUIStore.setState({ showSplitLines: false, showRunningBalance: false })
   useTransactionEditStore.getState().stopSplitEditing()
 })
 
@@ -287,5 +305,70 @@ describe('useSplitLinesFor', () => {
     renderHook(() => useSplitLinesFor('budget-1', ['split-1'], false, 1), { wrapper })
     await settle()
     expect(splitLineCalls()).toHaveLength(0)
+  })
+})
+
+describe('register running balance', () => {
+  // A cleared row last week, an uncleared one yesterday: the state ladder puts
+  // the uncleared row first, the ledger puts the newer one first.
+  const lastWeek = makeTransaction({
+    id: 'last-week',
+    account_id: 'acc-1',
+    amount: -30,
+    category_id: 'cat-groceries',
+    cleared: 'uncleared',
+    date: '2026-08-03',
+  })
+  const yesterday = makeTransaction({
+    id: 'yesterday',
+    account_id: 'acc-1',
+    amount: -12,
+    category_id: 'cat-groceries',
+    cleared: 'cleared',
+    date: '2026-08-09',
+  })
+  const drawnOrder = () =>
+    Array.from(document.querySelectorAll('[data-txn-id]')).map((el) =>
+      el.getAttribute('data-txn-id')
+    )
+
+  beforeEach(() => {
+    h.rows = [lastWeek, yesterday]
+    h.running = { 'last-week': 470, yesterday: 458 }
+  })
+
+  it('leaves the register in its state order, with no column, while off', async () => {
+    renderTable()
+    await screen.findAllByText('Groceries')
+    expect(h.ledgerAsked.every((asked) => !asked)).toBe(true)
+    expect(screen.queryByText('Balance')).not.toBeInTheDocument()
+    expect(document.querySelector('.transaction-table--running')).toBeNull()
+    expect(drawnOrder()).toEqual(['last-week', 'yesterday'])
+  })
+
+  it('asks for the ledger and draws each row with the balance it left', async () => {
+    useUIStore.setState({ showRunningBalance: true })
+    renderTable()
+    await screen.findAllByText('Groceries')
+    expect(h.ledgerAsked.at(-1)).toBe(true)
+    expect(screen.getByText('Balance')).toBeInTheDocument()
+    expect(drawnOrder()).toEqual(['yesterday', 'last-week'])
+    const figures = Array.from(document.querySelectorAll('.transaction-row .txn-col--balance')).map(
+      (el) => el.textContent
+    )
+    expect(figures).toHaveLength(2)
+    expect(figures[0]).toContain('458')
+    expect(figures[1]).toContain('470')
+  })
+
+  it('hides the column under a sort it cannot follow', async () => {
+    useUIStore.setState({ showRunningBalance: true })
+    renderTable()
+    await screen.findAllByText('Groceries')
+    act(() => {
+      screen.getByRole('button', { name: 'Payee' }).click()
+    })
+    expect(screen.queryByText('Balance')).not.toBeInTheDocument()
+    expect(document.querySelector('.txn-col--balance')).toBeNull()
   })
 })
