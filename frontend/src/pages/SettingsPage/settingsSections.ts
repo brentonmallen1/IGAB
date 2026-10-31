@@ -106,8 +106,10 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     label: 'Budget & register',
     page: 'settings',
     group: 'you',
-    description: 'How the register draws its rows on this device. Nothing here changes the budget.',
-    keywords: 'running balance register split lines column date order statement',
+    description:
+      'How budget figures are coloured and how the register draws its rows, on this device. Nothing here changes the budget.',
+    keywords:
+      'colour color red green overspent activity available plain running balance register split lines column date order statement',
   },
   {
     id: 'mobile',

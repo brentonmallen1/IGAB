@@ -44,18 +44,6 @@
   line-height: 1.25;
 }
 
-.tba-hero__amount.positive {
-  color: var(--color-positive);
-}
-
-.tba-hero__amount.negative {
-  color: var(--color-negative);
-}
-
-.tba-hero__amount.zero {
-  color: var(--text-muted);
-}
-
 .tba-hero__future {
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;

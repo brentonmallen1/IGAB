@@ -504,6 +504,14 @@
   border-top: 1px solid var(--edge);
 }
 
+/* A panel that opens with a group is already ruled off by the section
+   header; a second rule under it reads as an empty row. */
+.settings-subsection:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 .settings-subsection > * {
   grid-column: 2;
   min-width: 0;

@@ -1,5 +1,5 @@
 import { useFormatters } from '../../../hooks/useFormatters'
-import { availableTone } from '../../../utils/categoryBalances'
+import { alarmOnly, availableTone, figureClass } from '../../../utils/figureTone'
 import { CountUpMoney } from '../../common/CountUpMoney/CountUpMoney'
 import type { CategoryBalance } from '../../../types'
 import './AvailableChangeToast.css'
@@ -25,7 +25,7 @@ interface Props {
  */
 export function AvailableChangeToast({ headline, categoryName, before, after }: Props) {
   const { formatMoney } = useFormatters()
-  const tone = availableTone(after)
+  const tone = alarmOnly(availableTone(after))
   return (
     <span className="available-change-toast">
       <span>{headline}</span>
@@ -38,7 +38,7 @@ export function AvailableChangeToast({ headline, categoryName, before, after }: 
           <CountUpMoney
             from={before}
             to={after.available}
-            className={`available-change-toast__after available-change-toast__after--${tone}`}
+            className={`available-change-toast__after ${figureClass('balance', tone)}`}
           />
         </span>
       </span>

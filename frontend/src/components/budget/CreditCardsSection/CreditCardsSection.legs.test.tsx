@@ -298,7 +298,7 @@ describe('what the row says about a reserve', () => {
     // Paid past what was set aside is overspending on the card's envelope,
     // and the line says so in the words and colour any envelope uses.
     expect(screen.getByText('overspent')).toBeInTheDocument()
-    expect(screen.getByText('-$220.00')).toHaveClass('credit-cards__pill--negative')
+    expect(screen.getByText('-$220.00')).toHaveClass('credit-cards__pill', 'negative')
   })
 
   it('keeps the word for the one state it is true of', async () => {

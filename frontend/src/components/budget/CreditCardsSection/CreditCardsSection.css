@@ -469,8 +469,8 @@
 }
 
 /* The overspent envelope's own mark, the same left edge the grid gives one. */
-.credit-cards__card:has(.credit-cards__pill--negative) .credit-cards__line {
-  border-left-color: var(--color-negative);
+.credit-cards__card:has(.credit-cards__pill.negative) .credit-cards__line {
+  border-left-color: var(--budget-overspent-marker);
 }
 
 .credit-cards__line-name {
@@ -598,17 +598,10 @@
   opacity: 0.6;
 }
 
-.credit-cards__pill--negative {
-  color: var(--color-negative);
+/* Colour comes from figureTone (base.css, "Budget figures"); the weight is
+   the overspent pill's own, and survives the colours being turned off. */
+.credit-cards__pill.negative {
   font-weight: 600;
-}
-
-.credit-cards__pill--positive {
-  color: var(--color-positive);
-}
-
-.credit-cards__pill--zero {
-  color: var(--text-muted);
 }
 
 /* ─── The opened card ─────────────────────────────────────────────────── */

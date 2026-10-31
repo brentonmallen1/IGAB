@@ -153,3 +153,39 @@ describe('monthFloor', () => {
     expect(monthFloor({ budgetAnchorMonth: null, budgetHistoryStarts: null })).toBeNull()
   })
 })
+
+describe('budget colour mode', () => {
+  const partialize = () => useAppStore.persist.getOptions().partialize!
+  const merge = () => useAppStore.persist.getOptions().merge!
+
+  it('starts at full colour — today’s budget', () => {
+    expect(useAppStore.getState().budgetColors).toBe('full')
+    const fresh = merge()({}, useAppStore.getState()) as { budgetColors: string }
+    expect(fresh.budgetColors).toBe('full')
+  })
+
+  it('survives a reload', () => {
+    const kept = partialize()({ ...useAppStore.getState(), budgetColors: 'none' } as never) as {
+      budgetColors: string
+    }
+    expect(kept.budgetColors).toBe('none')
+    const restored = merge()(kept, useAppStore.getState()) as { budgetColors: string }
+    expect(restored.budgetColors).toBe('none')
+  })
+
+  it('reads a mode this build does not know as full, not as an attribute nothing matches', () => {
+    for (const junk of ['mono', 1, null, {}]) {
+      const state = merge()({ budgetColors: junk }, useAppStore.getState()) as {
+        budgetColors: string
+      }
+      expect(state.budgetColors).toBe('full')
+    }
+  })
+
+  it('applies the mode to the document, where the stylesheet reads it', () => {
+    useAppStore.getState().setBudgetColors('available')
+    expect(document.documentElement.getAttribute('data-budget-colors')).toBe('available')
+    useAppStore.getState().setBudgetColors('full')
+    expect(document.documentElement.getAttribute('data-budget-colors')).toBe('full')
+  })
+})

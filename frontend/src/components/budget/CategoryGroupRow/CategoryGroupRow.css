@@ -171,16 +171,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.category-group-row__available.positive {
-  color: var(--color-positive);
-}
-.category-group-row__available.negative {
-  color: var(--color-negative);
-}
-.category-group-row__available.zero {
-  color: var(--text-muted);
-}
-
 .category-group-row__categories {
   /* Categories render inline */
 }

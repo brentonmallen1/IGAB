@@ -1,0 +1,116 @@
+/* Positioned so the screen-reader legend (absolutely placed by .sr-only) is
+   held here rather than by some distant scroller it could widen. */
+.budget-colors {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.budget-colors__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.budget-colors__card:hover {
+  border-color: var(--edge-strong);
+}
+
+.budget-colors__card:has(input:checked) {
+  border-color: var(--color-accent);
+}
+
+.budget-colors__card:has(input:focus-visible) {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 1px;
+}
+
+.budget-colors__head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.budget-colors__head input {
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.budget-colors__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.budget-colors__desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* A well of sample figures, drawn with the grid's own figure classes. */
+.budget-colors__sample {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  font-size: var(--font-size-xs);
+}
+
+.budget-colors__tba {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px var(--spacing-sm) var(--spacing-xs);
+  color: var(--text-secondary);
+}
+
+.budget-colors__tba .tabular {
+  font-weight: 700;
+}
+
+.budget-colors__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  border-left: 1px solid transparent;
+}
+
+.budget-colors__row > :not(:first-child) {
+  min-width: 4.6em;
+  text-align: right;
+}
+
+.budget-colors__row--head {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.65rem;
+}
+
+.budget-colors__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The grid's overspent cue, from the same marker: the edge turns neutral
+   when the colours are off, and the weight stays. */
+.budget-colors__row--overspent {
+  border-left-color: var(--budget-overspent-marker);
+}
+
+.budget-colors__row--overspent > :last-child {
+  font-weight: 600;
+}

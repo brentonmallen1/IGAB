@@ -11,6 +11,7 @@ import type { Transaction } from '../../../types'
 import './TransactionsPeekModal.css'
 import { openAccounts } from '../../../utils/accountLists'
 import { useCategories } from '../../../api/categories'
+import { figureClass, signTone } from '../../../utils/figureTone'
 import { CardReserveSummary } from './CardReserveSummary'
 
 const RECENT_LIMIT = 10
@@ -222,7 +223,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                         </td>
                       )}
                       <td
-                        className={`category-txns__amount tabular ${t.amount < 0 ? 'negative' : 'positive'}`}
+                        className={`category-txns__amount tabular ${figureClass('flow', signTone(t.amount))}`}
                       >
                         {formatMoney(t.amount)}
                       </td>

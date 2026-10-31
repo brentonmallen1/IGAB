@@ -8,6 +8,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { Dialog } from '../../common/Dialog/Dialog'
 import '../previewDialog.css'
 import './CoverOverspentModal.css'
+import { figureClass, signTone } from '../../../utils/figureTone'
 import { useUndoToast } from '../../../utils/toastUndo'
 
 interface Props {
@@ -72,7 +73,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
           <div className="preview-dialog__tba">
             <span className="preview-dialog__tba-label">TBA after:</span>
             <span
-              className={`preview-dialog__tba-value ${preview.tba_after >= 0 ? 'positive' : 'negative'}`}
+              className={`preview-dialog__tba-value ${figureClass('balance', signTone(preview.tba_after))}`}
             >
               {formatMoney(preview.tba_after)}
             </span>
@@ -182,10 +183,14 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                   return (
                     <tr key={item.category_id}>
                       <td>{item.category_name}</td>
-                      <td className="preview-dialog__col-num cover-modal__overspent">
+                      <td
+                        className={`preview-dialog__col-num ${figureClass('balance', 'negative')}`}
+                      >
                         {formatMoney(-item.overspent)}
                       </td>
-                      <td className="preview-dialog__col-num cover-modal__covering">
+                      <td
+                        className={`preview-dialog__col-num cover-modal__covering ${figureClass('flow', 'positive')}`}
+                      >
                         +{formatMoney(item.proposed_addition)}
                         {item.credit_overspent > 0 && (
                           <span className="cover-modal__on-card-part">

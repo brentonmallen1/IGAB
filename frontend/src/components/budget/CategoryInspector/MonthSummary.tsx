@@ -1,4 +1,5 @@
 import { sumBalances } from '../budgetTotals'
+import { BalanceBreakdownRows } from './BalanceBreakdownRows'
 import { useState } from 'react'
 import { ChevronDown, Clock, Zap } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
@@ -90,12 +91,7 @@ export function MonthSummary({ budgetId, categories }: Props) {
   // anything the server leaves out of those totals but includes in
   // category_balances — system groups, hidden categories, credit-card payment
   // categories — landed entirely in "left over".
-  const {
-    assigned: totalAssigned,
-    activity: totalActivity,
-    available: totalAvailable,
-    carriedOver: leftOver,
-  } = sumBalances(budgetMonth?.category_balances ?? [])
+  const monthTotals = sumBalances(budgetMonth?.category_balances ?? [])
 
   const balances = budgetMonth?.category_balances
   const autoActions = autoAssignRows(allCategoryIds, histories, balances)
@@ -122,31 +118,14 @@ export function MonthSummary({ budgetId, categories }: Props) {
         {summaryOpen && (
           <div className="month-summary__section-body">
             <div className="inspector-breakdown">
-              <div className="inspector-breakdown__row">
-                <span>Left Over from Last Month</span>
-                <span className="tabular">{formatMoney(leftOver)}</span>
-              </div>
-              <div className="inspector-breakdown__row">
-                <span>Assigned in {monthLabel}</span>
-                <span className={`tabular ${totalAssigned > 0 ? 'positive' : ''}`}>
-                  {totalAssigned > 0 ? '+' : ''}
-                  {formatMoney(totalAssigned)}
-                </span>
-              </div>
-              <div className="inspector-breakdown__row">
-                <span>Activity</span>
-                <span className={`tabular ${totalActivity < 0 ? 'negative' : ''}`}>
-                  {formatMoney(totalActivity)}
-                </span>
-              </div>
-              <div className="inspector-breakdown__total">
-                <span>Available</span>
-                <span
-                  className={`tabular ${totalAvailable < 0 ? 'negative' : totalAvailable > 0 ? 'positive' : 'zero'}`}
-                >
-                  {formatMoney(totalAvailable)}
-                </span>
-              </div>
+              <BalanceBreakdownRows
+                totals={monthTotals}
+                labels={{
+                  leftOver: 'Left Over from Last Month',
+                  assigned: `Assigned in ${monthLabel}`,
+                  activity: 'Activity',
+                }}
+              />
             </div>
           </div>
         )}

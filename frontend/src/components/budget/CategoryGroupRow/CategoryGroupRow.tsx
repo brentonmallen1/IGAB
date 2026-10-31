@@ -15,6 +15,7 @@ import { useCategoryDrag } from '../CategoryDrag/CategoryDragContext'
 import { DragHandle } from '../../common/DragHandle/DragHandle'
 import { moveItem } from '../../../utils/listOrder'
 import { sumBalances } from '../budgetTotals'
+import { availableTone, figureClass } from '../../../utils/figureTone'
 import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
 import '../budgetGrid.css'
 import './CategoryGroupRow.css'
@@ -116,6 +117,7 @@ export function CategoryGroupRow({
     assigned: groupAssigned,
     activity: groupActivity,
     available: groupAvailable,
+    credit_overspent: groupCreditOverspent,
   } = useMemo(
     () =>
       sumBalances(
@@ -369,7 +371,7 @@ export function CategoryGroupRow({
           {formatMoney(groupActivity)}
         </span>
         <span
-          className={`category-group-row__available budget-grid__available tabular ${groupAvailable < 0 ? 'negative' : groupAvailable > 0 ? 'positive' : 'zero'}`}
+          className={`category-group-row__available budget-grid__available tabular ${figureClass('balance', availableTone({ available: groupAvailable, credit_overspent: groupCreditOverspent }))}`}
         >
           {formatMoney(groupAvailable)}
         </span>

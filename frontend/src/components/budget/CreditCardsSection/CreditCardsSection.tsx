@@ -63,6 +63,7 @@ import { CategoryRow } from '../CategoryRow/CategoryRow'
 import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
+import { figureClass } from '../../../utils/figureTone'
 import './CreditCardsSection.css'
 
 /**
@@ -1185,7 +1186,7 @@ export function CreditCardsSection({
                     >
                       <span style={{ width: `${line.coveredShare * 100}%` }} />
                     </span>
-                    <span className={`credit-cards__pill credit-cards__pill--${line.tone}`}>
+                    <span className={`credit-cards__pill ${figureClass('balance', line.tone)}`}>
                       {formatMoney(card.set_aside)}
                     </span>
                   </button>

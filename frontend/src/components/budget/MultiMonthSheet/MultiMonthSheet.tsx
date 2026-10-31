@@ -14,6 +14,8 @@ import { Modal } from '../../common/Modal/Modal'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
 import { renderableGroups } from '../budgetGroups'
 import { balancesByCategory } from '../../../utils/categoryBalances'
+import { availableTone, figureClass, signTone } from '../../../utils/figureTone'
+import { sumBalances } from '../budgetTotals'
 import './MultiMonthSheet.css'
 import { ROOT } from '../../../api/queryKeys'
 
@@ -90,10 +92,6 @@ const AssignCell = memo(function AssignCell({
   )
 })
 
-function moneyClass(n: number): string {
-  return n < 0 ? 'negative' : n > 0 ? 'positive' : 'zero'
-}
-
 export function MultiMonthSheet({ budgetId }: Props) {
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const budgetAnchorMonth = useAppStore((s) => s.budgetAnchorMonth)
@@ -148,21 +146,13 @@ export function MultiMonthSheet({ budgetId }: Props) {
     }))
     .filter(({ cats }) => cats.length > 0)
 
+  // `sumBalances`, the grid's group header's own sum: this one counted an
+  // income row's activity as spending and lost the card part of the red.
   function subtotal(cats: Category[], i: number) {
     const map = balanceMaps[i]
-    let assigned = 0
-    let activity = 0
-    let available = 0
-    if (map) {
-      for (const c of cats) {
-        const b = map.get(c.id)
-        if (!b) continue
-        assigned += Number(b.assigned)
-        activity += b.activity
-        available += Number(b.available)
-      }
-    }
-    return { assigned, activity, available }
+    return sumBalances(
+      map ? cats.map((c) => map.get(c.id)).filter((b): b is CategoryBalance => b !== undefined) : []
+    )
   }
 
   return (
@@ -251,7 +241,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
                     <th scope="colgroup" colSpan={3} key={m} className="mm-sheet__month-header">
                       <span className="mm-sheet__month-name">{formatMonth(m)}</span>
                       <span
-                        className={`mm-sheet__month-tba tabular ${data ? moneyClass(data.to_be_assigned) : ''}`}
+                        className={`mm-sheet__month-tba tabular ${data ? figureClass('balance', signTone(data.to_be_assigned)) : ''}`}
                       >
                         {data ? `${formatMoney(data.to_be_assigned)} to assign` : '…'}
                       </span>
@@ -295,7 +285,9 @@ export function MultiMonthSheet({ budgetId }: Props) {
                           <td className="mm-sheet__group-cell tabular">
                             {formatMoney(s.activity)}
                           </td>
-                          <td className={`mm-sheet__group-cell tabular ${moneyClass(s.available)}`}>
+                          <td
+                            className={`mm-sheet__group-cell tabular ${figureClass('balance', availableTone(s))}`}
+                          >
                             {formatMoney(s.available)}
                           </td>
                         </Fragment>
@@ -311,6 +303,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
                         const b = balanceMaps[i]?.get(cat.id)
                         const activity = Number(b?.activity ?? 0)
                         const available = Number(b?.available ?? 0)
+                        const creditOverspent = Number(b?.credit_overspent ?? 0)
                         return (
                           <Fragment key={m}>
                             <td className="mm-sheet__cell mm-sheet__cell--first">
@@ -329,12 +322,14 @@ export function MultiMonthSheet({ budgetId }: Props) {
                               {activity === 0 ? (
                                 <span className="mm-sheet__zero">—</span>
                               ) : (
-                                <span className={activity < 0 ? 'negative' : 'positive'}>
+                                <span className={figureClass('flow', signTone(activity))}>
                                   {formatMoney(activity)}
                                 </span>
                               )}
                             </td>
-                            <td className={`mm-sheet__cell tabular ${moneyClass(available)}`}>
+                            <td
+                              className={`mm-sheet__cell tabular ${figureClass('balance', availableTone({ available, credit_overspent: creditOverspent }))}`}
+                            >
                               {balanceMaps[i] ? formatMoney(available) : ''}
                             </td>
                           </Fragment>

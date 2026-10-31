@@ -74,26 +74,3 @@ export function withAssignments(
     category_balances,
   }
 }
-
-/** How an envelope's Available reads: the grid's colour classes. */
-export type AvailableTone = 'positive' | 'zero' | 'negative' | 'negative-on-card'
-
-/**
- * The tone of a served Available.
- *
- * Red that was swiped on a card (`credit_overspent` covers all of it) is
- * still negative, but it never charges Ready to Assign and rides onto the
- * card at the month boundary — so it reads calmly, not as the alarm colour.
- * Both figures are the server's (domain/cards.py); this only names the
- * reading. It lived inline in CategoryRow; the quick-add toast is its second
- * reader, and a toast that turned red where the grid stays calm would be the
- * app contradicting itself.
- */
-export function availableTone(
-  balance: Pick<CategoryBalance, 'available' | 'credit_overspent'>
-): AvailableTone {
-  const available = Number(balance.available ?? 0)
-  const creditOverspent = Number(balance.credit_overspent ?? 0)
-  if (available < 0) return creditOverspent >= -available ? 'negative-on-card' : 'negative'
-  return available > 0 ? 'positive' : 'zero'
-}

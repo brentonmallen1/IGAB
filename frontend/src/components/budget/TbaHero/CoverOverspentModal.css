@@ -6,12 +6,7 @@
   --dialog-w: 560px;
 }
 
-.cover-modal__overspent {
-  color: var(--color-negative);
-}
-
 .cover-modal__covering {
-  color: var(--color-positive);
   font-weight: 500;
 }
 
