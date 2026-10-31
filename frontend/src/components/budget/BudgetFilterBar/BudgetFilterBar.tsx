@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
-import { ArrowUpDown, Funnel, Layers, ListFilter, Plus, Search, Settings2, X } from 'lucide-react'
+import { ArrowUpDown, Funnel, Layers, ListFilter, Plus, Settings2, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore, BUDGET_ROW_MODES } from '../../../stores/uiStore'
@@ -15,6 +15,7 @@ import { overspentLastMonth } from '../budgetTotals'
 import { useGridNarrowing } from '../gridNarrowing'
 import { BudgetFilterStrip } from './BudgetFilterStrip'
 import { BudgetToolsSheet } from './BudgetToolsSheet'
+import { CategorySearch } from '../CategorySearch/CategorySearch'
 
 interface Props {
   budgetId: string
@@ -24,6 +25,10 @@ interface Props {
   /** The grid measures this bar to offset the column header below it — the
    *  two are stacked sticky rows and this one wraps. See useMeasuredHeight. */
   barRef?: (node: HTMLDivElement | null) => void
+  /** The phone's search field is open in the column header row. It shows the
+   *  query itself, so the strip leaves it out — a chip appearing at the first
+   *  keystroke would push that row down under the thumb. */
+  searchOpen?: boolean
 }
 
 //: Shown once, to whoever had saved views before the rename. Renaming someone's
@@ -35,7 +40,13 @@ const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
 //: column for a notice that should disappear in a release or two.
 const RENAME_SHIPPED_AT = '2026-08-21'
 
-export function BudgetFilterBar({ budgetId, month, categoryBalances, barRef }: Props) {
+export function BudgetFilterBar({
+  budgetId,
+  month,
+  categoryBalances,
+  barRef,
+  searchOpen = false,
+}: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
   const activeViewId = useUIStore((s) => s.activeViewId)
@@ -63,7 +74,6 @@ export function BudgetFilterBar({ budgetId, month, categoryBalances, barRef }: P
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const setBudgetRowMode = useUIStore((s) => s.setBudgetRowMode)
   const categorySearch = useUIStore((s) => s.categorySearch)
-  const setCategorySearch = useUIStore((s) => s.setCategorySearch)
 
   const [menuOpen, setMenuOpen] = useState(false)
   // The phone's Tools sheet: opened from the Ready to Assign row (TbaHero),
@@ -80,7 +90,6 @@ export function BudgetFilterBar({ budgetId, month, categoryBalances, barRef }: P
 
   const isMobile = useIsMobile()
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
 
   // The filter is ephemeral — leaving the budget page clears it so the user
   // never comes back to a mysteriously short category list
@@ -154,12 +163,14 @@ export function BudgetFilterBar({ budgetId, month, categoryBalances, barRef }: P
   if (isMobile) {
     return (
       <>
-        <BudgetFilterStrip parts={narrowing.parts} onClear={narrowing.clear} stripRef={barRef} />
+        <BudgetFilterStrip
+          parts={searchOpen ? narrowing.parts.filter((p) => p.key !== 'search') : narrowing.parts}
+          onClear={narrowing.clear}
+          stripRef={barRef}
+        />
         <BudgetToolsSheet
           open={toolsOpen}
           onClose={() => setToolsOpen(false)}
-          search={categorySearch}
-          onSearch={setCategorySearch}
           statuses={statuses}
           showingAll={activeQuickFilter == null && menu.value === ''}
           onStatus={(filter) => {
@@ -280,34 +291,7 @@ export function BudgetFilterBar({ budgetId, month, categoryBalances, barRef }: P
         </span>
       )}
 
-      <div className={`budget-filter-bar__search ${categorySearch ? 'has-value' : ''}`}>
-        <Search size={13} className="budget-filter-bar__search-icon" />
-        <input
-          ref={searchRef}
-          className="budget-filter-bar__search-input"
-          type="text"
-          enterKeyHint="search"
-          value={categorySearch}
-          onChange={(e) => setCategorySearch(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setCategorySearch('')
-              searchRef.current?.blur()
-            }
-          }}
-          placeholder="Filter categories… or tag:essential"
-          aria-label="Filter categories by name, group, or tag"
-        />
-        {categorySearch && (
-          <button
-            className="budget-filter-bar__search-clear"
-            onClick={() => setCategorySearch('')}
-            title="Clear filter"
-          >
-            <X size={12} />
-          </button>
-        )}
-      </div>
+      <CategorySearch className="budget-filter-bar__search" />
 
       <div className="budget-filter-bar__menu-wrap">
         <div className="budget-filter-bar__density" role="group" aria-label="Row density">

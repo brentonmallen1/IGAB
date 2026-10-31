@@ -1,8 +1,8 @@
-import { ChevronRight, Search, X } from 'lucide-react'
+import { ChevronRight, Funnel, Layers } from 'lucide-react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { BUDGET_ROW_MODES, type QuickFilter } from '../../../stores/uiStore'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
-import type { SelectChipGroup } from '../../common/SelectChip/SelectChip'
+import { SelectChip, type SelectChipGroup } from '../../common/SelectChip/SelectChip'
 import type { StatusButton } from '../budgetFilterMenu'
 import './BudgetToolsSheet.css'
 
@@ -11,8 +11,6 @@ type RowMode = (typeof BUDGET_ROW_MODES)[number]['value']
 interface Props {
   open: boolean
   onClose: () => void
-  search: string
-  onSearch: (value: string) => void
   /** The five statuses, from `statusButtons` — the bar's own list. */
   statuses: StatusButton[]
   /** Nothing narrows the grid by status or saved filter. */
@@ -36,7 +34,9 @@ interface Props {
 }
 
 /**
- * The budget's tools on a phone, one tap from the Ready to Assign row.
+ * The budget's tools on a phone, one tap from the Ready to Assign row. The
+ * category search is not here: it is in the grid's column header row, above
+ * the rows it narrows (BudgetTable).
  *
  * On a desktop these are a bar above the grid; on a phone that bar was two
  * rows, and the hero above it wrapped to two more, so the first category
@@ -49,8 +49,6 @@ interface Props {
 export function BudgetToolsSheet({
   open,
   onClose,
-  search,
-  onSearch,
   statuses,
   showingAll,
   onStatus,
@@ -78,28 +76,6 @@ export function BudgetToolsSheet({
       historyKey="budget-tools"
     >
       <div className="budget-tools">
-        <label className="budget-tools__search">
-          <Search size={15} aria-hidden="true" />
-          <input
-            type="search"
-            enterKeyHint="search"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder="Find a category… or tag:essential"
-            aria-label="Find a category by name, group, or tag"
-          />
-          {search && (
-            <button
-              type="button"
-              className="budget-tools__search-clear"
-              onClick={() => onSearch('')}
-              aria-label="Clear"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </label>
-
         <section className="budget-tools__section" aria-label="Show">
           <h3 className="budget-tools__heading">Show</h3>
           <button
@@ -129,31 +105,39 @@ export function BudgetToolsSheet({
 
         <section className="budget-tools__section" aria-label="Arrange">
           <h3 className="budget-tools__heading">Arrange</h3>
+          {/* The desktop bar's own pickers, so the closed face is a label we
+              draw: iOS left a native select blank when nothing was chosen. */}
           <div className="budget-tools__selects">
-            <label className="budget-tools__select">
-              <span>Group by</span>
-              <select value={viewId ?? ''} onChange={(e) => onView(e.target.value || null)}>
-                <option value="">Default groups</option>
-                {views.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="budget-tools__select">
-              <span>Saved filter</span>
-              <select value={filterValue} onChange={(e) => onFilter(e.target.value)}>
-                <option value="">None</option>
-                {filterGroups.flatMap((g) =>
-                  g.options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
+            <div className="budget-tools__select">
+              <span>Views</span>
+              <SelectChip
+                className="budget-tools__picker"
+                value={viewId ?? ''}
+                onChange={(v) => onView(v || null)}
+                groups={[
+                  { label: '', options: views.map((v) => ({ value: v.id, label: v.name })) },
+                ]}
+                placeholder="Default groups"
+                icon={Layers}
+                active={viewId != null}
+                title="How categories are grouped"
+                ariaLabel="View"
+              />
+            </div>
+            <div className="budget-tools__select">
+              <span>Filters</span>
+              <SelectChip
+                className="budget-tools__picker"
+                value={filterValue}
+                onChange={onFilter}
+                groups={filterGroups}
+                placeholder="None"
+                icon={Funnel}
+                active={filterValue !== ''}
+                title="Which categories the grid shows"
+                ariaLabel="Filter"
+              />
+            </div>
           </div>
           <div className="budget-tools__density" role="group" aria-label="Row density">
             {BUDGET_ROW_MODES.map((mode) => (

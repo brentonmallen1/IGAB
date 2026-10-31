@@ -59,6 +59,12 @@ const CASES: Array<[file: string, selector: string, prop: string]> = [
     '.budget-filter-strip__chip',
     'min-height',
   ],
+  // The category search, in the phone's column header row.
+  ['components/budget/BudgetTable/BudgetTable.css', '.budget-table__search-btn', 'min-height'],
+  ['components/budget/BudgetTable/BudgetTable.css', '.budget-table__search-btn', 'min-width'],
+  ['components/budget/BudgetTable/BudgetTable.css', '.budget-table__search-done', 'min-height'],
+  ['components/budget/CategorySearch/CategorySearch.css', '.category-search', 'min-height'],
+  ['components/budget/CategorySearch/CategorySearch.css', '.category-search__clear', 'min-height'],
 ]
 
 const isTouch = (atRules: string[]) =>

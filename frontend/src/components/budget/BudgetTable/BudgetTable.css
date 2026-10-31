@@ -93,6 +93,7 @@
   border-radius: var(--border-radius-sm);
   text-transform: none;
   letter-spacing: 0;
+  white-space: nowrap;
   transition:
     color 0.15s,
     background-color 0.15s;
@@ -123,6 +124,35 @@
   font-weight: 400;
 }
 
+/* The phone's category search, in this row. Resting it is a magnifier after
+   the column label; open, the field takes the row and Done closes it. Accent
+   while a query is on and the field is shut. */
+.budget-table__search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border-radius: var(--border-radius-sm);
+}
+
+.budget-table__search-btn.active {
+  color: var(--color-accent);
+}
+
+.budget-table__search {
+  flex: 1;
+}
+
+.budget-table__search-done {
+  flex-shrink: 0;
+  padding: 0 var(--spacing-xs);
+  color: var(--color-accent);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 /* Mobile: single-column cards, no horizontal scroll, no money column labels */
 @media (max-width: 768px) {
   .budget-table {
@@ -133,6 +163,21 @@
     /* Money columns hide on mobile; the toggle keeps its chevron column,
        which is where every group's own chevron sits at this width too. */
     grid-template-columns: 20px minmax(0, 1fr);
+    align-items: center;
+    /* One height whether the row reads "Category" or holds the search field,
+       so opening it never moves the grid under the keyboard. */
+    min-height: var(--tap-min);
+    padding-block: 0;
+  }
+
+  .budget-table__header .budget-table__col--name {
+    padding-block: 0;
+  }
+
+  .budget-table__search-btn,
+  .budget-table__search-done {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
   }
 
   .budget-table__col--money {

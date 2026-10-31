@@ -11,37 +11,6 @@
   padding: 0 var(--spacing-md) var(--spacing-md);
 }
 
-.budget-tools__search {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: 0 var(--spacing-sm);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius-sm);
-  background-color: var(--input-bg);
-  color: var(--text-muted);
-}
-
-.budget-tools__search input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  outline: none;
-}
-
-.budget-tools__search:focus-within {
-  border-color: var(--input-focus-ring);
-}
-
-.budget-tools__search-clear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-}
-
 .budget-tools__section {
   display: flex;
   flex-direction: column;
@@ -125,13 +94,24 @@
   color: var(--text-secondary);
 }
 
-.budget-tools__select select {
+/* SelectChip, drawn as a field: full width, the label taking what is left. */
+.budget-tools .select-chip.budget-tools__picker {
+  display: flex;
   width: 100%;
   padding: 0 var(--spacing-sm);
-  border: 1px solid var(--input-border);
+  border-color: var(--input-border);
   border-radius: var(--border-radius-sm);
   background-color: var(--input-bg);
   color: var(--text-primary);
+}
+
+.budget-tools .select-chip.budget-tools__picker.active {
+  border-color: var(--color-accent);
+}
+
+.budget-tools__picker .select-chip__label {
+  flex: 1;
+  width: auto;
 }
 
 .budget-tools__density {
@@ -195,22 +175,10 @@
 }
 
 @media (max-width: 768px) {
-  .budget-tools__search,
   .budget-tools__row,
-  .budget-tools__select select,
   .budget-tools__density button,
   .budget-tools__manage button,
   .budget-tools__link {
-    min-height: var(--tap-min);
-  }
-
-  /* The input itself, not just its box: the whole field is the target. */
-  .budget-tools__search input {
-    min-height: var(--tap-min);
-  }
-
-  .budget-tools__search-clear {
-    min-width: var(--tap-min);
     min-height: var(--tap-min);
   }
 }
