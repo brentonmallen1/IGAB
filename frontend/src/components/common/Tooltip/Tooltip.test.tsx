@@ -73,4 +73,45 @@ describe('Tooltip delay', () => {
     act(() => vi.advanceTimersByTime(1))
     expect(screen.getByRole('tooltip')).toHaveTextContent('Second')
   })
+
+  it('closes on a press and stays closed while the pointer stays put', () => {
+    // The approve glyph: clicking it opened the menu under a tooltip that
+    // kept covering it, and the click's own focus would have reopened it.
+    const el = host()
+    fireEvent.mouseEnter(el)
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    fireEvent.pointerDown(el)
+    fireEvent.focus(el)
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS * 2))
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    fireEvent.mouseLeave(el)
+    act(() => vi.advanceTimersByTime(TOOLTIP_WARM_WINDOW_MS + 1))
+    fireEvent.mouseEnter(el)
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
+
+  it('never shows for a tap', () => {
+    // A phone tap: pointerdown, then an emulated mouseenter and a focus, and
+    // no mouseleave until the next tap lands elsewhere. The tooltip used to
+    // open and hang over the editor the tap navigated to.
+    const el = host()
+    fireEvent.pointerDown(el)
+    fireEvent.mouseEnter(el)
+    fireEvent.focus(el)
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS * 2))
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('shows on keyboard focus after an earlier press has blurred away', () => {
+    const el = host()
+    fireEvent.pointerDown(el)
+    fireEvent.focus(el)
+    fireEvent.blur(el)
+    fireEvent.focus(el)
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
 })
