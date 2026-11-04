@@ -256,7 +256,7 @@ export function useSetBinding(budgetId: string) {
   return useMutation({
     mutationFn: ({ conceptKey, ...body }: BindingUpdate & { conceptKey: string }) =>
       apiClient.put(`/${budgetId}/guide/bindings/${conceptKey}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.guideSignals, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.guideSignals, budgetId] }),
   })
 }
 
@@ -308,7 +308,7 @@ export function useSetGuideStep(budgetId: string) {
   return useMutation({
     mutationFn: ({ stageId, state }: { stageId: string; state: 'done' | 'skipped' | null }) =>
       apiClient.put(`/${budgetId}/guide/progress/${stageId}`, { state }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.guide, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.guide, budgetId] }),
   })
 }
 

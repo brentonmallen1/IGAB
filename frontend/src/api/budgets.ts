@@ -252,7 +252,7 @@ export function useMoveMoney(budgetId: string) {
       amount: number
       month: string
     }) => apiClient.post(`/${budgetId}/budget/move-money`, data),
-    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
+    onSuccess: () => void invalidateAfterMoneyMove(qc, budgetId),
   })
 }
 
@@ -265,7 +265,7 @@ export function useUndoMove(budgetId: string) {
       apiClient.post(`/${budgetId}/budget/moves/${move.id}/undo`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.changes, budgetId] })
-      return invalidateAfterMoneyMove(qc, budgetId)
+      void invalidateAfterMoneyMove(qc, budgetId)
     },
   })
 }
@@ -326,6 +326,9 @@ export function useCreateSampleBudget() {
     onSuccess: (result) =>
       // The new budget arrives with accounts, payees and transactions already
       // in it — every cache an import touches, not just the budget list.
+      // Returned on purpose, the one exception to NO_AWAITED_INVALIDATION:
+      // every caller navigates into the new budget next (seedBudgetsCache).
+      // eslint-disable-next-line no-restricted-syntax
       Promise.all([
         seedBudgetsCache(qc, result.budget),
         invalidateAfterImport(qc, result.budget.id),
@@ -338,7 +341,7 @@ export function useRenameBudget() {
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       apiClient.patch<Budget>(`/budgets/${id}`, { name }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.budgets] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.budgets] }),
   })
 }
 
@@ -356,7 +359,7 @@ export function useUpdateBudget() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string } & BudgetUpdate) =>
       apiClient.patch<Budget>(`/budgets/${id}`, data).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.budgets] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.budgets] }),
   })
 }
 
@@ -428,7 +431,7 @@ export function useSetBudgetHistory(budgetId: string | null) {
     // reach as an import, so the same sweep rather than a second, shorter list.
     onSuccess: (history) => {
       qc.setQueryData([ROOT.budgetHistory, budgetId], history)
-      return invalidateAfterImport(qc, budgetId)
+      void invalidateAfterImport(qc, budgetId)
     },
   })
 }
@@ -443,7 +446,7 @@ export function useDeleteBudget() {
       // invalidation only refetches ACTIVE queries, and a delete fires from a
       // menu that may unmount the row it sits on — so the list came back from
       // cache, still holding the budget, until a reload.
-      return qc.invalidateQueries({ queryKey: [ROOT.budgets], refetchType: 'all' })
+      void qc.invalidateQueries({ queryKey: [ROOT.budgets], refetchType: 'all' })
     },
   })
 }
@@ -502,7 +505,7 @@ export function useCoverOverspentApply(budgetId: string) {
       apiClient
         .post<{ batch_id: string | null }>(`/${budgetId}/cover-overspent/apply`, data)
         .then((r) => r.data),
-    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
+    onSuccess: () => void invalidateAfterMoneyMove(qc, budgetId),
   })
 }
 
@@ -643,6 +646,9 @@ export function useImportYnabAsBudget() {
     onSuccess: (result) =>
       // The new budget arrives with accounts, payees and transactions already
       // in it — every cache an import touches, not just the budget list.
+      // Returned on purpose, the one exception to NO_AWAITED_INVALIDATION:
+      // every caller navigates into the new budget next (seedBudgetsCache).
+      // eslint-disable-next-line no-restricted-syntax
       Promise.all([
         seedBudgetsCache(qc, result.budget),
         invalidateAfterImport(qc, result.budget.id),

@@ -159,7 +159,7 @@ export function useUploadAttachment(transactionId: string) {
       )
       return data
     },
-    onSuccess: () => invalidateAfterAttachmentChange(qc, [transactionId]),
+    onSuccess: () => void invalidateAfterAttachmentChange(qc, [transactionId]),
   })
 }
 
@@ -167,7 +167,7 @@ export function useDeleteAttachment(transactionId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (attachmentId: string) => apiClient.delete(`/attachments/${attachmentId}`),
-    onSuccess: () => invalidateAfterAttachmentChange(qc, [transactionId]),
+    onSuccess: () => void invalidateAfterAttachmentChange(qc, [transactionId]),
   })
 }
 

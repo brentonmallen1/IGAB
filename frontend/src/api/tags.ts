@@ -42,7 +42,7 @@ export function useCreateTag(budgetId: string | null) {
   return useMutation({
     mutationFn: (body: { name: string; color_slot?: TagColorSlot | null }) =>
       apiClient.post<Tag>(`/${budgetId}/tags`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] }),
   })
 }
 
@@ -57,7 +57,7 @@ export function useUpdateTag(budgetId: string | null) {
       name?: string
       color_slot?: TagColorSlot | null
     }) => apiClient.patch<Tag>(`/${budgetId}/tags/${id}`, body).then((r) => r.data),
-    onSuccess: () => invalidateAfterTagChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterTagChange(qc, budgetId),
   })
 }
 
@@ -65,7 +65,7 @@ export function useDeleteTag(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/${budgetId}/tags/${id}`),
-    onSuccess: () => invalidateAfterTagChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterTagChange(qc, budgetId),
   })
 }
 
@@ -76,7 +76,7 @@ export function useSetCategoryTags(budgetId: string | null) {
       apiClient
         .put<TagSimple[]>(`/${budgetId}/categories/${categoryId}/tags`, { tag_ids: tagIds })
         .then((r) => r.data),
-    onSuccess: () => invalidateAfterTagChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterTagChange(qc, budgetId),
   })
 }
 
@@ -119,7 +119,7 @@ export function useBulkSetCategoryTags(budgetId: string | null) {
   return useMutation({
     mutationFn: (updates: { category_id: string; tag_ids: string[] }[]) =>
       apiClient.put(`/${budgetId}/categories/tags`, { updates }),
-    onSuccess: () => invalidateAfterTagChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterTagChange(qc, budgetId),
   })
 }
 
@@ -150,7 +150,7 @@ export function useDismissTagNotice(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (key: string) => apiClient.delete(`/${budgetId}/tags/notices/${key}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId, 'notices'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId, 'notices'] }),
   })
 }
 
@@ -215,6 +215,6 @@ export function useSetTagMembership(budgetId: string | null, tagId: string | nul
       apiClient
         .put<TagMembership>(`/${budgetId}/tags/${tagId}/categories`, change)
         .then((r) => r.data),
-    onSuccess: () => invalidateAfterTagChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterTagChange(qc, budgetId),
   })
 }

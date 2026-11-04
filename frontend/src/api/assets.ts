@@ -83,7 +83,7 @@ export function useCreateAsset(budgetId: string) {
       })
       return data
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }
 
@@ -94,7 +94,7 @@ export function useUpdateAsset(budgetId: string) {
       const { data } = await apiClient.patch<Asset>(`/${budgetId}/assets/${id}`, body)
       return data
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }
 
@@ -104,7 +104,7 @@ export function useDeleteAsset(budgetId: string) {
     mutationFn: async (id: string) => {
       await apiClient.delete(`/${budgetId}/assets/${id}`)
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }
 
@@ -127,7 +127,7 @@ export function useAddAssetValue(budgetId: string) {
       })
       return data
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }
 
@@ -149,7 +149,7 @@ export function useUpdateAssetValue(budgetId: string) {
       )
       return data
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }
 
@@ -159,7 +159,7 @@ export function useDeleteAssetValue(budgetId: string) {
     mutationFn: async ({ assetId, valueId }: { assetId: string; valueId: string }) => {
       await apiClient.delete(`/${budgetId}/assets/${assetId}/values/${valueId}`)
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }
 
@@ -178,6 +178,6 @@ export function useLinkAsset(budgetId: string) {
       })
       return data
     },
-    onSuccess: () => invalidateAssetData(qc, budgetId),
+    onSuccess: () => void invalidateAssetData(qc, budgetId),
   })
 }

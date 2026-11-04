@@ -52,12 +52,12 @@ export function useSetEmergencyFund(budgetId: string | null) {
   return useMutation({
     mutationFn: (choice: EmergencyFundChoice) =>
       apiClient.put<EmergencyFundPicker>(`/${budgetId}/emergency-fund`, choice).then((r) => r.data),
-    onSuccess: async (picker) => {
+    onSuccess: (picker) => {
       qc.setQueryData([ROOT.emergencyFund, budgetId], picker)
       // Tags, categories, every report and Guide figure that reads the fund
       // (dashboard, essentials, coverage, savings rate, signals, checkup,
       // sizer) — and the accounts whose flags moved.
-      await Promise.all([
+      void Promise.all([
         invalidateAfterTagChange(qc, budgetId),
         qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] }),
       ])
