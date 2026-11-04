@@ -5,11 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from igab.config import settings
 
+#: Postgres's JIT compiler off for every connection the app opens.
+#:
+#: JIT is decided by the planner's *cost estimate*, and the register's
+#: predicates (`txn_filters`) are built from correlated subqueries the
+#: planner prices as if each ran for every row. On a budget with ten years of
+#: history the pending-review count estimated past a million and spent
+#: 1,560 ms of its 1,577 ms compiling 565 functions to run a 15 ms query —
+#: on every refetch after every edit. Nothing this app asks runs long enough
+#: for compiled expressions to pay back their compile time; that trade only
+#: favours analytic scans over millions of rows. Set here rather than in the
+#: database's config so a stock `postgres` image needs no tuning to be fast.
+_SERVER_SETTINGS = {"jit": "off"}
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     echo=False,
+    connect_args={"server_settings": _SERVER_SETTINGS},
 )
 
 AsyncSessionLocal = async_sessionmaker(
