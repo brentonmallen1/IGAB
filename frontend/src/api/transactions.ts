@@ -3,6 +3,7 @@ import {
   useInfiniteQuery,
   useMutation,
   useQuery,
+  useQueries,
   useQueryClient,
 } from '@tanstack/react-query'
 import { useMemo } from 'react'
@@ -234,14 +235,20 @@ export function useBudgetTransactions(
  *  bucket by — never a calendar window: a late arrival dated in the import
  *  month counts in the month after, and a window listed it under the wrong
  *  figure. */
-export function useTransactionsPeek(
+type PeekQueryScope = {
+  categoryId?: string | null
+  accountId?: string | null
+  cardReserving?: boolean
+}
+
+function transactionsPeekQuery(
   budgetId: string | null,
-  scope: { categoryId?: string | null; accountId?: string | null; cardReserving?: boolean },
+  scope: PeekQueryScope,
   limit: number,
-  budgetMonth: string | null = null
+  budgetMonth: string | null
 ) {
   const { categoryId = null, accountId = null, cardReserving = false } = scope
-  return useQuery({
+  return {
     queryKey: [
       ROOT.transactionsPeek,
       budgetId,
@@ -269,6 +276,30 @@ export function useTransactionsPeek(
     },
     enabled: !!budgetId && (!!categoryId || !!accountId),
     staleTime: 10_000,
+  }
+}
+
+export function useTransactionsPeek(
+  budgetId: string | null,
+  scope: PeekQueryScope,
+  limit: number,
+  budgetMonth: string | null = null
+) {
+  return useQuery(transactionsPeekQuery(budgetId, scope, limit, budgetMonth))
+}
+
+/** The same listing for several budget months, one query each and in the
+ *  order given — a card's reserve stepped back a month at a time. One query
+ *  per month rather than a date range keeps each month exactly what that
+ *  month's figure counts (`BUDGET_MONTH`, late arrivals and all). */
+export function useTransactionsPeekMonths(
+  budgetId: string | null,
+  scope: PeekQueryScope,
+  limit: number,
+  months: string[]
+) {
+  return useQueries({
+    queries: months.map((m) => transactionsPeekQuery(budgetId, scope, limit, m)),
   })
 }
 

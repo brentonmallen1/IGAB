@@ -19,8 +19,32 @@ const peek = vi.hoisted(() =>
     isPending: false,
   }))
 )
+const peekMonths = vi.hoisted(() =>
+  vi.fn((_b: unknown, _s: unknown, _l: unknown, months: string[]) =>
+    months.map((m) => ({
+      data: {
+        transactions: [
+          {
+            id: `t-${m}`,
+            date: m,
+            amount: -40,
+            account_id: 'visa',
+            category_id: 'c-groc',
+            payee_id: null,
+            memo: null,
+            import_description: `Charge in ${m}`,
+          },
+        ],
+        total_count: 1,
+        total_amount: -40,
+      },
+      isPending: false,
+    }))
+  )
+)
 vi.mock('../../../api/transactions', () => ({
   useTransactionsPeek: peek,
+  useTransactionsPeekMonths: peekMonths,
   usePayees: () => ({ data: [] }),
 }))
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: [] }) }))
@@ -35,10 +59,13 @@ vi.mock('./CardReserveSummary', () => ({
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 
 import { TransactionsPeekModal } from './TransactionsPeekModal'
+import { useAppStore } from '../../../stores/appStore'
 
 beforeEach(() => {
   document.body.innerHTML = ''
   peek.mockClear()
+  peekMonths.mockClear()
+  useAppStore.setState({ budgetAnchorMonth: null, budgetHistoryStarts: null })
 })
 
 const lastCall = () => peek.mock.calls[peek.mock.calls.length - 1]
@@ -143,5 +170,36 @@ describe('what set a card’s money aside', () => {
     expect(screen.getByRole('cell', { name: 'Groceries' })).toBeTruthy()
     // The summary is handed the served total, never a sum of the rows.
     expect(screen.getByTestId('reserve-summary').textContent).toBe('-82.5')
+  })
+
+  it('steps back a month at a time — a statement cycle spans two', () => {
+    // An empty September used to be a dead end: "Nothing on this card was
+    // filed to an envelope this month", and no way to see August's charges.
+    peek.mockReturnValue({
+      data: { transactions: [], total_count: 0, total_amount: 0 },
+      isPending: false,
+    })
+    render(<TransactionsPeekModal budgetId="b1" scope={SCOPE} onClose={vi.fn()} />)
+    expect(peekMonths.mock.calls.at(-1)?.[3]).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show August 2026 too' }))
+    expect(peekMonths.mock.calls.at(-1)?.[1]).toEqual({ accountId: 'visa', cardReserving: true })
+    expect(peekMonths.mock.calls.at(-1)?.[3]).toEqual(['2026-08-01'])
+    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeTruthy()
+    expect(screen.getByText('Charge in 2026-08-01')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show July 2026 too' }))
+    expect(peekMonths.mock.calls.at(-1)?.[3]).toEqual(['2026-08-01', '2026-07-01'])
+    // Set aside stays September's: the earlier months are context.
+    expect(screen.getByTestId('reserve-summary').textContent).toBe('0')
+  })
+
+  it('stops stepping at the first month the budget has', () => {
+    useAppStore.setState({ budgetAnchorMonth: '2026-08-01' })
+    render(<TransactionsPeekModal budgetId="b1" scope={SCOPE} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show August 2026 too' }))
+    expect(screen.queryByRole('button', { name: /Show July 2026/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to September 2026 only' }))
+    expect(screen.queryByRole('heading', { name: 'August 2026' })).toBeNull()
   })
 })

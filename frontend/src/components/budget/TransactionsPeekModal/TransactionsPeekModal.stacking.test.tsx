@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../api/transactions', () => ({
   useTransactionsPeek: () => ({ data: { transactions: [], total_count: 0 }, isPending: false }),
+  useTransactionsPeekMonths: () => [],
   usePayees: () => ({ data: [] }),
 }))
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: [] }) }))
