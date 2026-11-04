@@ -38,6 +38,7 @@ from sqlalchemy import (
     or_,
     select,
     true,
+    tuple_,
 )
 from sqlalchemy.orm import InstrumentedAttribute, aliased
 from sqlalchemy.sql.elements import ColumnElement
@@ -592,18 +593,26 @@ LIVE_ACCOUNT = Account.is_deleted == False  # noqa: E712
 # worth, not budget income/expense. Categorized spending-transfer legs already
 # live on the on-budget side (service-enforced), so they pass. Reports that
 # take an explicit account filter let the user's selection override this.
-# Correlated to the row's own budget: the callers all reach this through a
+# Scoped to the row's own budget: the callers all reach this through a
 # budget-scoped category or budget_id filter today, but that is a property of
 # the call sites, not of the predicate — a caller filtering by account or
 # date alone must not match another budget's accounts.
-ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
-    select(Account.id)
+#
+# The scope rides in the row value — `(account_id, budget_id) IN (SELECT id,
+# budget_id ...)` — rather than as `Account.budget_id == Transaction.budget_id`
+# inside the subquery. Same rows, different plan: a subquery that names the
+# outer row is re-run once per transaction (`SubPlan`, loops = every row
+# scanned), and on ten years of history that was 28 of the 46 ms of the
+# Budget page's activity sum. One that names nothing outside itself is run
+# once and hashed. `correlate(None)` says so outright: nothing in the
+# enclosing query — one that also joins `accounts`, say — may bind into it.
+ON_BUDGET_ACCOUNT = tuple_(Transaction.account_id, Transaction.budget_id).in_(
+    select(Account.id, Account.budget_id)
     .where(
         LIVE_ACCOUNT,
         Account.on_budget == True,  # noqa: E712
-        Account.budget_id == Transaction.budget_id,
     )
-    .correlate(Transaction)
+    .correlate(None)
 )
 
 #: The rows the savings-rate family totals by activity class: the Overview's
@@ -660,10 +669,10 @@ CARD_ACCOUNT = and_(
     Account.on_budget == True,  # noqa: E712
     Account.classification == "liability",
 )
-ON_CARD_ACCOUNT = Transaction.account_id.in_(
-    select(Account.id)
-    .where(CARD_ACCOUNT, Account.budget_id == Transaction.budget_id)
-    .correlate(Transaction)
+#: Scoped by row value and run once, for `ON_BUDGET_ACCOUNT`'s reason: the
+#: correlated spelling was 70 of the 77 ms of the card walk's unclaimed-row sum.
+ON_CARD_ACCOUNT = tuple_(Transaction.account_id, Transaction.budget_id).in_(
+    select(Account.id, Account.budget_id).where(CARD_ACCOUNT).correlate(None)
 )
 #: A correction of a card's own ledger — its starting balance, or a
 #: reconciliation adjustment. Debt the card records, never a purchase for an
