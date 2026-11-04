@@ -5,6 +5,7 @@ from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
+from igab.db import query_stats
 from igab.db.locks import lock_for_transaction
 from igab.db.models import BudgetMove, Category, new_uuid
 from igab.domain.cards import (
@@ -1015,6 +1016,12 @@ class BudgetService:
         summary already holds the full list and passes it to avoid a second
         load; any other caller omits it.
         """
+        with query_stats.span("card-walk"):
+            return await self._assemble_card_walk(budget_id, month_start, categories)
+
+    async def _assemble_card_walk(
+        self, budget_id: uuid.UUID, month_start: date, categories: list[Category] | None
+    ) -> "CardWalk":
         anchor = await self._budget_anchor(budget_id)
         card_accounts = [
             a
@@ -1662,9 +1669,11 @@ class BudgetService:
             # wakes after the holder's rows are committed and the second look
             # finds them. A transaction that invalidated the cache itself
             # still sees its own invalidation, and rebuilds.
-            await lock_for_transaction(self.snapshot_repo.session, budget_id)
+            with query_stats.span("snapshot-lock"):
+                await lock_for_transaction(self.snapshot_repo.session, budget_id)
             if not await self.snapshot_repo.is_valid(budget_id):
-                await self._rebuild_snapshots(budget_id, categories)
+                with query_stats.span("snapshot-rebuild"):
+                    await self._rebuild_snapshots(budget_id, categories)
 
         latest = await self.snapshot_repo.latest_per_category(budget_id, month_start)
         zero = Decimal("0")

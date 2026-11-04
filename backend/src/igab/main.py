@@ -165,10 +165,12 @@ if settings.LOG_QUERY_STATS:
 
     @app.middleware("http")
     async def log_query_stats(request: Request, call_next):
-        """One line per request: statements, database time, wall time."""
+        """One line per request — statements, database time, wall time — and
+        the same figures as a `Server-Timing` header for the browser."""
         started = time.perf_counter()
         with query_stats.measuring() as stats:
             response = await call_next(request)
+        total = time.perf_counter() - started
         logger.info(
             "%s %s -> %d: %d statements, %.1f ms in the database, %.1f ms total",
             request.method,
@@ -176,8 +178,9 @@ if settings.LOG_QUERY_STATS:
             response.status_code,
             stats.statements,
             stats.db_seconds * 1000,
-            (time.perf_counter() - started) * 1000,
+            total * 1000,
         )
+        response.headers["Server-Timing"] = query_stats.server_timing(stats, total)
         return response
 
 
@@ -187,6 +190,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The frontend runs on another origin in development, where a script can
+    # read a cross-origin response header only if it is exposed.
+    expose_headers=["Server-Timing"] if settings.LOG_QUERY_STATS else [],
 )
 
 
