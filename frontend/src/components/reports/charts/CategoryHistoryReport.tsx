@@ -35,7 +35,7 @@ import {
   reportMonthLabel,
   RUNNING_MONTH_OPACITY,
 } from '../../../utils/reportMonths'
-import { fromCents, sumToCents } from '../../../utils/money'
+import { sumAmounts } from '../../../utils/money'
 import { ReportHeader } from '../ReportHeader'
 
 interface Props {
@@ -89,8 +89,8 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   // read every category low at the start of a month. The average is served,
   // over the same complete months.
   const complete = completeMonthRows(rows)
-  const spent = fromCents(sumToCents(complete.map((m) => m.spent)))
-  const assigned = fromCents(sumToCents(complete.map((m) => m.assigned)))
+  const spent = sumAmounts(complete.map((m) => m.spent))
+  const assigned = sumAmounts(complete.map((m) => m.assigned))
   const covered = monthRange(complete[0]?.month, complete.at(-1)?.month, formatMonthShort)
   const over = covered ?? `over ${completeMonths(complete.length)}`
   const anyMovedIn = rows.some((m) => m.moved_in !== 0)

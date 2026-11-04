@@ -6,6 +6,7 @@ import {
   NO_FIGURE,
   parseAmountInput,
   sumToCents,
+  sumAmounts,
   toCents,
 } from './money'
 
@@ -144,5 +145,27 @@ describe('formatMoneyTick', () => {
   it('keeps cents a tick really has, so a small scale does not read $1, $1, $2', () => {
     expect(formatMoneyTick(1.25, 'USD', 'comma_dot')).toBe('$1.25')
     expect(formatMoneyTick(2.5, 'EUR', 'dot_comma')).toBe('€2,50')
+  })
+})
+
+describe('sumAmounts', () => {
+  it('adds in cents — the register’s float reduce said 0.09999999999990905', () => {
+    // TransactionTable totalled a selection with `sum + t.amount`, and so did
+    // the drill-down footer, the arrival summary, the overspent-last-month
+    // pill and the income split. Nine sums, one rule.
+    expect(sumAmounts([999.99, -999.89])).toBe(0.1)
+    expect(sumAmounts([0.1, 0.2])).toBe(0.3)
+  })
+
+  it('keeps the sign of a mixed list', () => {
+    expect(sumAmounts([-182.4, 12.99, -23.85])).toBe(-193.26)
+  })
+
+  it('is zero for nothing selected', () => {
+    expect(sumAmounts([])).toBe(0)
+  })
+
+  it('reads canonical server strings too', () => {
+    expect(sumAmounts(['10.10', '-0.10'])).toBe(10)
   })
 })

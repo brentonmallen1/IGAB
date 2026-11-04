@@ -118,6 +118,42 @@
   background-color: var(--bg-secondary);
 }
 
+/* A row is selected to total, not opened: its arrow opens the register. */
+.category-txns__table tbody tr.category-txns__row--selected,
+.category-txns__table tbody tr.category-txns__row--selected:hover {
+  background-color: var(--row-selected-bg);
+}
+
+.category-txns__table tbody tr:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: -2px;
+}
+
+.category-txns__table .category-txns__open-col,
+.category-txns__table .category-txns__open {
+  width: 1%;
+  padding-left: 0;
+  padding-right: var(--spacing-sm);
+  vertical-align: middle;
+}
+
+.category-txns__open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  background: transparent;
+  transition: color var(--transition-fast);
+}
+
+.category-txns__open-btn:hover,
+.category-txns__open-btn:focus-visible {
+  color: var(--text-primary);
+}
+
 .category-txns__table tbody tr:last-child td {
   border-bottom: none;
 }
@@ -206,6 +242,32 @@
   color: var(--text-muted);
 }
 
+.category-txns__selection-total {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* An earlier month under a card's reserve: context below the opened month's
+   rows and its Set-aside lines, never part of them. */
+.category-txns__month {
+  border-top: 1px solid var(--border-color);
+}
+
+.category-txns__month-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-sm);
+}
+
+.category-txns__month-title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* Full-screen on phones: a 620px panel with an 80px top pad does not fit a
    390px viewport, and the list inside needs a real scroll container. */
 @media (max-width: 768px) {
@@ -229,6 +291,16 @@
   .category-txns__close,
   .category-txns__footer-btn {
     min-height: var(--tap-min);
+  }
+
+  .category-txns__open-btn {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+
+  /* The footer gains a selection total; let it wrap rather than widen. */
+  .category-txns__footer {
+    flex-wrap: wrap;
   }
 }
 

@@ -10,7 +10,7 @@
  * The rule: **the total is the sum of the rows it sits under.** A wider set
  * is context beside it, never the rows' own figure.
  */
-import { toCents } from '../../utils/money'
+import { sumAmounts, toCents } from '../../utils/money'
 
 export interface WiderSet {
   /** The whole set's total — the figure the rows are a part of. */
@@ -100,7 +100,7 @@ export function drillDownFooter(
   wider: WiderSet | undefined,
   formatMoney: (amount: number) => string
 ): DrillDownFooter {
-  const shown = rows.reduce((sum, r) => sum + r.amount, 0)
+  const shown = sumAmounts(rows.map((r) => r.amount))
   if (wider === undefined || !isPartial(shown, wider.total)) {
     return { shown, totalLabel: 'Total', wider: null, widerLabel: null, share: null }
   }

@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowUpRight, Plus, X } from 'lucide-react'
-import { usePayees, useTransactionsPeek } from '../../../api/transactions'
+import { ArrowUpRight, ChevronLeft, Plus, X } from 'lucide-react'
+import {
+  usePayees,
+  useTransactionsPeek,
+  useTransactionsPeekMonths,
+} from '../../../api/transactions'
 import { useAccounts } from '../../../api/accounts'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -13,6 +17,9 @@ import { openAccounts } from '../../../utils/accountLists'
 import { useCategories } from '../../../api/categories'
 import { figureClass, signTone } from '../../../utils/figureTone'
 import { CardReserveSummary } from './CardReserveSummary'
+import { addMonths } from '../../../utils/dates'
+import { sumAmounts } from '../../../utils/money'
+import { monthFloor, useAppStore } from '../../../stores/appStore'
 
 const RECENT_LIMIT = 10
 const ALL_LIMIT = 1000
@@ -42,8 +49,10 @@ interface Props {
  * Budget-page drill-in: the most recent transactions for one category across
  * all accounts (narrowable to a single account), or for one account whole.
  * "View all" expands the list in place so the user stays in the budget
- * context; rows click through to the account register, and "Open in
- * Transactions" hands the same filter to the all-accounts register page.
+ * context; a card's reserve steps back a month at a time instead, since a
+ * statement cycle spans two. Clicking rows selects them and the footer totals
+ * the selection; each row's arrow opens it in the account register, and
+ * "Open in Transactions" hands the same filter to the all-accounts register.
  *
  * On the shared `Modal`, which is load-bearing rather than tidy. This drew
  * its own fixed overlay — the seventh copy of `.overlay`, exactly the one
@@ -58,6 +67,10 @@ interface Props {
 export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransaction }: Props) {
   const [accountFilter, setAccountFilter] = useState('')
   const [showAll, setShowAll] = useState(false)
+  // Earlier budget months shown under a card's reserve, newest first.
+  const [monthsBack, setMonthsBack] = useState(0)
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const floor = useAppStore((s) => monthFloor(s))
   const navigate = useNavigate()
   const setTransactionSearch = useUIStore((s) => s.setTransactionSearch)
   const { formatMoney, formatMoneyOrDash, formatDate, formatMonth } = useFormatters()
@@ -77,6 +90,21 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
     showAll || budgetMonth ? ALL_LIMIT : RECENT_LIMIT,
     budgetMonth
   )
+  const earlierMonths = useMemo(
+    () =>
+      reserve && month
+        ? Array.from({ length: monthsBack }, (_, i) => addMonths(month, -(i + 1)))
+        : [],
+    [reserve, month, monthsBack]
+  )
+  const earlier = useTransactionsPeekMonths(
+    budgetId,
+    reserve ? { accountId: scope.accountId, cardReserving: true } : {},
+    ALL_LIMIT,
+    earlierMonths
+  )
+  const nextEarlier = reserve && month ? addMonths(month, -(monthsBack + 1)) : null
+  const canStepBack = nextEarlier !== null && (floor === null || nextEarlier >= floor)
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: payees = [] } = usePayees(budgetId)
   // Archived envelopes included: one still reserves on a card, and its rows
@@ -93,6 +121,28 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   // Served per row, never accumulated here. Empty for a category scope.
   const running = data?.running_balances ?? {}
   const showRunning = scope.kind === 'account' && Object.keys(running).length > 0
+
+  // The total covers only rows on screen: a selection made before the list
+  // changed under it would otherwise count rows nobody can see.
+  const listed = [...transactions, ...earlier.flatMap((q) => q.data?.transactions ?? [])]
+  const picked = listed.filter((t) => selected.has(t.id))
+  const pickedTotal = sumAmounts(picked.map((t) => t.amount))
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function onRowKey(e: KeyboardEvent<HTMLTableRowElement>, id: string) {
+    // The row's own keys only: Enter on its arrow button opens the register.
+    if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+    e.preventDefault()
+    toggle(id)
+  }
 
   function describePayee(t: Transaction): string {
     const display = transactionDisplayPayee(t, payeeName, accountName)
@@ -119,6 +169,83 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
     navigate('/transactions')
   }
 
+  function renderTable(rows: Transaction[]) {
+    return (
+      <table className="category-txns__table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Payee</th>
+            {scope.kind === 'category' && <th scope="col">Account</th>}
+            {reserve && <th scope="col">Category</th>}
+            <th scope="col" className="category-txns__amount-col">
+              Amount
+            </th>
+            {showRunning && (
+              <th scope="col" className="category-txns__amount-col">
+                Balance
+              </th>
+            )}
+            <th scope="col" className="category-txns__open-col" aria-label="Open" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((t) => (
+            <tr
+              key={t.id}
+              tabIndex={0}
+              aria-selected={selected.has(t.id)}
+              className={selected.has(t.id) ? 'category-txns__row--selected' : undefined}
+              onClick={() => toggle(t.id)}
+              onKeyDown={(e) => onRowKey(e, t.id)}
+              title="Select to total"
+            >
+              <td className="category-txns__date">{formatDate(t.date)}</td>
+              <td className="category-txns__payee">
+                <span className="category-txns__payee-name">{describePayee(t)}</span>
+                {t.memo && <span className="category-txns__memo">{t.memo}</span>}
+              </td>
+              {scope.kind === 'category' && (
+                <td className="category-txns__account">{accountName.get(t.account_id) ?? '—'}</td>
+              )}
+              {reserve && (
+                <td className="category-txns__account">
+                  {(t.category_id && categoryName.get(t.category_id)) || '—'}
+                </td>
+              )}
+              <td
+                className={`category-txns__amount tabular ${figureClass('flow', signTone(t.amount))}`}
+              >
+                {formatMoney(t.amount)}
+              </td>
+              {showRunning && (
+                <td className="category-txns__running tabular">
+                  {/* A pending row has no entry: it has not moved the
+                  balance, and a zero here would say it had. */}
+                  {formatMoneyOrDash(running[t.id])}
+                </td>
+              )}
+              <td className="category-txns__open">
+                <button
+                  type="button"
+                  className="category-txns__open-btn"
+                  aria-label="Open in account register"
+                  title="Open in account register"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openInRegister(t)
+                  }}
+                >
+                  <ArrowUpRight size={14} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+
   return (
     <Modal onClose={onClose} historyKey="category-txns">
       <div className="category-txns" role="dialog" aria-modal aria-labelledby="category-txns-title">
@@ -140,7 +267,10 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
               <select
                 className="category-txns__account-filter"
                 value={accountFilter}
-                onChange={(e) => setAccountFilter(e.target.value)}
+                onChange={(e) => {
+                  setAccountFilter(e.target.value)
+                  setSelected(new Set())
+                }}
                 aria-label="Filter by account"
               >
                 <option value="">All accounts</option>
@@ -183,67 +313,15 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                   beside it — not a total of these rows.
                 </p>
               )}
-              <table className="category-txns__table">
-                <thead>
-                  <tr>
-                    <th scope="col">Date</th>
-                    <th scope="col">Payee</th>
-                    {scope.kind === 'category' && <th scope="col">Account</th>}
-                    {reserve && <th scope="col">Category</th>}
-                    <th scope="col" className="category-txns__amount-col">
-                      Amount
-                    </th>
-                    {showRunning && (
-                      <th scope="col" className="category-txns__amount-col">
-                        Balance
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((t) => (
-                    <tr
-                      key={t.id}
-                      onClick={() => openInRegister(t)}
-                      title="Open in account register"
-                    >
-                      <td className="category-txns__date">{formatDate(t.date)}</td>
-                      <td className="category-txns__payee">
-                        <span className="category-txns__payee-name">{describePayee(t)}</span>
-                        {t.memo && <span className="category-txns__memo">{t.memo}</span>}
-                      </td>
-                      {scope.kind === 'category' && (
-                        <td className="category-txns__account">
-                          {accountName.get(t.account_id) ?? '—'}
-                        </td>
-                      )}
-                      {reserve && (
-                        <td className="category-txns__account">
-                          {(t.category_id && categoryName.get(t.category_id)) || '—'}
-                        </td>
-                      )}
-                      <td
-                        className={`category-txns__amount tabular ${figureClass('flow', signTone(t.amount))}`}
-                      >
-                        {formatMoney(t.amount)}
-                      </td>
-                      {showRunning && (
-                        <td className="category-txns__running tabular">
-                          {/* A pending row has no entry: it has not moved the
-                          balance, and a zero here would say it had. */}
-                          {formatMoneyOrDash(running[t.id])}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {renderTable(transactions)}
             </>
           )}
           {/* Under the list, inside the one scroller: the lines that take
             these rows to Set aside. Drawn once the rows are in, since the
             first line is their total. */}
           {scope.kind === 'card-reserve' && !isPending && data && (
+            // The opened month's total only: Set aside is that month's figure,
+            // and the earlier months below are context, not part of it.
             <CardReserveSummary
               budgetId={budgetId}
               accountId={scope.accountId}
@@ -251,34 +329,101 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
               listedNet={data.total_amount}
             />
           )}
+          {earlierMonths.map((m, i) => {
+            const q = earlier[i]
+            const rows = q?.data?.transactions ?? []
+            return (
+              <section key={m} className="category-txns__month" aria-label={formatMonth(m)}>
+                <div className="category-txns__month-head">
+                  <h3 className="category-txns__month-title">{formatMonth(m)}</h3>
+                  {q?.data && (
+                    <span className="category-txns__count">
+                      {q.data.total_count} transaction{q.data.total_count !== 1 ? 's' : ''} ·{' '}
+                      <span className="tabular">{formatMoney(q.data.total_amount)}</span>
+                    </span>
+                  )}
+                </div>
+                {!q || q.isPending ? (
+                  <div className="category-txns__empty">Loading…</div>
+                ) : rows.length === 0 ? (
+                  <div className="category-txns__empty">
+                    Nothing on this card was filed to an envelope in {formatMonth(m)}.
+                  </div>
+                ) : (
+                  renderTable(rows)
+                )}
+              </section>
+            )
+          })}
         </div>
 
         <div className="category-txns__footer">
-          {onAddTransaction && (
-            <button type="button" className="category-txns__footer-btn" onClick={onAddTransaction}>
-              <Plus size={13} />
-              Add transaction
-            </button>
+          {picked.length > 0 ? (
+            <>
+              <span className="category-txns__count">{picked.length} selected</span>
+              <span className="category-txns__selection-total tabular">
+                {formatMoney(pickedTotal)}
+              </span>
+              <button
+                type="button"
+                className="category-txns__footer-btn"
+                onClick={() => setSelected(new Set())}
+              >
+                Clear
+              </button>
+            </>
+          ) : (
+            <>
+              {onAddTransaction && (
+                <button
+                  type="button"
+                  className="category-txns__footer-btn"
+                  onClick={onAddTransaction}
+                >
+                  <Plus size={13} />
+                  Add transaction
+                </button>
+              )}
+              <button
+                type="button"
+                className="category-txns__footer-btn"
+                onClick={openInTransactions}
+                title={
+                  scope.kind === 'category'
+                    ? 'Open the all-accounts register filtered to this category'
+                    : 'Open the all-accounts register filtered to this account'
+                }
+              >
+                <ArrowUpRight size={13} />
+                Open in Transactions
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            className="category-txns__footer-btn"
-            onClick={openInTransactions}
-            title={
-              scope.kind === 'category'
-                ? 'Open the all-accounts register filtered to this category'
-                : 'Open the all-accounts register filtered to this account'
-            }
-          >
-            <ArrowUpRight size={13} />
-            Open in Transactions
-          </button>
           <span className="category-txns__footer-spacer" />
           {reserve ? (
-            totalCount > 0 && (
-              <span className="category-txns__count">
-                {totalCount} transaction{totalCount !== 1 ? 's' : ''}
-              </span>
+            nextEarlier && canStepBack ? (
+              <button
+                type="button"
+                className="category-txns__footer-btn category-txns__footer-btn--primary"
+                onClick={() => setMonthsBack((n) => n + 1)}
+              >
+                <ChevronLeft size={13} />
+                Show {formatMonth(nextEarlier)} too
+              </button>
+            ) : (
+              month &&
+              monthsBack > 0 && (
+                <button
+                  type="button"
+                  className="category-txns__footer-btn"
+                  onClick={() => {
+                    setMonthsBack(0)
+                    setSelected(new Set())
+                  }}
+                >
+                  Back to {formatMonth(month)} only
+                </button>
+              )
             )
           ) : budgetMonth ? (
             // The month is all here; older rows are what "all" adds, and the
@@ -286,7 +431,10 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
             <button
               type="button"
               className="category-txns__footer-btn category-txns__footer-btn--primary"
-              onClick={() => setShowAll(true)}
+              onClick={() => {
+                setShowAll(true)
+                setSelected(new Set())
+              }}
             >
               Load all transactions
             </button>
@@ -294,7 +442,10 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
             <button
               type="button"
               className="category-txns__footer-btn category-txns__footer-btn--primary"
-              onClick={() => setShowAll(true)}
+              onClick={() => {
+                setShowAll(true)
+                setSelected(new Set())
+              }}
             >
               View all {totalCount} transactions
             </button>

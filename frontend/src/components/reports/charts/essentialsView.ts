@@ -1,6 +1,6 @@
 /** Pure view math for the Essentials report, extracted so it is testable
  * without mounting a chart. */
-import { fromCents, sumToCents } from '../../../utils/money'
+import { sumAmounts } from '../../../utils/money'
 import { shareOfTotal } from '../drillDownTotals'
 
 interface MonthTotal {
@@ -55,5 +55,5 @@ export function worstOverHeadline(worstTotal: number, headline: number): number 
  * the column above it is the one number on the table a reader can check.
  */
 export function columnTotal(rows: readonly { total: number }[]): number {
-  return fromCents(sumToCents(rows.map((r) => r.total)))
+  return sumAmounts(rows.map((r) => r.total))
 }
