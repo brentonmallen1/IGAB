@@ -3,7 +3,7 @@
  * is a served month's, summed.
  */
 import type { IncomeExpenseMonth } from '../../../types'
-import { fromCents, sumToCents } from '../../../utils/money'
+import { sumAmounts } from '../../../utils/money'
 import { completeMonthRows } from '../../../utils/reportMonths'
 
 /** The columns the table sums. */
@@ -26,7 +26,7 @@ export interface IncomeExpenseTotals extends Record<IncomeExpenseFigure, number>
 export function windowTotals(rows: readonly IncomeExpenseMonth[]): IncomeExpenseTotals | null {
   const complete = completeMonthRows(rows)
   if (complete.length === 0) return null
-  const sum = (key: IncomeExpenseFigure) => fromCents(sumToCents(complete.map((m) => m[key])))
+  const sum = (key: IncomeExpenseFigure) => sumAmounts(complete.map((m) => m[key]))
   return {
     income: sum('income'),
     expenses: sum('expenses'),

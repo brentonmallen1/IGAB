@@ -179,6 +179,14 @@ export function sumToCents(amounts: Array<number | string>): number {
   }, 0)
 }
 
+/** The total of some served amounts, summed in cents: a float reduce made
+ *  999.99 + -999.89 come to 0.09999999999990905, which no total should say.
+ *  The one way client code adds amounts for display — a selection, a list's
+ *  footer, a report's column. */
+export function sumAmounts(amounts: Array<number | string>): number {
+  return fromCents(sumToCents(amounts))
+}
+
 export function isNegative(amount: number): boolean {
   return amount < 0
 }

@@ -1,4 +1,5 @@
 import type { IncomeSplitLine, IncomeSplitReport } from '../types'
+import { sumAmounts } from './money'
 
 /**
  * Income Split as the page draws it: the 50/30/20 rule, each bucket's share
@@ -148,7 +149,7 @@ export function tooUnfiled(r: IncomeSplitReport): boolean {
 }
 
 export function sum(lines: IncomeSplitLine[]): number {
-  return lines.reduce((acc, line) => acc + line.total, 0)
+  return sumAmounts(lines.map((line) => line.total))
 }
 
 /** The "Counted because" chip. */

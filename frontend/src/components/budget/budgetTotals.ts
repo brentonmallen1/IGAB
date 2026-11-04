@@ -19,6 +19,7 @@
  * counting it here put every dollar earned into "left over from last month".
  */
 import type { CategoryBalance } from '../../types'
+import { sumAmounts } from '../../utils/money'
 
 export interface BalanceTotals {
   assigned: number
@@ -115,5 +116,5 @@ export function overspentLastMonth(
 ): OverspentLastMonth | null {
   if (!items || items.length === 0) return null
   const sources = items.map((i) => ({ name: nameOf(i.category_id), amount: Number(i.amount) }))
-  return { total: sources.reduce((sum, s) => sum + s.amount, 0), sources }
+  return { total: sumAmounts(sources.map((s) => s.amount)), sources }
 }

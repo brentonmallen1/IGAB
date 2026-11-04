@@ -53,6 +53,7 @@ import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simple
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
+import { sumAmounts } from '../../../utils/money'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type {
   Transaction,
@@ -456,9 +457,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   const selectedTotal = useMemo(
     () =>
-      transactions
-        .filter((t) => selectedTransactionIds.has(t.id))
-        .reduce((sum, t) => sum + t.amount, 0),
+      sumAmounts(transactions.filter((t) => selectedTransactionIds.has(t.id)).map((t) => t.amount)),
     [transactions, selectedTransactionIds]
   )
   const headerCheckboxRef = useRef<HTMLInputElement>(null)

@@ -1,4 +1,5 @@
 import type { TrackingEntry } from '../types'
+import { sumAmounts } from './money'
 
 /**
  * What the balance charts say about the months something began being counted.
@@ -47,7 +48,7 @@ export function arrivalSummary(
     const count = entries.filter((e) => e.kind === kind).length
     return count === 0 ? [] : [PHRASE[kind](count)]
   })
-  const total = entries.reduce((sum, e) => sum + e.amount, 0)
+  const total = sumAmounts(entries.map((e) => e.amount))
   const said = parts.join(' · ')
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}: ${signedMoney(total, formatMoney)}`
 }
