@@ -17,6 +17,7 @@ import {
   formatMonthWithOptions,
   ordinalDay,
   parseLocalDate,
+  monthAfterResume,
 } from './dates'
 import type { DateFormat } from '../types'
 import { pinTimeZone } from '../test-utils/timeZone'
@@ -202,5 +203,19 @@ describe('short and long formatters agree on every date setting', () => {
   it('ymd prints the written date, not the datetime it was handed', () => {
     // The dated ymd arm echoed its input, so a datetime leaked into the UI.
     expect(formatDateWithOptions('2026-09-10T00:00:00', 'ymd')).toBe('2026-09-10')
+  })
+})
+
+describe('monthAfterResume', () => {
+  it('advances a month that was current when chosen, once the calendar moves on', () => {
+    expect(monthAfterResume('2026-10-01', true, '2026-11-01')).toBe('2026-11-01')
+  })
+
+  it('leaves a past month the user went back to', () => {
+    expect(monthAfterResume('2026-08-01', false, '2026-11-01')).toBeNull()
+  })
+
+  it('does nothing inside the same month', () => {
+    expect(monthAfterResume('2026-11-01', true, '2026-11-01')).toBeNull()
   })
 })

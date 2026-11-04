@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 
 import { FONT_SCALES, monthFloor, useAppStore } from './appStore'
 import { PERSIST_KEYS } from './persistKeys'
+import { addMonths, currentMonthStart } from '../utils/dates'
 
 describe('font scale migration', () => {
   const migrate = useAppStore.persist.getOptions().migrate!
@@ -98,7 +99,6 @@ describe('the import-anchor month clamp', () => {
     // month against a budget that may not even be the open one — BudgetPage,
     // the only page that clears it, has not mounted yet.
     expect(stored.state).not.toHaveProperty('budgetAnchorMonth')
-    expect(stored.state.selectedMonth).toBeDefined()
   })
 
   it('drops when the open budget changes', () => {
@@ -187,5 +187,46 @@ describe('budget colour mode', () => {
     expect(document.documentElement.getAttribute('data-budget-colors')).toBe('available')
     useAppStore.getState().setBudgetColors('full')
     expect(document.documentElement.getAttribute('data-budget-colors')).toBe('full')
+  })
+})
+
+describe('the month the budget opens on', () => {
+  it('is never persisted — a launch on the 1st opened on the month just ended', () => {
+    useAppStore.getState().setBudgetAnchorMonth(null)
+    useAppStore.getState().setSelectedMonth('2026-09-01')
+    const stored = JSON.parse(localStorage.getItem(PERSIST_KEYS.app) ?? '{"state":{}}')
+    expect(stored.state).not.toHaveProperty('selectedMonth')
+  })
+
+  it('ignores a month an earlier build saved', () => {
+    const merge = useAppStore.persist.getOptions().merge!
+    const merged = merge(
+      { selectedMonth: '2026-09-01', theme: 'nord-dark' },
+      { ...useAppStore.getState(), selectedMonth: currentMonthStart() }
+    )
+    expect(merged.selectedMonth).toBe(currentMonthStart())
+    // Everything else stored still comes back.
+    expect(merged.theme).toBe('nord-dark')
+  })
+
+  it('follows the calendar on resume only from the month that was current', () => {
+    useAppStore.getState().setBudgetAnchorMonth(null)
+    useAppStore.getState().setSelectedMonth(currentMonthStart())
+    expect(useAppStore.getState().monthFollowsToday).toBe(true)
+    useAppStore.getState().setSelectedMonth(addMonths(currentMonthStart(), -2))
+    expect(useAppStore.getState().monthFollowsToday).toBe(false)
+    useAppStore.getState().followToday()
+    expect(useAppStore.getState().selectedMonth).toBe(addMonths(currentMonthStart(), -2))
+  })
+
+  it('moves forward when the app was left on this month and the 1st passed', () => {
+    // As if chosen on October 31 and resumed in November: the month held
+    // is last month, and it was "this month" when it was picked.
+    useAppStore.setState({
+      selectedMonth: addMonths(currentMonthStart(), -1),
+      monthFollowsToday: true,
+    })
+    useAppStore.getState().followToday()
+    expect(useAppStore.getState().selectedMonth).toBe(currentMonthStart())
   })
 })

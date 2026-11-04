@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
-import { currentMonthStart } from '../utils/dates'
+import { currentMonthStart, monthAfterResume } from '../utils/dates'
 import { normalizeBudgetColorMode, type BudgetColorMode } from '../utils/figureTone'
 
 export type Theme =
@@ -173,6 +173,11 @@ interface AppState {
   fontScale: FontScale
   currentBudgetId: string | null
   selectedMonth: string // ISO date string: "2024-01-01"
+  /** Whether `selectedMonth` was "this month" when it was chosen. Never
+   *  persisted: it is what lets an app left open across the 1st follow the
+   *  calendar on resume (`monthAfterResume`) without dragging along someone
+   *  who went back to a past month on purpose. */
+  monthFollowsToday: boolean
   /** B for the open budget — the first month its envelope math re-derives
    *  (server: BudgetMonthResponse.anchor_month, set only on budgets anchored
    *  at import). Synced from the month query by BudgetPage; null elsewhere.
@@ -207,6 +212,9 @@ interface AppState {
   setCurrentBudgetId: (id: string) => void
   clearCurrentBudget: () => void
   setSelectedMonth: (month: string) => void
+  /** Move to the current month if the user was on it and the calendar has
+   *  since moved on. Called when the app comes back into view. */
+  followToday: () => void
   setBudgetAnchorMonth: (month: string | null) => void
   setBudgetHistoryStarts: (month: string | null) => void
   setAutoOpenLastBudget: (val: boolean) => void
@@ -235,6 +243,7 @@ export const useAppStore = create<AppState>()(
       fontScale: 'small',
       currentBudgetId: null,
       selectedMonth: currentMonthStart(),
+      monthFollowsToday: true,
       budgetAnchorMonth: null,
       budgetHistoryStarts: null,
       autoOpenLastBudget: true,
@@ -280,8 +289,14 @@ export const useAppStore = create<AppState>()(
           // Before the floor there is no budget month to show: the anchor, or
           // the first month of YNAB's kept figures where the import has them.
           const floor = monthFloor(state)
-          return { selectedMonth: floor && month < floor ? floor : month }
+          const selectedMonth = floor && month < floor ? floor : month
+          return { selectedMonth, monthFollowsToday: selectedMonth === currentMonthStart() }
         }),
+      followToday: () => {
+        const { selectedMonth, monthFollowsToday, setSelectedMonth } = get()
+        const next = monthAfterResume(selectedMonth, monthFollowsToday, currentMonthStart())
+        if (next) setSelectedMonth(next)
+      },
       setBudgetAnchorMonth: (month) => set({ budgetAnchorMonth: month }),
       setBudgetHistoryStarts: (month) => set({ budgetHistoryStarts: month }),
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
@@ -300,15 +315,16 @@ export const useAppStore = create<AppState>()(
       name: PERSIST_KEYS.app,
       version: 1,
       // Everything here is device-local and durable EXCEPT the anchor, which
-      // belongs to whichever budget is open. Persisting it clamped month
-      // navigation on the next launch — including on an unanchored budget,
-      // whose BudgetPage would never clear it because the page that sets it
-      // had not mounted yet.
+      // belongs to whichever budget is open, and the month. Persisting the
+      // anchor clamped month navigation on the next launch — including on an
+      // unanchored budget, whose BudgetPage would never clear it because the
+      // page that sets it had not mounted yet. Persisting the month reopened
+      // the budget on whatever was viewed last, so on the 1st it landed on a
+      // month already over, with the new month's money out of sight.
       partialize: (s) => ({
         theme: s.theme,
         fontScale: s.fontScale,
         currentBudgetId: s.currentBudgetId,
-        selectedMonth: s.selectedMonth,
         autoOpenLastBudget: s.autoOpenLastBudget,
         recentAccountIds: s.recentAccountIds,
         locationEnabled: s.locationEnabled,
@@ -320,7 +336,9 @@ export const useAppStore = create<AppState>()(
       // than an attribute no rule matches — which would leave the figures in
       // whatever the variables happened to default to.
       merge: (persisted, current) => {
-        const saved = (persisted ?? {}) as Partial<AppState>
+        // A month saved by an earlier build is dropped, not restored: the
+        // launch opens on this month whatever was stored.
+        const { selectedMonth: _stale, ...saved } = (persisted ?? {}) as Partial<AppState>
         return { ...current, ...saved, budgetColors: normalizeBudgetColorMode(saved.budgetColors) }
       },
       migrate: (persisted: unknown, from: number) => {
