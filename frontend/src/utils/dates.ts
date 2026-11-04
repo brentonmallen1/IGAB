@@ -36,6 +36,21 @@ export function currentMonthStart(): string {
 }
 
 /**
+ * Where the budget month should move when the app comes back into view, or
+ * null to stay put. An installed PWA resumes without reloading, so a budget
+ * left open on October 31 would otherwise still show October on November 1.
+ * Only a month that was "this month" when chosen follows the calendar; a past
+ * month the user went back to is theirs to leave.
+ */
+export function monthAfterResume(
+  selected: string,
+  followsToday: boolean,
+  current: string
+): string | null {
+  return followsToday && selected !== current ? current : null
+}
+
+/**
  * The calendar date WRITTEN at the start of `s`, as a local Date.
  *
  * `new Date("2026-01-01")` parses a date-only string as UTC midnight, which

@@ -13,6 +13,7 @@ import { GlobalShortcuts } from '../GlobalShortcuts'
 import { ChatPanel } from '../../ai/chat/ChatPanel'
 import { useAppStore } from '../../../stores/appStore'
 import { useEdgeSwipeBack } from '../../../hooks/useEdgeSwipeBack'
+import { useFollowTodayOnResume } from '../../../hooks/useFollowTodayOnResume'
 import './MainLayout.css'
 
 export function MainLayout() {
@@ -22,6 +23,8 @@ export function MainLayout() {
   const { data: budgets, isSuccess, isFetching } = useBudgets()
   // The installed PWA has no back gesture; the shell supplies one.
   const edgeBack = useEdgeSwipeBack()
+  // Nor does it reload overnight: a budget left on this month follows the 1st.
+  useFollowTodayOnResume()
   // A persisted budget id can outlive the budget itself (deleted budget,
   // recreated database). Without this check every page renders empty with
   // no way back to the selector. The !isFetching guard keeps a mid-refetch
