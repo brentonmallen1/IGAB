@@ -1158,6 +1158,16 @@ class BudgetSnapshotMeta(Base):
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    #: Which rebuild this row records — new on every one
+    #: (`SnapshotRepository.replace_for_budget`). What an in-process cache of
+    #: a figure derived from the same inputs keys on (`services.walk_cache`):
+    #: presence says the data has not moved since the rebuild, and this says
+    #: *which* rebuild, so an entry from before an invalidation can never
+    #: match the row a later rebuild writes. Not `computed_at`: that is the
+    #: transaction's start time, shared by two rebuilds in one transaction.
+    generation: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), server_default=func.gen_random_uuid(), nullable=False
+    )
 
 
 class ImportAnchor(Base):
