@@ -46,7 +46,7 @@ export function useCreateBudgetView(budgetId: string) {
         is_hidden?: boolean
       }[]
     }) => apiClient.post<BudgetView>(`/${budgetId}/views`, data).then((r) => r.data),
-    onSuccess: () => invalidate(qc, budgetId),
+    onSuccess: () => void invalidate(qc, budgetId),
   })
 }
 
@@ -71,7 +71,7 @@ export function useUpdateBudgetView(budgetId: string) {
         is_hidden?: boolean
       }[]
     }) => apiClient.patch<BudgetView>(`/views/${id}`, data).then((r) => r.data),
-    onSuccess: () => invalidate(qc, budgetId),
+    onSuccess: () => void invalidate(qc, budgetId),
   })
 }
 
@@ -79,6 +79,6 @@ export function useDeleteBudgetView(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/views/${id}`),
-    onSuccess: () => invalidate(qc, budgetId),
+    onSuccess: () => void invalidate(qc, budgetId),
   })
 }

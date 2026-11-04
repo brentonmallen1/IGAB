@@ -218,7 +218,7 @@ export function useRestoreDroppedHold(budgetId: string) {
         })
         .then((r) => r.data),
     // The row is money again: balances, envelopes and Ready to Assign move.
-    onSuccess: () => invalidateAfterTransactionChange(qc, { budgetId }),
+    onSuccess: () => void invalidateAfterTransactionChange(qc, { budgetId }),
   })
 }
 
@@ -241,7 +241,7 @@ export function useLinkCardPayments(budgetId: string) {
         .then((r) => r.data),
     // Linking clears the cash leg's envelope and spends the card's Set aside,
     // so envelopes, cards and Ready to Assign all move — not just the rows.
-    onSuccess: () => invalidateAfterTransactionChange(qc, { budgetId }),
+    onSuccess: () => void invalidateAfterTransactionChange(qc, { budgetId }),
   })
 }
 

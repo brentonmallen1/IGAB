@@ -44,7 +44,7 @@ export function useCreateApiKey() {
   return useMutation({
     mutationFn: async (payload: { name: string; budget_ids: string[] }) =>
       (await apiClient.post<ApiKeyCreated>('/api-keys', payload)).data,
-    onSuccess: () => client.invalidateQueries({ queryKey: [ROOT.apiKeys] }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: [ROOT.apiKeys] }),
   })
 }
 
@@ -54,6 +54,6 @@ export function useRevokeApiKey() {
     mutationFn: async (keyId: string) => {
       await apiClient.delete(`/api-keys/${keyId}`)
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: [ROOT.apiKeys] }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: [ROOT.apiKeys] }),
   })
 }

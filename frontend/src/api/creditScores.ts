@@ -38,7 +38,7 @@ export function useCreateCreditScore(budgetId: string) {
   return useMutation({
     mutationFn: (body: CreditScoreIn) =>
       apiClient.post<CreditScore>(`/${budgetId}/credit-scores`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key(budgetId) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key(budgetId) }),
   })
 }
 
@@ -46,6 +46,6 @@ export function useDeleteCreditScore(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/${budgetId}/credit-scores/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key(budgetId) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key(budgetId) }),
   })
 }

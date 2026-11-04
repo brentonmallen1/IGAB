@@ -64,6 +64,6 @@ export function useAutoAssign(budgetId: string, month: string) {
     onError: (_err, _vars, context) => {
       if (context?.previous) qc.setQueryData(key, context.previous)
     },
-    onSettled: () => invalidateAfterMoneyMove(qc, budgetId),
+    onSettled: () => void invalidateAfterMoneyMove(qc, budgetId),
   })
 }

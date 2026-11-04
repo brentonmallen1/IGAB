@@ -20,10 +20,14 @@ class SnapshotRepository:
         self.session = session
 
     async def is_valid(self, budget_id: uuid.UUID) -> bool:
-        result = await self.session.scalar(
-            select(BudgetSnapshotMeta.budget_id).where(BudgetSnapshotMeta.budget_id == budget_id)
+        return await self.generation(budget_id) is not None
+
+    async def generation(self, budget_id: uuid.UUID) -> uuid.UUID | None:
+        """The rebuild the budget's snapshots are valid from, or None when
+        a write has invalidated them since (`BudgetSnapshotMeta.generation`)."""
+        return await self.session.scalar(
+            select(BudgetSnapshotMeta.generation).where(BudgetSnapshotMeta.budget_id == budget_id)
         )
-        return result is not None
 
     async def latest_per_category(
         self, budget_id: uuid.UUID, month: date
@@ -84,7 +88,7 @@ class SnapshotRepository:
             .values(budget_id=budget_id)
             .on_conflict_do_update(
                 index_elements=[BudgetSnapshotMeta.budget_id],
-                set_={"computed_at": func.now()},
+                set_={"computed_at": func.now(), "generation": func.gen_random_uuid()},
             )
         )
         await self.session.flush()

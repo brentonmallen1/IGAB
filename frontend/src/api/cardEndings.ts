@@ -45,7 +45,7 @@ export function useCreateCardEnding(budgetId: string) {
   return useMutation({
     mutationFn: (body: CardEndingIn) =>
       apiClient.post<CardEnding>(`/${budgetId}/card-endings`, body).then((r) => r.data),
-    onSuccess: () => invalidateAfterCardEndingChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterCardEndingChange(qc, budgetId),
   })
 }
 
@@ -54,7 +54,7 @@ export function useUpdateCardEnding(budgetId: string) {
   return useMutation({
     mutationFn: ({ id, ...patch }: Partial<CardEndingIn> & { id: string }) =>
       apiClient.patch<CardEnding>(`/${budgetId}/card-endings/${id}`, patch).then((r) => r.data),
-    onSuccess: () => invalidateAfterCardEndingChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterCardEndingChange(qc, budgetId),
   })
 }
 
@@ -62,6 +62,6 @@ export function useDeleteCardEnding(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/${budgetId}/card-endings/${id}`),
-    onSuccess: () => invalidateAfterCardEndingChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterCardEndingChange(qc, budgetId),
   })
 }

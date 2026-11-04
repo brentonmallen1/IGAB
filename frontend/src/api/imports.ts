@@ -315,6 +315,6 @@ export function useMarkImportReviewed(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => apiClient.post(`/${budgetId}/import-summary/reviewed`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: importSummaryKey(budgetId) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: importSummaryKey(budgetId) }),
   })
 }

@@ -95,6 +95,6 @@ export function useAssignApply(budgetId: string) {
   return useMutation({
     mutationFn: (data: { month: string; strategy: AssignStrategy }) =>
       apiClient.post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data).then((r) => r.data),
-    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
+    onSuccess: () => void invalidateAfterMoneyMove(qc, budgetId),
   })
 }

@@ -124,6 +124,11 @@ UNTRACKED_UUIDS: Mapping[tuple[str, str], str] = MappingProxyType(
         "writes landed in, so the run can be undone as a unit. Same nature as "
         "change_log.batch_id: a correlation value, not a row id. sync_runs is "
         "SNAPSHOT_OMITTED anyway.",
+        ("budget_snapshot_meta", "generation"): "Which rebuild of the derived "
+        "snapshot cache the row records — a fresh random value per rebuild "
+        "that in-process caches key on (services.walk_cache). Not a row id "
+        "in any table, and never carried: a copy or restore arrives with no "
+        "meta row at all, which is what makes its first read rebuild.",
     }
 )
 

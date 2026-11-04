@@ -194,7 +194,38 @@ const NO_LOCALE_DATE_LABEL = {
 
 /** Every file's restricted syntax. A later block that sets the rule REPLACES
  * it, so a block that adds a selector spreads this rather than respelling it. */
+/**
+ * A mutation's own `onSuccess`/`onSettled` fires its cache refresh; it does
+ * not hand the refresh's promise back to TanStack Query. Returned (or
+ * awaited), the mutation stays pending until every invalidated query has
+ * refetched, and so does everything waiting on it — `await mutateAsync(...)`
+ * and a call site's own `onSuccess`, which is where editors close and
+ * dialogs dismiss. Editing one transaction invalidates eighteen query
+ * groups; the editor sat open until the slowest of them came back.
+ *
+ * The rule is `void invalidate...(...)`. Every call site was read when this
+ * went in: closing, toasting, clearing a selection or navigating away needs
+ * the server's answer, not the refetch. The exception is creating a budget —
+ * each caller navigates straight into it, and `seedBudgetsCache` says why
+ * that waits — and it is marked where it is, with a disable comment.
+ */
+const REFRESH_CALL =
+  ":matches([callee.name=/^invalidate/], [callee.property.name=/^(invalidateQueries|refetchQueries|resetQueries)$/], [callee.object.name='Promise'], [callee.property.name='then'])"
+const MUTATION_CALLBACK =
+  "CallExpression[callee.name='useMutation'] Property[key.name=/^on(Success|Settled)$/] > :function"
+const NO_AWAITED_INVALIDATION = [
+  `${MUTATION_CALLBACK} > CallExpression.body${REFRESH_CALL}`,
+  `${MUTATION_CALLBACK} ReturnStatement > CallExpression.argument${REFRESH_CALL}`,
+  `${MUTATION_CALLBACK} AwaitExpression > CallExpression.argument${REFRESH_CALL}`,
+].map((selector) => ({
+  selector,
+  message:
+    'Fire the refresh with `void`: returned or awaited from a mutation callback, it keeps ' +
+    'mutateAsync (and the call site’s onSuccess) waiting for every refetch.',
+}))
+
 const RESTRICTED_SYNTAX = [
+  ...NO_AWAITED_INVALIDATION,
   NO_BARE_PARSE_FLOAT,
   NO_UNFORMATTED_CHART_TOOLTIP,
   ...NO_UNFORMATTED_NUMERIC_AXIS,

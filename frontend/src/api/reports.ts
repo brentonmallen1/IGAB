@@ -448,7 +448,7 @@ export function useSetReportSettings(budgetId: string | null) {
     },
     onSuccess: (data) => {
       qc.setQueryData([ROOT.reportSettings, budgetId], data)
-      return invalidateAfterReportSettings(qc, budgetId)
+      void invalidateAfterReportSettings(qc, budgetId)
     },
   })
 }

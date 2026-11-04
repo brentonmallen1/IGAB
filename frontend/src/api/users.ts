@@ -27,7 +27,7 @@ export function useCreateUser() {
   return useMutation({
     mutationFn: (body: { email: string; password: string; display_name?: string | null }) =>
       apiClient.post<ManagedUser>('/users', body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.users] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.users] }),
   })
 }
 
@@ -44,6 +44,6 @@ export function useUpdateUser() {
       /** Admin password reset. */
       password?: string
     }) => apiClient.patch<ManagedUser>(`/users/${id}`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.users] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.users] }),
   })
 }

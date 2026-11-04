@@ -52,7 +52,7 @@ export function useCreatePayee(budgetId: string) {
   return useMutation({
     mutationFn: (name: string) =>
       apiClient.post<Payee>(`/${budgetId}/payees`, { name }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
   })
 }
 
@@ -69,7 +69,7 @@ export function useUpdatePayee(budgetId: string | null) {
       mapping_samples?: string[]
       match_pattern?: string | null
     }) => apiClient.patch<Payee>(`/payees/${id}`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
   })
 }
 

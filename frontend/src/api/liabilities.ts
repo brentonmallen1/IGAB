@@ -289,7 +289,7 @@ export function useCreateLiability(budgetId: string | null) {
       apiClient
         .post<Liability>(`/${budgetId}/liabilities`, { ...body, client_today: today() })
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] }),
   })
 }
 

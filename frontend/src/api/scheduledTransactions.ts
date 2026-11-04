@@ -55,7 +55,8 @@ export function useCreateScheduledTransaction(budgetId: string) {
       apiClient
         .post<ScheduledTransaction>(`/${budgetId}/scheduled-transactions`, body)
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -66,7 +67,8 @@ export function useUpdateScheduledTransaction(budgetId: string) {
       apiClient
         .patch<ScheduledTransaction>(`/scheduled-transactions/${id}`, data)
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -74,7 +76,8 @@ export function useDeleteScheduledTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/scheduled-transactions/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -86,7 +89,8 @@ export function useSkipScheduledTransaction(budgetId: string) {
         // 204 (no body) when skipping the last occurrence completed the schedule.
         .post<ScheduledTransaction | ''>(`/scheduled-transactions/${id}/skip`, {})
         .then((r) => r.data || null),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 

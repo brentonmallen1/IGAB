@@ -109,7 +109,7 @@ export function useUpdateCategory(budgetId: string) {
     // Moving a category to another group changes group subtotals, view
     // placements and every report that groups by category — the same list a
     // delete stales, so the same list is invalidated.
-    onSuccess: () => invalidateAfterCategoryChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterCategoryChange(qc, budgetId),
   })
 }
 
@@ -162,7 +162,7 @@ export function useReorderCategoryGroups(budgetId: string) {
       toast.error(apiErrorMessage(err, 'Could not save the new order'))
     },
     // Order moves no money, so the month's balances are left alone.
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: key }),
   })
 }
 
@@ -191,7 +191,7 @@ export function useReorderCategories(budgetId: string) {
       ctx?.previous.forEach(([k, data]) => qc.setQueryData(k, data))
       toast.error(apiErrorMessage(err, 'Could not save the new order'))
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: key }),
   })
 }
 
@@ -331,8 +331,8 @@ function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', don
       })
       return data
     },
-    onSuccess: async () => {
-      await invalidateAfterCategoryChange(qc, budgetId)
+    onSuccess: () => {
+      void invalidateAfterCategoryChange(qc, budgetId)
       notify(done, 'latest')
     },
     // The server's sentence names which envelope still holds money and what to
@@ -369,8 +369,8 @@ function useGroupArchiveMutation(budgetId: string, path: 'archive' | 'unarchive'
       )
       return data
     },
-    onSuccess: async () => {
-      await invalidateAfterCategoryChange(qc, budgetId)
+    onSuccess: () => {
+      void invalidateAfterCategoryChange(qc, budgetId)
       notify(done, 'latest')
     },
     onError: (e) => toast.error(apiErrorMessage(e, 'Could not update the archive')),
@@ -467,7 +467,7 @@ export function useDeleteCategories(budgetId: string) {
       )
       return data
     },
-    onSuccess: () => invalidateAfterCategoryChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterCategoryChange(qc, budgetId),
     onError: (e) => toast.error(apiErrorMessage(e, 'Could not delete')),
   })
 }
@@ -493,7 +493,7 @@ export function useRepairOrphanedCategories(budgetId: string, month: string) {
       )
       return data
     },
-    onSuccess: () => invalidateAfterCategoryChange(qc, budgetId),
+    onSuccess: () => void invalidateAfterCategoryChange(qc, budgetId),
     onError: (e) => toast.error(apiErrorMessage(e, 'Could not repair categories')),
   })
 }

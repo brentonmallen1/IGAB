@@ -5,6 +5,7 @@ from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
+from igab.db import query_stats
 from igab.db.locks import lock_for_transaction
 from igab.db.models import BudgetMove, Category, new_uuid
 from igab.domain.cards import (
@@ -60,6 +61,7 @@ from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot
 from igab.services.ownership import ids_in_budget
+from igab.services.walk_cache import GenerationCache
 from igab.utils.clock import today_utc
 
 if TYPE_CHECKING:
@@ -597,6 +599,25 @@ class CardWalk:
     assigned_ever: dict[uuid.UUID, list[Decimal]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _WalkLegs:
+    """The part of a `CardWalk` that is worth caching: everything read out of
+    the budget's whole history, and the walk over it. The rest — the card
+    accounts, their envelopes, the anchor — is a handful of rows, re-read on
+    every call so a cached walk never hands out another session's ORM objects.
+    """
+
+    funding: CardFunding[uuid.UUID, uuid.UUID]
+    unclaimed: dict[uuid.UUID, dict[date, Decimal]]
+    credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]]
+    assigned_ever: dict[uuid.UUID, list[Decimal]]
+
+
+#: One process's card walks, by (budget, month), each valid for the snapshot
+#: generation it was computed under — see `igab.services.walk_cache`.
+_WALKS: GenerationCache[_WalkLegs] = GenerationCache()
+
+
 def _from_month(
     series_by_key: dict[uuid.UUID, dict[date, Decimal]], start: date
 ) -> dict[uuid.UUID, dict[date, Decimal]]:
@@ -1015,22 +1036,59 @@ class BudgetService:
         summary already holds the full list and passes it to avoid a second
         load; any other caller omits it.
         """
-        anchor = await self._budget_anchor(budget_id)
-        card_accounts = [
-            a
-            for a in await self.account_repo.get_all(budget_id, include_closed=True)
-            if a.on_budget and a.classification == "liability"
-        ]
-        if not card_accounts:
-            # The anchor still rides out: a cardless anchored budget serves
-            # its anchor month (the client clamps navigation on it).
-            return CardWalk(anchor=anchor)
-        if categories is None:
-            categories = await self.category_repo.get_all(budget_id, include_archived=True)
+        with query_stats.span("card-walk"):
+            anchor = await self._budget_anchor(budget_id)
+            card_accounts = [
+                a
+                for a in await self.account_repo.get_all(budget_id, include_closed=True)
+                if a.on_budget and a.classification == "liability"
+            ]
+            if not card_accounts:
+                # The anchor still rides out: a cardless anchored budget serves
+                # its anchor month (the client clamps navigation on it).
+                return CardWalk(anchor=anchor)
+            if categories is None:
+                categories = await self.category_repo.get_all(budget_id, include_archived=True)
+            linked_by_account = {
+                cat.linked_account_id: cat for cat in categories if cat.linked_account_id
+            }
+            # Read BEFORE the walk's inputs: an entry is stored under the
+            # generation that was valid when its inputs were read, never one
+            # a write between the two could have outdated. None (this
+            # transaction or another has written since the last rebuild)
+            # walks without storing.
+            generation = (
+                await self.snapshot_repo.generation(budget_id)
+                if self.snapshot_repo is not None
+                else None
+            )
+            legs = _WALKS.get(budget_id, month_start, generation)
+            if legs is None:
+                legs = await self._walk_legs(
+                    budget_id, month_start, anchor, card_accounts, linked_by_account
+                )
+                _WALKS.put(budget_id, month_start, generation, legs)
+            return CardWalk(
+                card_accounts=card_accounts,
+                linked_by_account=linked_by_account,
+                funding=legs.funding,
+                unclaimed=legs.unclaimed,
+                credit_outflows=legs.credit_outflows,
+                anchor=anchor,
+                assigned_ever=legs.assigned_ever,
+            )
+
+    async def _walk_legs(
+        self,
+        budget_id: uuid.UUID,
+        month_start: date,
+        anchor: BudgetAnchor | None,
+        card_accounts: list,
+        linked_by_account: dict[uuid.UUID, Category],
+    ) -> _WalkLegs:
+        """The history-wide reads and the walk over them — `card_walk`'s
+        expensive part, and the part it caches."""
         month_end_date = last_of_month(month_start)
-        linked_by_account = {
-            cat.linked_account_id: cat for cat in categories if cat.linked_account_id
-        }
         # `category_filters.SPENDABLE`, whose complement
         # `txn_filters.UNCLAIMED_CARD_ROW` selects on. Read from the
         # one expression rather than re-filtered out of `categories`: the
@@ -1087,13 +1145,10 @@ class BudgetService:
             # the anchor's truncation is applied to them here. The seed at
             # B−1 already accounts for everything earlier.
             unclaimed = _from_month(unclaimed, anchor.month)
-        return CardWalk(
-            card_accounts=card_accounts,
-            linked_by_account=linked_by_account,
+        return _WalkLegs(
             funding=funding,
             unclaimed=unclaimed,
             credit_outflows=credit_outflows,
-            anchor=anchor,
             assigned_ever=assigned_ever,
         )
 
@@ -1662,9 +1717,11 @@ class BudgetService:
             # wakes after the holder's rows are committed and the second look
             # finds them. A transaction that invalidated the cache itself
             # still sees its own invalidation, and rebuilds.
-            await lock_for_transaction(self.snapshot_repo.session, budget_id)
+            with query_stats.span("snapshot-lock"):
+                await lock_for_transaction(self.snapshot_repo.session, budget_id)
             if not await self.snapshot_repo.is_valid(budget_id):
-                await self._rebuild_snapshots(budget_id, categories)
+                with query_stats.span("snapshot-rebuild"):
+                    await self._rebuild_snapshots(budget_id, categories)
 
         latest = await self.snapshot_repo.latest_per_category(budget_id, month_start)
         zero = Decimal("0")

@@ -47,7 +47,7 @@ export function useCreateAccountType(budgetId: string) {
   return useMutation({
     mutationFn: (data: AccountTypeCreate) =>
       apiClient.post<AccountTypeInfo>(`/${budgetId}/account-types`, data).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
   })
 }
 
@@ -70,6 +70,6 @@ export function useDeleteAccountType(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (typeId: string) => apiClient.delete(`/${budgetId}/account-types/${typeId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
   })
 }

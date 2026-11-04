@@ -299,7 +299,7 @@ export function useCreateTransaction(budgetId: string) {
     mutationFn: (data: TransactionCreate) =>
       apiClient.post<Transaction>(`/${budgetId}/transactions`, data).then((r) => r.data),
     onSuccess: (txn) =>
-      invalidateAfterTransactionChange(qc, {
+      void invalidateAfterTransactionChange(qc, {
         budgetId,
         accountId: txn.account_id,
         transactionIds: [txn.id],
@@ -335,7 +335,7 @@ export function useUpdateTransaction(budgetId: string) {
     // A link/retarget/break writes the OTHER account's row too, so the
     // register goes wide rather than narrowing to `txn.account_id`.
     onSuccess: (txn) =>
-      invalidateAfterTransactionChange(qc, { budgetId, transactionIds: [txn.id] }),
+      void invalidateAfterTransactionChange(qc, { budgetId, transactionIds: [txn.id] }),
   })
 }
 
@@ -441,7 +441,7 @@ export function useConvertToSplit(budgetId: string) {
           { params: { budget_id: budgetId } }
         )
         .then((r) => r.data),
-    onSuccess: (txn) => invalidateAfterSplitChange(qc, budgetId, txn),
+    onSuccess: (txn) => void invalidateAfterSplitChange(qc, budgetId, txn),
   })
 }
 
@@ -469,7 +469,7 @@ export function useReplaceSplits(budgetId: string) {
           { params: { budget_id: budgetId } }
         )
         .then(() => ({ id, account_id: accountId })),
-    onSuccess: (txn) => invalidateAfterSplitChange(qc, budgetId, txn),
+    onSuccess: (txn) => void invalidateAfterSplitChange(qc, budgetId, txn),
   })
 }
 
@@ -490,7 +490,7 @@ export function useDeleteTransaction(budgetId: string) {
       // Refetch, not invalidate: the deleted row has to leave the register on
       // the spot, whether or not the query is currently active.
       qc.refetchQueries({ queryKey: [ROOT.transactions, accountId] })
-      return invalidateAfterTransactionChange(qc, { budgetId, accountId })
+      void invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
 }
@@ -517,7 +517,7 @@ export function useBulkUpdateCleared(budgetId: string) {
       reportBulkFailures(result, 'updated')
       // Null account = all-accounts register: rows span accounts, so the
       // helper goes wide rather than narrowing the register and the counts.
-      return invalidateAfterTransactionChange(qc, { budgetId, accountId })
+      void invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
 }
@@ -542,7 +542,7 @@ export function useBulkCategorize(budgetId: string) {
         .then((r) => ({ accountId, result: r.data })),
     onSuccess: ({ accountId, result }, { transactionIds }) => {
       reportBulkFailures(result, 'categorized')
-      return invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
+      void invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
     },
   })
 }
@@ -570,7 +570,7 @@ export function useBulkDeleteTransactions(budgetId: string) {
       qc.refetchQueries({
         queryKey: accountId ? [ROOT.transactions, accountId] : [ROOT.transactions],
       })
-      return invalidateAfterTransactionChange(qc, { budgetId, accountId })
+      void invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
 }
@@ -588,7 +588,7 @@ export function useUnreconcileTransaction(budgetId: string) {
     // `accounts` have to go too — this copy refreshed neither, and Ready to
     // Assign stayed wrong while the register looked right.
     onSuccess: (txn) =>
-      invalidateAfterTransactionChange(qc, {
+      void invalidateAfterTransactionChange(qc, {
         budgetId,
         accountId: txn.account_id,
         transactionIds: [txn.id],
@@ -652,7 +652,7 @@ export function useBulkApprove(budgetId: string) {
         .then((r) => ({ accountId, result: r.data })),
     onSuccess: ({ accountId, result }, { transactionIds }) => {
       reportBulkFailures(result, 'approved')
-      return invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
+      void invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
     },
   })
 }
@@ -679,7 +679,7 @@ export function useMergeTransactions(budgetId: string) {
       // Both ids, not just the survivor's: the row that lost gave up its
       // receipts and was soft-deleted, so its own per-row caches are stale
       // too — and the survivor's are only half the story.
-      return invalidateAfterTransactionChange(qc, {
+      void invalidateAfterTransactionChange(qc, {
         budgetId,
         accountId: txn.account_id,
         transactionIds: [...new Set([txn.id, ...transactionIds])],
