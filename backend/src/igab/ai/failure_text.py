@@ -81,7 +81,7 @@ def _technical(cause: str | None, call: dict | None) -> str | None:
     return "\n".join(lines) or None
 
 
-def _cut_short(exc: ReplyCutShort, kind: str, call: dict | None) -> Failure:
+def _cut_short(exc: ReplyCutShort, kind: str, call: dict | None, read: dict | None) -> Failure:
     entry = _entry(kind)
     if exc.reason == STOP_REPETITION:
         return Failure(
@@ -98,10 +98,26 @@ def _cut_short(exc: ReplyCutShort, kind: str, call: dict | None) -> Failure:
             _technical("Stopped at the time limit", call),
             TIMEOUT_SETTING,
         )
+    cause = "Cut off: output limit or context window reached"
+    if read and read.get("thinking_fallback"):
+        # Thinking ran out of room, and so did the re-read without it:
+        # turning thinking off is not the advice — the receipt is too long.
+        return Failure(
+            "The model ran out of room before reaching the total.",
+            f"It ran out with thinking on and again with it off — the receipt may be too"
+            f" long to read in one go. {entry}.",
+            _technical(f"Thinking ran out of room; re-read with thinking off\n{cause}", call),
+        )
+    if call is not None and not call.get("thinking_enabled"):
+        return Failure(
+            "The model ran out of room before reaching the total.",
+            f"The receipt may be too long to read in one go. {entry}.",
+            _technical(cause, call),
+        )
     return Failure(
         "The model ran out of room before reaching the total.",
         f"Usually a long receipt with thinking on. {entry}, or turn thinking off and scan again.",
-        _technical("Cut off: output limit or context window reached", call),
+        _technical(cause, call),
         THINKING_SETTING,
     )
 
@@ -123,17 +139,20 @@ def _ollama_status(exc: httpx.HTTPStatusError, kind: str) -> Failure:
     )
 
 
-def explain_failure(exc: BaseException, kind: str, call: dict | None = None) -> Failure:
+def explain_failure(
+    exc: BaseException, kind: str, call: dict | None = None, read: dict | None = None
+) -> Failure:
     """What went wrong, what to do, and the evidence. `kind` is the job's
     ("receipt" or "nl_parse"); `call` is the model call's debug view, when
-    the failure came from one."""
+    the failure came from one; `read` is how the read was made
+    (`AIService.last_read`)."""
     from igab.tasks.ai_worker import NonRetryableJobError  # the worker imports this
 
     entry = _entry(kind)
     if isinstance(exc, NonRetryableJobError):
         return Failure(str(exc), exc.next_step or f"{entry}.", _call_facts(call), exc.settings)
     if isinstance(exc, ReplyCutShort):
-        return _cut_short(exc, kind, call)
+        return _cut_short(exc, kind, call, read)
     if isinstance(exc, ReplyNotJSON):
         return Failure(
             "The model's answer couldn't be read.",

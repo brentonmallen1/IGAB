@@ -41,6 +41,7 @@ import { jobFailure } from '../../../components/transactions/TransactionEditor/s
 import { sectionHref } from '../../SettingsPage/settingsSections'
 import { unresolvedCategoryNote } from '../../../components/ai/draftNotes'
 import { CardEndingNotice } from '../../../components/ai/CardEndingNotice'
+import { ReadNotes } from '../../../components/ai/ReadNotes'
 import { PlaceReceipt } from './PlaceReceipt'
 
 /** Where the AI model is configured — the System page. */
@@ -271,6 +272,8 @@ function JobRow({
             </span>
           )}
         </div>
+        {/* An error row says its attempts in the meta line already. */}
+        {job.status !== 'error' && <ReadNotes read={job.result?.read} />}
         <JobSplit job={job} budgetId={budgetId} lines={splitLines} />
         {typeof reason === 'string' && reason && (
           <div

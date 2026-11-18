@@ -431,7 +431,42 @@ class TestTheCallIsRecorded:
             RAW_CUT_SHORT: "repetition",
         }
 
-    async def test_the_receipt_read_is_capped_and_guarded(self, monkeypatch):
+    async def test_thinking_that_runs_out_of_room_is_read_again_without_it(self, monkeypatch):
+        """A long receipt: thinking used the whole budget and never reached the
+        total. The re-read without thinking is the read, and says so."""
+        thinks: list = []
+
+        async def thought_too_long(self, prompt, system=None, **kwargs):
+            thinks.append(kwargs["think"])
+            if kwargs["think"]:
+                self.last_meta = {"done_reason": "length", "thinking": "Let me count…"}
+                return ""
+            self.last_meta = {"done_reason": "stop"}
+            return '{"payee": "Fresh Mart", "total": 39.53}'
+
+        svc = self.capture_service(monkeypatch, generate=thought_too_long)
+        kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert kept == {"payee": "Fresh Mart", "total": 39.53}
+        assert thinks == [True, False]
+        assert svc.last_read == {
+            "thinking_setting": "on",
+            "thinking": False,
+            "thinking_fallback": True,
+        }
+
+    async def test_a_read_that_kept_its_total_is_not_read_again(self, monkeypatch):
+        calls: list = []
+
+        async def cut_in_items(self, prompt, system=None, **kwargs):
+            calls.append(kwargs["think"])
+            self.last_meta = {"done_reason": "length"}
+            return '{"payee": "Fresh Mart", "total": 39.53, "line_items": [{"desc'
+
+        svc = self.capture_service(monkeypatch, generate=cut_in_items)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert calls == [True]
+        assert svc.last_read["thinking_fallback"] is False
+
         seen = {}
 
         async def record(self, prompt, system=None, **kwargs):

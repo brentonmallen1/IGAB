@@ -7,6 +7,7 @@ import {
   checkStillOpen,
   checkedBoxes,
   draftCheckNotes,
+  readNotes,
   labelNamesCategory,
   unresolvedCategoryNote,
 } from './draftNotes'
@@ -270,5 +271,33 @@ describe('checkedBoxes', () => {
       outflow: false,
       inflow: false,
     })
+  })
+})
+
+describe('readNotes', () => {
+  const read = { attempt: 1, max_attempts: 3, thinking_setting: 'auto' as const, thinking: true }
+
+  it('says nothing about an ordinary read', () => {
+    expect(readNotes(read)).toEqual([])
+    expect(readNotes(undefined)).toEqual([])
+    expect(readNotes({ ...read, thinking: null })).toEqual([])
+  })
+
+  it('names a retry and the thinking fallback', () => {
+    expect(readNotes({ ...read, attempt: 2, thinking: false, thinking_fallback: true })).toEqual([
+      'Read on try 2 of 3',
+      'Thinking turned off — it ran out of room with it on',
+    ])
+  })
+
+  it('names a Thinking setting that is not Auto', () => {
+    expect(readNotes({ ...read, thinking_setting: 'off', thinking: false })).toEqual([
+      'Thinking off (your setting)',
+    ])
+    expect(readNotes({ ...read, thinking_setting: 'on' })).toEqual(['Thinking on (your setting)'])
+  })
+
+  it('says nothing when Off was set but the model never thinks anyway', () => {
+    expect(readNotes({ ...read, thinking_setting: 'off', thinking: null })).toEqual([])
   })
 })

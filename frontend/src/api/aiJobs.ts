@@ -96,6 +96,22 @@ export interface AIJobResult {
    *  `backend/.../ai/failure_text.py`. Absent on jobs recorded before it;
    *  read through `jobFailure`, which falls back to `error`. */
   failure?: AIJobFailure
+  /** How the read was made — the facts behind "what differed from the
+   *  default" (`readNotes`). Absent on jobs recorded before it. */
+  read?: AIJobRead
+}
+
+export interface AIJobRead {
+  /** Which attempt produced this result; earlier ones failed. */
+  attempt: number
+  max_attempts: number
+  /** System → AI → Advanced → Thinking, when the read was made. */
+  thinking_setting?: 'auto' | 'on' | 'off'
+  /** Whether the call that produced the read thought; null when the model
+   *  doesn't think at all. */
+  thinking?: boolean | null
+  /** Thinking ran out of room, so the receipt was read again without it. */
+  thinking_fallback?: boolean
 }
 
 export interface AIJobFailure {

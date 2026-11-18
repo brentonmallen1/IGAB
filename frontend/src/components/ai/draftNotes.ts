@@ -1,4 +1,4 @@
-import type { AIJob, AIJobDraft, AIJobDraftCheck } from '../../api/aiJobs'
+import type { AIJob, AIJobDraft, AIJobDraftCheck, AIJobRead } from '../../api/aiJobs'
 import { parseApiDecimal, toCents } from '../../utils/money'
 import type { NamedCategory } from '../../utils/categoryLabels'
 
@@ -177,4 +177,25 @@ export function checkedBoxes(
     outflow: amount && cents < 0,
     inflow: amount && cents > 0,
   }
+}
+
+/**
+ * What differed from the default in how a read was made, one short phrase
+ * each — nothing for an ordinary read. The facts are the server's
+ * (`result.read`, from `tasks/ai_worker._read_record`); this only words them.
+ */
+export function readNotes(read: AIJobRead | undefined): string[] {
+  if (!read) return []
+  const notes: string[] = []
+  if (read.attempt > 1) {
+    notes.push(`Read on try ${read.attempt} of ${read.max_attempts}`)
+  }
+  if (read.thinking_fallback) {
+    notes.push('Thinking turned off — it ran out of room with it on')
+  } else if (read.thinking_setting === 'off' && read.thinking === false) {
+    notes.push('Thinking off (your setting)')
+  } else if (read.thinking_setting === 'on') {
+    notes.push('Thinking on (your setting)')
+  }
+  return notes
 }

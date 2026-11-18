@@ -121,3 +121,19 @@ def test_the_catch_all_names_what_it_was_in_the_technical_line():
     failure = explain_failure(KeyError("response"), "receipt")
     assert "KeyError" in (failure.technical or "")
     assert "KeyError" not in failure.headline
+
+
+def test_after_the_thinking_fallback_turning_thinking_off_is_not_the_advice():
+    read = {"thinking_setting": "auto", "thinking": False, "thinking_fallback": True}
+    call = {**CALL, "thinking_enabled": False}
+    failure = explain_failure(ReplyCutShort("x", "length"), "receipt", call, read)
+    assert failure.settings is None
+    assert "with thinking on and again with it off" in failure.next_step
+    assert (failure.technical or "").startswith("Thinking ran out of room; re-read")
+
+
+def test_a_read_that_never_thought_is_not_told_to_stop_thinking():
+    call = {**CALL, "thinking_enabled": False}
+    failure = explain_failure(ReplyCutShort("x", "length"), "receipt", call)
+    assert failure.settings is None
+    assert "thinking" not in failure.next_step

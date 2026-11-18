@@ -130,6 +130,9 @@ class AIService:
         #: Set by the receipt and NL paths so the job row can link to the call
         #: the worker just made. The record itself lives in `ai_calls`.
         self.last_call: AICallContext | None = None
+        #: How the last read was made (`_note_read`); the worker stores it on
+        #: the job as `result.read`.
+        self.last_read: dict | None = None
 
     async def _client(self) -> OllamaClient:
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
@@ -435,13 +438,49 @@ class AIService:
         )
         client = await self._vision_client()
         think = await self._resolve_think(client)
-        system = "You are a receipt data extraction engine. Return only valid JSON."
+        await self._note_read(think)
         self.last_call = AICallContext(feature="receipt_extract", budget_id=budget_id)
-        raw = await self.gateway.complete(
+        raw = await self._read_receipt(client, prompt, image_b64, think)
+        try:
+            return self._reply_object(raw)
+        except ReplyCutShort as exc:
+            try:
+                return _salvaged_receipt(raw, exc)
+            except ReplyCutShort:
+                if not think:
+                    raise
+        # Thinking used the room the answer needed and never reached the
+        # total. The same receipt read with thinking off finished in 33 s
+        # (gemma4:12b, 60 items, 2026-11-18), so read it once more that way
+        # rather than fail — and say so on the job.
+        assert self.last_read is not None
+        self.last_read.update(thinking=False, thinking_fallback=True)
+        raw = await self._read_receipt(client, prompt, image_b64, False)
+        try:
+            return self._reply_object(raw)
+        except ReplyCutShort as exc:
+            return _salvaged_receipt(raw, exc)
+
+    async def _note_read(self, think: bool | None) -> None:
+        """Record how this read is made, for the review to say what differed
+        from the default: the Thinking setting, and whether the call thinks
+        (None: the model doesn't think at all)."""
+        self.last_read = {
+            "thinking_setting": await self.settings.get("ai_thinking") or "auto",
+            "thinking": think,
+            "thinking_fallback": False,
+        }
+
+    async def _read_receipt(
+        self, client: OllamaClient, prompt: str, image_b64: str, think: bool | None
+    ) -> str:
+        """One extraction call: capped, guarded against a loop, deadlined."""
+        assert self.last_call is not None
+        return await self.gateway.complete(
             context=self.last_call,
             client=client,
             prompt=prompt,
-            system=system,
+            system="You are a receipt data extraction engine. Return only valid JSON.",
             images=[image_b64],
             # The schema is sent whether or not the model thinks: on Ollama 0.34
             # gemma4 and qwen3-vl think, then answer to it. The rule here used to
@@ -460,10 +499,6 @@ class AIService:
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
             stop_when=_receipt_loop_guard,
         )
-        try:
-            return self._reply_object(raw)
-        except ReplyCutShort as exc:
-            return _salvaged_receipt(raw, exc)
 
     async def parse_nl_transaction(
         self, budget_id: uuid.UUID, text: str, client_today: date
@@ -478,6 +513,7 @@ class AIService:
         )
         client = await self._client()
         think = await self._resolve_think(client)
+        await self._note_read(think)
         system = "You are a transaction parser. Return only valid JSON."
         self.last_call = AICallContext(feature="nl_parse", budget_id=budget_id)
         raw = await self.gateway.complete(

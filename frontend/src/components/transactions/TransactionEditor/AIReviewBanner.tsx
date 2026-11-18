@@ -6,6 +6,7 @@ import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { draftCheckNotes, unresolvedCategoryNote } from '../../ai/draftNotes'
 import { CardEndingNotice } from '../../ai/CardEndingNotice'
+import { ReadNotes } from '../../ai/ReadNotes'
 import { jobFailure, type ScanFailure } from './scanFailure'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
@@ -110,6 +111,7 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
           <span className="txn-editor__ai-banner-note">
             <CardEndingNotice job={job} budgetId={budgetId} canMove={false} />
           </span>
+          <ReadNotes read={job.result?.read} />
         </>
       )}
       {job.status === 'error' && (
