@@ -740,7 +740,9 @@ a {
    `data-budget-colors` wins because custom properties inherit from it. An
    ancestor selector would match <html> inside every preview.
 
-   Zero and on-card red are muted in every mode — they are not hue signals.
+   Zero is muted in every mode — it is not a hue signal. On-card red is a
+   balance like any other: painted under full and available, plain under
+   none, in the hue `data-card-overspend` picks (red or YNAB yellow).
    Account balances and the sidebar carry no role, so no mode touches them. */
 .positive {
   color: var(--color-positive);
@@ -754,17 +756,30 @@ a {
   color: var(--text-muted);
 }
 
-/* Red that was swiped on a card and rides there as debt. Still negative, still
-   reads as money owed — but not the alarm colour, because nothing is owed that
-   the card was not already owed and Ready to Assign is never charged for it.
-   The same restraint the cards section gives Uncovered, which is this money
-   seen from the other side. */
-.negative-on-card {
-  color: var(--text-secondary);
+/* Red that was swiped on a card and rides there as debt (`negative-on-card`).
+   It never charges Ready to Assign, but it is still money owed and still
+   wants dealing with, so it reads red by default — or YNAB's yellow, for
+   people who learned the card overspend that way. Per device:
+   `data-card-overspend` (appStore, on <html>) picks the hue, and the balance
+   role below carries it, so the colour mode still quiets it. Only the text
+   colour: no wash, no edge — the overspent edge stays cash-only. A variable
+   pair, not an ancestor selector, so the Settings preview can draw it under
+   each mode whatever the page is set to. */
+:root,
+[data-card-overspend] {
+  --card-overspend-color: var(--color-negative);
+  --card-overspend-glow: var(--glow-text-negative);
+}
+
+[data-card-overspend="yellow"] {
+  --card-overspend-color: var(--color-warning);
+  --card-overspend-glow: none;
 }
 
 :root,
 [data-budget-colors] {
+  --figure-balance-on-card: var(--card-overspend-color);
+  --figure-balance-glow-on-card: var(--card-overspend-glow);
   --figure-flow-positive: var(--color-positive);
   --figure-flow-negative: var(--color-negative);
   --figure-flow-glow-positive: var(--glow-text-positive);
@@ -792,6 +807,8 @@ a {
   --figure-balance-negative: currentColor;
   --figure-balance-glow-positive: none;
   --figure-balance-glow-negative: none;
+  --figure-balance-on-card: currentColor;
+  --figure-balance-glow-on-card: none;
   --budget-overspent-marker: var(--text-secondary);
 }
 
@@ -813,6 +830,11 @@ a {
 .budget-figure--balance.negative {
   color: var(--figure-balance-negative);
   text-shadow: var(--figure-balance-glow-negative);
+}
+
+.budget-figure--balance.negative-on-card {
+  color: var(--figure-balance-on-card);
+  text-shadow: var(--figure-balance-glow-on-card);
 }
 
 /* Amount text. 168 rules in this app colour text positive/negative, and only

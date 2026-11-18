@@ -113,6 +113,8 @@ export function SettingsPage() {
   const setFontScale = useAppStore((s) => s.setFontScale)
   const budgetColors = useAppStore((s) => s.budgetColors)
   const setBudgetColors = useAppStore((s) => s.setBudgetColors)
+  const cardOverspendTone = useAppStore((s) => s.cardOverspendTone)
+  const setCardOverspendTone = useAppStore((s) => s.setCardOverspendTone)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const autoOpenLastBudget = useAppStore((s) => s.autoOpenLastBudget)
   const setAutoOpenLastBudget = useAppStore((s) => s.setAutoOpenLastBudget)
@@ -307,6 +309,14 @@ export function SettingsPage() {
           <div className="settings-subsection">
             <div className="settings-subsection__title">Budget colours</div>
             <BudgetColorsPicker value={budgetColors} onChange={setBudgetColors} />
+            {/* The pickers' Fuel row is red that rode on a card, so the three
+                samples above preview this switch as it is flipped. */}
+            <SettingsToggle
+              label="Card overspending in yellow"
+              desc="Spending on a card past what an envelope holds shows in red, like any overspending. Turn this on to show it in yellow, as YNAB does. With No colour it is plain either way."
+              checked={cardOverspendTone === 'yellow'}
+              onChange={(on) => setCardOverspendTone(on ? 'yellow' : 'red')}
+            />
           </div>
           <div className="settings-subsection">
             <div className="settings-subsection__title">Register</div>

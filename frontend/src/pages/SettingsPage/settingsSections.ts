@@ -109,7 +109,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     description:
       'How budget figures are coloured and how the register draws its rows, on this device. Nothing here changes the budget.',
     keywords:
-      'colour color red green overspent activity available plain running balance register split lines column date order statement',
+      'colour color red green yellow ynab card overspent activity available plain running balance register split lines column date order statement',
   },
   {
     id: 'mobile',

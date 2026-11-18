@@ -3,7 +3,12 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
 import { currentMonthStart, monthAfterResume } from '../utils/dates'
-import { normalizeBudgetColorMode, type BudgetColorMode } from '../utils/figureTone'
+import {
+  normalizeBudgetColorMode,
+  normalizeCardOverspendTone,
+  type BudgetColorMode,
+  type CardOverspendTone,
+} from '../utils/figureTone'
 
 export type Theme =
   | 'dark'
@@ -205,6 +210,9 @@ interface AppState {
   /** Device-local: which budget figures are coloured (figureTone.ts
    *  `BudgetColorMode`), applied as `data-budget-colors` on <html>. */
   budgetColors: BudgetColorMode
+  /** Device-local: the hue of red that rode on a card (figureTone.ts
+   *  `CardOverspendTone`), applied as `data-card-overspend` on <html>. */
+  cardOverspendTone: CardOverspendTone
 
   setTheme: (theme: Theme) => void
   toggleThemeMode: () => void
@@ -224,6 +232,7 @@ interface AppState {
   togglePrivacyMode: () => void
   setViewportRuler: (on: boolean) => void
   setBudgetColors: (mode: BudgetColorMode) => void
+  setCardOverspendTone: (tone: CardOverspendTone) => void
 }
 
 /** The earliest month the budget page can show: the first month of YNAB's
@@ -252,6 +261,7 @@ export const useAppStore = create<AppState>()(
       privacyMode: false,
       viewportRulerOn: false,
       budgetColors: 'full',
+      cardOverspendTone: 'red',
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)
@@ -271,6 +281,10 @@ export const useAppStore = create<AppState>()(
       setBudgetColors: (mode) => {
         document.documentElement.setAttribute('data-budget-colors', mode)
         set({ budgetColors: mode })
+      },
+      setCardOverspendTone: (tone) => {
+        document.documentElement.setAttribute('data-card-overspend', tone)
+        set({ cardOverspendTone: tone })
       },
       // The anchor belongs to the open budget, so changing budgets drops it:
       // BudgetPage sets it from the month query, but the register or reports
@@ -331,15 +345,21 @@ export const useAppStore = create<AppState>()(
         privacyMode: s.privacyMode,
         viewportRulerOn: s.viewportRulerOn,
         budgetColors: s.budgetColors,
+        cardOverspendTone: s.cardOverspendTone,
       }),
-      // A stored mode this build does not know reads as the default, rather
+      // A stored mode or tone this build does not know reads as the default, rather
       // than an attribute no rule matches — which would leave the figures in
       // whatever the variables happened to default to.
       merge: (persisted, current) => {
         // A month saved by an earlier build is dropped, not restored: the
         // launch opens on this month whatever was stored.
         const { selectedMonth: _stale, ...saved } = (persisted ?? {}) as Partial<AppState>
-        return { ...current, ...saved, budgetColors: normalizeBudgetColorMode(saved.budgetColors) }
+        return {
+          ...current,
+          ...saved,
+          budgetColors: normalizeBudgetColorMode(saved.budgetColors),
+          cardOverspendTone: normalizeCardOverspendTone(saved.cardOverspendTone),
+        }
       },
       migrate: (persisted: unknown, from: number) => {
         const state = persisted as { fontScale?: string } | null
@@ -358,6 +378,9 @@ export const useAppStore = create<AppState>()(
         }
         if (state?.budgetColors) {
           document.documentElement.setAttribute('data-budget-colors', state.budgetColors)
+        }
+        if (state?.cardOverspendTone) {
+          document.documentElement.setAttribute('data-card-overspend', state.cardOverspendTone)
         }
         syncThemeColorMeta()
       },
