@@ -99,6 +99,27 @@ describe('useAutoAssign', () => {
       category_ids: ['c1'],
       action: 'average_spent',
       month: '2026-07-01',
+      cover_ids: [],
+    })
+  })
+
+  it('sends the Cover + target choice with Target Amount', async () => {
+    apiPost.mockResolvedValue({ data: null })
+    const { result } = renderHook(() => useAutoAssign('b1', '2026-07-01'), { wrapper })
+
+    result.current.mutate({
+      categoryIds: ['c1', 'c2'],
+      action: 'target_amount',
+      amounts: null,
+      coverIds: ['c2'],
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(apiPost).toHaveBeenCalledWith('/b1/categories/auto-assign', {
+      category_ids: ['c1', 'c2'],
+      action: 'target_amount',
+      month: '2026-07-01',
+      cover_ids: ['c2'],
     })
   })
 })

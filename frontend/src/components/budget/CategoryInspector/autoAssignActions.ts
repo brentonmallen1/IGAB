@@ -7,7 +7,7 @@ export interface AutoAssignRow {
   value: number
 }
 
-type HistoryAction = Exclude<AutoAssignAction, 'reset' | 'target_amount'>
+type HistoryAction = Exclude<AutoAssignAction, 'reset' | 'target_amount' | 'cover_and_target'>
 
 /**
  * The envelopes the month summary's buttons act on: every listed category
@@ -27,10 +27,16 @@ export function autoAssignCategoryIds(categories: readonly Category[]): string[]
 /**
  * What each selected envelope will hold assigned after `action` — the
  * figures the server sets, read from what it served: `target_assigned`
- * (TargetService.target_assigned) for Target Amount, the batch history for
- * the history buttons, zero for Reset. Envelopes the action leaves alone
- * (no target) are absent. Null while the history the figures come from has
- * not loaded: an unknown figure is not a zero.
+ * (TargetService.target_assigned) for Target Amount, `cover_target_assigned`
+ * (TargetService.cover_and_target_assigned) for Cover + target and for the
+ * Target Amount envelopes named in `coverIds`, the batch history for the
+ * history buttons, zero for Reset. Envelopes the action leaves alone (no
+ * target) are absent. Null while the history the figures come from has not
+ * loaded: an unknown figure is not a zero.
+ *
+ * Where Cover + target is not offered (`cover_target_assigned` null) the
+ * envelope takes its target amount — the server's rule
+ * (`AssignService._target_assigned`), drawn here from what it served.
  *
  * The button's own figure is the sum of these, and the optimistic update
  * draws exactly these, so what the button says, what the grid shows at once
@@ -40,15 +46,24 @@ export function autoAssignAmounts(
   action: AutoAssignAction,
   categoryIds: readonly string[],
   histories: readonly CategoryHistory[] | undefined,
-  balances: readonly CategoryBalance[] | undefined
+  balances: readonly CategoryBalance[] | undefined,
+  coverIds: ReadonlySet<string> = new Set()
 ): Map<string, number> | null {
   const selected = new Set(categoryIds)
   if (action === 'reset') return new Map(categoryIds.map((id) => [id, 0]))
-  if (action === 'target_amount') {
+  if (action === 'target_amount' || action === 'cover_and_target') {
+    const covers = (id: string) => action === 'cover_and_target' || coverIds.has(id)
     return new Map(
       (balances ?? [])
-        .filter((b) => selected.has(b.category_id) && b.target_assigned !== null)
-        .map((b) => [b.category_id, Number(b.target_assigned)])
+        .filter((b) => selected.has(b.category_id) && b.target_assigned != null)
+        .map((b) => [
+          b.category_id,
+          Number(
+            covers(b.category_id) && b.cover_target_assigned != null
+              ? b.cover_target_assigned
+              : b.target_assigned
+          ),
+        ])
     )
   }
   if (!histories) return null
@@ -71,21 +86,35 @@ const total = (amounts: Map<string, number> | null) =>
  *
  * Target Amount appears only when a selected category has a target, and its
  * figure is the served `target_assigned` (TargetService.target_assigned —
- * the rule the POST runs), never recomputed here. Categories without a
+ * the rule the POST runs), never recomputed here — or, for the envelopes in
+ * `coverIds`, the served `cover_target_assigned`. Categories without a
  * target are left alone by it, so they add nothing to its figure.
+ *
+ * Cover + target is its own row only for ONE category, and only when the
+ * server offers it (`cover_target_assigned` served). With several selected
+ * the choice is made per envelope behind Target Amount instead
+ * (`TargetCoverDialog`, utils/targetCover.ts).
  */
 export function autoAssignRows(
   categoryIds: readonly string[],
   histories: readonly CategoryHistory[] | undefined,
-  balances: readonly CategoryBalance[] | undefined
+  balances: readonly CategoryBalance[] | undefined,
+  coverIds: ReadonlySet<string> = new Set()
 ): AutoAssignRow[] {
   const value = (action: AutoAssignAction) =>
     total(autoAssignAmounts(action, categoryIds, histories, balances))
-  const targeted = autoAssignAmounts('target_amount', categoryIds, histories, balances)
+  const targeted = autoAssignAmounts('target_amount', categoryIds, histories, balances, coverIds)
+  const only = categoryIds.length === 1 ? categoryIds[0] : null
+  const cover = only
+    ? (balances ?? []).find((b) => b.category_id === only)?.cover_target_assigned
+    : null
 
   return [
     ...(targeted && targeted.size > 0
       ? [{ action: 'target_amount' as const, label: 'Target Amount', value: total(targeted) }]
+      : []),
+    ...(cover != null
+      ? [{ action: 'cover_and_target' as const, label: 'Cover + target', value: Number(cover) }]
       : []),
     {
       action: 'last_month_assigned',

@@ -1,0 +1,42 @@
+/* Target / Cover + target: a two-way segmented choice. */
+.target-cover-choice {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+}
+
+.target-cover-choice__option {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: none;
+  border-radius: calc(var(--border-radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.target-cover-choice__option.is-selected {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.target-cover-choice__option:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 1px;
+}
+
+.target-cover-choice__option:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.target-cover-choice__amount {
+  color: inherit;
+}

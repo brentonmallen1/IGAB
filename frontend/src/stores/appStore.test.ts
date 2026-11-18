@@ -281,3 +281,31 @@ describe('the month the budget opens on', () => {
     expect(useAppStore.getState().selectedMonth).toBe(currentMonthStart())
   })
 })
+
+describe('Target Amount on overspent categories (targetCoverMode)', () => {
+  const partialize = () => useAppStore.persist.getOptions().partialize!
+  const merge = () => useAppStore.persist.getOptions().merge!
+
+  it('starts at Ask', () => {
+    const fresh = merge()({}, useAppStore.getState()) as { targetCoverMode: string }
+    expect(fresh.targetCoverMode).toBe('ask')
+  })
+
+  it('survives a reload', () => {
+    const kept = partialize()({ ...useAppStore.getState(), targetCoverMode: 'cover' } as never) as {
+      targetCoverMode: string
+    }
+    expect(kept.targetCoverMode).toBe('cover')
+    const restored = merge()(kept, useAppStore.getState()) as { targetCoverMode: string }
+    expect(restored.targetCoverMode).toBe('cover')
+  })
+
+  it('reads a value this build does not know as Ask', () => {
+    for (const junk of ['always', 1, null, {}]) {
+      const state = merge()({ targetCoverMode: junk }, useAppStore.getState()) as {
+        targetCoverMode: string
+      }
+      expect(state.targetCoverMode).toBe('ask')
+    }
+  })
+})

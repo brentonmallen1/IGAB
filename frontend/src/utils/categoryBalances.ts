@@ -59,6 +59,7 @@ export function withAssignments(
       is_card_payment: false,
       needed_this_month: null,
       target_assigned: null,
+      cover_target_assigned: null,
       // Nothing repaid: this row is an assignment just made, not a card
       // inflow the exposure walk had to split.
       repaid_uncovered_debt: 0,

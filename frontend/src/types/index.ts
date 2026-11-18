@@ -299,6 +299,12 @@ export interface CategoryBalance {
    *  the inspector's button. Served (TargetService.target_assigned, the rule
    *  the apply runs); `null` when there is no target. */
   target_assigned: number | null
+  /** What Auto-Assign's "Cover + target" would set assigned to: the month's
+   *  spending covered and the target's duty on top, so Available reaches the
+   *  duty. Served (TargetService.cover_and_target_assigned); `null` where it
+   *  is not offered — no monthly or weekly target, nothing spent past what
+   *  the envelope was given, or the same figure as `target_assigned`. */
+  cover_target_assigned: number | null
   /** A card's envelope — the cards section owns it and the grid never
    *  draws it. Below zero it is overspent like any envelope, and Cover
    *  Overspent covers it by assigning to the card. Served, not derived:
@@ -870,6 +876,7 @@ export type AutoAssignAction =
   | 'average_spent'
   | 'reset'
   | 'target_amount'
+  | 'cover_and_target'
 
 /** Bulk strategies offered by the TBA hero's Assign dropdown */
 export type AssignStrategy =

@@ -11,6 +11,11 @@ import {
   type BudgetColorMode,
   type CardOverspendTone,
 } from '../utils/figureTone'
+import {
+  DEFAULT_TARGET_COVER_MODE,
+  normalizeTargetCoverMode,
+  type TargetCoverMode,
+} from '../utils/targetCover'
 
 export type Theme =
   | 'dark'
@@ -215,6 +220,9 @@ interface AppState {
   /** Device-local: the hue of red that rode on a card (figureTone.ts
    *  `CardOverspendTone`), applied as `data-card-overspend` on <html>. */
   cardOverspendTone: CardOverspendTone
+  /** Device-local: what Target Amount does with overspent envelopes when
+   *  several are pressed at once (utils/targetCover.ts). */
+  targetCoverMode: TargetCoverMode
 
   setTheme: (theme: Theme) => void
   toggleThemeMode: () => void
@@ -235,6 +243,7 @@ interface AppState {
   setViewportRuler: (on: boolean) => void
   setBudgetColors: (mode: BudgetColorMode) => void
   setCardOverspendTone: (tone: CardOverspendTone) => void
+  setTargetCoverMode: (mode: TargetCoverMode) => void
 }
 
 /** The earliest month the budget page can show: the first month of YNAB's
@@ -264,6 +273,7 @@ export const useAppStore = create<AppState>()(
       viewportRulerOn: false,
       budgetColors: DEFAULT_BUDGET_COLOR_MODE,
       cardOverspendTone: DEFAULT_CARD_OVERSPEND_TONE,
+      targetCoverMode: DEFAULT_TARGET_COVER_MODE,
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)
@@ -326,6 +336,7 @@ export const useAppStore = create<AppState>()(
       setLocationEnabled: (val) => set({ locationEnabled: val }),
       togglePrivacyMode: () => set((s) => ({ privacyMode: !s.privacyMode })),
       setViewportRuler: (on) => set({ viewportRulerOn: on }),
+      setTargetCoverMode: (mode) => set({ targetCoverMode: mode }),
     }),
     {
       name: PERSIST_KEYS.app,
@@ -348,6 +359,7 @@ export const useAppStore = create<AppState>()(
         viewportRulerOn: s.viewportRulerOn,
         budgetColors: s.budgetColors,
         cardOverspendTone: s.cardOverspendTone,
+        targetCoverMode: s.targetCoverMode,
       }),
       // A stored mode or tone this build does not know reads as the default, rather
       // than an attribute no rule matches — which would leave the figures in
@@ -361,6 +373,7 @@ export const useAppStore = create<AppState>()(
           ...saved,
           budgetColors: normalizeBudgetColorMode(saved.budgetColors),
           cardOverspendTone: normalizeCardOverspendTone(saved.cardOverspendTone),
+          targetCoverMode: normalizeTargetCoverMode(saved.targetCoverMode),
         }
       },
       migrate: (persisted: unknown, from: number) => {

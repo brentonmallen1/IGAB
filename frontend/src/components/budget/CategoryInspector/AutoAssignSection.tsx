@@ -1,10 +1,9 @@
 import { Zap } from 'lucide-react'
-import { useCategoryHistoryBatch, useAutoAssign } from '../../../api/categoryHistory'
+import { useCategoryHistoryBatch } from '../../../api/categoryHistory'
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
-import type { AutoAssignAction } from '../../../types'
 import { useBudgetMonth } from '../../../api/budgets'
-import { autoAssignAmounts, autoAssignRows } from './autoAssignActions'
+import { useAutoAssignActions } from './useAutoAssignActions'
 
 interface Props {
   categoryIds: string[]
@@ -16,18 +15,12 @@ export function AutoAssignSection({ categoryIds, budgetId }: Props) {
   const month = useAppStore((s) => s.selectedMonth)
   const { data: histories } = useCategoryHistoryBatch(budgetId, categoryIds, month)
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const autoAssign = useAutoAssign(budgetId, month)
-
-  const balances = budgetMonth?.category_balances
-  const actions = autoAssignRows(categoryIds, histories, balances)
-
-  function handleAction(action: AutoAssignAction) {
-    autoAssign.mutate({
-      categoryIds,
-      action,
-      amounts: autoAssignAmounts(action, categoryIds, histories, balances),
-    })
-  }
+  const {
+    rows: actions,
+    press: handleAction,
+    isPending,
+    dialog,
+  } = useAutoAssignActions(budgetId, month, categoryIds, histories, budgetMonth?.category_balances)
 
   return (
     <div className="inspector-section">
@@ -41,7 +34,7 @@ export function AutoAssignSection({ categoryIds, budgetId }: Props) {
             key={action}
             className="inspector-autoassign__btn"
             onClick={() => handleAction(action)}
-            disabled={autoAssign.isPending}
+            disabled={isPending}
           >
             <span className="inspector-autoassign__label">{label}</span>
             <span className="inspector-autoassign__value tabular">{formatMoney(value)}</span>
@@ -51,12 +44,13 @@ export function AutoAssignSection({ categoryIds, budgetId }: Props) {
         <button
           className="inspector-autoassign__btn"
           onClick={() => handleAction('reset')}
-          disabled={autoAssign.isPending}
+          disabled={isPending}
         >
           <span className="inspector-autoassign__label">Reset Assigned Amount</span>
           <span className="inspector-autoassign__value tabular">{formatMoney(0)}</span>
         </button>
       </div>
+      {dialog}
     </div>
   )
 }
