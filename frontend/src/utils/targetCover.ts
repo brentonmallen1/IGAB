@@ -1,3 +1,5 @@
+import { normalizeOneOf } from './normalizeOneOf'
+
 /**
  * "Target" or "Cover + target" — which figure Auto-Assign's target amount
  * sets an envelope to, where the server offers the choice.
@@ -36,9 +38,7 @@ export const TARGET_COVER_MODE_COPY: Record<TargetCoverMode, { label: string; de
 
 /** A stored value this build does not know reads as the default. */
 export function normalizeTargetCoverMode(value: unknown): TargetCoverMode {
-  return (TARGET_COVER_MODES as readonly unknown[]).includes(value)
-    ? (value as TargetCoverMode)
-    : DEFAULT_TARGET_COVER_MODE
+  return normalizeOneOf(TARGET_COVER_MODES, value, DEFAULT_TARGET_COVER_MODE)
 }
 
 export type TargetCoverPick = 'target' | 'cover'
