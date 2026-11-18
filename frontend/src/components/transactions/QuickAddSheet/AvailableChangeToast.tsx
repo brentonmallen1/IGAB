@@ -19,7 +19,7 @@ interface Props {
  * the new figure counting down from the old.
  *
  * Coloured only where the grid would colour it: red for an overspend, the
- * grid's calm secondary for red that rides on a card (`availableTone`, the
+ * grid's on-card colour for red that rides on a card (`availableTone`, the
  * same reading CategoryRow uses). A positive result stays plain — the toast
  * is a receipt, not a celebration.
  */

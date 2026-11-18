@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { amountTone } from '../../utils/figureTone'
 import { AccountHygienePanel } from '../../components/accounts/AccountHygienePanel'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -152,7 +153,7 @@ function AccountRow({
           <span className="accounts-overview__balance-detail">
             <span title="Cleared balance">C {formatMoney(cleared)}</span>
             {uncleared !== 0 && (
-              <span title="Uncleared balance" className={uncleared < 0 ? 'negative' : 'positive'}>
+              <span title="Uncleared balance" className={amountTone(uncleared)}>
                 {uncleared > 0 ? '+' : ''}
                 {formatMoney(uncleared)}
               </span>

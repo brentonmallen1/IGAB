@@ -81,6 +81,57 @@ describe('the budget figure colours', () => {
   })
 })
 
+describe('red that rode on a card', () => {
+  /** The value a block gives one custom property. */
+  const value = (selector: string, prop: string) =>
+    block(selector)
+      .match(new RegExp(`${prop}\\s*:\\s*([^;]+);`))?.[1]
+      .trim()
+  const rule = (selector: string) => block(selector)
+
+  it('is coloured by the balance role, through its own variable', () => {
+    expect(rule('.budget-figure--balance.negative-on-card')).toContain(
+      'color: var(--figure-balance-on-card)'
+    )
+    expect(rule('.budget-figure--balance.negative-on-card')).toContain(
+      'text-shadow: var(--figure-balance-glow-on-card)'
+    )
+    // The old bare rule painted it --text-secondary in every mode, which no
+    // setting could reach. It must not come back beside the role rule.
+    expect(rule('.negative-on-card')).toBe('')
+  })
+
+  it('is red by default, under full colour', () => {
+    expect(value(':root, [data-budget-colors]', '--figure-balance-on-card')).toBe(
+      'var(--card-overspend-color)'
+    )
+    expect(value(':root, [data-card-overspend]', '--card-overspend-color')).toBe(
+      'var(--color-negative)'
+    )
+    expect(value(':root, [data-card-overspend]', '--card-overspend-glow')).toBe(
+      'var(--glow-text-negative)'
+    )
+  })
+
+  it('is YNAB yellow under the toggle, with no red glow behind it', () => {
+    expect(value("[data-card-overspend='yellow']", '--card-overspend-color')).toBe(
+      'var(--color-warning)'
+    )
+    expect(value("[data-card-overspend='yellow']", '--card-overspend-glow')).toBe('none')
+  })
+
+  it('stays coloured under "available" — it is a balance, not a flow', () => {
+    expect(declared(block("[data-budget-colors='available']"))).not.toContain(
+      '--figure-balance-on-card'
+    )
+  })
+
+  it('is plain under "none", like every other figure', () => {
+    expect(value("[data-budget-colors='none']", '--figure-balance-on-card')).toBe('currentColor')
+    expect(value("[data-budget-colors='none']", '--figure-balance-glow-on-card')).toBe('none')
+  })
+})
+
 describe('budget components', () => {
   const files = [
     ...cssUnder('components/budget'),

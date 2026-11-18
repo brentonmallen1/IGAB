@@ -23,6 +23,7 @@ function renderHeader(notices: AccountNotice[] = [], primary = { label: 'Reconci
   render(
     <AccountPhoneHeader
       balance={6193.41}
+      clearedBalance={6250}
       formatMoney={money}
       notices={notices}
       primary={{ label: primary.label, onClick: handlers.onClick }}
@@ -40,6 +41,18 @@ describe('AccountPhoneHeader', () => {
     renderHeader()
     expect(screen.getAllByText('$6193.41')).toHaveLength(1)
     expect(screen.queryByRole('button', { name: /Working balance/ })).toBeNull()
+  })
+
+  // Cleared is a smaller line under Working, so the pair costs height rather
+  // than width and the row still fits a 390px phone (measured in Chrome).
+  it('shows the cleared balance once, as a smaller line under Working', () => {
+    renderHeader()
+    const cleared = screen.getByTitle('Cleared balance')
+    expect(cleared).toHaveTextContent('Cleared $6250.00')
+    expect(screen.getAllByText('$6250.00')).toHaveLength(1)
+    const figures = cleared.parentElement!
+    expect(figures).toHaveClass('account-phone-header__figures')
+    expect(figures.firstElementChild).toHaveTextContent('$6193.41')
   })
 
   it('draws no pill when nothing is waiting', () => {

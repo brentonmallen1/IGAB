@@ -121,3 +121,49 @@ describe('the fold control does not move', () => {
     expect(onToggle).toHaveBeenCalledOnce()
   })
 })
+
+describe('folded, the cleared balance rides beside the working balance', () => {
+  /** Every rendering of the cleared balance that a person can actually see. */
+  const visibleCleared = (container: HTMLElement) => {
+    const detail = container.querySelector(`#${DETAIL_ID}`)!
+    const hidden = detail.classList.contains('account-page__balances--collapsed')
+    return [...container.querySelectorAll('.account-page__balance-value')].filter(
+      (el) => el.textContent === '$8,253.90' && !(hidden && detail.contains(el))
+    )
+  }
+
+  it('folded: Working is the headline and Cleared sits beside it, smaller', () => {
+    const c = draw(true)
+    const headline = c.querySelector('.account-page__balance-headline') as HTMLElement
+    expect(within(headline).getByText('Working balance')).toBeInTheDocument()
+    expect(within(headline).getByText('Cleared')).toBeInTheDocument()
+    expect(within(headline).getByText('$8,253.90')).toHaveClass(
+      'account-page__balance-value--secondary'
+    )
+    // Working comes first: it is the figure you navigate by.
+    const values = [...headline.querySelectorAll('.account-page__balance-value')]
+    expect(values.map((v) => v.textContent)).toEqual(['$8,243.24', '$8,253.90'])
+  })
+
+  it.each([true, false])('is stated once either way (collapsed=%s)', (collapsed) => {
+    // Open, the headline goes and Cleared is the equation's first term — the
+    // same once-only rule the working balance keeps.
+    expect(visibleCleared(draw(collapsed))).toHaveLength(1)
+  })
+
+  it('takes the same sign colour as the equation', () => {
+    const { container } = render(
+      <AccountBalances
+        balance={-120}
+        clearedBalance={-80}
+        unclearedBalance={-40}
+        collapsed
+        onToggle={vi.fn()}
+        formatMoney={money}
+      />
+    )
+    const headline = container.querySelector('.account-page__balance-headline') as HTMLElement
+    expect(within(headline).getByText('-$80.00')).toHaveClass('negative')
+    expect(within(headline).getByText('-$120.00')).toHaveClass('negative')
+  })
+})

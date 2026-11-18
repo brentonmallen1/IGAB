@@ -1,9 +1,11 @@
 import { AlertTriangle, Info, SlidersHorizontal } from 'lucide-react'
+import { amountTone } from '../../utils/figureTone'
 import { type AccountNotice, noticesLabel, noticesTone } from './accountNotices'
 import './AccountPhoneHeader.css'
 
 interface Props {
   balance: number
+  clearedBalance: number
   formatMoney: (amount: number) => string
   notices: readonly AccountNotice[]
   /** Reconcile, or the payment on a card or a loan. */
@@ -20,12 +22,14 @@ interface Props {
  * with the review and duplicates banners under it — 420px of a 744px screen
  * before the first transaction, pinned, because only the register scrolls.
  * Folding it was a chevron few people found, and folded it was still three
- * rows. Here it is the working balance, one pill for whatever is waiting, the
- * account's main action, and Tools — the budget header's shape (TbaHero), so
- * the two pages work alike. Everything else is one tap away in a sheet.
+ * rows. Here it is the working balance (with the cleared balance as a small
+ * line under it), one pill for whatever is waiting, the account's main
+ * action, and Tools — the budget header's shape (TbaHero), so the two pages
+ * work alike. Everything else is one tap away in a sheet.
  */
 export function AccountPhoneHeader({
   balance,
+  clearedBalance,
   formatMoney,
   notices,
   primary,
@@ -33,18 +37,27 @@ export function AccountPhoneHeader({
   onOpenNotices,
 }: Props) {
   const tone = noticesTone(notices)
-  const formatted = formatMoney(balance)
   return (
     <section className="account-phone-header" aria-label="Account">
-      {/* A figure, not a control. It once carried a chevron that opened
+      {/* Figures, not a control. They once carried a chevron that opened
           Tools, and the chevron read as "expand the header" — a fold this
-          row no longer has. Tools is the one way in. */}
-      <span
-        className={`account-phone-header__balance tabular ${balance < 0 ? 'negative' : 'positive'}`}
-        title="Working balance"
-      >
-        {formatted}
-      </span>
+          row no longer has. Tools is the one way in. Cleared sits under
+          Working as a smaller line, so the pair costs height, not width, and
+          the row still fits a 390px phone. */}
+      <div className="account-phone-header__figures">
+        <span
+          className={`account-phone-header__balance tabular ${amountTone(balance)}`}
+          title="Working balance"
+        >
+          {formatMoney(balance)}
+        </span>
+        <span className="account-phone-header__cleared" title="Cleared balance">
+          <span className="account-phone-header__cleared-label">Cleared</span>{' '}
+          <span className={`tabular ${amountTone(clearedBalance)}`}>
+            {formatMoney(clearedBalance)}
+          </span>
+        </span>
+      </div>
       {tone && (
         <button
           type="button"

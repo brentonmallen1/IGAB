@@ -1,4 +1,5 @@
 import type { CategoryBalance } from '../types'
+import { normalizeOneOf } from './normalizeOneOf'
 
 /**
  * How a budget figure is coloured — the one home for the rule.
@@ -12,8 +13,9 @@ import type { CategoryBalance } from '../types'
  * colour setting (`BudgetColorMode`) can quiet one kind without the other.
  */
 
-/** The four readings a budget figure can have. Zero and on-card are muted in
- *  every colour mode: they are not hue signals. */
+/** The four readings a budget figure can have. Zero is muted in every colour
+ *  mode: it is not a hue signal. On-card is red by default, or yellow
+ *  (`CardOverspendTone`), and plain when the colours are off. */
 export type Tone = 'positive' | 'zero' | 'negative' | 'negative-on-card'
 
 /**
@@ -34,16 +36,26 @@ export function signTone(n: number): 'positive' | 'zero' | 'negative' {
 }
 
 /**
+ * Sign as two readings: below zero is negative, zero and up positive. For an
+ * amount that is not a budget figure and has no muted zero — an account's
+ * Working, Cleared and Uncleared balances, a scheduled row's amount. Not
+ * `signTone`: a zero balance there reads green, not muted.
+ */
+export function amountTone(n: number): 'positive' | 'negative' {
+  return n < 0 ? 'negative' : 'positive'
+}
+
+/**
  * The tone of a served Available, or of a sum of them.
  *
  * Red that was swiped on a card (`credit_overspent` covers all of it) is
  * still negative, but it never charges Ready to Assign and rides onto the
- * card at the month boundary — so it reads calmly, not as the alarm colour.
- * Both figures are the server's (domain/cards.py); this only names the
- * reading.
+ * card at the month boundary — so it has a reading of its own, which the
+ * stylesheet draws red or yellow per device (`CardOverspendTone`). Both
+ * figures are the server's (domain/cards.py); this only names the reading.
  *
  * A group's or a selection's total reads the same way over the summed
- * figures (`sumBalances`): it is calm when adding the card part back would
+ * figures (`sumBalances`): it is on-card when adding the card part back would
  * leave it at zero or above — when the card is the whole reason it is red.
  */
 export function availableTone(
@@ -56,7 +68,7 @@ export function availableTone(
 }
 
 /**
- * Only the warning half of a tone: red, or the calm grey of red on a card.
+ * Only the warning half of a tone: red, or red that rode on a card.
  * For a figure that is a receipt rather than a reading — the quick-add toast,
  * the inspector's history — where a column of green would celebrate every
  * ordinary month.
@@ -102,6 +114,29 @@ export const BUDGET_COLOR_MODE_COPY: Record<BudgetColorMode, { label: string; de
   },
 }
 
+export const DEFAULT_BUDGET_COLOR_MODE: BudgetColorMode = 'full'
+
 export function normalizeBudgetColorMode(value: unknown): BudgetColorMode {
-  return BUDGET_COLOR_MODES.includes(value as BudgetColorMode) ? (value as BudgetColorMode) : 'full'
+  return normalizeOneOf(BUDGET_COLOR_MODES, value, DEFAULT_BUDGET_COLOR_MODE)
+}
+
+/**
+ * How red that rode on a card (`negative-on-card`) is drawn, per device:
+ *
+ * - `red` — the alarm colour, like cash overspending (the default).
+ * - `yellow` — YNAB's yellow (`--color-warning`), for people who read a card
+ *   overspend the way YNAB taught them to.
+ *
+ * Either way it follows the colour mode: under `none` it is plain like every
+ * other figure. Only the text colour changes — the overspent edge stays
+ * cash-only. Applied as `data-card-overspend` on <html> (appStore), read by
+ * base.css.
+ */
+export const CARD_OVERSPEND_TONES = ['red', 'yellow'] as const
+export type CardOverspendTone = (typeof CARD_OVERSPEND_TONES)[number]
+
+export const DEFAULT_CARD_OVERSPEND_TONE: CardOverspendTone = 'red'
+
+export function normalizeCardOverspendTone(value: unknown): CardOverspendTone {
+  return normalizeOneOf(CARD_OVERSPEND_TONES, value, DEFAULT_CARD_OVERSPEND_TONE)
 }

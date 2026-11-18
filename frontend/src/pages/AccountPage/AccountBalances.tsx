@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, CheckCircle, CircleDot } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { amountTone } from '../../utils/figureTone'
 
 /**
  * The account header's balance region: the fold control and the figures.
@@ -15,7 +16,9 @@ import type { ReactNode } from 'react'
  *  1. The working balance is stated ONCE. Which spelling you get is the fold —
  *     folded it is the headline beside the account name, open it is the `=`
  *     term of the equation. Branches of one conditional, not two rules that
- *     have to be kept in step.
+ *     have to be kept in step. The cleared balance follows the same rule:
+ *     folded it rides beside the headline, smaller, because it is the figure
+ *     you check against the bank; open it is the equation's first term.
  *
  *  2. The control does not move. It is the last thing on the header's top row
  *     in BOTH states: after the balance when folded, after the pills when
@@ -39,8 +42,6 @@ export interface AccountBalancesProps {
 /** The id `aria-controls` points at. Exported so the test names it once. */
 export const DETAIL_ID = 'account-header-detail'
 
-const tone = (amount: number) => (amount < 0 ? 'negative' : 'positive')
-
 export function AccountBalances({
   balance,
   clearedBalance,
@@ -53,10 +54,16 @@ export function AccountBalances({
     <>
       {collapsed && (
         <div className="account-page__balance-headline">
-          <span className={`account-page__balance-value ${tone(balance)}`}>
+          <span className={`account-page__balance-value ${amountTone(balance)}`}>
             {formatMoney(balance)}
           </span>
           <span className="account-page__balance-label">Working balance</span>
+          <span
+            className={`account-page__balance-value account-page__balance-value--secondary ${amountTone(clearedBalance)}`}
+          >
+            {formatMoney(clearedBalance)}
+          </span>
+          <span className="account-page__balance-label">Cleared</span>
         </div>
       )}
       <button
@@ -125,7 +132,7 @@ export function BalanceEquation({
           <CheckCircle size={10} />
           Cleared
         </>,
-        tone(clearedBalance)
+        amountTone(clearedBalance)
       )}
       <span className="account-page__balance-op">+</span>
       {figure(
@@ -136,7 +143,7 @@ export function BalanceEquation({
         </>
       )}
       <span className="account-page__balance-op">=</span>
-      {figure(balance, 'Working balance', tone(balance), true)}
+      {figure(balance, 'Working balance', amountTone(balance), true)}
     </div>
   )
 }

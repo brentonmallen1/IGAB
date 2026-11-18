@@ -102,7 +102,8 @@ export const CategoryRow = memo(function CategoryRow({
   // How much of this row's red was swiped on a card (domain/cards.py). That
   // part costs nothing: it never charges Ready to Assign, and at the month
   // boundary it rides onto the card as debt rather than being written off.
-  // Red funded entirely that way is a fact, not a task — so it reads calmly.
+  // Red funded entirely that way is its own reading (red or YNAB yellow, per
+  // device) and keeps no overspent edge: the edge is for cash overspending.
   const creditOverspent = Number(balance?.credit_overspent ?? 0)
   const availableClass = availableTone({ available, credit_overspent: creditOverspent })
   const overspentOnCardOnly = availableClass === 'negative-on-card'

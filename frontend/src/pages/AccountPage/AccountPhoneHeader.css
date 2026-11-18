@@ -13,21 +13,39 @@
   border-bottom: 1px solid var(--edge);
 }
 
-.account-phone-header__balance {
-  /* Takes the free space, but never below its own figure: a balance is
-     never truncated, so a long one wraps the buttons instead. */
+.account-phone-header__figures {
+  /* Takes the free space, but never below its own figures: a balance is
+     never truncated, so a long one wraps the buttons instead. Working over
+     Cleared, so the pair adds height (still under the tap floor the buttons
+     set) rather than width. */
+  display: flex;
+  flex-direction: column;
   flex: 1 0 auto;
   min-width: max-content;
+}
+
+.account-phone-header__balance {
   font-size: var(--font-size-xl);
   font-weight: 700;
   line-height: 1.1;
 }
 
-.account-phone-header__balance.positive {
+.account-phone-header__cleared {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.account-phone-header__cleared-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.account-phone-header__figures .positive {
   color: var(--color-positive);
 }
 
-.account-phone-header__balance.negative {
+.account-phone-header__figures .negative {
   color: var(--color-negative);
 }
 

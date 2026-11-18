@@ -190,6 +190,57 @@ describe('budget colour mode', () => {
   })
 })
 
+describe('card overspend tone', () => {
+  const partialize = () => useAppStore.persist.getOptions().partialize!
+  const merge = () => useAppStore.persist.getOptions().merge!
+
+  it('starts red — card overspending is money owed, not a footnote', () => {
+    expect(useAppStore.getState().cardOverspendTone).toBe('red')
+    const fresh = merge()({}, useAppStore.getState()) as { cardOverspendTone: string }
+    expect(fresh.cardOverspendTone).toBe('red')
+  })
+
+  it('survives a reload beside the colour mode', () => {
+    const kept = partialize()({
+      ...useAppStore.getState(),
+      budgetColors: 'available',
+      cardOverspendTone: 'yellow',
+    } as never) as { budgetColors: string; cardOverspendTone: string }
+    expect(kept.cardOverspendTone).toBe('yellow')
+    const restored = merge()(kept, useAppStore.getState()) as {
+      budgetColors: string
+      cardOverspendTone: string
+    }
+    expect(restored.cardOverspendTone).toBe('yellow')
+    expect(restored.budgetColors).toBe('available')
+  })
+
+  it('reads a tone this build does not know as red, not as an attribute nothing matches', () => {
+    for (const junk of ['amber', 1, null, {}]) {
+      const state = merge()({ cardOverspendTone: junk }, useAppStore.getState()) as {
+        cardOverspendTone: string
+      }
+      expect(state.cardOverspendTone).toBe('red')
+    }
+  })
+
+  it('applies the tone to the document, where the stylesheet reads it', () => {
+    useAppStore.getState().setCardOverspendTone('yellow')
+    expect(document.documentElement.getAttribute('data-card-overspend')).toBe('yellow')
+    expect(useAppStore.getState().cardOverspendTone).toBe('yellow')
+    useAppStore.getState().setCardOverspendTone('red')
+    expect(document.documentElement.getAttribute('data-card-overspend')).toBe('red')
+  })
+
+  it('applies a stored tone on hydration', async () => {
+    useAppStore.getState().setCardOverspendTone('yellow')
+    document.documentElement.removeAttribute('data-card-overspend')
+    await useAppStore.persist.rehydrate()
+    expect(document.documentElement.getAttribute('data-card-overspend')).toBe('yellow')
+    useAppStore.getState().setCardOverspendTone('red')
+  })
+})
+
 describe('the month the budget opens on', () => {
   it('is never persisted — a launch on the 1st opened on the month just ended', () => {
     useAppStore.getState().setBudgetAnchorMonth(null)
