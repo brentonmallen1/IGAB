@@ -430,7 +430,7 @@ class TestReceiptFailures:
         before = datetime.now(UTC)
         await record_job_failure(db_session, job, httpx.ConnectError("refused"))
         assert job.status == "queued"
-        assert job.error and "refused" in job.error
+        assert job.error and "Couldn't reach Ollama" in job.error
         assert job.available_at > before
         assert job.transaction_id is None  # no stub while retries remain
 

@@ -15,8 +15,14 @@ export function isConfigFailure(error: string | null | undefined): boolean {
   return /vision|not configured|Settings|System/i.test(error)
 }
 
-/** The job's own error, stripped of the exception-class prefix the worker adds. */
+const GENERIC = 'Scan failed — enter the details from the image, then approve.'
+
+/** The job's own error. The server now writes a sentence for people
+ *  (`backend/.../ai/failure_text.py`); a job recorded before that carries an
+ *  exception name in front ("ReadTimeout: ", "ReplyNotJSON: …"), stripped
+ *  here — and a bare "ReadTimeout: " with nothing after it reads as the
+ *  general guidance, not as a blank banner. */
 export function scanFailureReason(error: string | null | undefined): string {
-  if (!error) return 'Scan failed — enter the details from the image, then approve.'
-  return error.replace(/^[A-Za-z]*Error:\s*/, '')
+  const reason = (error ?? '').replace(/^[A-Z][a-z]+(?:[A-Z][A-Za-z]*)+:\s*/, '').trim()
+  return reason || GENERIC
 }

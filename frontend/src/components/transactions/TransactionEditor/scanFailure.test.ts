@@ -21,6 +21,20 @@ describe('scanFailureReason', () => {
     expect(scanFailureReason('')).toMatch(/enter the details from the image/)
   })
 
+  it('strips any exception name an older job carries, not only …Error', () => {
+    expect(scanFailureReason("ReplyNotJSON: The model's reply held no JSON object")).toBe(
+      "The model's reply held no JSON object"
+    )
+  })
+
+  it('reads a bare timeout from before the plain-language messages as the general guidance', () => {
+    expect(scanFailureReason('ReadTimeout: ')).toMatch(/enter the details from the image/)
+  })
+
+  it('leaves a sentence that starts with an ordinary word and a colon alone', () => {
+    expect(scanFailureReason('Note: the photo was blurry')).toBe('Note: the photo was blurry')
+  })
+
   it('leaves an already-clean message alone', () => {
     expect(scanFailureReason('Receipt image is missing')).toBe('Receipt image is missing')
   })
