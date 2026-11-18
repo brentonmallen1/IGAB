@@ -22,10 +22,15 @@ from igab.ai.reply_json import (
 )
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
-from igab.domain.receipt_checks import looping_items
+from igab.domain.receipt_checks import items_overshoot, looping_items
 from igab.integrations.ollama.client import STOP_REPEAT_LIMIT, STOP_REPETITION, OllamaClient
 from igab.repositories.category_repo import CategoryRepository
-from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
+from igab.services.ai_draft_service import (
+    MAX_RECEIPT_ITEMS,
+    NL_REPLY_SCHEMA,
+    RAW_CUT_SHORT,
+    RECEIPT_REPLY_SCHEMA,
+)
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
 from igab.services.settings_service import SettingsService
@@ -116,9 +121,22 @@ RECEIPT_THINKING_TOKENS = 12288
 
 
 def _receipt_loop_guard(answer: str) -> str | None:
-    """Stop the stream once the line items so far are one item repeating."""
-    items = [obj for obj in complete_objects(answer) if "description" in obj]
-    return STOP_REPETITION if looping_items(items) else None
+    """Stop the stream once the line items so far can't become a split.
+
+    Three ways, each seen on a real long receipt: one item repeating
+    (identically, or counting its code up), items already adding up to far
+    more than the total, and the list reaching its cap — past which the
+    model went on to write a split for items that were about to be dropped.
+    The total is read before the items, so the stop keeps it.
+    """
+    objects = complete_objects(answer)
+    items = [obj for obj in objects if "description" in obj]
+    if looping_items(items):
+        return STOP_REPETITION
+    if items_overshoot(items, parse_partial_object(answer).get("total")):
+        return STOP_REPETITION
+    # Split entries are objects without a description, so this counts items.
+    return "length" if len(items) >= MAX_RECEIPT_ITEMS else None
 
 
 def _thinking_was_the_problem(reason: str, answer: str) -> bool:

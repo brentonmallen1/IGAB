@@ -18,8 +18,18 @@ import igab.services.ai_service as ai_service_module
 from igab.ai.context import debug_view
 from igab.ai.reply_json import ReplyCutShort
 from igab.integrations.ollama.client import OllamaClient
-from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
-from igab.services.ai_service import RECEIPT_ANSWER_TOKENS, RECEIPT_THINKING_TOKENS, AIService
+from igab.services.ai_draft_service import (
+    MAX_RECEIPT_ITEMS,
+    NL_REPLY_SCHEMA,
+    RAW_CUT_SHORT,
+    RECEIPT_REPLY_SCHEMA,
+)
+from igab.services.ai_service import (
+    RECEIPT_ANSWER_TOKENS,
+    RECEIPT_THINKING_TOKENS,
+    AIService,
+    _receipt_loop_guard,
+)
 from igab.services.settings_service import DEFAULTS
 
 
@@ -766,3 +776,32 @@ class TestTheAssistantWindow:
         assert await client.context_length() == 131072
         client.show = AsyncMock(return_value={})  # type: ignore[method-assign]
         assert await client.context_length() is None
+
+
+class TestReceiptLoopGuard:
+    """What stops a receipt stream, each from a real long receipt."""
+
+    HEAD = '{"payee": "Fresh Mart", "total": 100.0, "line_items": ['
+
+    def stream(self, items) -> str:
+        return self.HEAD + ", ".join(json.dumps(i) for i in items)
+
+    def test_a_normal_list_keeps_reading(self):
+        items = [{"description": f"ITEM {chr(65 + n)}", "amount": 2.5} for n in range(20)]
+        assert _receipt_loop_guard(self.stream(items)) is None
+
+    def test_a_counting_loop_stops_as_repetition(self):
+        items = [{"description": f"00003924{n} ITEM", "amount": 1.0} for n in range(8)]
+        assert _receipt_loop_guard(self.stream(items)) == "repetition"
+
+    def test_items_far_past_the_total_stop(self):
+        items = [{"description": name, "amount": 70.0} for name in ("A", "B", "C")]
+        assert _receipt_loop_guard(self.stream(items)) == "repetition"
+
+    def test_the_list_reaching_its_cap_stops_before_a_split_is_written(self):
+        items = [
+            {"description": f"ITEM {chr(65 + n % 26)}{chr(65 + n // 26)}", "amount": 0.5}
+            for n in range(MAX_RECEIPT_ITEMS)
+        ]
+        assert _receipt_loop_guard(self.stream(items[:-1])) is None
+        assert _receipt_loop_guard(self.stream(items)) == "length"
