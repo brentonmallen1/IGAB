@@ -1081,6 +1081,23 @@ class TestPDFAttachments:
         assert thumb.status_code == 200
         assert thumb.headers["content-type"] == "image/webp"
 
+    async def test_upload_is_filed_under_the_uploaders_day(
+        self, api_client, db_session, attachments_dir
+    ):
+        """The browser's `client_today`, not the row's date (a scan's guess)
+        and not the server's UTC day."""
+        from datetime import date
+
+        budget, account = await _setup(api_client, db_session)
+        txn = await create_transaction(db_session, budget, account, "-9.99", date(2024, 3, 10))
+        resp = await api_client.post(
+            f"/api/v1/transactions/{txn.id}/attachments",
+            files={"file": ("r.jpg", tiny_jpeg(), "image/jpeg")},
+            data={"client_today": "2026-11-16"},
+        )
+        assert resp.status_code == 201, resp.text
+        assert (attachments_dir / "2026" / "11" / "16" / str(txn.id)).is_dir()
+
     async def test_corrupt_pdf_rejected(self, api_client, db_session, attachments_dir):
         from datetime import date
 

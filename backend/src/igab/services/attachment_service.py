@@ -10,6 +10,7 @@ from pillow_heif import register_heif_opener
 from igab.config import settings
 from igab.db.models import Transaction, TransactionAttachment
 from igab.repositories.attachment_repo import AttachmentRepository
+from igab.utils.clock import recorded_on
 
 # iPhone cameras produce HEIC ("Keep Originals" setting); plain Pillow can't
 # decode it even though the API accepts the content type.
@@ -31,16 +32,17 @@ class AttachmentService:
         self.repo = repo
         self.base_dir = Path(settings.ATTACHMENTS_DIR)
 
-    def _build_storage_path(self, txn: Transaction, filename: str) -> Path:
-        """Layout for NEW uploads only. Existing files must be located via the
-        attachment's stored storage_path — the transaction date may have been
-        edited since upload, so re-deriving the path from txn.date is wrong."""
-        txn_date: date = txn.date
+    def _build_storage_path(self, txn: Transaction, filename: str, filed_on: date) -> Path:
+        """Layout for NEW uploads: filed under the day of the upload
+        (`filed_on`), never the transaction's date. A scan's date is a
+        model's guess until someone checks it, and a guess years out
+        scattered files across the tree (reported 2026-11-17). Existing
+        files are located via the attachment's stored storage_path."""
         return (
             self.base_dir
-            / str(txn_date.year)
-            / f"{txn_date.month:02d}"
-            / f"{txn_date.day:02d}"
+            / str(filed_on.year)
+            / f"{filed_on.month:02d}"
+            / f"{filed_on.day:02d}"
             / str(txn.id)
             / filename
         )
@@ -48,8 +50,9 @@ class AttachmentService:
     def _resolve_path(self, attachment: TransactionAttachment, txn: Transaction) -> Path:
         if attachment.storage_path:
             return self.base_dir / attachment.storage_path
-        # Legacy rows without a stored path (pre-migration)
-        return self._build_storage_path(txn, attachment.filename)
+        # Legacy rows without a stored path (pre-migration) were filed under
+        # the transaction's date.
+        return self._build_storage_path(txn, attachment.filename, txn.date)
 
     async def upload(
         self,
@@ -57,11 +60,17 @@ class AttachmentService:
         file_content: bytes,
         original_filename: str,
         content_type: str,
+        *,
+        client_today: date | None = None,
     ) -> TransactionAttachment:
+        """Store an upload, filed under the uploader's day: `client_today`
+        when the request carried it, the server's otherwise
+        (`clock.recorded_on`)."""
         from igab.utils.pdf import is_pdf
 
+        filed_on = recorded_on(None, client_today)
         if content_type == "application/pdf" or is_pdf(file_content):
-            return await self._upload_pdf(txn, file_content, original_filename)
+            return await self._upload_pdf(txn, file_content, original_filename, filed_on)
 
         file_id = uuid.uuid4()
         filename = f"{file_id}.webp"
@@ -77,7 +86,7 @@ class AttachmentService:
         if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
             img.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.Resampling.LANCZOS)
 
-        storage_path = self._build_storage_path(txn, filename)
+        storage_path = self._build_storage_path(txn, filename, filed_on)
         storage_path.parent.mkdir(parents=True, exist_ok=True)
 
         img.save(storage_path, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
@@ -102,7 +111,7 @@ class AttachmentService:
         return attachment
 
     async def _upload_pdf(
-        self, txn: Transaction, file_content: bytes, original_filename: str
+        self, txn: Transaction, file_content: bytes, original_filename: str, filed_on: date
     ) -> TransactionAttachment:
         """PDFs are stored verbatim (no lossy re-encode of a document);
         the thumbnail is the rendered first page as WebP, following the
@@ -119,7 +128,7 @@ class AttachmentService:
         if page.mode != "RGB":
             page = page.convert("RGB")
 
-        storage_path = self._build_storage_path(txn, filename)
+        storage_path = self._build_storage_path(txn, filename, filed_on)
         storage_path.parent.mkdir(parents=True, exist_ok=True)
         storage_path.write_bytes(file_content)
 

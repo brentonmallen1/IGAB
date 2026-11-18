@@ -63,6 +63,12 @@ const CARDS_BODY_TINT = washPercent(
   '.credit-cards__body'
 )
 
+/** The AI review banner's ground: a wash of the accent over the editor. */
+const AI_BANNER_TINT = washPercent(
+  'components/transactions/TransactionEditor/TransactionEditor.css',
+  '.txn-editor__ai-banner'
+)
+
 type RGBA = [number, number, number, number]
 
 // ---------------------------------------------------------------- parsing
@@ -501,6 +507,24 @@ function checksFor(theme: string): Check[] {
       AA_NON_TEXT
     )
   }
+
+  // A receipt check: the review banner names the field in the warning colour
+  // at 11px on its accent wash over the editor (--bg-primary), and the date
+  // or amount box it points at is outlined in the same colour — the outline
+  // is the cue, so the non-text bar on the box's own ground.
+  const editorGround = token(theme, 'bg-primary')
+  add(
+    'receipt check note on the AI review banner',
+    token(theme, 'color-warning'),
+    editorGround && accent ? tint(accent, editorGround, AI_BANNER_TINT) : null,
+    AA_TEXT
+  )
+  add(
+    'receipt check outline on input-bg',
+    token(theme, 'color-warning'),
+    token(theme, 'input-bg'),
+    AA_NON_TEXT
+  )
 
   // The volatility chart's two whiskers, one per background: mean→min is
   // drawn INSIDE the bar fill (--chart-neutral = --color-info), mean→max on

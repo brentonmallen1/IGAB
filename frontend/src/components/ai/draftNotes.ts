@@ -1,4 +1,5 @@
-import type { AIJob, AIJobDraft } from '../../api/aiJobs'
+import type { AIJob, AIJobDraft, AIJobDraftCheck } from '../../api/aiJobs'
+import { parseApiDecimal, toCents } from '../../utils/money'
 import type { NamedCategory } from '../../utils/categoryLabels'
 
 /**
@@ -92,4 +93,83 @@ export function cardEndingNote(job: AIJob): CardEndingNote | null {
   if (!ownerId) return { kind: 'unknown', last4, hereId }
   if (ownerId !== hereId) return { kind: 'elsewhere', last4, ownerId, hereId }
   return null
+}
+
+/** The editor's formatters, passed in so this stays pure. */
+interface CheckFormatters {
+  formatDate: (iso: string) => string
+  formatMoney: (amount: number) => string
+}
+
+/**
+ * One sentence per field the read failed a check on, naming what was read
+ * so the person knows what to look at. The checks are the server's
+ * (`domain/receipt_checks.py`); this only words them. Empty when the read
+ * passed, or predates the checks.
+ */
+export function draftCheckNotes(
+  draft: AIJobDraft | undefined,
+  { formatDate, formatMoney }: CheckFormatters
+): string[] {
+  const checks = draft?.checks ?? []
+  if (!draft || checks.length === 0) return []
+  const money = (value: string) => formatMoney(Math.abs(parseApiDecimal(value)))
+  const notes: string[] = []
+  if (checks.includes('date')) {
+    notes.push(
+      draft.date_read
+        ? `The date read as ${formatDate(draft.date_read)}, too far from today, so it’s set to today — check it.`
+        : 'The date didn’t look right, so it’s set to today — check it.'
+    )
+  }
+  if (checks.includes('amount')) {
+    const total = money(draft.amount)
+    if (draft.tender_amount) {
+      notes.push(
+        `The total read as ${total}, but the payment line says ${money(draft.tender_amount)} — check the amount.`
+      )
+    }
+    if (draft.line_items_total) {
+      notes.push(
+        `The items add up to ${money(draft.line_items_total)}, not the total ${total} — check the amount.`
+      )
+    }
+    if (!draft.tender_amount && !draft.line_items_total) {
+      notes.push('The total doesn’t match the rest of the receipt — check the amount.')
+    }
+  }
+  return notes
+}
+
+/**
+ * Whether a field the read failed a check on still holds what the read put
+ * there — the editor outlines it until it doesn't. A person who changed it
+ * has answered the check, and so has a bank row that replaced it.
+ */
+export function checkStillOpen(
+  draft: AIJobDraft | undefined,
+  field: AIJobDraftCheck,
+  current: { date: string; cents: number | null }
+): boolean {
+  if (!draft?.checks?.includes(field)) return false
+  if (field === 'date') return current.date === draft.date
+  return current.cents === toCents(parseApiDecimal(draft.amount))
+}
+
+/**
+ * Which of the editor's boxes to outline for an open check: the date, and
+ * the amount box the figure sits in — outflow for a purchase, inflow for a
+ * refund.
+ */
+export function checkedBoxes(
+  draft: AIJobDraft | undefined,
+  current: { date: string; cents: number | null }
+): { date: boolean; outflow: boolean; inflow: boolean } {
+  const amount = checkStillOpen(draft, 'amount', current)
+  const cents = current.cents ?? 0
+  return {
+    date: checkStillOpen(draft, 'date', current),
+    outflow: amount && cents < 0,
+    inflow: amount && cents > 0,
+  }
 }

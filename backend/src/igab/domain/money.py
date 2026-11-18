@@ -7,7 +7,7 @@ absurd magnitudes, and sub-cent noise are rejected at the boundary.
 """
 
 import re
-from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Annotated
 
 from pydantic import AfterValidator
@@ -101,10 +101,30 @@ def quantize_cents(amount: Decimal) -> Decimal:
 
     The exceptions are deliberate and named where they occur —
     `distribute_cover` rounds DOWN so a proposal can never exceed Ready to
-    Assign, and `ai_draft_service` rounds a model's own arithmetic half-up
-    before repairing it to sum exactly.
+    Assign, and `model_cents` rounds a model's own figures half-up before
+    `ai_draft_service` repairs them to sum exactly.
     """
     return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
+
+
+def model_cents(value: object) -> Decimal | None:
+    """A figure an AI model wrote, in whole cents — None when it is no
+    number at all (null, a bool, text, NaN, infinity).
+
+    Half-up, unlike `quantize_cents`: a model writes 5.499 or 0.1 + 0.2 for
+    a printed price, one figure at a time, so the unbiased-sum argument does
+    not apply and the reading a person would make of the receipt does."""
+    if value is None or isinstance(value, bool):  # bool is an int subclass
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    # A quiet NaN quantizes to NaN without raising, and one NaN poisons
+    # every sum it reaches (module docstring).
+    if not number.is_finite():
+        return None
+    return number.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def format_csv_amount(amount: Decimal) -> str:

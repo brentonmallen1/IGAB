@@ -12,6 +12,7 @@ from igab.api.v1.attachments import (
     MAX_FILE_SIZE,
     TOO_LARGE_DETAIL,
 )
+from igab.api.v1.params import parse_form_client_today
 from igab.api.v1.schemas.ai_job import (
     ActiveCountResponse,
     AIJobListResponse,
@@ -116,23 +117,6 @@ def _safe_filename(name: str | None) -> str:
     return candidate
 
 
-def _parse_client_today(value: str | None) -> date:
-    """The multipart spelling of `ClientDated`: this endpoint takes Form
-    fields, so the date arrives as a string and is parsed by hand rather than
-    by pydantic. The ranking itself is `clock.recorded_on`, so the receipt
-    flow and the asset/liability bodies cannot drift about which clock wins.
-    """
-    if not value:
-        return recorded_on(None, None)
-    try:
-        return recorded_on(None, date.fromisoformat(value))
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="client_today must be an ISO date (YYYY-MM-DD)",
-        )
-
-
 @router.post(
     "/{budget_id}/ai/receipts",
     response_model=AIJobResponse,
@@ -193,7 +177,7 @@ async def submit_receipt(
             },
         )
 
-    today = _parse_client_today(client_today)
+    today = parse_form_client_today(client_today)
     job_id = uuid.uuid4()
     original_filename = _safe_filename(file.filename)
 
@@ -251,7 +235,7 @@ async def submit_description(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="text is required"
         )
     await _check_submittable(settings_svc, account_repo, budget_id, body.account_id)
-    today = _parse_client_today(body.client_today)
+    today = parse_form_client_today(body.client_today)
     job = await job_repo.create(
         budget_id=budget_id,
         kind="nl_parse",

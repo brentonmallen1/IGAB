@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
+import { today } from '../utils/dates'
 import { confirmAsync } from '../stores/confirmStore'
 import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
 import { ROOT } from './queryKeys'
@@ -143,19 +144,29 @@ export function useAttachments(transactionId: string | null) {
   })
 }
 
+/**
+ * The body of every attachment upload.
+ *
+ * Downscaled at the API layer so every entry point (panel, drag-drop,
+ * camera) benefits — a 12MP original is pointless over cellular when the
+ * server stores a 2048px re-encode anyway. Falls back to the original on any
+ * decode uncertainty. `client_today` files it under the uploader's day; the
+ * server's UTC day is already tomorrow every evening west of UTC.
+ */
+async function attachmentForm(file: File): Promise<FormData> {
+  const formData = new FormData()
+  formData.append('file', await downscaleForUpload(file))
+  formData.append('client_today', today())
+  return formData
+}
+
 export function useUploadAttachment(transactionId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData()
-      // Downscaled at the API layer so every entry point (panel, drag-drop,
-      // camera) benefits — a 12MP original is pointless over cellular when
-      // the server stores a 2048px re-encode anyway. Falls back to the
-      // original on any decode uncertainty.
-      formData.append('file', await downscaleForUpload(file))
       const { data } = await apiClient.post<Attachment>(
         `/transactions/${transactionId}/attachments`,
-        formData
+        await attachmentForm(file)
       )
       return data
     },
@@ -185,10 +196,7 @@ export async function uploadFilesToTransaction(
   const failed: File[] = []
   for (const file of files) {
     try {
-      const formData = new FormData()
-      // Same API-layer downscale as useUploadAttachment — see there.
-      formData.append('file', await downscaleForUpload(file))
-      await apiClient.post(`/transactions/${transactionId}/attachments`, formData)
+      await apiClient.post(`/transactions/${transactionId}/attachments`, await attachmentForm(file))
       ok++
     } catch {
       failed.push(file)

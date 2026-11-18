@@ -4,6 +4,9 @@ import {
   aiSuggestedCategory,
   cardEndingNote,
   categoryForLabel,
+  checkStillOpen,
+  checkedBoxes,
+  draftCheckNotes,
   labelNamesCategory,
   unresolvedCategoryNote,
 } from './draftNotes'
@@ -158,5 +161,108 @@ describe('aiSuggestedCategory', () => {
     // An unresolved pick has its own note (`unresolvedCategoryNote`).
     expect(aiSuggestedCategory(draft({ category_unresolved: 'Garden' }), null)).toBeNull()
     expect(aiSuggestedCategory(undefined, filed)).toBeNull()
+  })
+})
+
+describe('draftCheckNotes', () => {
+  const fmt = {
+    formatDate: (iso: string) => `D(${iso})`,
+    formatMoney: (n: number) => `$${n.toFixed(2)}`,
+  }
+
+  it('names the date as it was read', () => {
+    expect(draftCheckNotes(draft({ checks: ['date'], date_read: '2024-03-10' }), fmt)).toEqual([
+      'The date read as D(2024-03-10), too far from today, so it’s set to today — check it.',
+    ])
+  })
+
+  it('names the payment line a total disagrees with', () => {
+    const notes = draftCheckNotes(
+      draft({ amount: '-84.00', checks: ['amount'], tender_amount: '84.30' }),
+      fmt
+    )
+    expect(notes).toEqual([
+      'The total read as $84.00, but the payment line says $84.30 — check the amount.',
+    ])
+  })
+
+  it('names what the items add up to', () => {
+    const notes = draftCheckNotes(
+      draft({ amount: '-84.30', checks: ['amount'], line_items_total: '96.10' }),
+      fmt
+    )
+    expect(notes).toEqual(['The items add up to $96.10, not the total $84.30 — check the amount.'])
+  })
+
+  it('gives one note per disagreement, date first', () => {
+    const notes = draftCheckNotes(
+      draft({
+        checks: ['date', 'amount'],
+        date_read: '2024-03-10',
+        tender_amount: '24.50',
+        line_items_total: '30.00',
+      }),
+      fmt
+    )
+    expect(notes).toHaveLength(3)
+    expect(notes[0]).toMatch(/^The date/)
+  })
+
+  it('says nothing for a read that passed, or predates the checks', () => {
+    expect(draftCheckNotes(draft({ checks: [] }), fmt)).toEqual([])
+    expect(draftCheckNotes(draft(), fmt)).toEqual([])
+    expect(draftCheckNotes(undefined, fmt)).toEqual([])
+  })
+})
+
+describe('checkStillOpen', () => {
+  const checked = draft({ amount: '-24.00', date: '2026-09-20', checks: ['date', 'amount'] })
+
+  it('is open while the field holds what the read put there', () => {
+    const now = { date: '2026-09-20', cents: -2400 }
+    expect(checkStillOpen(checked, 'date', now)).toBe(true)
+    expect(checkStillOpen(checked, 'amount', now)).toBe(true)
+  })
+
+  it('closes once the field is changed — by a person or a bank row', () => {
+    const now = { date: '2026-09-19', cents: -2430 }
+    expect(checkStillOpen(checked, 'date', now)).toBe(false)
+    expect(checkStillOpen(checked, 'amount', now)).toBe(false)
+  })
+
+  it('is never open for a field the read did not fail', () => {
+    const now = { date: '2026-09-20', cents: -2400 }
+    expect(checkStillOpen(draft({ checks: ['date'] }), 'amount', now)).toBe(false)
+    expect(checkStillOpen(draft(), 'date', now)).toBe(false)
+  })
+
+  it('is not open while the amount is unreadable', () => {
+    expect(checkStillOpen(checked, 'amount', { date: '2026-09-20', cents: null })).toBe(false)
+  })
+})
+
+describe('checkedBoxes', () => {
+  const checked = draft({ amount: '-24.00', date: '2026-09-20', checks: ['date', 'amount'] })
+
+  it('outlines the box the amount sits in', () => {
+    expect(checkedBoxes(checked, { date: '2026-09-20', cents: -2400 })).toEqual({
+      date: true,
+      outflow: true,
+      inflow: false,
+    })
+    const refund = draft({ amount: '24.00', checks: ['amount'] })
+    expect(checkedBoxes(refund, { date: '2026-09-20', cents: 2400 })).toEqual({
+      date: false,
+      outflow: false,
+      inflow: true,
+    })
+  })
+
+  it('outlines nothing once both are changed', () => {
+    expect(checkedBoxes(checked, { date: '2026-09-19', cents: -2430 })).toEqual({
+      date: false,
+      outflow: false,
+      inflow: false,
+    })
   })
 })

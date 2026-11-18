@@ -174,6 +174,9 @@ class TestReceiptSuccess:
         assert attachment.transaction_id == txn.id
         assert attachment.storage_path
         assert (attachments_dir / attachment.storage_path).exists()
+        # Filed under the scanner's day (the job's client_today), not the
+        # date the model read off the receipt (2026-08-01).
+        assert attachment.storage_path.startswith(f"2026/08/02/{txn.id}/")
         # staging cleaned up after success
         assert not (attachments_dir / "ai_staging" / str(job.id)).exists()
 

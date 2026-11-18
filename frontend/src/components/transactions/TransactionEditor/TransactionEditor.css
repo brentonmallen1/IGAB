@@ -186,6 +186,13 @@
   font-size: var(--font-size-xs);
 }
 
+/* A field the read failed a check on, named: the warning colour, because
+   it asks for a look the confidence figure cannot direct. Measured on the
+   banner's wash in themes/contrast.test.ts. */
+.txn-editor__ai-banner-check {
+  color: var(--color-warning);
+}
+
 /* A projected interest row: the app wrote it from the loan's terms, and
    says so. Body colour on chrome — it explains the row; it is not a warning
    and not the accent's meaningful state. */
@@ -302,6 +309,16 @@
 .txn-editor__field--inflow .txn-editor__input,
 .txn-editor__field--inflow .txn-editor__input:focus {
   border-color: var(--color-positive);
+}
+
+/* The date or amount box a receipt check points at, until it is changed
+   (draftNotes.checkStillOpen). It outranks the direction colour above on
+   purpose — the check is the more urgent signal — so it is one class more
+   specific than `.txn-editor__field--outflow .txn-editor__input`, not left
+   to source order. Focus yields to the focus ring while the box is edited. */
+.txn-editor__field .txn-editor__input--check:not(:focus) {
+  border-color: var(--color-warning);
+  box-shadow: 0 0 0 1px var(--color-warning);
 }
 
 /* The one place the whole memo is readable: the register clips it to a line
