@@ -461,6 +461,28 @@ describe('register select all', () => {
   })
 })
 
+describe('register select linked', () => {
+  // A row read before the server served has_sync_source carries only
+  // sync_source. The bank glyph counted it as linked; Select linked did not.
+  const legacyBankRow = makeTransaction({
+    id: 'legacy-bank',
+    account_id: 'acc-1',
+    amount: -18,
+    category_id: 'cat-groceries',
+    cleared: 'cleared',
+    has_sync_source: false,
+    sync_source: 'simplefin',
+  })
+
+  it('selects every row with a bank record, by the same rule as the bank glyph', async () => {
+    h.rows = [plain, legacyBankRow]
+    renderTable()
+    await screen.findAllByText('Groceries')
+    act(() => screen.getByRole('button', { name: 'Select linked transactions' }).click())
+    expect([...useUIStore.getState().selectedTransactionIds]).toEqual(['legacy-bank'])
+  })
+})
+
 describe('register click-away deselect', () => {
   const press = (el: Element) =>
     act(() => {

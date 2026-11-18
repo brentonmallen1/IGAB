@@ -75,6 +75,7 @@ import {
 } from './registerOrder'
 import { registerPayAction } from './payButton'
 import { selectAllStep } from './selectAll'
+import { hasBankRecord } from '../../../utils/bankRecord'
 import {
   sectionOpen,
   shouldDropSearch,
@@ -486,11 +487,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   ])
 
   const handleSelectLinked = useCallback(() => {
-    const linkedIds = sorted.filter((t) => t.has_sync_source).map((t) => t.id)
+    const linkedIds = sorted.filter(hasBankRecord).map((t) => t.id)
     if (linkedIds.length > 0) selectAllTransactions(linkedIds)
   }, [sorted, selectAllTransactions])
 
-  const hasLinkedTransactions = useMemo(() => sorted.some((t) => t.has_sync_source), [sorted])
+  const hasLinkedTransactions = useMemo(() => sorted.some(hasBankRecord), [sorted])
 
   const handleSelect = useCallback(
     (id: string, shiftKey: boolean) => {
