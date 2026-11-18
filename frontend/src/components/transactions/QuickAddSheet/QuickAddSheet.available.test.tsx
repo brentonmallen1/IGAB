@@ -70,6 +70,15 @@ vi.mock('../../../api/payees', () => ({
   }),
   useNearbyPayees: () => ({ data: [] }),
   useCreatePayee: () => ({ mutateAsync: vi.fn() }),
+  // The server's guess (TransactionService.guess_category_for): Corner Market
+  // files to Groceries — once there is an amount to ask about.
+  usePayeeCategoryGuess: (
+    _budget: string | null,
+    payeeId: string | null,
+    cents: number | null
+  ) => ({
+    data: payeeId === 'p1' && cents !== null ? 'c1' : undefined,
+  }),
 }))
 const category = (id: string, name: string, group = 'g1') => ({
   id,
@@ -274,14 +283,35 @@ describe('before an account is chosen', () => {
 })
 
 describe('the category row', () => {
-  it('shows Available once payee memory has chosen the category', async () => {
+  it("shows Available once the server's guess has chosen the category", async () => {
+    renderSheet()
+    await monthLoaded()
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12' } })
+    fireEvent.click(screen.getByText('Choose payee'))
+    fireEvent.click(optionRow('Corner Market'))
+    const row = screen.getByLabelText('Category')
+    await waitFor(() => expect(row.textContent).toContain('Groceries'))
+    expect(row.textContent).toContain('Available $240.00')
+  })
+
+  it('asks for no guess until there is an amount', async () => {
     renderSheet()
     await monthLoaded()
     fireEvent.click(screen.getByText('Choose payee'))
     fireEvent.click(optionRow('Corner Market'))
-    const row = screen.getByLabelText('Category')
-    expect(row.textContent).toContain('Groceries')
-    expect(row.textContent).toContain('Available $240.00')
+    // The stored default is no longer copied in on the pick.
+    expect(screen.getByLabelText('Category').textContent).not.toContain('Groceries')
+  })
+
+  it('never overwrites a category the person chose', async () => {
+    renderSheet()
+    await monthLoaded()
+    chooseCategory('Paycheck')
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12' } })
+    fireEvent.click(screen.getByText('Choose payee'))
+    fireEvent.click(optionRow('Corner Market'))
+    await new Promise((r) => setTimeout(r, 400))
+    expect(screen.getByLabelText('Category').textContent).toContain('Paycheck')
   })
 
   it('shows nothing before a category is chosen', async () => {

@@ -21,6 +21,7 @@ import { PayeeField } from './PayeeField'
 import { accountLockReason, categoryDropNote } from './accountMove'
 import { editorAmount } from './editorAmount'
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useCategoryGuessFill } from '../../../hooks/useCategoryGuessFill'
 import {
   X,
   Trash2,
@@ -320,6 +321,17 @@ export function TransactionEditor({
   // off-budget row, so the field is not offered where the save would refuse.
   const rowAccount = accounts.find((a) => a.id === accountId)
   const canCategorize = rowMayCarryCategory(rowAccount?.on_budget ?? true)
+  // What Save would file this payee and amount to, shown before Save — and
+  // never over a category the person chose (hooks/useCategoryGuessFill).
+  // Empty boxes are no amount yet, not a $0 row.
+  const categoryGuess = useCategoryGuessFill({
+    budgetId,
+    payeeId: selectedPayeeId,
+    cents: outflow.trim() || inflow.trim() ? (typed?.cents ?? null) : null,
+    enabled: canCategorize && !isTransfer && !isSplit,
+    categoryId,
+    setCategoryId: (id) => setCategoryId(id ?? ''),
+  })
   // Whether this row's account may be changed here at all, and what to say
   // when it may not (accountMove.ts — the server's own rule is
   // domain/account_move.py, which refuses regardless of what we offer).
@@ -357,9 +369,7 @@ export function TransactionEditor({
     }
     setPayeeQuery(p.name)
     setSelectedPayeeId(p.id)
-    if (p.default_category_id && !categoryId) {
-      setCategoryId(p.default_category_id)
-    }
+    categoryGuess.payeePicked(p.id)
   }
 
   /** The other account, picked where the register shows it: in the payee box.
@@ -1190,7 +1200,10 @@ export function TransactionEditor({
                             amount: typed?.dollars ?? 0,
                             memo: memo || undefined,
                           })
-                          if (result.category_id) setCategoryId(result.category_id)
+                          if (result.category_id) {
+                            categoryGuess.categoryChosen()
+                            setCategoryId(result.category_id)
+                          }
                         }}
                       >
                         <Sparkles size={12} />
@@ -1199,7 +1212,10 @@ export function TransactionEditor({
                     </label>
                     <CategoryCombobox
                       value={categoryId || null}
-                      onChange={(id) => setCategoryId(id ?? '')}
+                      onChange={(id) => {
+                        categoryGuess.categoryChosen()
+                        setCategoryId(id ?? '')
+                      }}
                       groups={groupedCategories}
                       allowNone
                       aria-label="Category"

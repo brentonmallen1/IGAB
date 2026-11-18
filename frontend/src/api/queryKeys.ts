@@ -88,6 +88,7 @@ export const ROOT = {
   liabilities: 'liabilities',
   liabilityAmortization: 'liabilityAmortization',
   nearbyPayees: 'nearbyPayees',
+  payeeCategoryGuess: 'payeeCategoryGuess',
   ollamaModels: 'ollama-models',
   paletteSearch: 'paletteSearch',
   payeeTransactions: 'payee-transactions',

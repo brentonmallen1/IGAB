@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { Payee } from '../types'
 import { ROOT } from './queryKeys'
+import { fromCents } from '../utils/money'
 
 export interface PayeeWithCount extends Payee {
   transaction_count: number
@@ -32,6 +33,31 @@ export function useNearbyPayees(
     },
     enabled: !!budgetId && !!coords,
     staleTime: 60_000,
+  })
+}
+
+/**
+ * The category Save would file a new row to for this payee and signed amount
+ * (backend `TransactionService.guess_category_for` — the same function the
+ * create path calls). Null when the server would leave it blank. Disabled
+ * until all three inputs are present.
+ */
+export function usePayeeCategoryGuess(
+  budgetId: string | null,
+  payeeId: string | null,
+  cents: number | null
+) {
+  return useQuery({
+    queryKey: [ROOT.payeeCategoryGuess, budgetId, payeeId, cents],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ category_id: string | null }>(
+        `/${budgetId}/payees/${payeeId}/category-guess`,
+        { params: { amount: fromCents(cents!).toFixed(2) } }
+      )
+      return data.category_id
+    },
+    enabled: !!budgetId && !!payeeId && cents !== null,
+    staleTime: 30_000,
   })
 }
 
