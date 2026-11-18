@@ -25,9 +25,10 @@ from igab.ai.context import (
     STATUS_OK,
     AICallContext,
     AICallResult,
+    error_text,
 )
 from igab.ai.features import describe
-from igab.integrations.ollama.client import OllamaClient
+from igab.integrations.ollama.client import OllamaClient, StopCheck
 from igab.services.settings_service import SettingsService
 
 #: Ollama reports token counts under these keys on both /api/generate and
@@ -76,6 +77,7 @@ class AIGateway:
         think: bool | None = None,
         options: dict | None = None,
         timeout: float = 60.0,
+        stop_when: StopCheck | None = None,
     ) -> str:
         """One `/api/generate` call, recorded whatever happens to it.
 
@@ -104,6 +106,7 @@ class AIGateway:
                 think=think,
                 options=options,
                 timeout=timeout,
+                stop_when=stop_when,
             )
             result.response = raw
             absorb_meta(result, client)
@@ -125,7 +128,7 @@ class AIGateway:
             return
         result.status = STATUS_ERROR
         # Same shape the AI worker records: type plus message, bounded.
-        result.error = f"{type(exc).__name__}: {exc}"[:2000]
+        result.error = error_text(exc)
 
 
 def absorb_meta(result: AICallResult, client: OllamaClient) -> None:

@@ -8,7 +8,7 @@ import { apiErrorMessage } from '../../api/client'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { queuedMessage, WAITS_FOR_AN_ACCOUNT } from './queuedMessage'
 import './NLEntryForm.css'
-import { sectionHref } from '../../pages/SettingsPage/settingsSections'
+import { AI_SETTINGS_HREF } from '../../pages/SettingsPage/settingsSections'
 
 /** Dictation failures are usually the browser's speech *service*, not the
  * microphone — Chrome happily starts capturing and then errors when the
@@ -100,11 +100,7 @@ export function NLEntryForm({
       <div className="nl-form__unavailable">
         <Sparkles size={20} />
         <p>Describing a transaction requires a configured Ollama server.</p>
-        <Link
-          to={sectionHref({ id: 'ai', page: 'system' })}
-          className="nl-form__link"
-          onClick={onNavigate}
-        >
+        <Link to={AI_SETTINGS_HREF} className="nl-form__link" onClick={onNavigate}>
           Configure AI in System settings
         </Link>
       </div>

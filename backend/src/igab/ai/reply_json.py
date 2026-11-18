@@ -24,6 +24,8 @@ through instead of moving them into `thinking`.
 import json
 import re
 
+from igab.integrations.ollama.client import CUT_SHORT, STOP_DEADLINE, STOP_REPETITION
+
 #: A complete reasoning block, in either spelling.
 _REASONING_BLOCK = re.compile(r"<think>.*?</think>|<\|channel>thought.*?<channel\|>", re.DOTALL)
 #: The end of a reasoning block whose start the server already dropped.
@@ -44,6 +46,24 @@ _QUOTE_CHARS = 120
 class ReplyNotJSON(ValueError):
     """The reply held no JSON object. A ValueError, so the AI worker's retry
     rule treats it like the JSONDecodeError it replaces."""
+
+
+class ReplyCutShort(ReplyNotJSON):
+    """The reply stopped before its JSON was complete: an output cap, the
+    context window, the call's deadline, or a loop the app stopped. Running
+    the same call again stops the same way, so the worker does not retry it."""
+
+    def __init__(self, message: str, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+#: Why a reply was cut short, as the activity log should say it.
+_CUT_SHORT_WHY = {
+    "length": "it ran out of room (context window or output limit)",
+    STOP_DEADLINE: "the call reached its time limit",
+    STOP_REPETITION: "the model was repeating itself and was stopped",
+}
 
 
 def _closing(text: str, start: int) -> int | None:
@@ -71,17 +91,22 @@ def _closing(text: str, start: int) -> int | None:
     return None
 
 
-def _scan(text: str) -> tuple[list[dict], bool]:
+def _scan(text: str, *, enter_unfinished: bool = False) -> tuple[list[dict], bool]:
     """(every complete top-level object, whether one was left unfinished).
 
     Scanning stops at an unfinished object: everything after its start is
-    inside it, and a nested object of a truncated answer is not an answer."""
+    inside it, and a nested object of a truncated answer is not an answer.
+    `enter_unfinished` steps inside it instead, for a guard that wants the
+    finished pieces of an answer still arriving — never for the answer."""
     found: list[dict] = []
     pos = 0
     while match := _OBJECT_START.search(text, pos):
         start = match.start()
         end = _closing(text, start)
         if end is None:
+            if enter_unfinished:
+                pos = start + 1
+                continue
             return found, True
         try:
             value = json.loads(text[start:end])
@@ -136,16 +161,18 @@ def parse_json_reply(
     if found is not None:
         return found
 
-    cut_off = done_reason == "length"
+    cut_off = done_reason in CUT_SHORT
     if thinking and not cut_off and not _OBJECT_START.search(answer):
         from_thinking, _ = _scan(thinking)
         if from_thinking:
             return from_thinking[-1]
 
     if cut_off:
-        raise ReplyNotJSON(
-            "The model's reply was cut off before its JSON was complete: it ran out of"
-            " room (context window or output limit)."
+        assert done_reason is not None
+        raise ReplyCutShort(
+            "The model's reply was cut off before its JSON was complete: "
+            f"{_CUT_SHORT_WHY.get(done_reason, done_reason)}.",
+            done_reason,
         )
     if unfinished:
         raise ReplyNotJSON("The model's JSON reply stops before it is complete.")
@@ -159,3 +186,57 @@ def parse_json_reply(
         raise ReplyNotJSON("The model returned an empty reply.")
     quoted = text[:_QUOTE_CHARS] + ("…" if len(text) > _QUOTE_CHARS else "")
     raise ReplyNotJSON(f"The model's reply held no JSON object: {quoted!r}")
+
+
+def complete_objects(response: str) -> list[dict]:
+    """Every complete object in a reply that may still be arriving, in order,
+    nested ones included once their parent is unfinished — what a stream
+    guard looks at to see the line items written so far."""
+    found, _ = _scan(_answer_text(response), enter_unfinished=True)
+    return found
+
+
+def _skip_space(text: str, pos: int) -> int:
+    while pos < len(text) and text[pos] in " \t\r\n":
+        pos += 1
+    return pos
+
+
+def parse_partial_object(response: str | None) -> dict:
+    """The top-level members a cut-off reply finished, in the order written.
+
+    The one exception to "a cut-off reply is refused": a schema-bound reply is
+    written member by member, so the members before the cut are whole answers,
+    not fragments. Only top-level members are read — a nested object is never
+    promoted to the answer — and a member counts only once the `,` or `}`
+    after it arrived, so a number cut mid-digit (`13` of `134.83`) is not one.
+    """
+    text = _answer_text(response or "")
+    match = _OBJECT_START.search(text)
+    if match is None:
+        return {}
+    decoder = json.JSONDecoder()
+    found: dict = {}
+    pos = match.start() + 1
+    while True:
+        pos = _skip_space(text, pos)
+        try:
+            key, pos = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            return found
+        pos = _skip_space(text, pos)
+        if not isinstance(key, str) or text[pos : pos + 1] != ":":
+            return found
+        pos = _skip_space(text, pos + 1)
+        try:
+            value, pos = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            return found
+        pos = _skip_space(text, pos)
+        after = text[pos : pos + 1]
+        if after not in (",", "}"):
+            return found
+        found[key] = value
+        if after == "}":
+            return found
+        pos += 1

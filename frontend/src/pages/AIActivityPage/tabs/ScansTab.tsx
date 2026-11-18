@@ -37,9 +37,11 @@ import { AttachmentLightbox } from '../../../components/attachments/Lightbox'
 import { useFormatters } from '../../../hooks/useFormatters'
 import '../AIActivityPage.css'
 import { confirmAsync } from '../../../stores/confirmStore'
-import { scanFailureReason } from '../../../components/transactions/TransactionEditor/scanFailure'
+import { jobFailure } from '../../../components/transactions/TransactionEditor/scanFailure'
 import { unresolvedCategoryNote } from '../../../components/ai/draftNotes'
 import { CardEndingNotice } from '../../../components/ai/CardEndingNotice'
+import { ReadNotes } from '../../../components/ai/ReadNotes'
+import { FailureDetails } from '../../../components/ai/FailureDetails'
 import { PlaceReceipt } from './PlaceReceipt'
 
 const PAGE_SIZE = 50
@@ -134,7 +136,7 @@ function JobRow({
   const reprocess = useReprocessAIJob(budgetId)
   const approve = useBulkApprove(budgetId)
   const remove = useDeleteAIJob(budgetId)
-  const [errorOpen, setErrorOpen] = useState(false)
+  const failure = job.error ? jobFailure(job) : null
   const [responseOpen, setResponseOpen] = useState(false)
   const [promptOpen, setPromptOpen] = useState(false)
   const [rawOpen, setRawOpen] = useState(false)
@@ -266,6 +268,8 @@ function JobRow({
             </span>
           )}
         </div>
+        {/* An error row says its attempts in the meta line already. */}
+        {job.status !== 'error' && <ReadNotes read={job.result?.read} />}
         <JobSplit job={job} budgetId={budgetId} lines={splitLines} />
         {typeof reason === 'string' && reason && (
           <div
@@ -278,19 +282,9 @@ function JobRow({
         {unresolved && <div className="ai-activity__unresolved">{unresolved}</div>}
         <CardEndingNotice job={job} budgetId={budgetId} canMove />
         {job.status === 'unplaced' && <PlaceReceipt job={job} budgetId={budgetId} />}
-        {job.error && (
-          <div className="ai-activity__error">
-            <button className="ai-activity__error-toggle" onClick={() => setErrorOpen((v) => !v)}>
-              {errorOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              Error details
-            </button>
-            {/* Through scanFailureReason so the user reads the reason, not the
-                worker's exception class name ("NonRetryableJobError: …"). */}
-            {errorOpen && (
-              <pre className="ai-activity__error-text">{scanFailureReason(job.error)}</pre>
-            )}
-          </div>
-        )}
+        {/* The headline on the row itself: a failed job says why at a
+            glance; Details holds what to do and the evidence. */}
+        {failure && <FailureDetails failure={failure} variant="row" />}
         {job.result?.extraction && (
           <div className="ai-activity__response">
             <button

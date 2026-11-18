@@ -1,0 +1,63 @@
+/* A failure in layers: headline, next step, evidence. A column, so each
+   layer starts on its own line instead of running on after the last. */
+.failure-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+/* On a Scans row the headline is the row's reason, in the error colour; in
+   the banner it inherits the banner's warning colour and is just bold. */
+.failure-details--row .failure-details__headline {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-negative);
+}
+
+.failure-details__next {
+  color: var(--text-secondary);
+}
+
+.failure-details--row .failure-details__next {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+}
+
+.failure-details__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  color: inherit;
+  cursor: pointer;
+}
+
+.failure-details--row .failure-details__toggle {
+  color: var(--text-secondary);
+}
+
+.failure-details__technical {
+  margin: 4px 0 0;
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* In the banner's own colour, underlined so it reads as a link on the wash. */
+.failure-details__link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  white-space: nowrap;
+}

@@ -1,0 +1,23 @@
+/* Quiet on purpose: facts about how the read was made, beside the result,
+   never competing with a check that asks for a look. */
+.read-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-basis: 100%;
+}
+
+.read-notes__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}

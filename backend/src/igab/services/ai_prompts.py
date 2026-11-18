@@ -60,23 +60,17 @@ DEFAULT_PROMPTS: dict[str, str] = {
         '  "memo": "a short reminder of what was bought, a few words or up to three'
         " items (e.g. 'Nova handheld + accessories') — never an exhaustive list; null"
         ' if the payee name already says it",\n'
-        '  "line_items": [{"description": "item as printed", "amount": 0.00,'
-        ' "category": "best category NAME or null"}],\n'
-        '  "suggested_split": [{"category": "category NAME", "amount": 0.00}],\n'
         '  "card_last4": "the last four digits of the card that paid, as printed'
         " (e.g. '4417' from 'VISA ****4417'), or null for cash or when no card"
-        ' number is shown"\n'
+        ' number is shown",\n'
+        '  "line_items": [{"description": "item as printed", "amount": 0.00,'
+        ' "category": "best category NAME or null"}],\n'
+        '  "suggested_split": [{"category": "category NAME", "amount": 0.00}]\n'
         "}\n\n"
         "Rules:\n"
-        "- total is the grand total actually paid, after tax and discounts. Prefer the"
-        " amount on the payment line (card tender, APPROVED / AMOUNT) — it is the"
-        " amount charged. If there are several TOTAL lines, the last one before"
-        " payment is the one paid.\n"
-        "- tender_amount is the amount charged on the payment line (the card line,"
-        " APPROVED / AMOUNT), read on its own — null for cash or when no payment line"
-        " is shown.\n"
-        "- line_items: a discount, coupon, or reward line is a negative amount; every"
-        " other line is positive.\n"
+        "- total is the grand total actually paid, after tax and discounts.\n"
+        "- tender_amount is the amount on the card payment line (APPROVED / AMOUNT),"
+        " or null when none is printed.\n"
         "- suggested_split: group the line items by category and distribute tax"
         " proportionally so the split amounts sum exactly to total. If everything"
         " belongs to one category, return an empty array.\n"
@@ -85,7 +79,7 @@ DEFAULT_PROMPTS: dict[str, str] = {
         " proportionally, exactly like tax — unless the receipt is solely a"
         " shipping or postage charge.\n"
         "- confidence is your overall confidence in payee+total+date, from 0 to 1.\n"
-        "- Amounts are positive numbers, except a line item that is a discount."
+        "- Amounts are positive numbers; a discount or coupon line item is negative."
         " Output only the JSON object."
     ),
     "ai_prompt_nl_parse": (

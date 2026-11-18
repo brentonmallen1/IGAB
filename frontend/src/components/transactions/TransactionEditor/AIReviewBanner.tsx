@@ -1,14 +1,11 @@
 import { AlertTriangle, RefreshCw, Sparkles, Split } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { type AIJob, useReprocessAIJob } from '../../../api/aiJobs'
-import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { draftCheckNotes, unresolvedCategoryNote } from '../../ai/draftNotes'
 import { CardEndingNotice } from '../../ai/CardEndingNotice'
-import { isConfigFailure, scanFailureReason } from './scanFailure'
-
-/** Where the AI model is configured — the System page, not the budget's Settings. */
-const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
+import { ReadNotes } from '../../ai/ReadNotes'
+import { jobFailure } from './scanFailure'
+import { FailureDetails } from '../../ai/FailureDetails'
 
 interface Props {
   job: AIJob
@@ -28,6 +25,7 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
   const reprocess = useReprocessAIJob(budgetId)
   const formatters = useFormatters()
   const checkNotes = draftCheckNotes(job.result?.draft, formatters)
+  const failure = job.status === 'error' ? jobFailure(job) : null
   return (
     <div
       className={`txn-editor__ai-banner ${job.status === 'error' ? 'txn-editor__ai-banner--error' : ''}`}
@@ -35,20 +33,11 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
       {job.status === 'error' ? (
         <>
           <AlertTriangle size={13} />
-          {/* The specific reason, not just "it failed". A model without
-              vision and a genuinely unreadable photo produce the same
-              stub, and only one of them is fixable in System → AI. */}
-          <span>
-            {scanFailureReason(job.error)}
-            {isConfigFailure(job.error) && (
-              <>
-                {' '}
-                <Link to={AI_SETTINGS} className="txn-editor__ai-banner-link">
-                  Open System → AI
-                </Link>
-              </>
-            )}
-          </span>
+          {/* The specific reason, not just "it failed": the headline, then
+              what to do, then — only when asked — the evidence. A model
+              without vision and an unreadable photo produce the same stub,
+              and only one of them is fixable in System → AI. */}
+          {failure && <FailureDetails failure={failure} variant="banner" />}
         </>
       ) : (
         <>
@@ -80,6 +69,7 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
           <span className="txn-editor__ai-banner-note">
             <CardEndingNotice job={job} budgetId={budgetId} canMove={false} />
           </span>
+          <ReadNotes read={job.result?.read} />
         </>
       )}
       {job.status === 'error' && (

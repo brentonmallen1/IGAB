@@ -7,8 +7,8 @@ from decimal import Decimal
 import pytest
 
 from igab.domain.exceptions import InvariantViolation
-from igab.domain.receipt_checks import CHECKED_CONFIDENCE_CAP
-from igab.services.ai_draft_service import parse_extraction
+from igab.domain.receipt_checks import CHECKED_CONFIDENCE_CAP, LOOPING_RUN, ReceiptCheck
+from igab.services.ai_draft_service import RAW_CUT_SHORT, parse_extraction
 
 TODAY = date(2026, 8, 2)
 CATEGORIES = {"Groceries", "Household Supplies", "Dining Out"}
@@ -508,3 +508,45 @@ class TestCardEnding:
 
         draft = parse_extraction(receipt(card_last4="4417"), kind="receipt", client_today=TODAY)
         assert draft_result_json(draft)["draft"]["card_last4"] == "4417"
+
+
+class TestTooLongToItemize:
+    """A reply cut short in its items, or looping in them, keeps payee, total
+    and date, offers no split, and says why."""
+
+    SPLIT = [{"category": "Groceries", "amount": 30.0}, {"category": "Dining Out", "amount": 12.5}]
+
+    def test_a_salvaged_read_is_flagged_and_unsplit(self):
+        draft = parse_extraction(
+            receipt(**{RAW_CUT_SHORT: "repetition"}),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert draft.amount == Decimal("-42.50")
+        assert draft.payee_name == "Whole Foods"
+        assert draft.checks == [ReceiptCheck.ITEMS]
+        assert draft.suggested_split is None
+        assert draft.confidence == CHECKED_CONFIDENCE_CAP
+
+    def test_a_finished_reply_that_looped_is_treated_the_same(self):
+        loop = [{"description": "SOAP", "amount": 1.0, "category": None}] * LOOPING_RUN
+        draft = parse_extraction(
+            receipt(line_items=loop, suggested_split=self.SPLIT),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert draft.checks == [ReceiptCheck.ITEMS]
+        assert draft.suggested_split is None
+        assert draft.line_items_total is None
+
+    def test_an_honest_itemized_read_is_not_flagged(self):
+        draft = parse_extraction(
+            receipt(suggested_split=self.SPLIT),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert ReceiptCheck.ITEMS not in draft.checks
+        assert draft.suggested_split is not None

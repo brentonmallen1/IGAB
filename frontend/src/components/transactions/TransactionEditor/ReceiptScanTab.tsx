@@ -12,7 +12,7 @@ import { useSubmitReceipt } from '../../../api/aiJobs'
 import { queuedMessage, WAITS_FOR_AN_ACCOUNT } from '../../ai/queuedMessage'
 import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
-import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
+import { AI_SETTINGS_HREF } from '../../../pages/SettingsPage/settingsSections'
 
 type Stage = { kind: 'pick' } | { kind: 'preview'; file: File }
 
@@ -106,11 +106,7 @@ export function ReceiptScanTab({ budgetId, accountId, aiEnabled, onQueued, onClo
         <div className="receipt-scan__empty">
           <Sparkles size={20} />
           <p>Receipt scanning requires a configured Ollama server.</p>
-          <Link
-            to={sectionHref({ id: 'ai', page: 'system' })}
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to={AI_SETTINGS_HREF} className="receipt-scan__link" onClick={onClose}>
             Configure AI in System settings
           </Link>
         </div>

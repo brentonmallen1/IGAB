@@ -209,13 +209,6 @@
   flex-shrink: 0;
 }
 
-.txn-editor__ai-banner-link {
-  color: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  white-space: nowrap;
-}
-
 .txn-editor__ai-banner--error {
   color: var(--color-warning);
   background: color-mix(in srgb, var(--color-warning) 8%, transparent);

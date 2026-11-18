@@ -1,3 +1,5 @@
+import type { AIJob } from '../../../api/aiJobs'
+
 /**
  * Reading a failed receipt job's error for the review banner.
  *
@@ -15,8 +17,45 @@ export function isConfigFailure(error: string | null | undefined): boolean {
   return /vision|not configured|Settings|System/i.test(error)
 }
 
-/** The job's own error, stripped of the exception-class prefix the worker adds. */
+const GENERIC = 'Scan failed — enter the details from the image, then approve.'
+
+/** The job's own error. The server now writes a sentence for people
+ *  (`backend/.../ai/failure_text.py`); a job recorded before that carries an
+ *  exception name in front ("ReadTimeout: ", "ReplyNotJSON: …"), stripped
+ *  here — and a bare "ReadTimeout: " with nothing after it reads as the
+ *  general guidance, not as a blank banner. */
 export function scanFailureReason(error: string | null | undefined): string {
-  if (!error) return 'Scan failed — enter the details from the image, then approve.'
-  return error.replace(/^[A-Za-z]*Error:\s*/, '')
+  const reason = (error ?? '').replace(/^[A-Z][a-z]+[A-Z][A-Za-z]*:\s*/, '').trim()
+  return reason || GENERIC
+}
+
+/** A failure as the page shows it: the headline always, the rest behind
+ *  Details (the review banner keeps the next step in view). */
+export interface ScanFailure {
+  headline: string
+  nextStep: string | null
+  technical: string | null
+  /** The setting that helps, as the screen labels it; the link goes to
+   *  System → AI. */
+  settings: string | null
+}
+
+/** The job's failure in layers. A job recorded before the server wrote
+ *  them has one line, which becomes the headline. */
+export function jobFailure(job: Pick<AIJob, 'error' | 'result'>): ScanFailure {
+  const failure = job.result?.failure
+  if (failure) {
+    return {
+      headline: failure.headline,
+      nextStep: failure.next_step || null,
+      technical: failure.technical || null,
+      settings: failure.settings || null,
+    }
+  }
+  return {
+    headline: scanFailureReason(job.error),
+    nextStep: null,
+    technical: null,
+    settings: isConfigFailure(job.error) ? 'System → AI' : null,
+  }
 }

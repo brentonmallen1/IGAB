@@ -42,7 +42,12 @@ jobs:
 
   backend:
     name: backend
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: the restore tests run the runner's own
+    # pg_dump/pg_restore against the postgres:16 service, as the AIO image
+    # pairs a 16 client with a 16 server. ubuntu-latest moved to 26.04 on
+    # 2026-11-18, whose newer client writes `SET transaction_timeout` into
+    # dumps — a parameter 16 rejects — and failed all three restore tests.
+    runs-on: ubuntu-24.04
 
     # tests/integration/conftest.py builds a database per xdist worker
     # (igab_test_gw0, ...) by connecting to the `postgres` maintenance DB and

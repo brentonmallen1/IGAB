@@ -27,6 +27,7 @@ from igab.domain.receipt_checks import (
     capped_confidence,
     checked_receipt_date,
     line_items_mismatch,
+    looping_items,
     past_tomorrow,
     tender_disagrees,
 )
@@ -49,6 +50,18 @@ _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d")
 _TEXT_OR_NULL = {"anyOf": [{"type": "string"}, {"type": "null"}]}
 _NUMBER_OR_NULL = {"anyOf": [{"type": "number"}, {"type": "null"}]}
 
+#: The grammar's bound on both arrays. Past any real receipt (a full
+#: warehouse-club shop is ~60 lines), so it only ever ends a loop.
+MAX_RECEIPT_ITEMS = 80
+#: Set on a receipt's raw extraction when the reply was cut short and only
+#: the members before the cut were kept (`AIService.extract_receipt`). It is
+#: stored with the extraction, so a later re-read of the same job reaches the
+#: same verdict.
+RAW_CUT_SHORT = "cut_short"
+
+# Every scalar comes before the arrays, and the grammar writes members in
+# schema order: a reply cut short in its line items has already given payee,
+# total and date.
 RECEIPT_REPLY_SCHEMA: dict = {
     "type": "object",
     "properties": {
@@ -60,8 +73,10 @@ RECEIPT_REPLY_SCHEMA: dict = {
         "reason": _TEXT_OR_NULL,
         "confidence": {"type": "number"},
         "memo": _TEXT_OR_NULL,
+        "card_last4": _TEXT_OR_NULL,
         "line_items": {
             "type": "array",
+            "maxItems": MAX_RECEIPT_ITEMS,
             "items": {
                 "type": "object",
                 "properties": {
@@ -74,13 +89,13 @@ RECEIPT_REPLY_SCHEMA: dict = {
         },
         "suggested_split": {
             "type": "array",
+            "maxItems": MAX_RECEIPT_ITEMS,
             "items": {
                 "type": "object",
                 "properties": {"category": {"type": "string"}, "amount": {"type": "number"}},
                 "required": ["category", "amount"],
             },
         },
-        "card_last4": _TEXT_OR_NULL,
     },
     "required": [
         "payee",
@@ -91,9 +106,9 @@ RECEIPT_REPLY_SCHEMA: dict = {
         "reason",
         "confidence",
         "memo",
+        "card_last4",
         "line_items",
         "suggested_split",
-        "card_last4",
     ],
 }
 
@@ -327,7 +342,12 @@ def parse_extraction(
     checks: list[ReceiptCheck] = []
     date_read = tender = line_total = None
     if kind == "receipt":
-        suggested_split = _parse_split(raw.get("suggested_split"), signed, candidates)
+        items = raw.get("line_items")
+        itemized = not raw.get(RAW_CUT_SHORT) and not (
+            isinstance(items, list) and looping_items(items)
+        )
+        if itemized:
+            suggested_split = _parse_split(raw.get("suggested_split"), signed, candidates)
         dated = checked_receipt_date(_parse_date(raw.get("date")), client_today)
         draft_date, date_read = dated.date, dated.read_as
         if date_read is not None:
@@ -335,9 +355,12 @@ def parse_extraction(
         tender_read = model_cents(raw.get("tender_amount"))
         if tender_disagrees(amount, tender_read):
             tender = tender_read
-        line_total = line_items_mismatch(amount, _line_amounts(raw.get("line_items")))
+        if itemized:
+            line_total = line_items_mismatch(amount, _line_amounts(items))
         if tender is not None or line_total is not None:
             checks.append(ReceiptCheck.AMOUNT)
+        if not itemized:
+            checks.append(ReceiptCheck.ITEMS)
     else:
         draft_date = _description_date(_parse_date(raw.get("date")), client_today)
 

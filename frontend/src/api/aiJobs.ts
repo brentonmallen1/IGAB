@@ -50,7 +50,9 @@ export interface AIJobDraft {
   line_items_total?: string | null
 }
 
-export type AIJobDraftCheck = 'date' | 'amount'
+/** `items`: the read was cut short or looped in its line items, so only
+ *  the fields before them were kept and no split is offered. */
+export type AIJobDraftCheck = 'date' | 'amount' | 'items'
 
 export interface AIJobSplitLine {
   category: string
@@ -90,6 +92,37 @@ export interface AIJobResult {
   /** Thinking transcript, when the model produced one. */
   thinking?: string
   done_reason?: string
+  /** Why a failed (or retrying) job failed, in layers — written by
+   *  `backend/.../ai/failure_text.py`. Absent on jobs recorded before it;
+   *  read through `jobFailure`, which falls back to `error`. */
+  failure?: AIJobFailure
+  /** How the read was made — the facts behind "what differed from the
+   *  default" (`readNotes`). Absent on jobs recorded before it. */
+  read?: AIJobRead
+}
+
+export interface AIJobRead {
+  /** Which attempt produced this result; earlier ones failed. */
+  attempt: number
+  max_attempts: number
+  /** System → AI → Advanced → Thinking, when the read was made. */
+  thinking_setting?: 'auto' | 'on' | 'off'
+  /** Whether the call that produced the read thought; null when the model
+   *  doesn't think at all. */
+  thinking?: boolean | null
+  /** Thinking ran out of room, so the receipt was read again without it. */
+  thinking_fallback?: boolean
+}
+
+export interface AIJobFailure {
+  /** What happened, one short sentence: always shown. */
+  headline: string
+  /** What to do about it. */
+  next_step: string
+  /** The evidence — why the call stopped, model, thinking, tokens, time. */
+  technical: string | null
+  /** The setting that helps, as the screen labels it ("System → AI → …"). */
+  settings: string | null
 }
 
 export interface ReceiptBankMatch {

@@ -33,6 +33,24 @@ def clip(value: str | None, limit: int = RESPONSE_KEEP_CHARS) -> str | None:
     return value[:limit]
 
 
+#: httpx raises its timeouts with an empty message, which recorded as a bare
+#: "ReadTimeout: " — the whole of what a stuck scan used to say.
+_SILENT_ERRORS = {
+    "ConnectTimeout": "could not reach Ollama in time",
+    "ReadTimeout": "Ollama stopped sending anything (the model stalled or the server is busy)",
+    "WriteTimeout": "could not send the request to Ollama in time",
+    "PoolTimeout": "no connection to Ollama was free in time",
+}
+
+
+def error_text(exc: BaseException, limit: int = 2000) -> str:
+    """ "Type: message" for the call log and the job row, never with an empty
+    message after the colon."""
+    name = type(exc).__name__
+    message = str(exc) or _SILENT_ERRORS.get(name) or "no detail given"
+    return f"{name}: {message}"[:limit]
+
+
 @dataclass(frozen=True)
 class AICallContext:
     """Why this call is happening, and what it belongs to.
@@ -152,4 +170,10 @@ def debug_view(result: "AICallResult | None") -> dict:
         view["thinking"] = clip(result.thinking)
     if result.done_reason:
         view["done_reason"] = result.done_reason
+    # What a failed job's Details line names: thinking, tokens, time.
+    view["thinking_enabled"] = result.thinking_enabled
+    if result.completion_tokens is not None:
+        view["completion_tokens"] = result.completion_tokens
+    if result.duration_ms is not None:
+        view["duration_ms"] = result.duration_ms
     return view

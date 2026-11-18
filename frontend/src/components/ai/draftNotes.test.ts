@@ -7,6 +7,7 @@ import {
   checkStillOpen,
   checkedBoxes,
   draftCheckNotes,
+  readNotes,
   labelNamesCategory,
   unresolvedCategoryNote,
 } from './draftNotes'
@@ -170,6 +171,12 @@ describe('draftCheckNotes', () => {
     formatMoney: (n: number) => `$${n.toFixed(2)}`,
   }
 
+  it('says a receipt too long to itemize kept only payee, total and date', () => {
+    expect(draftCheckNotes(draft({ checks: ['items'] }), fmt)).toEqual([
+      'The receipt was too long to read item by item, so only the payee, total and date were read — there’s no split to offer.',
+    ])
+  })
+
   it('names the date as it was read', () => {
     expect(draftCheckNotes(draft({ checks: ['date'], date_read: '2024-03-10' }), fmt)).toEqual([
       'The date read as D(2024-03-10), too far from today, so it’s set to today — check it.',
@@ -264,5 +271,33 @@ describe('checkedBoxes', () => {
       outflow: false,
       inflow: false,
     })
+  })
+})
+
+describe('readNotes', () => {
+  const read = { attempt: 1, max_attempts: 3, thinking_setting: 'auto' as const, thinking: true }
+
+  it('says nothing about an ordinary read', () => {
+    expect(readNotes(read)).toEqual([])
+    expect(readNotes(undefined)).toEqual([])
+    expect(readNotes({ ...read, thinking: null })).toEqual([])
+  })
+
+  it('names a retry and the thinking fallback', () => {
+    expect(readNotes({ ...read, attempt: 2, thinking: false, thinking_fallback: true })).toEqual([
+      'Read on try 2 of 3',
+      'Thinking turned off — it ran out of room with it on',
+    ])
+  })
+
+  it('names a Thinking setting that is not Auto', () => {
+    expect(readNotes({ ...read, thinking_setting: 'off', thinking: false })).toEqual([
+      'Thinking off (your setting)',
+    ])
+    expect(readNotes({ ...read, thinking_setting: 'on' })).toEqual(['Thinking on (your setting)'])
+  })
+
+  it('says nothing when Off was set but the model never thinks anyway', () => {
+    expect(readNotes({ ...read, thinking_setting: 'off', thinking: null })).toEqual([])
   })
 })
