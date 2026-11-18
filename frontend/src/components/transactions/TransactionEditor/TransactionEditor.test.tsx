@@ -1308,7 +1308,7 @@ describe("TransactionEditor fills the server's category guess", () => {
 
   it('never overwrites a category the person chose', async () => {
     renderEditor({ accountId: 'acc-1' })
-    pickCategory('Fun')
+    pickOption('Fun')
     fireEvent.change(amountInputs()[0], { target: { value: '12.34' } })
     pickGrocer()
     await new Promise((r) => setTimeout(r, 400))

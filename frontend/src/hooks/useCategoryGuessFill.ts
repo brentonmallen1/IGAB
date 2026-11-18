@@ -73,9 +73,14 @@ export function useCategoryGuessFill({
   }, [payeeId])
 
   const payeePicked = useCallback((id: string) => setPickedPayeeId(id), [])
-  const categoryChosen = useCallback(() => {
-    userChose.current = true
-  }, [])
+  /** The person's own pick: set it, and no guess replaces it afterwards. */
+  const choose = useCallback(
+    (id: string | null) => {
+      userChose.current = true
+      setCategoryId(id)
+    },
+    [setCategoryId]
+  )
 
-  return { payeePicked, categoryChosen }
+  return { payeePicked, choose }
 }

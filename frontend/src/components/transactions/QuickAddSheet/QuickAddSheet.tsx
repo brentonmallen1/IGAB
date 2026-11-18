@@ -259,8 +259,7 @@ export function QuickAddSheet() {
   }
 
   function chooseCategory(id: string | null) {
-    categoryGuess.categoryChosen()
-    setCategoryId(id)
+    categoryGuess.choose(id)
   }
 
   function addFiles(list: FileList | null) {
