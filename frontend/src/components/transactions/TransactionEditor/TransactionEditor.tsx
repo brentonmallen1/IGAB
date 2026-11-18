@@ -1207,10 +1207,10 @@ export function TransactionEditor({
                 </div>
 
                 <div className="txn-editor__row">
-                  <div className="txn-editor__field">
+                  <div className="txn-editor__field txn-editor__field--outflow">
                     <label className="txn-editor__label">Outflow</label>
                     <AmountInput
-                      className="txn-editor__input"
+                      className="txn-editor__input txn-outflow"
                       value={outflow}
                       onValueChange={handleOutflowChange}
                       placeholder="0.00"
@@ -1224,10 +1224,10 @@ export function TransactionEditor({
                       }
                     />
                   </div>
-                  <div className="txn-editor__field">
+                  <div className="txn-editor__field txn-editor__field--inflow">
                     <label className="txn-editor__label">Inflow</label>
                     <AmountInput
-                      className="txn-editor__input"
+                      className="txn-editor__input txn-inflow"
                       value={inflow}
                       onValueChange={handleInflowChange}
                       placeholder="0.00"

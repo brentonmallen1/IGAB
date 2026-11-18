@@ -277,6 +277,29 @@
   cursor: pointer;
 }
 
+/* The two amount boxes wear their direction, as the register's columns do:
+   Outflow red, Inflow green — label, border and value, filled or empty. The
+   value takes the register's own .txn-outflow / .txn-inflow class; the border
+   is held to 3:1 on --input-bg by contrast.test.ts. Like the register, these
+   follow the direction, not the budget colour mode. */
+.txn-editor__field--outflow .txn-editor__label {
+  color: var(--color-negative);
+}
+
+.txn-editor__field--outflow .txn-editor__input,
+.txn-editor__field--outflow .txn-editor__input:focus {
+  border-color: var(--color-negative);
+}
+
+.txn-editor__field--inflow .txn-editor__label {
+  color: var(--color-positive);
+}
+
+.txn-editor__field--inflow .txn-editor__input,
+.txn-editor__field--inflow .txn-editor__input:focus {
+  border-color: var(--color-positive);
+}
+
 /* The one place the whole memo is readable: the register clips it to a line
    and the inline editor is a single input. */
 .txn-editor__memo {

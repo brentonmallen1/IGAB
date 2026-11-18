@@ -490,6 +490,17 @@ function checksFor(theme: string): Check[] {
     token(theme, 'input-bg'),
     AA_NON_TEXT
   )
+  // The transaction editor's Outflow and Inflow boxes draw their border in
+  // their direction's colour (TransactionEditor.css), so those are input
+  // borders too.
+  for (const fg of ['color-negative', 'color-positive']) {
+    add(
+      `${fg} amount-box border on input-bg`,
+      token(theme, fg),
+      token(theme, 'input-bg'),
+      AA_NON_TEXT
+    )
+  }
 
   // The volatility chart's two whiskers, one per background: mean→min is
   // drawn INSIDE the bar fill (--chart-neutral = --color-info), mean→max on

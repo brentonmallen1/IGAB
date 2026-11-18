@@ -109,10 +109,20 @@
   background: transparent;
 }
 
+/* The chosen direction wears its own colour, as the amount above it does:
+   Spent red, Received green. --bg-primary on either fill is the same pair
+   contrast.test.ts holds to 4.5:1 as text on --bg-primary. */
 .quick-add__direction-btn--active {
-  background: var(--color-accent);
   color: var(--bg-primary);
   font-weight: 600;
+}
+
+.quick-add__direction-btn--outflow.quick-add__direction-btn--active {
+  background: var(--color-negative);
+}
+
+.quick-add__direction-btn--inflow.quick-add__direction-btn--active {
+  background: var(--color-positive);
 }
 
 .quick-add__rows {

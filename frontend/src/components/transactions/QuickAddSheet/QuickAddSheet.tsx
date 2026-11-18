@@ -693,7 +693,7 @@ export function QuickAddSheet() {
               <button
                 role="radio"
                 aria-checked={direction === 'outflow'}
-                className={`quick-add__direction-btn ${direction === 'outflow' ? 'quick-add__direction-btn--active' : ''}`}
+                className={`quick-add__direction-btn quick-add__direction-btn--outflow ${direction === 'outflow' ? 'quick-add__direction-btn--active' : ''}`}
                 onClick={() => {
                   hapticTick()
                   setDirection('outflow')
@@ -704,7 +704,7 @@ export function QuickAddSheet() {
               <button
                 role="radio"
                 aria-checked={direction === 'inflow'}
-                className={`quick-add__direction-btn ${direction === 'inflow' ? 'quick-add__direction-btn--active' : ''}`}
+                className={`quick-add__direction-btn quick-add__direction-btn--inflow ${direction === 'inflow' ? 'quick-add__direction-btn--active' : ''}`}
                 onClick={() => {
                   hapticTick()
                   setDirection('inflow')
