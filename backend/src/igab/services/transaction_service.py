@@ -266,6 +266,32 @@ class TransactionService:
             source=source,
         )
 
+    async def guess_category_for(
+        self, budget_id: uuid.UUID, payee_id: uuid.UUID, amount: Decimal
+    ) -> uuid.UUID | None:
+        """The category a new row for this payee and amount would be given.
+
+        One code path for two askers: `_create` files with it, and the
+        editors' guess endpoint shows it before Save — so what the screen
+        pre-fills is what Save would have done.
+
+        1. The payee's best rule over its history (domain/category_guess.py),
+           which may itself answer None: a payee no rule serves is left blank.
+        2. Only for a payee with no history, its stored default — and only if
+           a new row may be filed there (`MAY_BE_FILED_TO`): a default
+           pointing at a card's envelope, a tracked debt or an archived or
+           deleted envelope would file a row somewhere the create guard
+           refuses. A blank from step 1 is a decision the default must not
+           overrule.
+
+        At most two queries: the history, and the default only when the
+        history is empty.
+        """
+        history = await self.transaction_repo.recent_categorized_for_payee(budget_id, payee_id)
+        if history:
+            return guess_category(history, amount)
+        return await self.payee_repo.filable_default_category(budget_id, payee_id)
+
     async def _interest_or_fee_envelope(
         self, budget_id: uuid.UUID, account: Account, data: TransactionCreate
     ) -> uuid.UUID | None:
@@ -329,28 +355,14 @@ class TransactionService:
         payee = await self._resolve_payee(budget_id, data.payee_id, data.payee_name)
         payee_id = payee.id if payee else None
 
-        # Auto-categorization: the payee's best-scoring rule (exact amount,
-        # nearest amount, or most recent — domain/category_guess.py); when no
-        # rule has served this payee well, a repeated amount or a dominant
-        # envelope, else blank. The payee's default_category_id answers only
-        # for a payee with no history: a blank there is a decision, and a
-        # stored default would overrule it.
-        # Never offered to an off-budget row: a synced brokerage or mortgage
-        # row would otherwise inherit whatever category its payee last used
-        # on the checking side, recurring every sync.
+        # Auto-categorization: `guess_category_for`, the one answer the
+        # editors are also shown before Save. Never offered to an off-budget
+        # row: a synced brokerage or mortgage row would otherwise inherit
+        # whatever category its payee last used on the checking side,
+        # recurring every sync.
         category_id = data.category_id
         if payee and not category_id and data.auto_categorize and account.on_budget:
-            history = await self.transaction_repo.recent_categorized_for_payee(budget_id, payee.id)
-            category_id = guess_category(history, data.amount).category_id
-            if not history and payee.default_category_id:
-                # The same rule the caller's own category was held to, asked
-                # rather than enforced. This resolution happens *after*
-                # `require_categorizable`, so a default pointing at a card's
-                # card's envelope, a tracked debt or an archived envelope
-                # would file a brand-new row somewhere the guard refuses — and
-                # it is a stored pointer, so it outlives what it points at.
-                if await may_be_filed_to(self.session, payee.default_category_id):
-                    category_id = payee.default_category_id
+            category_id = await self.guess_category_for(budget_id, payee.id, data.amount)
             if not category_id:
                 category_id = await self._interest_or_fee_envelope(budget_id, account, data)
 

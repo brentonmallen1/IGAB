@@ -1982,10 +1982,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         self,
         budget_id: uuid.UUID,
         payee_id: uuid.UUID,
-        limit: int = HISTORY_LIMIT,
     ) -> list[HistoryRow]:
-        """The payee's most recent categorised rows, newest first — the
-        history `domain.category_guess.guess_category` scores.
+        """The payee's `HISTORY_LIMIT` most recent categorised rows, newest
+        first — the history `domain.category_guess.guess_category` scores.
 
         Ordered `date DESC, created_at DESC`: the "last" rule breaks a
         same-date tie the way auto-fill always has, so a payee it serves
@@ -2020,7 +2019,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             # `id` last only so rows inserted in one statement (one
             # `created_at`) come back in a stable order run to run.
             .order_by(Transaction.date.desc(), Transaction.created_at.desc(), Transaction.id.desc())
-            .limit(limit)
+            .limit(HISTORY_LIMIT)
         )
         return [HistoryRow(row[0], row[1], row[2]) for row in result.all()]
 

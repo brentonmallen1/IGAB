@@ -384,15 +384,9 @@ class TestHistoricalCategoryInference:
         mock_service.transaction_repo.recent_categorized_for_payee = AsyncMock(
             return_value=[]  # No history
         )
-        # The fallback is liveness-checked now: a default pointing at a deleted
-        # category must not be handed to a new row. Here it is live. It is also
-        # checked for `linked_account_id` — a default pointing at a card's
-        # card's envelope would file a row past the create-path guard — so
-        # the mock has to say it is an ordinary envelope.
-        live_default = MagicMock()
-        live_default.id = default_cat_id
-        live_default.linked_account_id = None
-        mock_service.category_repo.get = AsyncMock(return_value=live_default)
+        # The default answers only if a new row may be filed there; the
+        # repository asks that in SQL (MAY_BE_FILED_TO). Here it may.
+        mock_service.payee_repo.filable_default_category = AsyncMock(return_value=default_cat_id)
 
         data = TransactionCreate(
             account_id=account_id,
@@ -428,6 +422,7 @@ class TestHistoricalCategoryInference:
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
         mock_service.transaction_repo.recent_categorized_for_payee = AsyncMock(return_value=[])
+        mock_service.payee_repo.filable_default_category = AsyncMock(return_value=None)
 
         data = TransactionCreate(
             account_id=account_id,

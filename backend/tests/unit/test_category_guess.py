@@ -4,6 +4,9 @@ The acceptance cases from a tester's eight-year measurement, plus the
 warehouse-club tie that made the old "most recent row" rule file every
 grocery run under Membership. Payees and amounts are invented; the ratios
 are what teach.
+
+Which rule answered is shown by construction: each history is built so only
+one rule gives the asserted envelope, and `scoreboard` pins who leads.
 """
 
 import uuid
@@ -14,14 +17,19 @@ import pytest
 
 from igab.domain.category_guess import (
     HISTORY_LIMIT,
+    MIN_SCORED,
     NEAREST_WINDOW,
     HistoryRow,
     guess_category,
+    leader_is_trusted,
     scoreboard,
 )
 
 GROCERIES = uuid.UUID("00000000-0000-0000-0000-0000000000a1")
 MEMBERSHIP = uuid.UUID("00000000-0000-0000-0000-0000000000a2")
+HOUSEHOLD = uuid.UUID("00000000-0000-0000-0000-0000000000a3")
+GIFTS = uuid.UUID("00000000-0000-0000-0000-0000000000a4")
+MISC = uuid.UUID("00000000-0000-0000-0000-0000000000a5")
 X = uuid.UUID("00000000-0000-0000-0000-0000000000b1")
 Y = uuid.UUID("00000000-0000-0000-0000-0000000000b2")
 Z = uuid.UUID("00000000-0000-0000-0000-0000000000b3")
@@ -47,14 +55,17 @@ def old_rule(history: list[HistoryRow]) -> uuid.UUID | None:
     return history[0].category_id if history else None
 
 
+def trusted(history: list[HistoryRow]) -> bool:
+    hits, scored = scoreboard(history)
+    assert scored >= MIN_SCORED, "not a scoreboard case"
+    return leader_is_trusted(hits, scored)
+
+
 # ─── New payee ───────────────────────────────────────────────────────────────
 
 
 def test_new_payee_guesses_nothing():
-    result = guess_category([], D("-20.00"))
-    assert result.category_id is None
-    assert result.rule is None
-    assert result.record == (0, 0)
+    assert guess_category([], D("-20.00")) is None
 
 
 # ─── Warehouse club ──────────────────────────────────────────────────────────
@@ -83,14 +94,15 @@ def test_warehouse_club_tie_old_rule_files_groceries_under_membership():
 
 
 def test_warehouse_club_grocery_sized_row_lands_in_groceries():
-    result = guess_category(warehouse_club_history(), D("-172.00"))
-    assert result.category_id == GROCERIES
-    assert result.rule == "nearest"
+    """nearest ties last on the scoreboard and wins the tie; last alone
+    would have said Membership."""
+    hits, _ = scoreboard(warehouse_club_history())
+    assert hits["nearest"] >= hits["last"] > hits["exact"]
+    assert guess_category(warehouse_club_history(), D("-172.00")) == GROCERIES
 
 
 def test_warehouse_club_membership_sized_row_lands_in_membership():
-    result = guess_category(warehouse_club_history(), D("-60.00"))
-    assert result.category_id == MEMBERSHIP
+    assert guess_category(warehouse_club_history(), D("-60.00")) == MEMBERSHIP
 
 
 def test_warehouse_club_with_last_years_membership_too():
@@ -98,8 +110,8 @@ def test_warehouse_club_with_last_years_membership_too():
     the membership row, but misses every grocery run, so nearest still leads
     and a grocery-sized row is still Groceries."""
     history = [*warehouse_club_history(), HistoryRow(date(2025, 9, 8), D("-60.00"), MEMBERSHIP)]
-    assert guess_category(history, D("-140.00")).category_id == GROCERIES
-    assert guess_category(history, D("-60.00")).category_id == MEMBERSHIP
+    assert guess_category(history, D("-140.00")) == GROCERIES
+    assert guess_category(history, D("-60.00")) == MEMBERSHIP
 
 
 # ─── Alternating fixed amounts ───────────────────────────────────────────────
@@ -118,8 +130,8 @@ def test_alternating_fixed_amounts_follow_the_amount(pattern):
     """A→X, B→Y in any order: the amount says which, recency does not."""
     amounts = {"A": ("-15.99", X), "B": ("-42.50", Y)}
     history = rows_oldest_first(*(amounts[c] for c in pattern))
-    assert guess_category(history, D("-15.99")).category_id == X
-    assert guess_category(history, D("-42.50")).category_id == Y
+    assert guess_category(history, D("-15.99")) == X
+    assert guess_category(history, D("-42.50")) == Y
 
 
 # ─── Same-day pair, no repeated amount ───────────────────────────────────────
@@ -136,14 +148,13 @@ def test_same_day_pair_half_apart_follows_size():
         first, second = ((small, X), (large, Y)) if i % 2 == 0 else ((large, Y), (small, X))
         history.insert(0, HistoryRow(day, D(first[0]), first[1]))
         history.insert(0, HistoryRow(day, D(second[0]), second[1]))
-    small_result = guess_category(history, D("-39.60"))
-    large_result = guess_category(history, D("-86.00"))
-    assert small_result.category_id == X
-    assert large_result.category_id == Y
-    assert small_result.rule == "nearest"
+    hits, _ = scoreboard(history)
+    assert hits["nearest"] > hits["last"]
+    assert guess_category(history, D("-39.60")) == X
+    assert guess_category(history, D("-86.00")) == Y
 
 
-# ─── Mixed payee: abstain ────────────────────────────────────────────────────
+# ─── Mixed payee ─────────────────────────────────────────────────────────────
 
 
 def test_mixed_payee_with_no_dominant_envelope_is_left_blank():
@@ -154,33 +165,31 @@ def test_mixed_payee_with_no_dominant_envelope_is_left_blank():
     amounts = ["-12.00", "-55.00", "-23.00", "-80.00", "-17.00", "-34.00", "-61.00", "-9.00"]
     spec = [(amounts[i], cats[(i * 3 + i // 2) % 4]) for i in range(len(amounts))]
     history = rows_oldest_first(*spec)
-    result = guess_category(history, D("-30.00"))
-    assert result.category_id is None
-    hits, scored = result.record
-    assert scored == len(amounts) - 1
-    assert hits * 5 < scored * 3
+    assert not trusted(history)
+    assert guess_category(history, D("-30.00")) is None
 
 
-def test_abstain_threshold_boundary_three_of_five_fills():
-    """Exactly 60% of five scored rows is enough to fill."""
+def test_trust_boundary_three_of_five_fills():
+    """Exactly 60% of five scored rows is trusted."""
     # Oldest first. nearest replays: hit, hit, miss, hit, miss → 3/5;
     # last trails at 1/5 and exact never sees a repeated amount.
     history = rows_oldest_first(
         ("-10", X), ("-11", X), ("-50", Y), ("-12", X), ("-51", Z), ("-13", X)
     )
     hits, scored = scoreboard(history)
-    assert scored == 5
-    assert max(hits.values()) == 3
-    assert guess_category(history, D("-93")).category_id is not None
+    assert (max(hits.values()), scored) == (3, 5)
+    assert trusted(history)
+    assert guess_category(history, D("-14")) == X
 
 
-def test_abstain_threshold_boundary_two_of_four_blank():
+def test_trust_boundary_two_of_four_is_not_trusted():
     """Two of four scored rows (50%) is not enough."""
     history = rows_oldest_first(("-10", X), ("-90", Y), ("-11", Z), ("-91", W), ("-12", X))
     hits, scored = scoreboard(history)
     assert scored == 4
     assert max(hits.values()) < 3
-    assert guess_category(history, D("-50")).category_id is None
+    assert not trusted(history)
+    assert guess_category(history, D("-50")) is None
 
 
 # ─── Short history: exact, else last ─────────────────────────────────────────
@@ -188,30 +197,26 @@ def test_abstain_threshold_boundary_two_of_four_blank():
 
 def test_short_history_exact_match_wins():
     history = rows_oldest_first(("-9.99", X), ("-30.00", Y))
-    result = guess_category(history, D("-9.99"))
-    assert result.category_id == X
-    assert result.rule == "exact"
+    assert guess_category(history, D("-9.99")) == X
 
 
 def test_short_history_no_match_falls_back_to_last():
     history = rows_oldest_first(("-9.99", X), ("-30.00", Y))
-    result = guess_category(history, D("-12.00"))
-    assert result.category_id == Y
-    assert result.rule == "last"
+    assert guess_category(history, D("-12.00")) == Y
 
 
 def test_single_row_is_inherited():
     """One row of history, unscoreable: today's behaviour, not a blank."""
     history = rows_oldest_first(("-4.50", X))
-    assert guess_category(history, D("-7.25")).category_id == X
+    assert guess_category(history, D("-7.25")) == X
 
 
 def test_four_rows_is_still_short_history():
     """Four rows replay only three — below the scoreboard minimum."""
     history = rows_oldest_first(("-10", X), ("-90", Y), ("-11", Z), ("-91", W))
     _, scored = scoreboard(history)
-    assert scored == 3
-    assert guess_category(history, D("-50")).category_id == W
+    assert scored == MIN_SCORED - 1
+    assert guess_category(history, D("-50")) == W
 
 
 # ─── Rule details ────────────────────────────────────────────────────────────
@@ -220,26 +225,25 @@ def test_four_rows_is_still_short_history():
 def test_exact_matches_the_signed_amount():
     """A refund of +25 is not the purchase of -25."""
     history = rows_oldest_first(("-25.00", X), ("25.00", Y), ("-40.00", Z))
-    assert guess_category(history, D("-25.00")).category_id == X
-    assert guess_category(history, D("25.00")).category_id == Y
+    assert guess_category(history, D("-25.00")) == X
+    assert guess_category(history, D("25.00")) == Y
 
 
-def test_steady_payee_last_still_wins_when_amounts_wander():
-    """One envelope, varying amounts: every rule but exact is perfect, the
-    tie goes to nearest, and the answer is the envelope."""
+def test_steady_payee_is_filed_whatever_the_amount():
+    """One envelope, varying amounts: nearest and last are perfect."""
     history = rows_oldest_first(*((f"-{30 + i * 7}.00", X) for i in range(10)))
-    result = guess_category(history, D("-1000.00"))
-    assert result.category_id == X
-    assert result.record == (9, 9)
+    hits, scored = scoreboard(history)
+    assert (hits["nearest"], hits["last"], scored) == (9, 9, 9)
+    assert guess_category(history, D("-1000.00")) == X
 
 
 def test_exact_leader_with_unseen_amount_falls_to_nearest():
     """A payee whose amounts repeat, offered an amount it never charged:
-    exact cannot answer, so the next rule in tie order does."""
+    exact leads but cannot answer, so the next rule in tie order does."""
     history = rows_oldest_first(*((("-10.00", X), ("-50.00", Y))[i % 2] for i in range(8)))
-    result = guess_category(history, D("-48.00"))
-    assert result.rule == "exact"
-    assert result.category_id == Y
+    hits, _ = scoreboard(history)
+    assert hits["exact"] >= max(hits.values())
+    assert guess_category(history, D("-48.00")) == Y
 
 
 def test_nearest_looks_only_at_the_last_twelve():
@@ -248,22 +252,37 @@ def test_nearest_looks_only_at_the_last_twelve():
     old = [("-500.00", X)] + [("-20.00", X)] * 3
     recent = [(f"-{100 + i}.00", Y) for i in range(NEAREST_WINDOW)]
     history = rows_oldest_first(*old, *recent)
-    assert guess_category(history, D("-500.00")).category_id == Y
+    assert guess_category(history, D("-500.00")) == Y
 
 
 def test_history_beyond_the_limit_is_ignored():
+    """Thirty older X rows past the limit cannot outvote the 24 newest."""
     long = [("-10.00", X)] * 30 + [("-10.00", Y)] * HISTORY_LIMIT
-    history = rows_oldest_first(*long)
-    result = guess_category(history, D("-10.00"))
-    assert result.category_id == Y
-    assert result.record[1] == HISTORY_LIMIT - 1
+    assert guess_category(rows_oldest_first(*long), D("-10.00")) == Y
+
+
+# ─── Zero amounts ────────────────────────────────────────────────────────────
+
+
+def test_zero_history_row_is_matched_by_a_zero_row():
+    """A $0 row (a voided authorisation, a free trial) is an amount like any
+    other: a new $0 row matches it exactly, and `0.00` equals `0`."""
+    history = rows_oldest_first(("-30.00", X), ("0.00", Z), ("-31.00", X), ("-29.00", X))
+    assert guess_category(history, D("0")) == Z
+    assert guess_category(history, D("-30.50")) == X
+
+
+def test_zero_new_row_with_no_zero_in_history():
+    """With no $0 in history a $0 row takes the payee's best rule: here
+    nearest, which lands on the smallest charge."""
+    history = rows_oldest_first(
+        ("-80.00", Y), ("-5.00", X), ("-82.00", Y), ("-6.00", X), ("-81.00", Y), ("-4.00", X)
+    )
+    assert trusted(history)
+    assert guess_category(history, D("0.00")) == X
 
 
 # ─── Not trusted: a repeated amount, then a dominant envelope ────────────────
-
-HOUSEHOLD = uuid.UUID("00000000-0000-0000-0000-0000000000a3")
-GIFTS = uuid.UUID("00000000-0000-0000-0000-0000000000a4")
-MISC = uuid.UUID("00000000-0000-0000-0000-0000000000a5")
 
 
 def messy_warehouse_club() -> list[HistoryRow]:
@@ -298,34 +317,25 @@ def messy_warehouse_club() -> list[HistoryRow]:
     )
 
 
-def not_trusted(history: list[HistoryRow]) -> bool:
-    hits, scored = scoreboard(history)
-    return scored >= 4 and max(hits.values()) * 5 < scored * 3
-
-
 def test_messy_warehouse_club_is_not_trusted_by_any_rule():
-    assert not_trusted(messy_warehouse_club())
+    assert not trusted(messy_warehouse_club())
 
 
 def test_messy_warehouse_club_grocery_sized_row_gets_the_dominant_envelope():
-    result = guess_category(messy_warehouse_club(), D("-152.00"))
-    assert result.category_id == GROCERIES
-    assert result.rule == "dominant"
+    """-152 sits nearest a Gifts row (-148), so nearest would say Gifts;
+    Groceries here is the dominant envelope answering."""
+    assert guess_category(messy_warehouse_club(), D("-152.00")) == GROCERIES
 
 
 def test_messy_warehouse_club_membership_sized_row_gets_membership_by_amount():
     """The renewal repeats last year's amount exactly: that beats the
     dominant envelope."""
-    result = guess_category(messy_warehouse_club(), D("-60.00"))
-    assert result.category_id == MEMBERSHIP
-    assert result.rule == "exact-fallback"
+    assert guess_category(messy_warehouse_club(), D("-60.00")) == MEMBERSHIP
 
 
 def test_exact_fallback_matches_the_signed_amount_only():
     """A refund the size of the membership is not the membership."""
-    result = guess_category(messy_warehouse_club(), D("60.00"))
-    assert result.category_id == GROCERIES
-    assert result.rule == "dominant"
+    assert guess_category(messy_warehouse_club(), D("60.00")) == GROCERIES
 
 
 def test_dominant_at_exactly_half_fills():
@@ -334,10 +344,8 @@ def test_dominant_at_exactly_half_fills():
         ("-10", X), ("-90", Y), ("-20", X), ("-80", Z), ("-30", X),
         ("-70", W), ("-40", X), ("-60", Y), ("-50", X), ("-15", Z),
     )  # fmt: skip
-    assert not_trusted(history)
-    result = guess_category(history, D("-1"))
-    assert result.category_id == X
-    assert result.rule == "dominant"
+    assert not trusted(history)
+    assert guess_category(history, D("-1")) == X
 
 
 def test_dominant_just_under_half_stays_blank():
@@ -346,15 +354,13 @@ def test_dominant_just_under_half_stays_blank():
         ("-10", X), ("-90", Y), ("-20", X), ("-80", Z), ("-30", X),
         ("-70", W), ("-40", X), ("-60", Y), ("-50", W), ("-15", Z),
     )  # fmt: skip
-    assert not_trusted(history)
-    assert guess_category(history, D("-1")).category_id is None
+    assert not trusted(history)
+    assert guess_category(history, D("-1")) is None
 
 
 def test_two_envelopes_at_half_each_go_to_the_more_recent():
     history = rows_oldest_first(
         ("-10", X), ("-90", Y), ("-20", Y), ("-80", X), ("-30", X), ("-70", Y)
     )
-    assert not_trusted(history)
-    result = guess_category(history, D("-1"))
-    assert result.rule == "dominant"
-    assert result.category_id == Y
+    assert not trusted(history)
+    assert guess_category(history, D("-1")) == Y

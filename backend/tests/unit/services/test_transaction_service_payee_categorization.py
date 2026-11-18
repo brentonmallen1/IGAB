@@ -55,13 +55,6 @@ class MockPayee:
 
 
 @dataclass
-class MockCategory:
-    id: uuid.UUID = DEFAULT_CAT_ID
-    # Card envelopes are linked; None keeps these ordinary.
-    linked_account_id: uuid.UUID | None = None
-
-
-@dataclass
 class MockTransaction:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     budget_id: uuid.UUID = BUDGET_ID
@@ -88,24 +81,20 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     payee_repo.find_best_match = AsyncMock(return_value=None)
     payee_repo.create = AsyncMock(return_value=payee)
     payee_repo.update = AsyncMock()
+    # The default answers only when it may be filed to; the repository asks
+    # that in SQL (MAY_BE_FILED_TO). Here it may; the refused cases run end
+    # to end in tests/integration/test_payee_category_guess.py and
+    # test_category_delete.py.
+    payee_repo.filable_default_category = AsyncMock(
+        return_value=payee.default_category_id if payee is not None else None
+    )
 
     txn_repo = MagicMock()
     txn_repo.refresh = AsyncMock()
     txn_repo.create = AsyncMock(return_value=txn)
     txn_repo.recent_categorized_for_payee = AsyncMock(return_value=[])
 
-    # The default-category fallback is liveness-checked, so a deleted category
-    # can never be handed to a brand-new transaction. Return the category the
-    # payee names; the deleted case (get -> None) is covered end to end in
-    # tests/integration/test_category_delete.py.
     category_repo = MagicMock()
-    category_repo.get = AsyncMock(
-        return_value=(
-            MockCategory(id=payee.default_category_id)
-            if payee is not None and payee.default_category_id is not None
-            else None
-        )
-    )
 
     session = AsyncMock()
     session.get = AsyncMock(return_value=payee)

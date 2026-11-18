@@ -175,6 +175,15 @@ IS_FUNDABLE = and_(
 #: income goes.
 IS_CATEGORIZABLE = and_(NOT_ARCHIVED_ANYWHERE, not_(LINKED))
 
+#: A stored pointer — a payee's default, the interest envelope — may be
+#: followed to file a new row: categorizable AND still alive. Liveness is
+#: here and not in `IS_CATEGORIZABLE` because a hand-picked id is checked
+#: for existence elsewhere (`require_in_budget`), while a stored one can
+#: outlive the envelope it names. `services/filing.may_be_filed_to` asks it
+#: of one id; `PayeeRepository.filable_default_category` asks it in the
+#: same query that reads the default.
+MAY_BE_FILED_TO = and_(IS_CATEGORIZABLE, LIVE_CATEGORY)
+
 #: A category whose own money can come back on a card: the envelopes
 #: `sum_credit_outflows_by_category` releases against, and so exactly the set
 #: whose complement is an inflow the budget has no claim on
