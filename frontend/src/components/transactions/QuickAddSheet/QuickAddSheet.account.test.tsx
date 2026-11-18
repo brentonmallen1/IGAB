@@ -41,6 +41,7 @@ vi.mock('../../../api/payees', () => ({
   usePayees: () => ({ data: [] }),
   useNearbyPayees: () => ({ data: [] }),
   useCreatePayee: () => ({ mutateAsync: vi.fn() }),
+  usePayeeCategoryGuess: () => ({ data: undefined }),
 }))
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: [] }),

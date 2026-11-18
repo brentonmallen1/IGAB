@@ -14,6 +14,7 @@ from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.account_move import MoveRequest, refusal_for_move
 from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.card_charges import is_interest_or_fee
+from igab.domain.category_guess import guess_category
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
 from igab.domain.merging import MergePlan, MergeSide, Refused, plan_merge
@@ -265,6 +266,32 @@ class TransactionService:
             source=source,
         )
 
+    async def guess_category_for(
+        self, budget_id: uuid.UUID, payee_id: uuid.UUID, amount: Decimal
+    ) -> uuid.UUID | None:
+        """The category a new row for this payee and amount would be given.
+
+        One code path for two askers: `_create` files with it, and the
+        editors' guess endpoint shows it before Save — so what the screen
+        pre-fills is what Save would have done.
+
+        1. The payee's best rule over its history (domain/category_guess.py),
+           which may itself answer None: a payee no rule serves is left blank.
+        2. Only for a payee with no history, its stored default — and only if
+           a new row may be filed there (`MAY_BE_FILED_TO`): a default
+           pointing at a card's envelope, a tracked debt or an archived or
+           deleted envelope would file a row somewhere the create guard
+           refuses. A blank from step 1 is a decision the default must not
+           overrule.
+
+        At most two queries: the history, and the default only when the
+        history is empty.
+        """
+        history = await self.transaction_repo.recent_categorized_for_payee(budget_id, payee_id)
+        if history:
+            return guess_category(history, amount)
+        return await self.payee_repo.filable_default_category(budget_id, payee_id)
+
     async def _interest_or_fee_envelope(
         self, budget_id: uuid.UUID, account: Account, data: TransactionCreate
     ) -> uuid.UUID | None:
@@ -328,25 +355,14 @@ class TransactionService:
         payee = await self._resolve_payee(budget_id, data.payee_id, data.payee_name)
         payee_id = payee.id if payee else None
 
-        # Auto-categorization: use the most recent category for this payee.
-        # Falls back to default_category_id for new payees with no transaction
-        # history. Never offered to an off-budget row: a synced brokerage or
-        # mortgage row would otherwise inherit whatever category its payee
-        # last used on the checking side, recurring every sync.
+        # Auto-categorization: `guess_category_for`, the one answer the
+        # editors are also shown before Save. Never offered to an off-budget
+        # row: a synced brokerage or mortgage row would otherwise inherit
+        # whatever category its payee last used on the checking side,
+        # recurring every sync.
         category_id = data.category_id
         if payee and not category_id and data.auto_categorize and account.on_budget:
-            category_id = await self.transaction_repo.get_most_recent_category_for_payee(
-                budget_id, payee.id
-            )
-            if not category_id and payee.default_category_id:
-                # The same rule the caller's own category was held to, asked
-                # rather than enforced. This resolution happens *after*
-                # `require_categorizable`, so a default pointing at a card's
-                # card's envelope, a tracked debt or an archived envelope
-                # would file a brand-new row somewhere the guard refuses — and
-                # it is a stored pointer, so it outlives what it points at.
-                if await may_be_filed_to(self.session, payee.default_category_id):
-                    category_id = payee.default_category_id
+            category_id = await self.guess_category_for(budget_id, payee.id, data.amount)
             if not category_id:
                 category_id = await self._interest_or_fee_envelope(budget_id, account, data)
 

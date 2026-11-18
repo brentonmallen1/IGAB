@@ -43,6 +43,7 @@ import { useAccounts } from '../../../api/accounts'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useCurrentPosition } from '../../../hooks/useCurrentPosition'
+import { useCategoryGuessFill } from '../../../hooks/useCategoryGuessFill'
 import { useIsTouch } from '../../../hooks/useMediaQuery'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { getCurrencySymbol } from '../../../utils/money'
@@ -252,16 +253,13 @@ export function QuickAddSheet() {
 
   function handlePayeePicked(id: string | null) {
     setPayeeId(id)
-    if (id) {
-      // Payee memory: prefill the learned default category, still overridable.
-      // Nearby entries carry their own default_category_id from the endpoint.
-      const defaultCategory =
-        payees.find((p) => p.id === id)?.default_category_id ??
-        nearbyPayees.find((p) => p.id === id)?.default_category_id
-      if (defaultCategory && !categoryId && canCategorize) {
-        setCategoryId(defaultCategory)
-      }
-    }
+    // Payee memory is the server's rule, asked once there is an amount
+    // (hooks/useCategoryGuessFill) — still overridable, never overriding.
+    if (id) categoryGuess.payeePicked(id)
+  }
+
+  function chooseCategory(id: string | null) {
+    categoryGuess.choose(id)
   }
 
   function addFiles(list: FileList | null) {
@@ -424,6 +422,16 @@ export function QuickAddSheet() {
   // Expression-aware: "12.50+3.99" is valid the moment it's typed, no "=" needed
   const cents = expressionToCents(amount)
   const amountValid = !isNaN(cents) && cents > 0
+
+  // What Save would file this payee and amount to, shown before Save.
+  const categoryGuess = useCategoryGuessFill({
+    budgetId,
+    payeeId,
+    cents: amountValid ? cents * (direction === 'outflow' ? -1 : 1) : null,
+    enabled: open && canCategorize && !isSplit,
+    categoryId,
+    setCategoryId,
+  })
 
   const splitCheck = checkSplit(amountValid ? cents : 0, splits)
   const splitIsValid = !isSplit || splitCheck.isValid
@@ -1012,10 +1020,8 @@ export function QuickAddSheet() {
         ]}
         onCreateNew={async (name) => {
           const payee = await createPayee.mutateAsync(name)
-          // Mirror handlePayeePicked's memory prefill for brand-new payees
-          setPayeeId(payee.id)
-          if (payee.default_category_id && !categoryId && canCategorize)
-            setCategoryId(payee.default_category_id)
+          // A brand-new payee has no history: the guess is its default, if any.
+          handlePayeePicked(payee.id)
           return { id: payee.id, label: payee.name }
         }}
         placeholder="Search or create payee…"
@@ -1027,7 +1033,7 @@ export function QuickAddSheet() {
         title="Choose category"
         options={categoryOptions}
         value={categoryId}
-        onChange={setCategoryId}
+        onChange={chooseCategory}
         allowNone
         noneLabel="No category"
         placeholder="Search categories…"

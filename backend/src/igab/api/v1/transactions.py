@@ -16,6 +16,7 @@ from igab.api.v1.schemas.transaction import (
     BulkClearedUpdate,
     BulkDelete,
     BulkItemFailure,
+    CategoryGuessResponse,
     ConvertToSplitRequest,
     DeleteTransactionResult,
     DuplicatePayeeEntry,
@@ -802,6 +803,26 @@ async def find_duplicate_payees(
         )
         for g in groups
     ]
+
+
+@router.get("/{budget_id}/payees/{payee_id}/category-guess", response_model=CategoryGuessResponse)
+async def guess_payee_category(
+    budget_id: BudgetAccess,
+    payee_id: uuid.UUID,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    amount: Decimal = Query(..., max_digits=14, decimal_places=2),
+) -> CategoryGuessResponse:
+    """What Save would file a new row for this payee and amount to, so the
+    editors can show it first. The same function `_create` calls.
+
+    Both of its queries are scoped to `budget_id`, so a payee id from another
+    budget answers null rather than leaking anything. Not offered for a
+    tracking account's rows — the editors know the account; this does not.
+    """
+    return CategoryGuessResponse(
+        category_id=await txn_service.guess_category_for(budget_id, payee_id, amount)
+    )
 
 
 @router.get("/{budget_id}/payees/nearby", response_model=list[NearbyPayeeResponse])

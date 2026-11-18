@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category
 from igab.domain.exceptions import InvariantViolation
-from igab.repositories.category_filters import IS_CATEGORIZABLE, LIVE_CATEGORY
+from igab.repositories.category_filters import IS_CATEGORIZABLE, MAY_BE_FILED_TO
 
 
 async def _filing_row(session: AsyncSession, category_id: uuid.UUID) -> Any:
@@ -39,7 +39,7 @@ async def _filing_row(session: AsyncSession, category_id: uuid.UUID) -> Any:
                 Category.linked_account_id,
                 Category.linked_liability_id,
                 IS_CATEGORIZABLE.label("categorizable"),
-                LIVE_CATEGORY.label("live"),
+                MAY_BE_FILED_TO.label("may_be_filed"),
             ).where(Category.id == category_id)
         )
     ).first()
@@ -63,7 +63,7 @@ async def may_be_filed_to(session: AsyncSession, category_id: uuid.UUID | None) 
     if category_id is None:
         return False
     row = await _filing_row(session, category_id)
-    return row is not None and bool(row.categorizable) and bool(row.live)
+    return row is not None and bool(row.may_be_filed)
 
 
 async def require_categorizable(session: AsyncSession, category_id: uuid.UUID | None) -> None:

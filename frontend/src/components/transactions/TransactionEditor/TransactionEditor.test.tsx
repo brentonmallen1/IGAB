@@ -90,6 +90,19 @@ vi.mock('../../../api/categories', () => ({
   useRecentPayeeForCategory: () => ({ data: undefined }),
 }))
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: ACCOUNTS }) }))
+/** The server's category guess; undefined is "not answered yet". */
+const guess = vi.hoisted(() => ({
+  fn: (_payeeId: string | null, _cents: number | null): string | null | undefined => undefined,
+}))
+vi.mock('../../../api/payees', () => ({
+  usePayeeCategoryGuess: (
+    _budget: string | null,
+    payeeId: string | null,
+    cents: number | null
+  ) => ({
+    data: payeeId && cents !== null ? guess.fn(payeeId, cents) : undefined,
+  }),
+}))
 vi.mock('../../../api/ai', () => ({
   useAIStatus: () => ({ data: { available: false } }),
   useSuggestCategory: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -1236,5 +1249,84 @@ describe('a projected interest row', () => {
   it('an ordinary row carries none', () => {
     renderEditor({ transaction: { ...projection, projected_interest_month: null } })
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * The editor used to copy the payee's stored default into the category the
+ * moment a payee was picked, and Save then sent it as a choice — so the
+ * server's per-payee rule never ran for a hand-entered row. It now shows the
+ * server's own guess, and never over a category the person chose.
+ */
+describe("TransactionEditor fills the server's category guess", () => {
+  const GROCER = {
+    id: 'p-grocer',
+    name: 'Harbor Grocer',
+    transfer_account_id: null,
+    default_category_id: 'cat-2',
+  }
+
+  function pickGrocer() {
+    const box = screen.getByPlaceholderText('Search or enter payee...')
+    fireEvent.focus(box)
+    fireEvent.change(box, { target: { value: 'Harbor' } })
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Harbor Grocer' }))
+  }
+
+  function categoryValue() {
+    return screen.getByRole<HTMLInputElement>('combobox', { name: 'Category' }).value
+  }
+
+  beforeEach(() => {
+    createMutate.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+    payeesData = [GROCER]
+    guess.fn = (payeeId, cents) => (payeeId === 'p-grocer' && cents === -1234 ? 'cat-1' : null)
+  })
+
+  afterEach(() => {
+    payeesData = []
+    guess.fn = () => undefined
+  })
+
+  it('fills the guess for the payee and signed amount, not the stored default', async () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '12.34' } })
+    pickGrocer()
+    await waitFor(() => expect(categoryValue()).toBe('Groceries'))
+  })
+
+  it('follows a new amount while the field still holds its own guess', async () => {
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '12.34' } })
+    pickGrocer()
+    await waitFor(() => expect(categoryValue()).toBe('Groceries'))
+    // The server would leave this amount blank, so the field clears.
+    fireEvent.change(amountInputs()[0], { target: { value: '99' } })
+    await waitFor(() => expect(categoryValue()).toBe(''))
+  })
+
+  it('never overwrites a category the person chose', async () => {
+    renderEditor({ accountId: 'acc-1' })
+    pickOption('Fun')
+    fireEvent.change(amountInputs()[0], { target: { value: '12.34' } })
+    pickGrocer()
+    await new Promise((r) => setTimeout(r, 400))
+    expect(categoryValue()).toBe('Fun')
+  })
+
+  it('saves with no category when Save comes before the guess', async () => {
+    guess.fn = () => undefined // still in flight
+    renderEditor({ accountId: 'acc-1' })
+    fireEvent.change(amountInputs()[0], { target: { value: '12.34' } })
+    pickGrocer()
+    fireEvent.click(submitButton())
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
+    // No category sent: the server files it by the same rule.
+    expect((createMutate.mock.calls[0] as unknown[])[0]).toMatchObject({ amount: -12.34 })
+    expect(
+      ((createMutate.mock.calls[0] as unknown[])[0] as { category_id?: string | null })
+        .category_id ?? null
+    ).toBeNull()
   })
 })

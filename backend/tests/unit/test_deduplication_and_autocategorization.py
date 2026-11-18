@@ -3,7 +3,7 @@ Exhaustive tests for transaction deduplication and auto-categorization.
 
 These are critical trust-surface tests covering:
 1. Fuzzy deduplication by amount+date (find_existing_match)
-2. Historical category inference (get_most_recent_category_for_payee)
+2. Historical category inference (recent_categorized_for_payee + guess_category)
 3. Import ID generation and deduplication (get_existing_import_ids, _generate_import_id)
 4. SimpleFIN sync deduplication flow
 """
@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from igab.domain.category_guess import HistoryRow
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.matching import (
     DEDUP_AUTO_MATCH_THRESHOLD,
@@ -335,8 +336,8 @@ class TestHistoricalCategoryInference:
         mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
-            return_value=recent_cat_id
+        mock_service.transaction_repo.recent_categorized_for_payee = AsyncMock(
+            return_value=[HistoryRow(date(2026, 4, 1), Decimal("-25.00"), recent_cat_id)]
         )
 
         data = TransactionCreate(
@@ -348,7 +349,7 @@ class TestHistoricalCategoryInference:
         await mock_service.create(budget_id, data)
 
         # Should call most recent lookup
-        mock_service.transaction_repo.get_most_recent_category_for_payee.assert_called_once_with(
+        mock_service.transaction_repo.recent_categorized_for_payee.assert_called_once_with(
             budget_id, payee_id
         )
 
@@ -380,18 +381,12 @@ class TestHistoricalCategoryInference:
         mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
-            return_value=None  # No history
+        mock_service.transaction_repo.recent_categorized_for_payee = AsyncMock(
+            return_value=[]  # No history
         )
-        # The fallback is liveness-checked now: a default pointing at a deleted
-        # category must not be handed to a new row. Here it is live. It is also
-        # checked for `linked_account_id` — a default pointing at a card's
-        # card's envelope would file a row past the create-path guard — so
-        # the mock has to say it is an ordinary envelope.
-        live_default = MagicMock()
-        live_default.id = default_cat_id
-        live_default.linked_account_id = None
-        mock_service.category_repo.get = AsyncMock(return_value=live_default)
+        # The default answers only if a new row may be filed there; the
+        # repository asks that in SQL (MAY_BE_FILED_TO). Here it may.
+        mock_service.payee_repo.filable_default_category = AsyncMock(return_value=default_cat_id)
 
         data = TransactionCreate(
             account_id=account_id,
@@ -426,9 +421,8 @@ class TestHistoricalCategoryInference:
         mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
-            return_value=None
-        )
+        mock_service.transaction_repo.recent_categorized_for_payee = AsyncMock(return_value=[])
+        mock_service.payee_repo.filable_default_category = AsyncMock(return_value=None)
 
         data = TransactionCreate(
             account_id=account_id,

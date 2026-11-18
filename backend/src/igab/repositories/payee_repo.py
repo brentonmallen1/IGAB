@@ -7,10 +7,11 @@ from rapidfuzz import fuzz
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
-from igab.db.models import Payee, Transaction
+from igab.db.models import Category, Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.payee_names import distinctive_key, pattern_matches, similarity_key
 from igab.repositories.base import BaseRepository
+from igab.repositories.category_filters import MAY_BE_FILED_TO
 
 PAYEE_FUZZY_THRESHOLD = 80
 DUPLICATE_SUGGESTION_THRESHOLD = 75
@@ -46,6 +47,22 @@ class PayeeRepository(BaseRepository[Payee]):
             .order_by(Payee.name)
         )
         return list(result.scalars().all())
+
+    async def filable_default_category(
+        self, budget_id: uuid.UUID, payee_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        """The payee's stored default category, if a new row may be filed
+        there (`MAY_BE_FILED_TO`) — one query, read and checked together.
+
+        Scoped to the budget, so a payee id from another budget answers None
+        rather than leaking that budget's envelope.
+        """
+        result = await self.session.execute(
+            select(Payee.default_category_id)
+            .join(Category, Category.id == Payee.default_category_id)
+            .where(Payee.id == payee_id, Payee.budget_id == budget_id, MAY_BE_FILED_TO)
+        )
+        return result.scalar_one_or_none()
 
     async def get_located_visits(
         self,

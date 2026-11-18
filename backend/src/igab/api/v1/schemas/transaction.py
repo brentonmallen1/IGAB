@@ -374,6 +374,13 @@ class PayeeMergeResult(ApiModel):
     change_id: uuid.UUID
 
 
+class CategoryGuessResponse(ApiModel):
+    """The category a new row for this payee and amount would be filed to
+    on Save (`TransactionService.guess_category_for`), or null for none."""
+
+    category_id: uuid.UUID | None
+
+
 class NearbyPayeeResponse(ApiModel):
     """A payee the user has transacted with near the given point."""
 

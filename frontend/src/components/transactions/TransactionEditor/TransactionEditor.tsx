@@ -21,10 +21,10 @@ import { PayeeField } from './PayeeField'
 import { accountLockReason, categoryDropNote } from './accountMove'
 import { editorAmount } from './editorAmount'
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useCategoryGuessFill } from '../../../hooks/useCategoryGuessFill'
 import {
   X,
   Trash2,
-  Sparkles,
   Split,
   Plus,
   AlertTriangle,
@@ -65,13 +65,14 @@ import {
 } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { confirmFutureOverspend, type OverspendProbe } from '../../../api/budgets'
-import { useAIStatus, useSuggestCategory } from '../../../api/ai'
+import { useAIStatus } from '../../../api/ai'
 import { type AIJob } from '../../../api/aiJobs'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { Modal } from '../../common/Modal/Modal'
 import { AIReviewBanner } from './AIReviewBanner'
+import { AISuggestCategoryButton } from './AISuggestCategoryButton'
 import { entryStarted, STARTED_ENTRY_NOTE, type EntryFields } from './entryStarted'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
@@ -124,7 +125,6 @@ export function TransactionEditor({
   const notify = useUndoToast()
   const convertToSplit = useConvertToSplit(budgetId)
   const replaceSplits = useReplaceSplits(budgetId)
-  const suggestCategory = useSuggestCategory(budgetId)
 
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
@@ -320,6 +320,16 @@ export function TransactionEditor({
   // off-budget row, so the field is not offered where the save would refuse.
   const rowAccount = accounts.find((a) => a.id === accountId)
   const canCategorize = rowMayCarryCategory(rowAccount?.on_budget ?? true)
+  // What Save would file, shown before Save, never over the person's own pick
+  // (hooks/useCategoryGuessFill). Empty boxes are no amount yet, not $0.
+  const categoryGuess = useCategoryGuessFill({
+    budgetId,
+    payeeId: selectedPayeeId,
+    cents: outflow.trim() || inflow.trim() ? (typed?.cents ?? null) : null,
+    enabled: canCategorize && !isTransfer && !isSplit,
+    categoryId,
+    setCategoryId: (id) => setCategoryId(id ?? ''),
+  })
   // Whether this row's account may be changed here at all, and what to say
   // when it may not (accountMove.ts — the server's own rule is
   // domain/account_move.py, which refuses regardless of what we offer).
@@ -357,9 +367,7 @@ export function TransactionEditor({
     }
     setPayeeQuery(p.name)
     setSelectedPayeeId(p.id)
-    if (p.default_category_id && !categoryId) {
-      setCategoryId(p.default_category_id)
-    }
+    categoryGuess.payeePicked(p.id)
   }
 
   /** The other account, picked where the register shows it: in the payee box.
@@ -1177,29 +1185,17 @@ export function TransactionEditor({
                         <Split size={12} />
                         Split
                       </button>
-                      <button
-                        type="button"
-                        className="txn-editor__ai-btn"
-                        title="AI suggest category"
-                        disabled={suggestCategory.isPending}
-                        onClick={async () => {
-                          const result = await suggestCategory.mutateAsync({
-                            payee_name: payeeQuery || 'Unknown',
-                            // A hint, not a save: with nothing usable in the
-                            // boxes the model is asked about the payee alone.
-                            amount: typed?.dollars ?? 0,
-                            memo: memo || undefined,
-                          })
-                          if (result.category_id) setCategoryId(result.category_id)
-                        }}
-                      >
-                        <Sparkles size={12} />
-                        {suggestCategory.isPending ? 'Thinking…' : 'AI Suggest'}
-                      </button>
+                      <AISuggestCategoryButton
+                        budgetId={budgetId}
+                        payeeName={payeeQuery}
+                        dollars={typed?.dollars ?? null}
+                        memo={memo}
+                        onSuggest={categoryGuess.choose}
+                      />
                     </label>
                     <CategoryCombobox
                       value={categoryId || null}
-                      onChange={(id) => setCategoryId(id ?? '')}
+                      onChange={categoryGuess.choose}
                       groups={groupedCategories}
                       allowNone
                       aria-label="Category"
