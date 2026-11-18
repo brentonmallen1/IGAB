@@ -388,10 +388,11 @@ class TestTargetAssigned:
 
 class TestCoverAndTarget:
     """ "Cover + target" (`TargetService.cover_and_target_assigned`): the
-    month's spending covered and the duty on top, so Available reaches the
-    duty — assigned + max(0, duty − available). Target $100 a month unless
-    stated; figures are (assigned, activity, available), nothing carried in
-    unless stated."""
+    month's spending covered and the target's rate on top, so Available
+    reaches the rate — assigned + max(0, rate − available), the rate never
+    bounded by a stop. Target $100 a month unless stated; figures are
+    (assigned, activity, available), nothing carried in unless stated. Cases
+    A–E also run from shared/target_cover_cases.json (test_target_cover_cases)."""
 
     svc = TargetService(repo=None)  # type: ignore[arg-type]
 
@@ -462,17 +463,27 @@ class TestCoverAndTarget:
             Decimal("230.00"),
         )
 
-    def test_stop_limited_duty(self):
-        # $100 a month, stop at $1,000; carried in 960, so the duty is 40.
-        # Spent 990 with nothing assigned: Available −30, and 70 brings it
-        # to the 40 the stop still wants.
+    def test_a_stop_does_not_bound_the_cover(self):
+        """$100 a month until $1,000. The envelope arrived holding its stop and
+        spent $1,030 (Available −30): Target Amount's duty is 0 and it moves
+        nothing; Cover + target covers the 30 and adds the month's 100 —
+        +130, Available 100. The person's own example."""
         t = make_target("monthly_funding", "100.00", limit="1000.00")
-        assert self.both(t, "0", "-990.00", "-30.00") == (Decimal("40.00"), Decimal("70.00"))
+        assert self.both(t, "0", "-1030.00", "-30.00") == (Decimal("0"), Decimal("130.00"))
 
-    def test_stop_already_reached_covers_and_adds_nothing(self):
-        # Carried in 1,000 (duty 0), spent 1,030: covering the 30 is all.
+    def test_short_of_the_stop_the_cover_still_adds_the_full_rate(self):
+        # Carried in 960: Target Amount asks the 40 left to the stop; Cover +
+        # target covers the 30 spent past it and adds the full 100.
         t = make_target("monthly_funding", "100.00", limit="1000.00")
-        assert self.both(t, "0", "-1030.00", "-30.00") == (Decimal("0"), Decimal("30.00"))
+        assert self.both(t, "0", "-990.00", "-30.00") == (Decimal("40.00"), Decimal("130.00"))
+
+    def test_a_weekly_stop_does_not_bound_the_cover_either(self):
+        t = make_target("weekly_funding", "50.00", weekday=FRIDAY, limit="500.00")
+        # Arrived holding 500, spent 530: the rate is 250 in five-Friday May.
+        assert self.both(t, "0", "-530.00", "-30.00", month=MAY) == (
+            Decimal("0"),
+            Decimal("280.00"),
+        )
 
     def test_savings_balance_is_not_offered(self):
         # A savings balance already measures Available — there is no gap
@@ -494,9 +505,9 @@ class TestCoverAndTarget:
         assert self.both(self.monthly(), "0", "10.00", "-30.00")[1] is None
 
     def test_not_offered_where_it_equals_the_target_figure(self):
-        # Stop reached, everything spent to exactly zero: both read 0.
-        t = make_target("monthly_funding", "100.00", limit="1000.00")
-        assert self.both(t, "0", "-1000.00", "0") == (Decimal("0"), None)
+        # Carried in 30, spent 30, nothing assigned: Available 0, and both
+        # readings ask 100 — no choice to offer.
+        assert self.both(self.monthly(), "0", "-30.00", "0") == (Decimal("100.00"), None)
 
     def test_rounds_to_cents(self):
         t = make_target("monthly_funding", "33.333")

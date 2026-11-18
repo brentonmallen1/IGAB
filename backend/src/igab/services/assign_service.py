@@ -106,6 +106,21 @@ def strategy_new_assigned(
     raise ValueError(f"Unknown assign strategy: {strategy}")
 
 
+def pick_target_figure(
+    target_assigned: Decimal, cover_target_assigned: Decimal | None, covered: bool
+) -> Decimal:
+    """Target Amount's figure for one envelope: "Cover + target" when it was
+    chosen (`covered`) and is offered, else the target amount. Where it is not
+    offered (None) the envelope takes its target amount whatever was chosen.
+
+    The client makes the same pick from the two served figures before the
+    round-trip (frontend utils/targetCover.ts `pickTargetFigure`); both suites
+    run `shared/target_cover_cases.json`."""
+    if covered and cover_target_assigned is not None:
+        return cover_target_assigned
+    return target_assigned
+
+
 def distribute_fill(
     shortfalls: dict[uuid.UUID, Decimal],
     available_tba: Decimal,
@@ -303,8 +318,15 @@ class AssignService:
         choice = self._target_choice(ctx, category_id)
         if choice is None:
             return None
-        plain, cover = choice
-        return cover if cover is not None and category_id in cover_ids else plain
+        return pick_target_figure(*choice, category_id in cover_ids)
+
+    def _offered_cover_ids(self, ctx: _AssignContext) -> frozenset[uuid.UUID]:
+        """Every eligible envelope "Cover + target" is offered on."""
+        return frozenset(
+            cat.id
+            for cat in ctx.eligible
+            if (choice := self._target_choice(ctx, cat.id)) is not None and choice[1] is not None
+        )
 
     async def set_to_targets(
         self,
@@ -369,14 +391,9 @@ class AssignService:
         cat: Category,
         current: Decimal,
         available: Decimal,
-        cover_ids: Collection[uuid.UUID],
     ) -> Decimal | None:
-        """A SET strategy's figure for one category; None leaves it alone."""
-        if strategy == "target_amount":
-            # Every targeted envelope reads what its target asks this month,
-            # over-assigned ones included. Not pro-rated — unlike Underfunded
-            # it may assign past TBA, and the preview's TBA-after says so.
-            return self._target_assigned(ctx, cat.id, cover_ids)
+        """A history or reset strategy's figure for one category; None leaves
+        it alone. Target amounts are `_set_items`' own branch."""
         return strategy_new_assigned(
             strategy,
             current,
@@ -393,9 +410,20 @@ class AssignService:
             bal = ctx.balances.get(cat.id)
             current = bal.assigned if bal else ZERO
             available = bal.available if bal else ZERO
-            new = self._new_assigned(ctx, strategy, cat, current, available, cover_ids)
-            choice = self._target_choice(ctx, cat.id) if strategy == "target_amount" else None
-            plain, cover = choice if choice is not None else (None, None)
+            plain: Decimal | None = None
+            cover: Decimal | None = None
+            if strategy == "target_amount":
+                # Every targeted envelope reads what its target asks this
+                # month, over-assigned ones included. Not pro-rated — unlike
+                # Underfunded it may assign past TBA, and the preview's
+                # TBA-after says so.
+                choice = self._target_choice(ctx, cat.id)
+                if choice is None:
+                    continue
+                plain, cover = choice
+                new: Decimal | None = pick_target_figure(plain, cover, cat.id in cover_ids)
+            else:
+                new = self._new_assigned(ctx, strategy, cat, current, available)
             # A row offered "Cover + target" stays listed even when its chosen
             # figure moves nothing: an envelope that spent what it was given
             # reads its target as met (case E), and the choice is the only
@@ -493,14 +521,20 @@ class AssignService:
             newly_overspent_total=sum(newly_red, ZERO),
         )
 
-    async def strategy_totals(self, budget_id: uuid.UUID, month: date) -> AssignTotals:
+    async def strategy_totals(
+        self, budget_id: uuid.UUID, month: date, *, cover_all: bool = False
+    ) -> AssignTotals:
+        """Every strategy's menu row. `cover_all`: Target Amount's row reads
+        "Cover + target" wherever it is offered — the device setting that also
+        defaults the preview to it — so the menu and the preview agree."""
         ctx = await self._gather(budget_id, month, with_histories=True)
+        cover_ids = self._offered_cover_ids(ctx) if cover_all else frozenset()
         return AssignTotals(
             month=ctx.month,
             tba=ctx.summary.to_be_assigned,
             total_overspent=ctx.summary.total_overspent,
             total_overspent_credit=ctx.summary.total_overspent_credit,
-            strategies=[self._build_preview(ctx, s) for s in ASSIGN_STRATEGIES],
+            strategies=[self._build_preview(ctx, s, cover_ids) for s in ASSIGN_STRATEGIES],
         )
 
     async def preview(

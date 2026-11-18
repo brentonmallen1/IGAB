@@ -948,13 +948,11 @@ class AutoAssignRequest(ApiModel):
         "average_spent",
         "reset",
         "target_amount",
-        "cover_and_target",
     ]
     month: datetime.date
     #: `target_amount` only: the categories that take "Cover + target"
     #: instead (`TargetService.cover_and_target_assigned`); the rest take the
     #: target amount. One not offered the choice takes the target amount.
-    #: `cover_and_target` covers every listed category and ignores this.
     cover_ids: list[uuid.UUID] = []
 
 

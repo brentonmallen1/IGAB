@@ -1,0 +1,85 @@
+{
+  "_doc": "Target Amount vs Cover + target. The backend suite (tests/unit/test_target_cover_cases.py) checks TargetService serves `target_assigned` and `cover_target_assigned` from the inputs, and that the server's pick (assign_service.pick_target_figure) chooses `as_target` / `as_cover`. The frontend suite (utils/targetCover.test.ts) checks its pick from the two served figures chooses the same. Invented figures; month 2026-05-01 has five Fridays.",
+  "cases": [
+    {
+      "name": "A: $30 overspend already covered",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "30.00", "activity": "-30.00", "available": "0",
+      "target_assigned": "100.00", "cover_target_assigned": "130.00",
+      "as_target": "100.00", "as_cover": "130.00"
+    },
+    {
+      "name": "B: $30 overspend, $10 of it covered",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "10.00", "activity": "-30.00", "available": "-20.00",
+      "target_assigned": "100.00", "cover_target_assigned": "130.00",
+      "as_target": "100.00", "as_cover": "130.00"
+    },
+    {
+      "name": "C: $30 overspend, uncovered",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "0", "activity": "-30.00", "available": "-30.00",
+      "target_assigned": "100.00", "cover_target_assigned": "130.00",
+      "as_target": "100.00", "as_cover": "130.00"
+    },
+    {
+      "name": "D: target met, then $30 more spent",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "100.00", "activity": "-130.00", "available": "-30.00",
+      "target_assigned": "100.00", "cover_target_assigned": "230.00",
+      "as_target": "100.00", "as_cover": "230.00"
+    },
+    {
+      "name": "E: assigned 130, spent 130",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "130.00", "activity": "-130.00", "available": "0",
+      "target_assigned": "130.00", "cover_target_assigned": "230.00",
+      "as_target": "130.00", "as_cover": "230.00"
+    },
+    {
+      "name": "weekly: $50 a Friday in a five-Friday month",
+      "target": { "type": "weekly_funding", "amount": "50.00", "weekday": 4 },
+      "month": "2026-05-01",
+      "assigned": "0", "activity": "-30.00", "available": "-30.00",
+      "target_assigned": "250.00", "cover_target_assigned": "280.00",
+      "as_target": "250.00", "as_cover": "280.00"
+    },
+    {
+      "name": "stopped: at its $1,000 stop, spent $1,030 — the stop does not bound the cover",
+      "target": { "type": "monthly_funding", "amount": "100.00", "limit": "1000.00" },
+      "month": "2026-05-01",
+      "assigned": "0", "activity": "-1030.00", "available": "-30.00",
+      "target_assigned": "0.00", "cover_target_assigned": "130.00",
+      "as_target": "0.00", "as_cover": "130.00"
+    },
+    {
+      "name": "not offered: money still in the envelope",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "100.00", "activity": "-30.00", "available": "70.00",
+      "target_assigned": "100.00", "cover_target_assigned": null,
+      "as_target": "100.00", "as_cover": "100.00"
+    },
+    {
+      "name": "not offered: carried in 30 and spent 30 — both read 100",
+      "target": { "type": "monthly_funding", "amount": "100.00" },
+      "month": "2026-05-01",
+      "assigned": "0", "activity": "-30.00", "available": "0",
+      "target_assigned": "100.00", "cover_target_assigned": null,
+      "as_target": "100.00", "as_cover": "100.00"
+    },
+    {
+      "name": "not offered: a savings balance already measures Available",
+      "target": { "type": "savings_balance", "amount": "1000.00" },
+      "month": "2026-05-01",
+      "assigned": "0", "activity": "-30.00", "available": "-30.00",
+      "target_assigned": "1030.00", "cover_target_assigned": null,
+      "as_target": "1030.00", "as_cover": "1030.00"
+    }
+  ]
+}
