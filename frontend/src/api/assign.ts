@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { AssignStrategy } from '../types'
 import { ROOT } from './queryKeys'
@@ -31,6 +31,12 @@ export interface AssignPreviewItem {
   current_assigned: number
   delta: number
   new_assigned: number
+  /** Target Amount only: what this row reads under Target and under Cover +
+   *  target, on a row offered that choice (both null otherwise).
+   *  `new_assigned` is the one the request's `cover_ids` picked. Home:
+   *  `AssignPreviewItem` (backend assign_service.py). */
+  target_assigned: number | null
+  cover_target_assigned: number | null
 }
 
 export interface AssignPreviewResponse {
@@ -72,20 +78,30 @@ export function useAssignStrategyTotals(budgetId: string | null, month: string, 
   })
 }
 
+/**
+ * `coverIds` (Target Amount only): the envelopes previewed as "Cover +
+ * target". Part of the key, so changing a row's choice asks the server for
+ * the new figures; the previous answer stays drawn while it does.
+ */
 export function useAssignPreview(
   budgetId: string | null,
   month: string,
-  strategy: AssignStrategy | null
+  strategy: AssignStrategy | null,
+  coverIds: readonly string[] = []
 ) {
+  const cover_ids = [...coverIds].sort()
   return useQuery({
-    queryKey: [ROOT.assignPreview, budgetId, month, strategy],
+    queryKey: [ROOT.assignPreview, budgetId, month, strategy, cover_ids],
     queryFn: () =>
       apiClient
         .get<AssignPreviewResponse>(`/${budgetId}/assign/preview`, {
-          params: { month, strategy },
+          params: { month, strategy, cover_ids },
+          // FastAPI reads a repeated `cover_ids=`, not axios's `cover_ids[]=`.
+          paramsSerializer: { indexes: null },
         })
         .then((r) => r.data),
     enabled: !!budgetId && strategy !== null,
+    placeholderData: keepPreviousData,
     staleTime: 0,
   })
 }
@@ -93,7 +109,7 @@ export function useAssignPreview(
 export function useAssignApply(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { month: string; strategy: AssignStrategy }) =>
+    mutationFn: (data: { month: string; strategy: AssignStrategy; cover_ids?: string[] }) =>
       apiClient.post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data).then((r) => r.data),
     onSuccess: () => void invalidateAfterMoneyMove(qc, budgetId),
   })

@@ -8,6 +8,9 @@ import { STRATEGY_META } from '../AssignDropdown/strategyMeta'
 import { Dialog } from '../../common/Dialog/Dialog'
 import '../previewDialog.css'
 import { figureClass, signTone } from '../../../utils/figureTone'
+import { useAppStore } from '../../../stores/appStore'
+import { initialCoverIds, sharedPick, withPick } from '../../../utils/targetCover'
+import { TargetCoverChoice } from '../TargetCoverChoice/TargetCoverChoice'
 import './AssignPreviewModal.css'
 
 interface Props {
@@ -22,10 +25,31 @@ interface Props {
  * signed change column, TBA before/after, and an explicit warning when the
  * apply would push TBA negative. Apply recomputes server-side; the toast
  * reports what actually happened.
+ *
+ * Target Amount rows the server offers "Cover + target" carry a per-row
+ * Target / Cover + target choice (the inspector's dialog asks with the same
+ * control), defaulted from the device's `targetCoverMode`. A change asks the
+ * server for the new preview, and Apply sends the same `cover_ids`.
  */
 export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props) {
   const { formatMoney } = useFormatters()
-  const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy)
+  const mode = useAppStore((s) => s.targetCoverMode)
+  // Null until the person picks: the setting's default, over whichever rows
+  // the server offers the choice on.
+  const [picked, setPicked] = useState<Set<string> | null>(null)
+  const [requested, setRequested] = useState<string[]>([])
+  const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy, requested)
+  const offered = (preview?.items ?? [])
+    .filter((i) => i.cover_target_assigned != null)
+    .map((i) => i.category_id)
+  const coverIds = picked ?? new Set(initialCoverIds(mode, offered))
+  // Sorted, so a re-render with the same set is not a new request.
+  const coverList = offered.filter((id) => coverIds.has(id)).sort()
+  if (coverList.join() !== requested.join()) {
+    // Ask the server for the figures this choice sets — the setting's default
+    // once the offered rows are known, or a row the person just changed.
+    setRequested(coverList)
+  }
   const apply = useAssignApply(budgetId)
   const notify = useUndoToast()
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +70,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
     setError(null)
     let result: Awaited<ReturnType<typeof apply.mutateAsync>>
     try {
-      result = await apply.mutateAsync({ month, strategy })
+      result = await apply.mutateAsync({ month, strategy, cover_ids: coverList })
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Could not apply this strategy'))
       return
@@ -137,6 +161,17 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
         ) : (
           <>
             <p className="preview-dialog__description">{meta.description}</p>
+            {offered.length > 1 && (
+              <div className="assign-preview-modal__cover-all">
+                <span>Overspent categories</span>
+                <TargetCoverChoice
+                  value={sharedPick(offered, coverIds)}
+                  label="Same for all overspent categories"
+                  onChange={(pick) => setPicked(new Set(pick === 'cover' ? offered : []))}
+                  disabled={apply.isPending}
+                />
+              </div>
+            )}
             <table className="preview-dialog__table">
               <caption className="sr-only">Per-category changes for {meta.label}</caption>
               <thead>
@@ -158,7 +193,23 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                   const delta = item.delta
                   return (
                     <tr key={item.category_id}>
-                      <td>{item.category_name}</td>
+                      <td>
+                        {item.category_name}
+                        {item.cover_target_assigned != null && item.target_assigned != null && (
+                          <div className="assign-preview-modal__cover-choice">
+                            <TargetCoverChoice
+                              value={coverIds.has(item.category_id) ? 'cover' : 'target'}
+                              label={item.category_name}
+                              targetAmount={item.target_assigned}
+                              coverAmount={item.cover_target_assigned}
+                              onChange={(pick) =>
+                                setPicked(withPick(coverIds, item.category_id, pick))
+                              }
+                              disabled={apply.isPending}
+                            />
+                          </div>
+                        )}
+                      </td>
                       <td className="preview-dialog__col-num">
                         {formatMoney(item.current_assigned)}
                       </td>

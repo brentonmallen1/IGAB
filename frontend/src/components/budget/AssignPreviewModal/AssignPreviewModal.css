@@ -31,3 +31,19 @@
   font-size: var(--font-size-xs);
   line-height: 1.5;
 }
+
+/* Target / Cover + target: under the category name on a row offered it, and
+   once above the table for every such row. */
+.assign-preview-modal__cover-choice {
+  margin-top: var(--spacing-xs);
+}
+
+.assign-preview-modal__cover-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
