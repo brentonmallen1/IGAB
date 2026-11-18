@@ -83,6 +83,12 @@ export interface Account {
    *  the sync decides it and the page must not be free to disagree with the
    *  sync badge. (backend: domain/bank_balance.drift_is_a_fault) */
   bank_drift_is_fault: boolean
+  /** The advisory beside the fault: an unreconciled bank-fed checking or
+   *  savings account whose ledger has sat the same amount off the bank for
+   *  the last several syncs and still does — rows a lapsed bank link never
+   *  delivered. Not a fault. Served, never re-derived here.
+   *  (backend: domain/bank_balance.drift_persists) */
+  bank_drift_persists: boolean
   balance: number
   cleared_balance: number
   uncleared_balance: number

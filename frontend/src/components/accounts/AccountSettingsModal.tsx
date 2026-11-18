@@ -1,20 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAccounts, useUpdateAccount } from '../../api/accounts'
 import { apiErrorMessage } from '../../api/client'
+import { refetchLabel, useRefetchAccountWindow } from '../../hooks/useRefetchAccountWindow'
 import {
   useLinkSimpleFINAccount,
-  formatSyncSummary,
-  useRefetchSimpleFINAccount,
   useUnlinkSimpleFINAccount,
   useUpdateAccountSimpleFINSettings,
-  useSimpleFINConnections,
+  usePrimaryConnection,
   useSimpleFINRemoteAccounts,
 } from '../../api/simplefin'
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
 import { Dialog } from '../common/Dialog/Dialog'
 import { useFormatters } from '../../hooks/useFormatters'
 import { AlertTriangle } from 'lucide-react'
-import toast from 'react-hot-toast'
 
 import { useSyncHealth } from '../../api/syncLogs'
 import { useAppStore } from '../../stores/appStore'
@@ -47,8 +45,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const { formatMoney } = useFormatters()
 
   const updateAccount = useUpdateAccount(budgetId ?? '')
-  const { data: sfConnections } = useSimpleFINConnections()
-  const firstConnection = sfConnections?.[0] ?? null
+  const firstConnection = usePrimaryConnection()
 
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   // Fetched from the moment the modal opens, not when the picker does: the
@@ -64,7 +61,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   )
   const link = useLinkSimpleFINAccount(accountId)
   const unlink = useUnlinkSimpleFINAccount(accountId)
-  const refetch = useRefetchSimpleFINAccount(accountId, budgetId)
+  const refetch = useRefetchAccountWindow(accountId, budgetId)
   const updateSyncSettings = useUpdateAccountSimpleFINSettings(accountId)
   const [linkError, setLinkError] = useState<string | null>(null)
 
@@ -169,17 +166,6 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
       setShowLinkPicker(false)
     } catch {
       setLinkError('Failed to link — please try again')
-    }
-  }
-
-  async function handleRefetch() {
-    if (!firstConnection) return
-    try {
-      const result = await refetch.mutateAsync(firstConnection.id)
-      if (result.error) toast.error(result.error)
-      else toast.success(formatSyncSummary(result))
-    } catch {
-      toast.error('Could not reach the bank — try again in a moment')
     }
   }
 
@@ -363,10 +349,10 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                   <button
                     type="button"
                     className="dialog-btn dialog-btn--secondary acct-modal__start"
-                    onClick={handleRefetch}
+                    onClick={refetch.run}
                     disabled={refetch.isPending}
                   >
-                    {refetch.isPending ? 'Fetching…' : 'Fetch the last 90 days again'}
+                    {refetchLabel(refetch.isPending)}
                   </button>
                   <p className="dialog-form__hint">
                     For after your bank re-linked this account, or when the balance here is off from

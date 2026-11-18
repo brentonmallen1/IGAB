@@ -1,7 +1,9 @@
 """Reading and writing the bank-sync log."""
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,6 +87,47 @@ class SyncRunRepository:
             .order_by(SyncRun.seq)
         )
         return [Absence.from_record(entry) for entries in result.scalars() for entry in entries]
+
+    async def recorded_gaps_for(
+        self, account_ids: Sequence[uuid.UUID], limit: int
+    ) -> dict[uuid.UUID, list[Decimal | None]]:
+        """Each account's bank − ledger gap as its last `limit` runs recorded
+        it, newest first — the input `domain.bank_balance.drift_persists`
+        judges. None where a run recorded either figure as unknown, so a run
+        that could not measure breaks a streak rather than being skipped
+        over. A run since undone is left out: its rows were taken back, so
+        the ledger figure it recorded is no longer one the account had.
+
+        One grouped statement for a whole listing, ordered by the run's
+        `seq` (unique), so "the last six" is the same six on every read.
+        """
+        if not account_ids:
+            return {}
+        rank = (
+            func.row_number()
+            .over(partition_by=SyncRunAccount.account_id, order_by=SyncRun.seq.desc())
+            .label("rank")
+        )
+        ranked = (
+            select(
+                SyncRunAccount.account_id,
+                SyncRunAccount.bank_balance,
+                SyncRunAccount.ledger_cleared_balance,
+                rank,
+            )
+            .join(SyncRun, SyncRun.id == SyncRunAccount.sync_run_id)
+            .where(SyncRunAccount.account_id.in_(account_ids), SyncRun.undone_at.is_(None))
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(ranked.c.account_id, ranked.c.bank_balance, ranked.c.ledger_cleared_balance)
+            .where(ranked.c.rank <= limit)
+            .order_by(ranked.c.account_id, ranked.c.rank)
+        )
+        gaps: dict[uuid.UUID, list[Decimal | None]] = {i: [] for i in account_ids}
+        for account_id, bank, ledger in result.all():
+            gaps[account_id].append(None if bank is None or ledger is None else bank - ledger)
+        return gaps
 
     async def mark_undone(self, run: SyncRun) -> None:
         run.undone_at = datetime.now(UTC)

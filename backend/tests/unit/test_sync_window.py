@@ -6,8 +6,10 @@ from igab.domain.sync_window import (
     SIMPLEFIN_MAX_WINDOW_DAYS,
     SYNC_OVERLAP_DAYS,
     backfill_windows,
+    held_by_lapse,
     judged_from,
     live_window,
+    window_anchor,
 )
 
 NOW = datetime(2026, 9, 16, 1, 0, tzinfo=UTC)
@@ -135,3 +137,76 @@ class TestBackfillWindows:
 
     def test_a_short_span_is_one_request(self):
         assert len(backfill_windows(now=NOW, earliest_wanted=NOW - timedelta(days=10))) == 1
+
+
+class TestWindowAnchor:
+    """The next window is measured from the bank's clock, not ours.
+
+    The lapse report: a bridge's link lapsed, every hourly run still stamped the
+    account with its own time, and the first run after re-authenticating
+    asked for a window that began a day after two rows had posted. The
+    bridge's `balance-date` had frozen before those rows — the one signal
+    that said nothing new had been served.
+    """
+
+    def test_a_frozen_balance_date_holds_the_window_back(self):
+        frozen = NOW - timedelta(days=8)
+        assert window_anchor(NOW, frozen) == frozen
+        window = live_window(
+            now=NOW,
+            last_sync_at=window_anchor(NOW, frozen),
+            first_sync=False,
+            oldest_open_hold=None,
+        )
+        assert window.start == frozen - timedelta(days=SYNC_OVERLAP_DAYS)
+
+    def test_a_balance_date_ahead_of_the_stamp_is_capped_at_the_stamp(self):
+        """A bridge clock running ahead cannot push the window past the moment
+        we actually asked."""
+        assert window_anchor(NOW, NOW + timedelta(hours=3)) == NOW
+
+    def test_no_balance_date_leaves_the_stamp_as_it_was(self):
+        assert window_anchor(NOW, None) == NOW
+
+    def test_no_stamp_is_still_the_full_window(self):
+        """A relink clears the stamp so the account is owed the floor; a
+        balance date must not quietly narrow that."""
+        assert window_anchor(None, NOW - timedelta(days=2)) is None
+
+    def test_six_stale_runs_do_not_walk_the_window_past_the_stretch(self):
+        """Six hourly runs answered from a refresh frozen eight days ago, the
+        last stamped an hour ago. A row posted six days ago — inside the stale
+        stretch — is still inside the next window. On the stamp alone it fell
+        a day outside it."""
+        frozen = NOW - timedelta(days=8)
+        last_run = NOW - timedelta(hours=1)
+        row_posted = NOW - timedelta(days=6)
+
+        def start(anchor: datetime | None) -> datetime:
+            return live_window(
+                now=NOW, last_sync_at=anchor, first_sync=False, oldest_open_hold=None
+            ).start
+
+        assert start(last_run) > row_posted, "the old rule: the stamp alone walked past the row"
+        assert start(window_anchor(last_run, frozen)) <= row_posted
+
+
+class TestHeldByLapse:
+    """An account a `con.auth` names keeps its stamp, like an orphan."""
+
+    def test_no_lapse_holds_nothing(self):
+        assert held_by_lapse("CON-harborstone", set()) is False
+
+    def test_the_named_connection_is_held(self):
+        assert held_by_lapse("CON-harborstone", {"CON-harborstone"}) is True
+
+    def test_another_connection_is_stamped(self):
+        assert held_by_lapse("CON-sapphire", {"CON-harborstone"}) is False
+
+    def test_a_lapse_that_names_no_connection_holds_every_account(self):
+        """Holding costs a wider window, which dedupe absorbs; advancing a
+        wrong stamp loses rows for good."""
+        assert held_by_lapse("CON-sapphire", {None}) is True
+
+    def test_an_account_with_no_connection_is_held_during_a_lapse(self):
+        assert held_by_lapse(None, {"CON-harborstone"}) is True

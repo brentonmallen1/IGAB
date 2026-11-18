@@ -21,7 +21,7 @@ import { useLiabilities } from '../../api/liabilities'
 import { usePendingReviewCountForAccount } from '../../api/transactions'
 import {
   formatSyncSummary,
-  useSimpleFINConnections,
+  usePrimaryConnection,
   useSyncSimpleFIN,
   usePendingMatchesForAccount,
 } from '../../api/simplefin'
@@ -40,6 +40,7 @@ import './AccountPage.css'
 import { Surface } from '../../components/common/Surface'
 import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useIsMobile } from '../../hooks/useMediaQuery'
+import { useRefetchAccountWindow } from '../../hooks/useRefetchAccountWindow'
 
 export function AccountPage() {
   const { formatMoney, formatDate, formatDateTime } = useFormatters()
@@ -71,9 +72,9 @@ export function AccountPage() {
     cancelReconciliation,
     setTransactionSearch,
   } = useUIStore()
-  const { data: sfConnections } = useSimpleFINConnections()
-  const firstConnection = sfConnections?.[0] ?? null
+  const firstConnection = usePrimaryConnection()
   const sync = useSyncSimpleFIN(budgetId)
+  const refetchWindow = useRefetchAccountWindow(accountId, budgetId)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const activeModal = useUIStore((s) => s.activeModal)
   const openModal = useUIStore((s) => s.openModal)
@@ -197,9 +198,17 @@ export function AccountPage() {
               ? formatDateTime(account.simplefin_balance_date)
               : null,
             reconciled: account.last_reconciled_at !== null,
+            persists: account.bank_drift_persists,
           },
           formatMoney
         )
+      : null
+
+  // What the bank line's refetch button runs — the same action the settings
+  // dialog offers, shown here only when the sentence says rows never came.
+  const bankRefetch =
+    isConnected && refetchWindow.available
+      ? { run: refetchWindow.run, isPending: refetchWindow.isPending }
       : null
 
   // What the phone's notice pill stands for. While reconciling the review
@@ -258,6 +267,7 @@ export function AccountPage() {
             formatMoney={formatMoney}
             formatDate={formatDate}
             drift={driftNotice}
+            refetch={bankRefetch}
             terms={terms}
             onShowUnreconciled={showUnreconciled}
             onSync={isConnected && firstConnection ? () => void handleSync() : null}
@@ -322,7 +332,7 @@ export function AccountPage() {
                   amount={account.pending_balance}
                   formatted={formatMoney(account.pending_balance)}
                 />
-                <BankDriftLine notice={driftNotice} />
+                <BankDriftLine notice={driftNotice} refetch={bankRefetch} />
               </>
             )}
           </div>

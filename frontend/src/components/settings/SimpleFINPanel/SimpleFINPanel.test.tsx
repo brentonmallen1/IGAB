@@ -27,6 +27,7 @@ vi.mock('../../../api/simplefin', () => {
         },
       ],
     }),
+    primaryConnection: (cs?: { id: string }[]) => cs?.[0] ?? null,
     useSimpleFINRateLimitStatus: () => ({ data: status.current }),
     useUpdateSimpleFINConnection: idle,
     useDeleteSimpleFINConnection: idle,

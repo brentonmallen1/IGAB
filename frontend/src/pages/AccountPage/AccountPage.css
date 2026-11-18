@@ -173,6 +173,24 @@
   color: var(--color-negative);
 }
 
+/* The refetch the sentence names, as a link-weight action inside it: the
+   line is a fact first, and a full button would outshout the balances. */
+.account-page__bank-refetch {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.account-page__bank-refetch:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  text-decoration: none;
+}
+
 .account-page__balance-item {
   display: flex;
   flex-direction: column;

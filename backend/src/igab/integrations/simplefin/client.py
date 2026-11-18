@@ -51,6 +51,11 @@ class SimpleFINFeed:
     #: SimpleFIN account id -> the name the bank reports for it. What an
     #: orphaned link is matched against when suggesting a replacement.
     account_names: dict[str, str] = field(default_factory=dict)
+    #: SimpleFIN account id -> the bridge's institution-connection id it
+    #: belongs to (`conn_id`). The same id a `con.auth` error names, so a
+    #: lapsed link can be pinned to exactly the accounts behind it. Absent
+    #: for an account whose payload carried none.
+    account_connections: dict[str, str] = field(default_factory=dict)
     errors: list[SimpleFINError] = field(default_factory=list)
 
 
@@ -190,11 +195,15 @@ class SimpleFINClient:
         balances: dict[str, Decimal] = {}
         balance_dates: dict[str, datetime] = {}
         account_names: dict[str, str] = {}
+        account_connections: dict[str, str] = {}
         for account in data.get("accounts", []):
             acct_id = account.get("id")
             name = account.get("name")
             if acct_id and name:
                 account_names[acct_id] = str(name)
+            conn_id = account.get("conn_id")
+            if acct_id and conn_id:
+                account_connections[acct_id] = str(conn_id)
             raw_balance = account.get("balance")
             if acct_id and raw_balance is not None:
                 try:
@@ -223,5 +232,6 @@ class SimpleFINClient:
             balances=balances,
             balance_dates=balance_dates,
             account_names=account_names,
+            account_connections=account_connections,
             errors=errors,
         )

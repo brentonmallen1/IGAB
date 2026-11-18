@@ -5,6 +5,7 @@ import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BalanceEquation } from './AccountBalances'
 import { AccountStatusPills, BankDriftLine, PendingLine } from './AccountFacts'
 import type { DriftNotice } from './bankDriftNotice'
+import type { RefetchHandle } from '../../hooks/useRefetchAccountWindow'
 import type { RegisterToggle } from '../../components/transactions/TransactionTable/registerToggles'
 import './AccountSheets.css'
 
@@ -26,6 +27,9 @@ interface Props {
   formatMoney: (amount: number) => string
   formatDate: (date: string) => string
   drift: DriftNotice | null
+  /** The bank line's refetch (`useRefetchAccountWindow`), or null where no
+   *  bank is linked. */
+  refetch: RefetchHandle | null
   /** A debt account's terms (LiabilityTermsHeader), or null. */
   terms: ReactNode
   onShowUnreconciled: () => void
@@ -69,6 +73,7 @@ export function AccountToolsSheet({
   formatMoney,
   formatDate,
   drift,
+  refetch,
   terms,
   onShowUnreconciled,
   onSync,
@@ -125,7 +130,20 @@ export function AccountToolsSheet({
             amount={account.pending_balance}
             formatted={formatMoney(account.pending_balance)}
           />
-          <BankDriftLine notice={drift} />
+          {/* Closes the sheet first, like every action here: the refetch
+              ends in a toast, which must not land under the sheet. */}
+          <BankDriftLine
+            notice={drift}
+            refetch={
+              refetch && {
+                run: () => {
+                  onClose()
+                  refetch.run()
+                },
+                isPending: refetch.isPending,
+              }
+            }
+          />
         </section>
 
         <section className="account-sheet__section" aria-label="This account">

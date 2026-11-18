@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
@@ -15,7 +16,7 @@ from igab.api.v1.schemas.account import (
     AccountSecretsResponse,
     AccountUpdate,
 )
-from igab.db.models import Category, Liability, LiabilityBalanceSnapshot, Transaction
+from igab.db.models import Account, Category, Liability, LiabilityBalanceSnapshot, Transaction
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
@@ -28,13 +29,18 @@ from igab.dependencies import (
     get_undo_service,
 )
 from igab.domain.bank_absence import REMOVED
-from igab.domain.bank_balance import DriftExplanation, drift_is_a_fault
+from igab.domain.bank_balance import (
+    PERSISTENT_GAP_RUNS,
+    drift_is_a_fault,
+    drift_persists,
+)
 from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError, UndoConflict
 from igab.repositories.account_repo import (
     AccountAttention,
     AccountRepository,
     LiabilityDisposition,
 )
+from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.services.account_hygiene import AccountHygieneService
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.bank_absence_listing import open_absences
@@ -88,23 +94,66 @@ async def _record_companion_effects(
         )
 
 
-def _apply_drift(
-    resp: AccountResponse, explanation: DriftExplanation | None, *, reconciled: bool
-) -> None:
-    """Copy one drift explanation onto a response.
+class _Served:
+    """An account row plus the drift facts only a listing path can judge.
 
-    Every listing path goes through here, so a surface cannot serve the
-    signed gap while forgetting the reason it exists — which is the whole
-    difference between "the feed is behind" and "rows are missing".
+    `AccountResponse` validates from attributes and every drift field is
+    required, so they are present at validation rather than patched on
+    afterwards — a path that forgets them raises instead of serving a gap
+    without its reason, or a standing gap as nothing. The row's own
+    attributes come through untouched.
     """
-    if explanation is None:
-        return
-    resp.bank_drift = explanation.amount
-    resp.bank_drift_reason = explanation.reason
-    resp.bank_drift_unexplained = explanation.unexplained
-    resp.bank_unposted_cleared = explanation.unposted_cleared
-    resp.bank_in_review = explanation.in_review
-    resp.bank_drift_is_fault = drift_is_a_fault(explanation, reconciled=reconciled)
+
+    def __init__(self, account: Account, served: dict[str, object]) -> None:
+        self._account = account
+        self.__dict__.update(served)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._account, name)
+
+
+async def _served_drift(
+    account_repo: AccountRepository, accounts: Sequence[Account]
+) -> dict[uuid.UUID, dict[str, object]]:
+    """Every drift field for each account, the one way they are served.
+
+    The gap and its account (`AccountRepository.drift_for`), the fault
+    verdict (`drift_is_a_fault`) and the standing-gap advisory
+    (`drift_persists`, from the gaps recent runs recorded) — gathered
+    together, so a surface cannot serve the signed gap while forgetting the
+    reason it exists, which is the whole difference between "the feed is
+    behind" and "rows are missing". Grouped reads for the whole list.
+    """
+    explanations = await account_repo.drift_for(accounts)
+    gaps = await SyncRunRepository(account_repo.session).recorded_gaps_for(
+        [a.id for a in accounts], PERSISTENT_GAP_RUNS
+    )
+    served: dict[uuid.UUID, dict[str, object]] = {}
+    for a in accounts:
+        explanation = explanations[a.id]
+        reconciled = a.last_reconciled_at is not None
+        served[a.id] = {
+            "bank_drift": explanation.amount if explanation else None,
+            "bank_drift_reason": explanation.reason if explanation else None,
+            "bank_drift_unexplained": explanation.unexplained if explanation else None,
+            "bank_unposted_cleared": explanation.unposted_cleared if explanation else None,
+            "bank_in_review": explanation.in_review if explanation else None,
+            "bank_drift_is_fault": drift_is_a_fault(explanation, reconciled=reconciled),
+            "bank_drift_persists": drift_persists(
+                explanation,
+                gaps[a.id],
+                reconciled=reconciled,
+                account_type=a.account_type,
+                bank_fed=a.simplefin_account_id is not None,
+            ),
+        }
+    return served
+
+
+async def _respond(account_repo: AccountRepository, account: Account) -> AccountResponse:
+    """One account's response with its drift fields, for the single-row paths."""
+    served = await _served_drift(account_repo, [account])
+    return AccountResponse.model_validate(_Served(account, served[account.id]))
 
 
 def _apply_attention(resp: AccountResponse, attention: AccountAttention) -> None:
@@ -128,18 +177,17 @@ async def list_accounts(
     balances = await account_repo.balances_for(ids)
     cleared_balances = await account_repo.cleared_balances_for(ids)
     pending_balances = await account_repo.pending_balances_for(ids)
-    drifts = await account_repo.drift_for(accounts)
+    drift = await _served_drift(account_repo, accounts)
     attention = await account_repo.attention_counts_for(ids)
     result = []
     for acc in accounts:
         balance = balances[acc.id]
         cleared = cleared_balances[acc.id]
-        resp = AccountResponse.model_validate(acc)
+        resp = AccountResponse.model_validate(_Served(acc, drift[acc.id]))
         resp.balance = balance
         resp.cleared_balance = cleared
         resp.uncleared_balance = balance - cleared
         resp.pending_balance = pending_balances[acc.id]
-        _apply_drift(resp, drifts[acc.id], reconciled=acc.last_reconciled_at is not None)
         _apply_attention(resp, attention[acc.id])
         result.append(resp)
     return result
@@ -386,7 +434,7 @@ async def create_account(
             after=snapshot("account", acc),
         )
 
-    resp = AccountResponse.model_validate(acc)
+    resp = await _respond(account_repo, acc)
     resp.balance = await account_repo.get_balance(acc.id)
     return resp
 
@@ -401,18 +449,13 @@ async def get_account(
         acc = await account_repo.get_or_raise(account_id)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-    resp = AccountResponse.model_validate(acc)
+    resp = await _respond(account_repo, acc)
     balance = await account_repo.get_balance(acc.id)
     cleared = await account_repo.get_cleared_balance(acc.id)
     resp.balance = balance
     resp.cleared_balance = cleared
     resp.uncleared_balance = balance - cleared
     resp.pending_balance = await account_repo.get_pending_balance(acc.id)
-    _apply_drift(
-        resp,
-        (await account_repo.drift_for([acc]))[acc.id],
-        reconciled=acc.last_reconciled_at is not None,
-    )
     _apply_attention(resp, await account_repo.get_attention(acc.id))
     return resp
 
@@ -524,7 +567,9 @@ async def update_account(
                 after=after,
             )
 
-    resp = AccountResponse.model_validate(acc)
+    # An edit can change what the drift fields judge (the type, the
+    # reconciled state), so they are judged afresh rather than assumed.
+    resp = await _respond(account_repo, acc)
     resp.balance = await account_repo.get_balance(acc.id)
     return resp
 

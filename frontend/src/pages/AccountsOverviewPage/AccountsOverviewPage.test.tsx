@@ -31,6 +31,7 @@ vi.mock('../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 vi.mock('../../api/simplefin', () => ({
   useSimpleFINConnections: () => ({ data: [] }),
+  usePrimaryConnection: () => null,
   useSyncSimpleFIN: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
   useSyncAllSimpleFIN: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSimpleFINRateLimitStatus: () => ({ data: undefined }),

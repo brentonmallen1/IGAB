@@ -44,11 +44,18 @@ export interface DriftFacts {
   /** Whether this account has ever been reconciled — chooses which way back
    *  to agreement the sentence names. */
   reconciled: boolean
+  /** The served advisory: an unreconciled cash account whose gap has stood
+   *  at exactly this amount sync after sync. Never re-derived here
+   *  (backend: domain/bank_balance.drift_persists). */
+  persists: boolean
 }
 
 export interface DriftNotice {
   tone: 'calm' | 'fault'
   text: string
+  /** Whether the line offers "fetch the last 90 days again" as a button —
+   *  only when the sentence itself says rows may never have arrived. */
+  refetch: boolean
 }
 
 /**
@@ -79,6 +86,7 @@ export function bankDriftNotice(
         `${opening} ${format(Math.abs(facts.inReview))} of cleared spending is ` +
         `waiting for review beside the bank's copy of it — answer the review ` +
         `queue and the two line up.`,
+      refetch: false,
     }
   }
 
@@ -88,6 +96,7 @@ export function bankDriftNotice(
       text:
         `${opening} That is cleared spending the bank has not posted yet — ` +
         `it lines up on its own once the feed catches up.`,
+      refetch: false,
     }
   }
 
@@ -100,14 +109,22 @@ export function bankDriftNotice(
       text:
         `${opening} The bank's figure${when} is older than the newest cleared ` +
         `row here, so the two are not measuring the same moment.`,
+      refetch: false,
     }
   }
 
   // Unexplained — the only case where rows may genuinely be missing, and so
-  // the only case that earns the refetch advice.
+  // the only case that earns the refetch advice. On an account nobody
+  // reconciles it is earned only once the gap has stood still sync after
+  // sync (the served advisory): two outflows a lapsed bank link never
+  // delivered held the ledger exactly their sum off the bank for six days,
+  // and the line said only "reconcile".
+  const standing = !facts.reconciled && facts.persists
   const advice = facts.reconciled
     ? ' Something may not have been pulled in: fetch the last 90 days again from account settings, then reconcile.'
-    : ' Reconcile to bring them together.'
+    : standing
+      ? ' It has stood at exactly this amount sync after sync, so the bank may hold rows that never came through — fetch the last 90 days again. Anything already here is skipped.'
+      : ' Reconcile to bring them together.'
 
   const explained: string[] = []
   if (facts.unposted !== 0) {
@@ -124,8 +141,9 @@ export function bankDriftNotice(
       text:
         `${opening} ${explained.join('; ')}; ${format(Math.abs(facts.unexplained))} ` +
         `is unaccounted for.${advice}`,
+      refetch: standing,
     }
   }
 
-  return { tone, text: `${opening}${advice}` }
+  return { tone, text: `${opening}${advice}`, refetch: standing }
 }

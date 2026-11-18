@@ -32,6 +32,13 @@ class BuiltinAccountType:
     #: cash: nothing on it says it is, and a runway that overstates is the
     #: failure this exists to prevent.
     holds_cash: bool = False
+    #: Whether a bank feed's balance for this type should hold still between
+    #: the ledger's own rows: bank-fed cash. A gap that stands at one exact
+    #: amount sync after sync on such an account is rows that never arrived
+    #: (`domain.bank_balance.drift_persists`). Not Cash — no bank feeds it —
+    #: and not a loan, mortgage, card or investment, whose reported figure
+    #: moves on its own with interest or the market.
+    feed_balance_holds_still: bool = False
 
 
 BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
@@ -47,6 +54,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         ),
         sort_order=0,
         holds_cash=True,
+        feed_balance_holds_still=True,
     ),
     BuiltinAccountType(
         key="savings",
@@ -63,6 +71,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         ),
         sort_order=1,
         holds_cash=True,
+        feed_balance_holds_still=True,
     ),
     BuiltinAccountType(
         key="cash",
@@ -187,3 +196,9 @@ BUILTIN_ACCOUNT_TYPE_KEYS = frozenset(t.key for t in BUILTIN_ACCOUNT_TYPES)
 
 #: The types whose accounts hold cash (`BuiltinAccountType.holds_cash`).
 CASH_ACCOUNT_TYPE_KEYS = frozenset(t.key for t in BUILTIN_ACCOUNT_TYPES if t.holds_cash)
+
+#: The types whose bank-fed balance should hold still
+#: (`BuiltinAccountType.feed_balance_holds_still`).
+STEADY_FEED_ACCOUNT_TYPE_KEYS = frozenset(
+    t.key for t in BUILTIN_ACCOUNT_TYPES if t.feed_balance_holds_still
+)

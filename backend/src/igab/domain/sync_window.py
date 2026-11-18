@@ -18,6 +18,7 @@ Pure on purpose: it takes `now` rather than reading the clock, so every
 branch is a one-line test.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -75,6 +76,55 @@ def live_window(
     if oldest_open_hold is not None:
         start = min(start, datetime.combine(oldest_open_hold, time.min, tzinfo=UTC))
     return SyncWindow(start=max(start, floor))
+
+
+def window_anchor(last_sync_at: datetime | None, balance_date: datetime | None) -> datetime | None:
+    """Where an account's next window is measured from: the bank's clock, not ours.
+
+    The window starts `SYNC_OVERLAP_DAYS` before this, so it has to mean
+    "the bank had refreshed up to here". `last_sync_at` alone said that of
+    every run, including the ones a bridge answered from a frozen refresh:
+    a lapsed link reported nothing new for six days, every hourly run moved
+    the stamp forward over them, and the first run after re-authenticating
+    asked for a window that began after the day two rows had posted. They
+    never imported.
+
+    The bridge's `balance-date` is when it last refreshed the account, and
+    the sync stores it beside the stamp on every run. A frozen bridge, with
+    or without an error, stops advancing it — so the window stops advancing
+    too, and the first fresh run reaches back over the whole stretch. The
+    earlier of the two wins, which also caps a bridge clock running ahead at
+    the time we actually asked.
+
+    Read here rather than written into the stamp, because the stamp is also
+    the "Synced 2h ago" every account surface shows: stamping the bank's
+    clock would turn a healthy once-a-day bridge amber an hour after a
+    successful sync. No stamp is still no stamp — the full window. No
+    balance date leaves the stamp as it always was.
+    """
+    if last_sync_at is None or balance_date is None:
+        return last_sync_at
+    return min(last_sync_at, balance_date)
+
+
+def held_by_lapse(account_connection: str | None, lapsed: Collection[str | None]) -> bool:
+    """Whether a `con.auth` error means this account's stamp must not move.
+
+    `lapsed` holds the institution-connection id each `con.auth` error names
+    (None for one that names none); `account_connection` is the one the
+    feed gave the account. A lapsed link served nothing new, so stamping it
+    is the same mistake as stamping an orphan: the days it missed fall out
+    of every later window.
+
+    Holding a stamp only costs a wider next window, which dedupe absorbs,
+    while advancing a wrong one loses rows for good — so when the error or
+    the account does not say which connection it is, the stamp is held.
+    """
+    if not lapsed:
+        return False
+    if None in lapsed or account_connection is None:
+        return True
+    return account_connection in lapsed
 
 
 def judged_from(window_start: datetime) -> date:

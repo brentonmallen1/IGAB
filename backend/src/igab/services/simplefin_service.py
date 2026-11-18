@@ -55,7 +55,13 @@ from igab.domain.matching import (
     settles_in_strict_pass,
 )
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
-from igab.domain.sync_window import SyncWindow, judged_from, live_window
+from igab.domain.sync_window import (
+    SyncWindow,
+    held_by_lapse,
+    judged_from,
+    live_window,
+    window_anchor,
+)
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINError, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
@@ -433,13 +439,18 @@ class SimpleFINService:
         of the runs that had served it nothing. `domain.sync_window` floors
         the result at the bridge's 90-day cap, and `oldest_open_hold` widens
         it to cover every row still linked to a hold (see `live_window`).
+
+        Each target's stamp is read through `window_anchor`: the earlier of
+        when we last synced it and when the bank last refreshed it, so a
+        frozen bridge does not walk the window past the days it never served.
         """
         stamps: list[datetime] = []
         for account in targets:
-            if account.last_simplefin_sync_at is None:
+            anchor = window_anchor(account.last_simplefin_sync_at, account.simplefin_balance_date)
+            if anchor is None:
                 stamps = []
                 break
-            stamps.append(account.last_simplefin_sync_at)
+            stamps.append(anchor)
         return live_window(
             now=datetime.now(UTC),
             last_sync_at=min(stamps) if stamps else None,
@@ -871,14 +882,25 @@ class SimpleFINService:
         # reached it, so the window a relink asks for starts there. Stamping
         # it anyway is how a relinked account came back with a window that
         # began after the days its broken link had missed.
+        #
+        # An account behind a `con.auth` keeps its stamp for the same reason
+        # (`held_by_lapse`): ten degraded runs through a lapsed link each
+        # stamped `now`, and the window after re-auth began a day after the
+        # two rows the lapse had hidden. The next window is then measured
+        # from the earlier of the stamp and the bank's own refresh time
+        # (`window_anchor`), so a bridge frozen without any error holds it
+        # back too.
         now = datetime.now(UTC)
+        lapsed = {e.connection_id for e in feed_data.errors if e.needs_auth}
         for account in targets:
             if account.id in orphaned_ids:
                 continue
+            sf_id = account.simplefin_account_id or ""
+            if held_by_lapse(feed_data.account_connections.get(sf_id), lapsed):
+                await self.account_repo.update(account.id, first_sync_complete=True)
+                continue
             await self.account_repo.update(
-                account.id,
-                last_simplefin_sync_at=now,
-                first_sync_complete=True,
+                account.id, last_simplefin_sync_at=now, first_sync_complete=True
             )
 
         await self._bump_request_count(connection_id, conn, requests)

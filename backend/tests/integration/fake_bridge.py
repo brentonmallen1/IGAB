@@ -48,6 +48,7 @@ class FakeBridge:
         names: dict[str, str] | None = None,
         errors: Sequence[SimpleFINError] = (),
         balance_dates: dict[str, datetime] | None = None,
+        connections: dict[str, str] | None = None,
         honour_window: bool = False,
     ) -> None:
         self.payload = list(payload)
@@ -55,6 +56,9 @@ class FakeBridge:
         self.names = names if names is not None else {}
         self.errors = list(errors)
         self.balance_dates = balance_dates if balance_dates is not None else {}
+        #: SimpleFIN account id -> the institution connection (`conn_id`) it
+        #: belongs to, which is what a `con.auth` error names.
+        self.connections = connections if connections is not None else {}
         self.honour_window = honour_window
         self.requests: list[BridgeRequest] = []
         self.listings = 0
@@ -79,6 +83,7 @@ class FakeBridge:
             balances={k: v for k, v in self.balances.items() if served(k)},
             balance_dates={k: v for k, v in self.balance_dates.items() if served(k)},
             account_names={k: v for k, v in self.names.items() if served(k)},
+            account_connections={k: v for k, v in self.connections.items() if served(k)},
             errors=[*self.errors, *self._unknown(named)],
         )
 

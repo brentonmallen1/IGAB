@@ -53,7 +53,7 @@ import { useAssets } from '../../../api/assets'
 import {
   describeDrift,
   describeOrphanFix,
-  useSimpleFINConnections,
+  usePrimaryConnection,
   useSimpleFINRateLimitStatus,
   useSyncSimpleFIN,
 } from '../../../api/simplefin'
@@ -126,8 +126,7 @@ export function Sidebar() {
   // Assets "+" opens the add-asset chooser: an account, or a valued asset
   const [assetModalOpen, setAssetModalOpen] = useState(false)
 
-  const { data: connections = [] } = useSimpleFINConnections()
-  const primaryConnection = connections[0] ?? null
+  const primaryConnection = usePrimaryConnection()
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
   const syncMutation = useSyncSimpleFIN(budgetId)
   const syncAll = useSyncAllAccounts()

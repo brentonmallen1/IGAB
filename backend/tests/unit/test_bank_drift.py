@@ -29,9 +29,11 @@ from decimal import Decimal
 import pytest
 
 from igab.domain.bank_balance import (
+    PERSISTENT_GAP_RUNS,
     as_of_date,
     describe_drift,
     drift_is_a_fault,
+    drift_persists,
     drift_record,
     explain_drift,
 )
@@ -265,3 +267,68 @@ class TestAsOfDate:
     )
     def test_whole_utc_days(self, stamp, expected):
         assert as_of_date(stamp) == expected
+
+
+class TestDriftPersists:
+    """The advisory for a gap that does not move, on an account nobody has
+    reconciled. Two $40 outflows posted while a bank link had lapsed and never
+    arrived; the ledger sat exactly $80.00 above the bank on every run after,
+    and because the account was unreconciled nothing said so."""
+
+    MISSING = Decimal("-80.00")  # bank - ledger: the ledger is $80 above
+    BANK = Decimal("1920.00")
+
+    def _now(self, gap: Decimal = MISSING):
+        return explain_drift(self.BANK, self.BANK - gap)
+
+    def _judge(self, gaps, *, explanation=None, **kw):
+        args = {"reconciled": False, "account_type": "checking", "bank_fed": True} | kw
+        return drift_persists(explanation or self._now(), gaps, **args)
+
+    def test_fires_after_n_identical_gaps(self):
+        assert self._judge([self.MISSING] * PERSISTENT_GAP_RUNS) is True
+
+    def test_not_one_run_short(self):
+        assert self._judge([self.MISSING] * (PERSISTENT_GAP_RUNS - 1)) is False
+
+    def test_only_the_latest_n_runs_count(self):
+        """Older runs that disagreed are history; the streak is the last N."""
+        gaps = [self.MISSING] * PERSISTENT_GAP_RUNS + [Decimal("-5.00")]
+        assert self._judge(gaps) is True
+
+    def test_a_moving_gap_is_timing_not_rows(self):
+        gaps = [self.MISSING] * (PERSISTENT_GAP_RUNS - 1) + [Decimal("-75.00")]
+        assert self._judge(gaps) is False
+
+    def test_a_run_that_could_not_measure_breaks_the_streak(self):
+        gaps = [self.MISSING] * (PERSISTENT_GAP_RUNS - 1) + [None]
+        assert self._judge(gaps) is False
+
+    def test_clears_the_moment_the_rows_land(self):
+        """The runs still remember the gap; the ledger no longer has it."""
+        assert self._judge(
+            [self.MISSING] * PERSISTENT_GAP_RUNS, explanation=self._now(Decimal("0"))
+        ) is (False)
+
+    def test_not_for_a_loan(self):
+        """A loan's payoff figure drifts daily — the case the fault rule
+        exempts unreconciled accounts for."""
+        for kind in ("loan", "mortgage", "investment", "credit_card"):
+            assert self._judge([self.MISSING] * PERSISTENT_GAP_RUNS, account_type=kind) is False
+
+    def test_savings_counts(self):
+        assert self._judge([self.MISSING] * PERSISTENT_GAP_RUNS, account_type="savings") is True
+
+    def test_not_on_a_reconciled_account_which_has_the_fault(self):
+        assert self._judge([self.MISSING] * PERSISTENT_GAP_RUNS, reconciled=True) is False
+
+    def test_not_on_an_account_no_bank_feeds(self):
+        assert self._judge([self.MISSING] * PERSISTENT_GAP_RUNS, bank_fed=False) is False
+
+    def test_not_when_the_gap_is_explained(self):
+        """Cleared spending the bank has not posted is the register running
+        ahead, not rows missing — however long it stands."""
+        ahead = Decimal("40.00")  # bank - ledger: a $40 hold ticked cleared early
+        explained = explain_drift(self.BANK, self.BANK - ahead, unposted_cleared=Decimal("-40.00"))
+        assert explained is not None and explained.reason == "unposted"
+        assert self._judge([ahead] * PERSISTENT_GAP_RUNS, explanation=explained) is False
