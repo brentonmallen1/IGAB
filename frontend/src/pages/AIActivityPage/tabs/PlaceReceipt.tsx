@@ -5,7 +5,7 @@ import { usePlaceReceipt, type AIJob, type PlaceTarget } from '../../../api/aiJo
 import { apiErrorMessage } from '../../../api/client'
 import { Combobox } from '../../../components/common/Combobox/Combobox'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { accountNameMap, accountOptions, openAccounts } from '../../../utils/accountLists'
+import { accountNameMap, accountPicker, openAccounts } from '../../../utils/accountLists'
 import { parseApiDecimal } from '../../../utils/money'
 import './PlaceReceipt.css'
 
@@ -24,7 +24,7 @@ export function PlaceReceipt({ job, budgetId }: { job: AIJob; budgetId: string }
   const place = usePlaceReceipt(budgetId)
   const { formatMoney, formatDayMonth } = useFormatters()
   const names = useMemo(() => accountNameMap(accounts), [accounts])
-  const options = useMemo(() => accountOptions(openAccounts(accounts)), [accounts])
+  const options = useMemo(() => accountPicker(openAccounts(accounts)).options, [accounts])
 
   const noun = job.kind === 'receipt' ? 'receipt' : 'entry'
 

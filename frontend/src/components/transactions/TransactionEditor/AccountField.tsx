@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Lock } from 'lucide-react'
 import { PickerField } from '../../common/PickerField/PickerField'
-import { accountOptions, recentAccountsSection } from '../../../utils/accountLists'
+import { accountPicker } from '../../../utils/accountLists'
 import type { Account } from '../../../types'
 
 interface Props {
@@ -56,16 +56,16 @@ export function AccountField({
   lockReason = null,
   note = null,
 }: Props) {
+  const picker = useMemo(() => accountPicker(accounts, recent), [accounts, recent])
   const options = useMemo(() => {
-    const offered = accountOptions(accounts, recent.length > 0)
+    const offered = picker.options
     // A closed account the row already sits in is not in the list. Offer it
     // anyway, or the picker would show a blank selection and the next save
     // would re-file the row somewhere it never was.
     return current?.is_closed
       ? [{ id: current.id, label: `${current.name} (closed)`, group: '' }, ...offered]
       : offered
-  }, [accounts, recent.length, current])
-  const pinned = useMemo(() => recentAccountsSection(recent), [recent])
+  }, [picker, current])
 
   return (
     <div className="txn-editor__field">
@@ -83,7 +83,7 @@ export function AccountField({
           value={value}
           onChange={onChange}
           options={options}
-          pinned={pinned}
+          pinned={picker.pinned}
           noneLabel="Select account…"
           sheetTitle={label}
           searchPlaceholder="Search accounts…"

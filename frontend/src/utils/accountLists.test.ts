@@ -15,11 +15,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   accountNameMap,
-  accountOptions,
+  accountPicker,
   closedAccounts,
   openAccounts,
   recentAccounts,
-  recentAccountsSection,
 } from './accountLists'
 
 const ACCOUNTS = [
@@ -85,44 +84,38 @@ describe('recentAccounts', () => {
   })
 })
 
-describe('accountOptions', () => {
+describe('accountPicker', () => {
   const checking = { id: 'a1', name: 'Harborstone Checking', on_budget: true }
   const card = { id: 'a2', name: 'Sapphire Visa', on_budget: true }
   const brokerage = { id: 'a3', name: 'Cascade Point Brokerage', on_budget: false }
-  const groups = (opts: { group: string }[]) => opts.map((o) => o.group)
+  const groups = (accounts: (typeof checking)[], recent: (typeof checking)[] = []) =>
+    accountPicker(accounts, recent).options.map((o) => o.group)
 
   it('heads budget and tracking accounts when both are offered, budget first', () => {
     // Given tracking first, as a fetch might order them.
-    const opts = accountOptions([brokerage, checking, card])
-    expect(opts.map((o) => o.id)).toEqual(['a1', 'a2', 'a3'])
-    expect(groups(opts)).toEqual(['Budget accounts', 'Budget accounts', 'Tracking'])
+    const { options } = accountPicker([brokerage, checking, card])
+    expect(options.map((o) => o.id)).toEqual(['a1', 'a2', 'a3'])
+    expect(options.map((o) => o.group)).toEqual(['Budget accounts', 'Budget accounts', 'Tracking'])
   })
 
   // The register's account cell and the AI Activity pickers never headed
   // budget accounts, so a Tracking header sat under a bare list.
   it('heads budget accounts beside a Tracking group, which three pickers left bare', () => {
-    expect(groups(accountOptions([checking, brokerage]))[0]).toBe('Budget accounts')
+    expect(groups([checking, brokerage])[0]).toBe('Budget accounts')
   })
 
   // Quick add headed them always, over a list with nothing to tell apart.
   it('lists budget accounts bare when there is nothing else, which quick add headed anyway', () => {
-    expect(groups(accountOptions([checking, card]))).toEqual(['', ''])
+    expect(groups([checking, card])).toEqual(['', ''])
+    expect(accountPicker([checking, card]).pinned).toBeUndefined()
   })
 
-  it('heads budget accounts under a pinned shortlist', () => {
-    expect(groups(accountOptions([checking, card], true))).toEqual([
-      'Budget accounts',
-      'Budget accounts',
-    ])
-  })
-})
-
-describe('recentAccountsSection', () => {
-  it('pins the shortlist under Recent, and nothing when there is none', () => {
-    expect(recentAccountsSection([{ id: 'a1', name: 'Harborstone Checking' }])).toEqual({
+  it('pins the shortlist under Recent, and heads budget accounts beneath it', () => {
+    const picker = accountPicker([checking, card], [card])
+    expect(picker.pinned).toEqual({
       label: 'Recent',
-      options: [{ id: 'a1', label: 'Harborstone Checking', group: 'Recent' }],
+      options: [{ id: 'a2', label: 'Sapphire Visa', group: 'Recent' }],
     })
-    expect(recentAccountsSection([])).toBeUndefined()
+    expect(picker.options.map((o) => o.group)).toEqual(['Budget accounts', 'Budget accounts'])
   })
 })

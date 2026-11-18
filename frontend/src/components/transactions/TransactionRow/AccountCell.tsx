@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useAccountMove } from '../../../hooks/useAccountMove'
 import { accountLockReason } from '../TransactionEditor/accountMove'
 import { Combobox } from '../../common/Combobox/Combobox'
-import { accountOptions } from '../../../utils/accountLists'
+import { accountPicker } from '../../../utils/accountLists'
 import type { Account, Transaction } from '../../../types'
 
 /**
@@ -81,7 +81,7 @@ export function AccountCell({
   const options = useMemo(
     // `useAccounts` leaves closed accounts out and the server refuses to move
     // a row into one, so every option here is somewhere the row may go.
-    () => accountOptions(accounts),
+    () => accountPicker(accounts).options,
     [accounts]
   )
 

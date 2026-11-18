@@ -3,7 +3,7 @@ import { Wallet } from 'lucide-react'
 import { useAccounts } from '../../../api/accounts'
 import type { AIJob } from '../../../api/aiJobs'
 import { useAccountMove } from '../../../hooks/useAccountMove'
-import { accountNameMap, accountOptions, openAccounts } from '../../../utils/accountLists'
+import { accountNameMap, accountPicker, openAccounts } from '../../../utils/accountLists'
 import { JobField } from './JobField'
 
 /**
@@ -29,7 +29,7 @@ export function JobAccount({ job, budgetId }: { job: AIJob; budgetId: string }) 
   // The unfiltered list names the row; only open accounts are offered as
   // destinations (utils/accountLists).
   const names = useMemo(() => accountNameMap(accounts), [accounts])
-  const options = useMemo(() => accountOptions(openAccounts(accounts)), [accounts])
+  const options = useMemo(() => accountPicker(openAccounts(accounts)).options, [accounts])
 
   const currentId = job.transaction_account_id ?? job.payload.account_id ?? null
   if (!currentId) return null

@@ -114,15 +114,22 @@ export const ACCOUNT_GROUPS = {
   tracking: 'Tracking',
 } as const
 
+export interface AccountPicker {
+  /** The full list, grouped: Budget accounts, then Tracking. */
+  options: AccountOption[]
+  /** The Recent shortlist pinned above it, or undefined when there is none.
+   *  It repeats accounts from `options` on purpose — a shortcut to the same
+   *  accounts, not a different set. */
+  pinned: { label: string; options: AccountOption[] } | undefined
+}
+
 /**
- * The options an account picker offers, under the house group headers:
- * Budget accounts, then Tracking. The Recent shortlist is pinned above them
- * by the picker (`recentAccountsSection`).
- *
- * Budget accounts get their header only when there is something to tell them
- * apart from — a Tracking group below, or a shortlist pinned above
- * (`hasShortlist`). Otherwise a lone "Budget accounts" header over every
- * option says nothing, and the list is drawn bare.
+ * What an account picker offers, under the house group headers: a Recent
+ * shortlist pinned on top (when given), then Budget accounts, then Tracking.
+ * One call, because the two halves decide each other: budget accounts get
+ * their header only when there is something to tell them apart from — a
+ * Tracking group below, or a shortlist above. Otherwise a lone "Budget
+ * accounts" header over every option says nothing, and the list is drawn bare.
  *
  * Pass what the picker may offer (`openAccounts`), in its own order; budget
  * accounts are listed before tracking ones whatever that order is.
@@ -132,30 +139,24 @@ export const ACCOUNT_GROUPS = {
  * quick add always headed budget accounts, three others never did, and the
  * editor did only when tracking accounts existed.
  */
-export function accountOptions(
+export function accountPicker(
   accounts: readonly PickableAccount[],
-  hasShortlist = false
-): AccountOption[] {
+  recent: readonly NamedAccount[] = []
+): AccountPicker {
   const budget = accounts.filter((a) => a.on_budget)
   const tracking = accounts.filter((a) => !a.on_budget)
-  const budgetGroup = tracking.length > 0 || hasShortlist ? ACCOUNT_GROUPS.budget : ''
-  return [
-    ...budget.map((a) => ({ id: a.id, label: a.name, group: budgetGroup })),
-    ...tracking.map((a) => ({ id: a.id, label: a.name, group: ACCOUNT_GROUPS.tracking })),
-  ]
-}
-
-/**
- * The Recent shortlist, pinned above `accountOptions`, or undefined when
- * there is none. It repeats accounts from the full list on purpose — a
- * shortcut to the same accounts, not a different set.
- */
-export function recentAccountsSection(
-  recent: readonly NamedAccount[]
-): { label: string; options: AccountOption[] } | undefined {
-  if (recent.length === 0) return undefined
+  const budgetGroup = tracking.length > 0 || recent.length > 0 ? ACCOUNT_GROUPS.budget : ''
   return {
-    label: ACCOUNT_GROUPS.recent,
-    options: recent.map((a) => ({ id: a.id, label: a.name, group: ACCOUNT_GROUPS.recent })),
+    options: [
+      ...budget.map((a) => ({ id: a.id, label: a.name, group: budgetGroup })),
+      ...tracking.map((a) => ({ id: a.id, label: a.name, group: ACCOUNT_GROUPS.tracking })),
+    ],
+    pinned:
+      recent.length > 0
+        ? {
+            label: ACCOUNT_GROUPS.recent,
+            options: recent.map((a) => ({ id: a.id, label: a.name, group: ACCOUNT_GROUPS.recent })),
+          }
+        : undefined,
   }
 }
