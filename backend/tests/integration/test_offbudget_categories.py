@@ -615,6 +615,9 @@ class TestEveryAccountResponseCarriesTheSavingsFlag:
             ("update", updated.json()),
         ]:
             assert body["counts_as_savings"] is False, f"{label}: {body}"
+            # Required too: the standing-gap advisory
+            # (domain.bank_balance.drift_persists) is judged on every path.
+            assert body["bank_drift_persists"] is False, f"{label}: {body}"
 
 
 class TestEveryCategoryResponseCarriesInCardSection:
