@@ -8,16 +8,19 @@
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import type { AssignPreviewResponse } from '../../../api/assign'
+import type { AssignPreviewResponse, CoverRequest } from '../../../api/assign'
 
 const applyMock = vi.hoisted(() => vi.fn())
-const preview = vi.hoisted(() => ({ current: null as AssignPreviewResponse | null }))
-const previewCalls = vi.hoisted(() => [] as string[][])
+const preview = vi.hoisted(() => ({
+  current: null as AssignPreviewResponse | null,
+  placeholder: false,
+}))
+const previewCalls = vi.hoisted(() => [] as unknown[])
 
 vi.mock('../../../api/assign', () => ({
-  useAssignPreview: (_b: string, _m: string, _s: string, coverIds: string[] = []) => {
-    previewCalls.push([...coverIds])
-    return { data: preview.current, isLoading: false }
+  useAssignPreview: (_b: string, _m: string, _s: string, cover: CoverRequest) => {
+    previewCalls.push('mode' in cover ? cover : { coverIds: [...cover.coverIds].sort() })
+    return { data: preview.current, isLoading: false, isPlaceholderData: preview.placeholder }
   },
   useAssignApply: () => ({ mutateAsync: applyMock, isPending: false }),
 }))
@@ -34,6 +37,7 @@ beforeEach(async () => {
   window.history.replaceState(null, '')
   applyMock.mockReset()
   previewCalls.length = 0
+  preview.placeholder = false
   useAppStore.setState({ targetCoverMode: 'ask' })
   preview.current = {
     strategy: 'reset_assigned',
@@ -178,7 +182,7 @@ describe('AssignPreviewModal: Target Amount with Cover + target', () => {
       'aria-checked',
       'true'
     )
-    expect(previewCalls.at(-1)).toEqual([])
+    expect(previewCalls.at(-1)).toEqual({ mode: 'ask' })
   })
 
   it('asks the server again with the row covered, and applies the same cover_ids', async () => {
@@ -188,7 +192,7 @@ describe('AssignPreviewModal: Target Amount with Cover + target', () => {
         name: /Cover \+ target/,
       })
     )
-    expect(previewCalls.at(-1)).toEqual(['dining'])
+    expect(previewCalls.at(-1)).toEqual({ coverIds: ['dining'] })
 
     applyMock.mockResolvedValue({
       to_assign: 0,
@@ -209,7 +213,10 @@ describe('AssignPreviewModal: Target Amount with Cover + target', () => {
   it('defaults every offered row to Cover + target under that setting', () => {
     useAppStore.setState({ targetCoverMode: 'cover' })
     openTarget()
-    expect(previewCalls.at(-1)).toEqual(['dining', 'groceries'])
+    // The setting itself is asked for — no second request once rows are known.
+    expect(new Set(previewCalls.map((c) => JSON.stringify(c)))).toEqual(
+      new Set([JSON.stringify({ mode: 'cover' })])
+    )
     expect(
       within(screen.getByRole('radiogroup', { name: 'Groceries' })).getByRole('radio', {
         name: /Cover \+ target/,
@@ -220,10 +227,21 @@ describe('AssignPreviewModal: Target Amount with Cover + target', () => {
   it('"same for all" sets every offered row', () => {
     openTarget()
     fireEvent.click(
-      within(
-        screen.getByRole('radiogroup', { name: 'Same for all overspent categories' })
-      ).getByRole('radio', { name: /Cover \+ target/ })
+      within(screen.getByRole('radiogroup', { name: /same for all/ })).getByRole('radio', {
+        name: /Cover \+ target/,
+      })
     )
-    expect(previewCalls.at(-1)).toEqual(['dining', 'groceries'])
+    expect(previewCalls.at(-1)).toEqual({ coverIds: ['dining', 'groceries'] })
+  })
+
+  it('will not apply figures it is not showing yet', () => {
+    // The table still holds the previous choice while the server answers.
+    preview.placeholder = true
+    openTarget()
+    const apply = screen.getByRole('button', { name: /^Apply/ })
+    expect(apply).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent(/Updating the figures for your choice/)
+    fireEvent.click(apply)
+    expect(applyMock).not.toHaveBeenCalled()
   })
 })

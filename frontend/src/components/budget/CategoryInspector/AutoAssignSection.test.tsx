@@ -110,7 +110,7 @@ describe('AutoAssignSection: Cover + target', () => {
     pressTarget(ALL)
     const dialog = screen.getByRole('dialog')
     fireEvent.click(
-      within(within(dialog).getByRole('radiogroup', { name: 'Same for all' })).getByRole('radio', {
+      within(within(dialog).getByRole('radiogroup', { name: /same for all/ })).getByRole('radio', {
         name: /Cover \+ target/,
       })
     )
@@ -153,8 +153,9 @@ describe('AutoAssignSection: Cover + target', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.click(cover)
     expect(mutate.mock.calls[1][0]).toMatchObject({
-      action: 'cover_and_target',
+      action: 'target_amount',
       categoryIds: ['dining'],
+      coverIds: ['dining'],
       amounts: new Map([['dining', 130]]),
     })
   })

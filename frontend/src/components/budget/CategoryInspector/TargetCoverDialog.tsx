@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { apiErrorMessage } from '../../../api/client'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { sharedPick, withPick, type TargetCoverRow } from '../../../utils/targetCover'
+import { sumAmounts } from '../../../utils/money'
+import { pickTargetFigure, withPick, type TargetCoverRow } from '../../../utils/targetCover'
 import { Dialog } from '../../common/Dialog/Dialog'
+import { TargetCoverAll } from '../TargetCoverChoice/TargetCoverAll'
 import { TargetCoverChoice } from '../TargetCoverChoice/TargetCoverChoice'
 import './TargetCoverDialog.css'
 
@@ -38,8 +40,9 @@ export function TargetCoverDialog({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const offered = rows.map((r) => r.categoryId)
-  const all = sharedPick(offered, coverIds)
-  const total = rows.reduce((sum, r) => sum + (coverIds.has(r.categoryId) ? r.cover : r.target), 0)
+  const total = sumAmounts(
+    rows.map((r) => pickTargetFigure(r.target, r.cover, coverIds.has(r.categoryId)))
+  )
 
   async function confirm() {
     setError(null)
@@ -93,17 +96,13 @@ export function TargetCoverDialog({
           were given. Target counts money that covered spending toward the target; Cover + target
           covers the spending and assigns the target on top.
         </p>
-        {rows.length > 1 && (
-          <div className="target-cover-dialog__row target-cover-dialog__row--all">
-            <span className="target-cover-dialog__name">Same for all</span>
-            <TargetCoverChoice
-              value={all}
-              label="Same for all"
-              onChange={(pick) => setCoverIds(new Set(pick === 'cover' ? offered : []))}
-              disabled={pending}
-            />
-          </div>
-        )}
+        <TargetCoverAll
+          offered={offered}
+          coverIds={coverIds}
+          onChange={setCoverIds}
+          caption="All overspent categories"
+          disabled={pending}
+        />
         <ul className="target-cover-dialog__list">
           {rows.map((r) => (
             <li key={r.categoryId} className="target-cover-dialog__row">

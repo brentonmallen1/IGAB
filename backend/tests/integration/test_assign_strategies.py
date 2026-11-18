@@ -1163,6 +1163,12 @@ async def test_the_menu_total_honours_the_cover_setting(api_client, db_session):
         params={"month": "2026-07-01", "strategy": "target_amount", "cover_ids": ids},
     )
     assert _dec(preview.json()["to_assign"]) == Decimal("430.00")
+    # The preview's own default under the setting, before any row is picked.
+    defaulted = await api_client.get(
+        f"/api/v1/{budget.id}/assign/preview",
+        params={"month": "2026-07-01", "strategy": "target_amount", "cover_mode": "cover"},
+    )
+    assert _dec(defaulted.json()["to_assign"]) == Decimal("430.00")
 
     bogus = await api_client.get(
         f"/api/v1/{budget.id}/assign/strategies",

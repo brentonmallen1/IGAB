@@ -876,7 +876,6 @@ export type AutoAssignAction =
   | 'average_spent'
   | 'reset'
   | 'target_amount'
-  | 'cover_and_target'
 
 /** Bulk strategies offered by the TBA hero's Assign dropdown */
 export type AssignStrategy =

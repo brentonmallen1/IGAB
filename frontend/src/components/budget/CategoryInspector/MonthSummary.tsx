@@ -152,21 +152,23 @@ export function MonthSummary({ budgetId, categories }: Props) {
         {autoAssignOpen && (
           <div className="month-summary__section-body">
             <div className="inspector-autoassign">
-              {autoActions.map(({ action, label, value }) => (
+              {autoActions.map((row) => (
                 <button
-                  key={action}
+                  key={row.label}
                   className="inspector-autoassign__btn"
-                  onClick={() => press(action)}
+                  onClick={() => press(row)}
                   disabled={isDisabled}
                 >
-                  <span className="inspector-autoassign__label">{label}</span>
-                  <span className="inspector-autoassign__value tabular">{formatMoney(value)}</span>
+                  <span className="inspector-autoassign__label">{row.label}</span>
+                  <span className="inspector-autoassign__value tabular">
+                    {formatMoney(row.value)}
+                  </span>
                 </button>
               ))}
               <div className="inspector-autoassign__divider" />
               <button
                 className="inspector-autoassign__btn"
-                onClick={() => press('reset')}
+                onClick={() => press({ action: 'reset' })}
                 disabled={isDisabled}
               >
                 <span className="inspector-autoassign__label">Reset Assigned Amounts</span>

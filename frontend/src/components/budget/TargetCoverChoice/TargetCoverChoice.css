@@ -40,3 +40,19 @@
 .target-cover-choice__amount {
   color: inherit;
 }
+
+/* "Same for all", above a list of rows. */
+.target-cover-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs) var(--spacing-md);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--edge);
+}
+
+.target-cover-all__caption {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}

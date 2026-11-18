@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { AssignStrategy } from '../types'
+import type { TargetCoverMode } from '../utils/targetCover'
 import { ROOT } from './queryKeys'
 import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 
@@ -64,13 +65,20 @@ export interface AssignApplyResponse {
   batch_id: string | null
 }
 
-export function useAssignStrategyTotals(budgetId: string | null, month: string, enabled: boolean) {
+/** `coverMode`: the device's `targetCoverMode`, so the Target Amount row
+ *  reads what the preview will then default to. */
+export function useAssignStrategyTotals(
+  budgetId: string | null,
+  month: string,
+  enabled: boolean,
+  coverMode: TargetCoverMode
+) {
   return useQuery({
-    queryKey: [ROOT.assignStrategies, budgetId, month],
+    queryKey: [ROOT.assignStrategies, budgetId, month, coverMode],
     queryFn: () =>
       apiClient
         .get<AssignStrategyTotalsResponse>(`/${budgetId}/assign/strategies`, {
-          params: { month },
+          params: { month, cover_mode: coverMode },
         })
         .then((r) => r.data),
     enabled: !!budgetId && enabled,
@@ -79,23 +87,35 @@ export function useAssignStrategyTotals(budgetId: string | null, month: string, 
 }
 
 /**
- * `coverIds` (Target Amount only): the envelopes previewed as "Cover +
+ * Target Amount's choice, as the preview is asked for it: the device's
+ * setting until a row is picked (`{ mode }`), then the picked envelopes
+ * (`{ coverIds }`). Under `cover` the server covers every offered row itself,
+ * so the client never has to learn which rows are offered before asking.
+ */
+export type CoverRequest = { mode: TargetCoverMode } | { coverIds: readonly string[] }
+
+/**
+ * `cover` (Target Amount only): which envelopes are previewed as "Cover +
  * target". Part of the key, so changing a row's choice asks the server for
- * the new figures; the previous answer stays drawn while it does.
+ * the new figures; the previous answer stays drawn — as placeholder data,
+ * which the modal must not apply — while it does.
  */
 export function useAssignPreview(
   budgetId: string | null,
   month: string,
   strategy: AssignStrategy | null,
-  coverIds: readonly string[] = []
+  cover: CoverRequest = { mode: 'ask' }
 ) {
-  const cover_ids = [...coverIds].sort()
+  const params =
+    'mode' in cover
+      ? { cover_mode: cover.mode }
+      : { cover_mode: 'ask' as const, cover_ids: [...cover.coverIds].sort() }
   return useQuery({
-    queryKey: [ROOT.assignPreview, budgetId, month, strategy, cover_ids],
+    queryKey: [ROOT.assignPreview, budgetId, month, strategy, params],
     queryFn: () =>
       apiClient
         .get<AssignPreviewResponse>(`/${budgetId}/assign/preview`, {
-          params: { month, strategy, cover_ids },
+          params: { month, strategy, ...params },
           // FastAPI reads a repeated `cover_ids=`, not axios's `cover_ids[]=`.
           paramsSerializer: { indexes: null },
         })

@@ -543,13 +543,18 @@ class AssignService:
         month: date,
         strategy: str,
         cover_ids: Collection[uuid.UUID] = (),
+        *,
+        cover_all: bool = False,
     ) -> AssignPreview:
         """`cover_ids` (target amounts only): the categories that take
-        "Cover + target" instead of their target amount."""
+        "Cover + target" instead of their target amount. `cover_all` takes it
+        wherever it is offered instead — the device setting's default, before
+        the person has picked a row."""
         if strategy not in ASSIGN_STRATEGIES:
             raise ValueError(f"Unknown assign strategy: {strategy}")
         ctx = await self._gather(budget_id, month, with_histories=strategy in HISTORY_STRATEGIES)
-        return self._build_preview(ctx, strategy, frozenset(cover_ids))
+        covered = self._offered_cover_ids(ctx) if cover_all else frozenset(cover_ids)
+        return self._build_preview(ctx, strategy, covered)
 
     async def apply(
         self,

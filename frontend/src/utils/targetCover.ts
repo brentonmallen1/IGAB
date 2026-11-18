@@ -13,9 +13,9 @@
  *  several are pressed at once. `ask` (the default) opens the choice, `target`
  *  takes the target amount everywhere, `cover` takes Cover + target wherever
  *  it is offered. */
-export type TargetCoverMode = 'ask' | 'target' | 'cover'
+export const TARGET_COVER_MODES = ['ask', 'target', 'cover'] as const
 
-export const TARGET_COVER_MODES: readonly TargetCoverMode[] = ['ask', 'target', 'cover']
+export type TargetCoverMode = (typeof TARGET_COVER_MODES)[number]
 
 export const DEFAULT_TARGET_COVER_MODE: TargetCoverMode = 'ask'
 
@@ -36,12 +36,28 @@ export const TARGET_COVER_MODE_COPY: Record<TargetCoverMode, { label: string; de
 
 /** A stored value this build does not know reads as the default. */
 export function normalizeTargetCoverMode(value: unknown): TargetCoverMode {
-  return TARGET_COVER_MODES.includes(value as TargetCoverMode)
+  return (TARGET_COVER_MODES as readonly unknown[]).includes(value)
     ? (value as TargetCoverMode)
     : DEFAULT_TARGET_COVER_MODE
 }
 
 export type TargetCoverPick = 'target' | 'cover'
+
+/**
+ * Target Amount's figure for one envelope: the served Cover + target figure
+ * when it was chosen (`covered`) and is offered, else the served target
+ * amount. The client's one pick between two served figures, drawn before the
+ * round-trip — the server makes the same pick when it applies
+ * (`assign_service.pick_target_figure`), and both suites run
+ * `shared/target_cover_cases.json`.
+ */
+export function pickTargetFigure(
+  target: number,
+  cover: number | null | undefined,
+  covered: boolean
+): number {
+  return covered && cover != null ? Number(cover) : Number(target)
+}
 
 /** One envelope offered the choice, with both served figures. */
 export interface TargetCoverRow {

@@ -1283,9 +1283,15 @@ async def assign_strategy_preview(
     strategy: str = Query(...),
     #: `target_amount` only: the categories previewed as "Cover + target".
     cover_ids: list[uuid.UUID] = Query(default=[]),
+    #: `target_amount` only: the device's setting (frontend `targetCoverMode`)
+    #: before any row is picked. `cover` previews every offered row as
+    #: "Cover + target" and ignores `cover_ids`; the others read `cover_ids`.
+    cover_mode: Literal["ask", "target", "cover"] = Query(default="ask"),
 ) -> AssignPreviewResponse:
     try:
-        preview = await assign_service.preview(budget_id, month, strategy, cover_ids)
+        preview = await assign_service.preview(
+            budget_id, month, strategy, cover_ids, cover_all=cover_mode == "cover"
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
     return _assign_preview_out(preview)

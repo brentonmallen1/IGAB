@@ -29,21 +29,21 @@ export function AutoAssignSection({ categoryIds, budgetId }: Props) {
         <span className="inspector-section__title">Auto-Assign</span>
       </div>
       <div className="inspector-autoassign">
-        {actions.map(({ action, label, value }) => (
+        {actions.map((row) => (
           <button
-            key={action}
+            key={row.label}
             className="inspector-autoassign__btn"
-            onClick={() => handleAction(action)}
+            onClick={() => handleAction(row)}
             disabled={isPending}
           >
-            <span className="inspector-autoassign__label">{label}</span>
-            <span className="inspector-autoassign__value tabular">{formatMoney(value)}</span>
+            <span className="inspector-autoassign__label">{row.label}</span>
+            <span className="inspector-autoassign__value tabular">{formatMoney(row.value)}</span>
           </button>
         ))}
         <div className="inspector-autoassign__divider" />
         <button
           className="inspector-autoassign__btn"
-          onClick={() => handleAction('reset')}
+          onClick={() => handleAction({ action: 'reset' })}
           disabled={isPending}
         >
           <span className="inspector-autoassign__label">Reset Assigned Amount</span>

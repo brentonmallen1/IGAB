@@ -1,12 +1,30 @@
+/**
+ * The `shared/target_cover_cases.json` block runs the same cases the backend
+ * runs in `tests/unit/test_target_cover_cases.py`: the server serves both
+ * figures and picks one when it applies; this side picks from the served
+ * figures before the round-trip. A pick changed on one side only fails here.
+ */
 import { describe, expect, it } from 'vitest'
 import {
   coverRows,
   initialCoverIds,
   normalizeTargetCoverMode,
+  pickTargetFigure,
   sharedPick,
   shouldAskTargetCover,
   withPick,
 } from './targetCover'
+import { parseApiDecimal } from './money'
+import shared from '../../../shared/target_cover_cases.json'
+
+describe('agreement with the server (shared/target_cover_cases.json)', () => {
+  it.each(shared.cases.map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    const target = parseApiDecimal(c.target_assigned)
+    const cover = c.cover_target_assigned === null ? null : parseApiDecimal(c.cover_target_assigned)
+    expect(pickTargetFigure(target, cover, false)).toBe(parseApiDecimal(c.as_target))
+    expect(pickTargetFigure(target, cover, true)).toBe(parseApiDecimal(c.as_cover))
+  })
+})
 
 const bal = (category_id: string, target: number | null, cover: number | null) => ({
   category_id,

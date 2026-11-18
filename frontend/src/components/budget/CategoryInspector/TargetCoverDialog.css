@@ -15,11 +15,6 @@
   gap: var(--spacing-xs) var(--spacing-md);
 }
 
-.target-cover-dialog__row--all {
-  padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--edge);
-}
-
 .target-cover-dialog__name {
   min-width: 0;
   overflow-wrap: anywhere;

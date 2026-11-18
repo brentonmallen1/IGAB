@@ -3,6 +3,7 @@ import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
 import { createPortal } from 'react-dom'
 import { Zap } from 'lucide-react'
 import { useAssignStrategyTotals } from '../../../api/assign'
+import { useAppStore } from '../../../stores/appStore'
 import type { AssignStrategy } from '../../../types'
 import { AssignAutoTab } from './AssignAutoTab'
 import { AssignManualTab } from './AssignManualTab'
@@ -35,7 +36,9 @@ export function AssignDropdownContent({
 }: ContentProps) {
   const [tab, setTab] = useState<Tab>('auto')
   const rootRef = useRef<HTMLDivElement>(null)
-  const { data: totals, isLoading } = useAssignStrategyTotals(budgetId, month, true)
+  // The Target Amount row reads what its preview will default to.
+  const coverMode = useAppStore((s) => s.targetCoverMode)
+  const { data: totals, isLoading } = useAssignStrategyTotals(budgetId, month, true, coverMode)
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === 'Escape') {

@@ -387,7 +387,8 @@ export function SettingsPage() {
                     <div className="settings-row__label">Target Amount on overspent categories</div>
                     <div className="settings-row__desc">
                       When several categories are assigned their targets at once, what to do with
-                      ones that spent everything they were given.{' '}
+                      ones that spent everything they were given — in the inspector, and as the
+                      starting choice in the Assign menu&rsquo;s Target Amount preview.{' '}
                       {TARGET_COVER_MODE_COPY[targetCoverMode].desc} On this device.
                     </div>
                   </div>
