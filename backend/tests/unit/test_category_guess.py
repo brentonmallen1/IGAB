@@ -146,9 +146,10 @@ def test_same_day_pair_half_apart_follows_size():
 # ─── Mixed payee: abstain ────────────────────────────────────────────────────
 
 
-def test_mixed_payee_leaves_the_category_blank():
+def test_mixed_payee_with_no_dominant_envelope_is_left_blank():
     """An everything-store: four envelopes in no pattern of amount or order.
-    No rule is right 60% of the time, so the row is left for the person."""
+    No rule is right 60% of the time, the amount never appeared and no
+    envelope holds half, so the row is left for the person."""
     cats = [X, Y, Z, W]
     amounts = ["-12.00", "-55.00", "-23.00", "-80.00", "-17.00", "-34.00", "-61.00", "-9.00"]
     spec = [(amounts[i], cats[(i * 3 + i // 2) % 4]) for i in range(len(amounts))]
@@ -256,3 +257,104 @@ def test_history_beyond_the_limit_is_ignored():
     result = guess_category(history, D("-10.00"))
     assert result.category_id == Y
     assert result.record[1] == HISTORY_LIMIT - 1
+
+
+# ─── Not trusted: a repeated amount, then a dominant envelope ────────────────
+
+HOUSEHOLD = uuid.UUID("00000000-0000-0000-0000-0000000000a3")
+GIFTS = uuid.UUID("00000000-0000-0000-0000-0000000000a4")
+MISC = uuid.UUID("00000000-0000-0000-0000-0000000000a5")
+
+
+def messy_warehouse_club() -> list[HistoryRow]:
+    """A real warehouse club's shape: mostly groceries, the rest filed under
+    several envelopes at overlapping sizes, one membership row. Groceries
+    holds 12 of 24 and no rule's record is trusted."""
+    return rows_oldest_first(
+        ("-140.00", GROCERIES),
+        ("-38.00", HOUSEHOLD),
+        ("-155.00", GROCERIES),
+        ("-150.00", GIFTS),
+        ("-42.00", GROCERIES),
+        ("-160.00", MISC),
+        ("-60.00", MEMBERSHIP),
+        ("-48.00", GROCERIES),
+        ("-145.00", HOUSEHOLD),
+        ("-52.00", GROCERIES),
+        ("-170.00", GIFTS),
+        ("-135.00", GROCERIES),
+        ("-44.00", MISC),
+        ("-165.00", GROCERIES),
+        ("-58.00", HOUSEHOLD),
+        ("-130.00", GROCERIES),
+        ("-47.00", GIFTS),
+        ("-175.00", GROCERIES),
+        ("-55.00", MISC),
+        ("-128.00", GROCERIES),
+        ("-162.00", HOUSEHOLD),
+        ("-50.00", GROCERIES),
+        ("-148.00", GIFTS),
+        ("-41.00", GROCERIES),
+    )
+
+
+def not_trusted(history: list[HistoryRow]) -> bool:
+    hits, scored = scoreboard(history)
+    return scored >= 4 and max(hits.values()) * 5 < scored * 3
+
+
+def test_messy_warehouse_club_is_not_trusted_by_any_rule():
+    assert not_trusted(messy_warehouse_club())
+
+
+def test_messy_warehouse_club_grocery_sized_row_gets_the_dominant_envelope():
+    result = guess_category(messy_warehouse_club(), D("-152.00"))
+    assert result.category_id == GROCERIES
+    assert result.rule == "dominant"
+
+
+def test_messy_warehouse_club_membership_sized_row_gets_membership_by_amount():
+    """The renewal repeats last year's amount exactly: that beats the
+    dominant envelope."""
+    result = guess_category(messy_warehouse_club(), D("-60.00"))
+    assert result.category_id == MEMBERSHIP
+    assert result.rule == "exact-fallback"
+
+
+def test_exact_fallback_matches_the_signed_amount_only():
+    """A refund the size of the membership is not the membership."""
+    result = guess_category(messy_warehouse_club(), D("60.00"))
+    assert result.category_id == GROCERIES
+    assert result.rule == "dominant"
+
+
+def test_dominant_at_exactly_half_fills():
+    """Five of ten rows in X, no amount repeated, no rule trusted."""
+    history = rows_oldest_first(
+        ("-10", X), ("-90", Y), ("-20", X), ("-80", Z), ("-30", X),
+        ("-70", W), ("-40", X), ("-60", Y), ("-50", X), ("-15", Z),
+    )  # fmt: skip
+    assert not_trusted(history)
+    result = guess_category(history, D("-1"))
+    assert result.category_id == X
+    assert result.rule == "dominant"
+
+
+def test_dominant_just_under_half_stays_blank():
+    """The same history with one X row moved to W: four of ten."""
+    history = rows_oldest_first(
+        ("-10", X), ("-90", Y), ("-20", X), ("-80", Z), ("-30", X),
+        ("-70", W), ("-40", X), ("-60", Y), ("-50", W), ("-15", Z),
+    )  # fmt: skip
+    assert not_trusted(history)
+    assert guess_category(history, D("-1")).category_id is None
+
+
+def test_two_envelopes_at_half_each_go_to_the_more_recent():
+    history = rows_oldest_first(
+        ("-10", X), ("-90", Y), ("-20", Y), ("-80", X), ("-30", X), ("-70", Y)
+    )
+    assert not_trusted(history)
+    result = guess_category(history, D("-1"))
+    assert result.rule == "dominant"
+    assert result.category_id == Y

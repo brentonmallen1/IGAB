@@ -149,3 +149,39 @@ async def test_alternating_subscription_amounts_follow_the_amount(db_session):
     b = await _auto(services, budget, checking, vendor, "-42.50", date(2026, 6, 2))
     assert a.category_id == streaming.id
     assert b.category_id == software.id
+
+
+async def test_untrusted_payee_falls_back_to_amount_then_dominant_envelope(db_session):
+    """No rule is trusted for this club, but Groceries holds half its rows
+    and the membership amount has been seen before. The payee's default is
+    not consulted: it has history."""
+    services, budget, checking, group = await _setup(db_session)
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    membership = await create_category(db_session, budget, group, "Club Membership")
+    household = await create_category(db_session, budget, group, "Household")
+    club = await create_payee(
+        db_session, budget, "Northwind Warehouse Club", default_category_id=household.id
+    )
+    spec = [
+        ("-140.00", groceries), ("-38.00", household), ("-155.00", groceries),
+        ("-150.00", household), ("-42.00", groceries), ("-60.00", membership),
+        ("-48.00", groceries), ("-145.00", household), ("-52.00", groceries),
+        ("-170.00", household),
+    ]  # fmt: skip
+    for i, (amount, cat) in enumerate(spec):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            amount,
+            date(2026, 1, 1) + timedelta(days=9 * i),
+            category=cat,
+            payee=club,
+        )
+    await db_session.flush()
+
+    grocery = await _auto(services, budget, checking, club, "-152.00", date(2026, 6, 1))
+    assert grocery.category_id == groceries.id
+
+    renewal = await _auto(services, budget, checking, club, "-60.00", date(2026, 6, 2))
+    assert renewal.category_id == membership.id

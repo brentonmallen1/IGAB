@@ -330,10 +330,11 @@ class TransactionService:
         payee_id = payee.id if payee else None
 
         # Auto-categorization: the payee's best-scoring rule (exact amount,
-        # nearest amount, or most recent — domain/category_guess.py), left
-        # blank when no rule has served this payee well. The payee's
-        # default_category_id answers only for a payee with no history: an
-        # abstain is a decision, and a stored default would overrule it.
+        # nearest amount, or most recent — domain/category_guess.py); when no
+        # rule has served this payee well, a repeated amount or a dominant
+        # envelope, else blank. The payee's default_category_id answers only
+        # for a payee with no history: a blank there is a decision, and a
+        # stored default would overrule it.
         # Never offered to an off-budget row: a synced brokerage or mortgage
         # row would otherwise inherit whatever category its payee last used
         # on the checking side, recurring every sync.

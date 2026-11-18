@@ -16,6 +16,12 @@ run after that was filed under Membership. Under the rules here, "last" loses
 that payee's scoreboard to "nearest", and a grocery-sized row lands in
 Groceries while a membership-sized one still lands in Membership.
 
+A real warehouse club is messier than that: its runs are filed under eight
+envelopes, so no rule's record is trusted. Leaving every row blank there
+was measured too and judged worse than two narrower answers — the same
+amount seen before (the renewal), else the envelope holding half the
+history (Groceries). Only a payee with neither is left blank.
+
 Pure: the repository supplies `history`, the service decides precedence
 around the result.
 """
@@ -28,6 +34,10 @@ from decimal import Decimal
 from typing import Literal, NamedTuple
 
 Rule = Literal["exact", "nearest", "last"]
+
+#: What answered: one of the three scored rules, or — when the leader's
+#: record is too poor to trust — one of the two abstain fallbacks.
+Answer = Rule | Literal["exact-fallback", "dominant"]
 
 #: How many of the payee's categorised rows the repository hands over.
 HISTORY_LIMIT = 24
@@ -42,10 +52,16 @@ NEAREST_WINDOW = 12
 MIN_SCORED = 4
 
 #: The leader must have been right on at least this share of its scored rows,
-#: or the guess is left blank. Hits are compared as integers against
-#: `hits * DEN >= scored * NUM` so 3 of 5 (exactly 60%) passes.
+#: or it is not trusted and the abstain fallbacks answer instead. Hits are
+#: compared as integers, `hits * DEN >= scored * NUM`, so 3 of 5 (exactly
+#: 60%) passes.
 MIN_HIT_RATE_NUM = 3
 MIN_HIT_RATE_DEN = 5
+
+#: When the leader is not trusted, a category holding at least this share of
+#: the history still answers: `count * DEN >= n * NUM`, so exactly half fills.
+DOMINANT_SHARE_NUM = 1
+DOMINANT_SHARE_DEN = 2
 
 #: Scoreboard ties go to the more specific rule.
 _TIE_ORDER: tuple[Rule, ...] = ("exact", "nearest", "last")
@@ -64,14 +80,15 @@ class HistoryRow(NamedTuple):
 class GuessResult:
     """The guess, the rule that made it, and that rule's record for the payee.
 
-    `category_id` is None for a new payee, and for an abstain — the leading
-    rule was right on under 60% of at least four replayed rows. `rule` is
-    None only when there is no history. `record` is `(hits, scored)` for the
-    rule that was asked; `(0, 0)` when nothing was scored.
+    `category_id` is None for a new payee, and for a payee none of whose
+    answers is trusted (see `guess_category`). `rule` says what answered —
+    on a blank, the leader that was not trusted; None only when there is no
+    history. `record` is `(hits, scored)` for the scoreboard's leader (or the
+    short-history rule); `(0, 0)` when nothing was scored.
     """
 
     category_id: uuid.UUID | None
-    rule: Rule | None
+    rule: Answer | None
     record: tuple[int, int]
 
 
@@ -106,6 +123,18 @@ _RULES: dict[Rule, Callable[[Sequence[HistoryRow], Decimal], uuid.UUID | None]] 
 }
 
 
+def _dominant(history: Sequence[HistoryRow]) -> uuid.UUID | None:
+    """A category holding at least half of `history`, or None. Two at exactly
+    half each: the one on the more recent row."""
+    counts: dict[uuid.UUID, int] = {}
+    for row in history:
+        counts[row.category_id] = counts.get(row.category_id, 0) + 1
+    for row in history:  # newest first, so a tie goes to the more recent
+        if counts[row.category_id] * DOMINANT_SHARE_DEN >= len(history) * DOMINANT_SHARE_NUM:
+            return row.category_id
+    return None
+
+
 def scoreboard(history: Sequence[HistoryRow]) -> tuple[dict[Rule, int], int]:
     """Replay each row against only the rows older than it.
 
@@ -133,10 +162,16 @@ def guess_category(history: Sequence[HistoryRow], amount: Decimal) -> GuessResul
     - No history: None (the service may fall back to the payee's default).
     - Fewer than `MIN_SCORED` scored rows: exact, else last.
     - Otherwise the scoreboard's leader (ties: exact, then nearest, then
-      last). If it was right on under 60% of its scored rows, abstain. If the
-      leader is exact and no row has this amount, the next rule in tie order
-      answers — exact's record says amounts repeat for this payee, and
-      nearest is exact's own answer whenever one does.
+      last). If the leader is exact and no row has this amount, the next rule
+      in tie order answers — exact's record says amounts repeat for this
+      payee, and nearest is exact's own answer whenever one does.
+    - If the leader was right on under 60% of its scored rows it is not
+      trusted, and in its place:
+        1. a row with the identical signed amount ("exact-fallback") — an
+           annual renewal at a store otherwise filed many ways;
+        2. else a category holding at least half the history ("dominant") —
+           a warehouse club that is mostly groceries, whatever the amount;
+        3. else blank.
     """
     history = list(history)[:HISTORY_LIMIT]
     if not history:
@@ -153,6 +188,12 @@ def guess_category(history: Sequence[HistoryRow], amount: Decimal) -> GuessResul
     leader = max(_TIE_ORDER, key=lambda r: (hits[r], -_TIE_ORDER.index(r)))
     record = (hits[leader], scored)
     if hits[leader] * MIN_HIT_RATE_DEN < scored * MIN_HIT_RATE_NUM:
+        found = _exact(history, amount)
+        if found is not None:
+            return GuessResult(found, "exact-fallback", record)
+        found = _dominant(history)
+        if found is not None:
+            return GuessResult(found, "dominant", record)
         return GuessResult(None, leader, record)
 
     for rule in _TIE_ORDER[_TIE_ORDER.index(leader) :]:
