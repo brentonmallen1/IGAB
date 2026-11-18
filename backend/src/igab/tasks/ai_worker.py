@@ -190,6 +190,9 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
             next_step="It's attached to an empty transaction — fill it in if it is one,"
             " or delete it.",
         )
+    # A photo the gate saw as sideways or upside down is turned before it is
+    # read; the record of it goes on the job with the rest of the read.
+    image_b64 = await svcs["ai"].upright_image(file_bytes, image_b64)
 
     try:
         raw = await svcs["ai"].extract_receipt(job.budget_id, image_b64, client_today)
@@ -216,6 +219,7 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     except Exception as exc:
         _attach_ai_debug(exc, svcs["ai"])
         raise
+    draft = await svcs["drafts"].second_opinion(job.budget_id, draft)
 
     await _place(session, svcs, job, draft, account_id, file_bytes)
 
@@ -301,7 +305,13 @@ async def _place(
     """Where a read lands — one path for every job kind: refresh the row a
     prior run made, place by the card that paid, wait unplaced, or create."""
     from igab.services.ai_draft_service import draft_result_json
-    from igab.services.receipt_placement import attach_to, bank_match, card_account, create_in
+    from igab.services.receipt_placement import (
+        attach_to,
+        bank_match,
+        card_account,
+        create_in,
+        entered_already,
+    )
 
     txn: Transaction | None = None
     if job.transaction_id is not None:
@@ -358,7 +368,19 @@ async def _place(
         assert account_id is not None
         txn = await create_in(svcs, job, account_id, draft)
 
-    await finish_placement(svcs, job, txn, file_bytes)
+    if job.kind == "receipt" and txn.created_via in CREATED_VIA.values():
+        # The scan sits on its own row: say so if the receipt looks entered
+        # already. A scan put on the bank's row cannot be a second copy.
+        twin = await entered_already(
+            session, job.budget_id, txn.account_id, txn.amount, txn.date, besides=txn.id
+        )
+        if twin is not None:
+            result["already_entered"] = {
+                "transaction_id": str(twin.id),
+                "account_id": str(twin.account_id),
+                "date": twin.date.isoformat(),
+            }
+    await finish_placement(svcs, job, txn, file_bytes, turn=last_read.turned if last_read else 0)
     job.result = result
     job.status = "done"
     job.error = None
@@ -367,11 +389,16 @@ async def _place(
 
 
 async def finish_placement(
-    svcs: dict, job: AIJob, txn: Transaction, file_bytes: bytes | None
+    svcs: dict, job: AIJob, txn: Transaction, file_bytes: bytes | None, *, turn: int = 0
 ) -> None:
     """The receipt's image goes on its row, and the job points at it. Shared
     by extraction and by a person placing a waiting entry later. A
-    description has no image, so only the pointer is written."""
+    description has no image, so only the pointer is written.
+
+    `turn`: the photo was turned to be read (`AIService.upright_image`), so
+    the copy kept is turned the same way — the picture in the review is the
+    one the model saw. Only when the image is stored now: a copy stored by
+    an earlier run was already turned, or a person has since."""
     payload = job.payload or {}
     if job.attachment_id is None and file_bytes is not None:
         attachment = await svcs["attachments"].upload(
@@ -381,6 +408,8 @@ async def finish_placement(
             payload.get("content_type") or "image/jpeg",
             client_today=_client_today(job),
         )
+        if turn and attachment.content_type != "application/pdf":
+            attachment = await svcs["attachments"].rotate(attachment, txn, turn)
         job.attachment_id = attachment.id
     job.transaction_id = txn.id
     job.finished_at = datetime.now(UTC)

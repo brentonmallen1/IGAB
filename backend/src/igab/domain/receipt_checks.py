@@ -13,11 +13,14 @@ and any check caps the model's confidence: a read that failed one is not
 100% sure of anything.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
+
+from igab.domain.money import model_cents
 
 #: How far back a receipt's date may fall before the read is treated as a
 #: misread. A scan is almost always days old, not months; a date beyond
@@ -113,16 +116,94 @@ def capped_confidence(confidence: float, checks: Sequence[ReceiptCheck]) -> floa
     return min(confidence, CHECKED_CONFIDENCE_CAP) if checks else confidence
 
 
+_DIGITS = re.compile(r"\d+")
+
+
+def _loop_key(item: object) -> tuple[object, object] | None:
+    """What makes two line items "the same" to the loop check. Digits are
+    collapsed: a model also loops by counting — the same item with its code
+    going up by one each time (reported 2026-11-18) — and those never
+    compared equal. The amount still has to match, so a till printing one
+    price on differently named items is not a loop."""
+    if not isinstance(item, dict):
+        return None
+    description = item.get("description")
+    if isinstance(description, str):
+        description = _DIGITS.sub("#", description)
+    return (description, item.get("amount"))
+
+
 def looping_items(items: Sequence[object]) -> bool:
-    """`LOOPING_RUN` identical line items in a row: the model repeating one
-    item, not a receipt that lists it. Compared on description and amount;
-    anything that is not an item object breaks a run."""
+    """`LOOPING_RUN` line items in a row that differ at most in their digits:
+    the model repeating one item, not a receipt that lists it. Anything that
+    is not an item object breaks a run."""
     run = 0
     previous: tuple[object, object] | None = None
     for item in items:
-        key = (item.get("description"), item.get("amount")) if isinstance(item, dict) else None
+        key = _loop_key(item)
         run = run + 1 if key is not None and key == previous else 1
         previous = key
         if key is not None and run >= LOOPING_RUN:
             return True
     return False
+
+
+#: Line items adding up to more than this many times the total cannot be the
+#: receipt: the list has run away, whatever each line says. Deliberately far
+#: above any real discount, because stopping costs the split.
+RUNAWAY_ITEMS_FACTOR = 2
+
+
+def items_overshoot(items: Sequence[object], total: object) -> bool:
+    """Whether the line items read so far already add up to far more than
+    the total — a runaway list the repeat check has no pattern for."""
+    paid = model_cents(total)
+    if paid is None or paid <= 0:
+        return False
+    amounts = [model_cents(i.get("amount")) for i in items if isinstance(i, dict)]
+    line_sum = sum((a for a in amounts if a is not None), Decimal("0"))
+    return line_sum > paid * RUNAWAY_ITEMS_FACTOR
+
+
+_WORDS = re.compile(r"[a-z0-9]+")
+
+
+def _words(text: str | None) -> frozenset[str]:
+    return frozenset(_WORDS.findall((text or "").casefold()))
+
+
+def named_for_payee(category: str, payee: str | None) -> bool:
+    """Whether a category carries the store's own name: every word of one is
+    in the other ("Northwind Club" for "Northwind Club Wholesale").
+
+    Such a category is usually the store's membership or fee, kept as a
+    sinking fund — and a model matches a receipt to it on the name alone,
+    whatever was bought (reported 2026-11-18: a full grocery shop filed to
+    the yearly-fee envelope while every line item said Groceries). A match
+    is a reason to ask for a second opinion, not a verdict."""
+    category_words, payee_words = _words(category), _words(payee)
+    if not category_words or not payee_words:
+        return False
+    return category_words <= payee_words or payee_words <= category_words
+
+
+#: Words a model uses for a line that stands for the whole receipt.
+_SUMMARY_WORDS = frozenset(
+    "various items item misc miscellaneous assorted groceries grocery merchandise goods"
+    " purchase purchases products multiple several general sundry sundries food other"
+    " and total".split()
+)
+
+
+def summary_line(items: Sequence[object], total: Decimal) -> bool:
+    """One line item, for the whole total, described in general words
+    ("various items"): the model declined to itemize. Not a one-item
+    receipt — and it made the line-item check pass trivially on a read that
+    was wrong everywhere else (a sideways photo, reported 2026-11-18)."""
+    if len(items) != 1 or not isinstance(items[0], dict):
+        return False
+    amount = model_cents(items[0].get("amount"))
+    if amount is None or (amount.copy_abs() - total.copy_abs()).copy_abs() > MODEL_ROUNDING_SLACK:
+        return False
+    words = _words(str(items[0].get("description") or ""))
+    return bool(words) and words <= _SUMMARY_WORDS

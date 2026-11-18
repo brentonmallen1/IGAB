@@ -22,10 +22,15 @@ from igab.ai.reply_json import (
 )
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
-from igab.domain.receipt_checks import looping_items
-from igab.integrations.ollama.client import STOP_REPETITION, OllamaClient
+from igab.domain.receipt_checks import items_overshoot, looping_items
+from igab.integrations.ollama.client import STOP_REPEAT_LIMIT, STOP_REPETITION, OllamaClient
 from igab.repositories.category_repo import CategoryRepository
-from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
+from igab.services.ai_draft_service import (
+    MAX_RECEIPT_ITEMS,
+    NL_REPLY_SCHEMA,
+    RAW_CUT_SHORT,
+    RECEIPT_REPLY_SCHEMA,
+)
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
 from igab.services.settings_service import SettingsService
@@ -61,11 +66,17 @@ def invalidate_capabilities() -> None:
     _ctx_cache.clear()
 
 
-def prepare_image_for_model(file_content: bytes) -> str:
+#: Quarter turns, clockwise, as PIL names them (its ROTATE_* are
+#: counter-clockwise).
+QUARTER_TURNS = (90, 180, 270)
+
+
+def prepare_image_for_model(file_content: bytes, *, turn: int = 0) -> str:
     """Downscale + JPEG-encode an uploaded image and return base64 for Ollama.
 
     PDFs are rasterized (first page) before encoding — vision models only
-    take pixels."""
+    take pixels. `turn` rotates the picture clockwise by a quarter turn or
+    two, for a receipt photographed lying sideways."""
     from PIL import Image, ImageOps
     from pillow_heif import register_heif_opener
 
@@ -81,6 +92,8 @@ def prepare_image_for_model(file_content: bytes) -> str:
     # tag; PIL does not apply it. Without this the model is handed a receipt
     # lying on its side, and vision models read rotated text markedly worse.
     img = ImageOps.exif_transpose(img)
+    if turn in QUARTER_TURNS:
+        img = img.rotate(-turn, expand=True)
     if img.mode != "RGB":
         img = img.convert("RGB")
     if img.width > MODEL_IMAGE_MAX_DIM or img.height > MODEL_IMAGE_MAX_DIM:
@@ -100,8 +113,11 @@ class ReadMade:
     #: Whether the call that produced the read thought; None when the model
     #: doesn't think at all.
     thinking: bool | None
-    #: Thinking ran out of room, so the read was made again without it.
+    #: Thinking ran out of room or looped, so the read was made again without it.
     thinking_fallback: bool = False
+    #: Degrees clockwise the photo was turned before reading, because its
+    #: text was sideways or upside down; 0 for a photo read as it came.
+    turned: int = 0
 
     def as_json(self) -> dict:
         return asdict(self)
@@ -116,9 +132,35 @@ RECEIPT_THINKING_TOKENS = 12288
 
 
 def _receipt_loop_guard(answer: str) -> str | None:
-    """Stop the stream once the line items so far are one item repeating."""
-    items = [obj for obj in complete_objects(answer) if "description" in obj]
-    return STOP_REPETITION if looping_items(items) else None
+    """Stop the stream once the line items so far can't become a split.
+
+    Three ways, each seen on a real long receipt: one item repeating
+    (identically, or counting its code up), items already adding up to far
+    more than the total, and the list reaching its cap — past which the
+    model went on to write a split for items that were about to be dropped.
+    The total is read before the items, so the stop keeps it.
+    """
+    objects = complete_objects(answer)
+    items = [obj for obj in objects if "description" in obj]
+    if looping_items(items):
+        return STOP_REPETITION
+    if items_overshoot(items, parse_partial_object(answer).get("total")):
+        return STOP_REPETITION
+    # Split entries are objects without a description, so this counts items.
+    return "length" if len(items) >= MAX_RECEIPT_ITEMS else None
+
+
+def _thinking_was_the_problem(reason: str, answer: str) -> bool:
+    """Whether a cut-short thinking read is worth repeating with thinking off.
+
+    Running out of room is thinking's fault. So is a loop Ollama stopped
+    before any answer was written — the loop was in the thinking. A deadline
+    would spend a second full one, and the app's own guard only sees loops in
+    the answer.
+    """
+    if reason == "length":
+        return True
+    return reason == STOP_REPEAT_LIMIT and not answer.strip()
 
 
 def _salvaged_receipt(raw: str, exc: ReplyCutShort) -> dict:
@@ -129,8 +171,11 @@ def _salvaged_receipt(raw: str, exc: ReplyCutShort) -> dict:
     kept = parse_partial_object(raw)
     if "total" not in kept:
         raise exc
-    kept.pop("line_items", None)
     kept.pop("suggested_split", None)
+    # The items finished before the cut stay, for one use: which category
+    # most of them name (`ai_draft_service._items_vote`). The cut-short
+    # marker keeps them from ever becoming a split or a sum check.
+    kept["line_items"] = [obj for obj in complete_objects(raw) if "description" in obj]
     kept[RAW_CUT_SHORT] = exc.reason
     return kept
 
@@ -151,6 +196,11 @@ class AIService:
         #: How the last read was made (`_note_read`); the worker stores it on
         #: the job as `result.read`.
         self.last_read: ReadMade | None = None
+        #: The quarter turn the gate said would set the photo's text upright
+        #: (`is_receipt_image`), and the one the photo was actually given
+        #: once that was checked (`upright_image`). 0: as it came.
+        self.gate_turn = 0
+        self.turned = 0
 
     async def _client(self) -> OllamaClient:
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
@@ -439,9 +489,42 @@ class AIService:
         try:
             data = self._reply_object(raw)
         except Exception:
+            self.gate_turn = 0
             return None
+        turn = data.get("rotate_clockwise")
+        # A bool is an int; a saved gate prompt that never asks says nothing.
+        self.gate_turn = turn if type(turn) is int and turn in QUARTER_TURNS else 0
         value = data.get("is_receipt")
         return value if isinstance(value, bool) else None
+
+    async def upright_image(self, file_bytes: bytes, image_b64: str) -> str:
+        """The photo turned so its text reads upright, when the gate said it
+        does not — or the photo as it came.
+
+        A receipt photographed lying across the frame reads far worse: a
+        confident draft with the total at a seventh of the real one
+        (reported 2026-11-18). EXIF cannot help — the scene itself is turned.
+
+        The gate's turn is a claim to check, not an instruction: measured on
+        gemma4:12b it tells upright, sideways and upside down apart, but
+        answers "90" for either sideways. So the photo is turned once and
+        asked again, where "upright" and "upside down" are the two answers
+        it gets right. Anything else leaves the photo alone — a wrong turn
+        costs more than a missed one."""
+        self.turned = 0
+        claimed = self.gate_turn
+        if not claimed:
+            return image_b64
+        first = 180 if claimed == 180 else 90
+        candidate = prepare_image_for_model(file_bytes, turn=first)
+        await self.is_receipt_image(candidate)
+        if self.gate_turn == 0:
+            self.turned = first
+            return candidate
+        if first == 90 and self.gate_turn == 180:
+            self.turned = 270
+            return prepare_image_for_model(file_bytes, turn=270)
+        return image_b64
 
     async def extract_receipt(
         self, budget_id: uuid.UUID, image_b64: str, client_today: date
@@ -465,12 +548,10 @@ class AIService:
             try:
                 return _salvaged_receipt(raw, exc)
             except ReplyCutShort:
-                # Only running out of room is thinking's fault. A deadline
-                # would spend a second full one, and a loop is in the answer.
-                if not think or exc.reason != "length":
+                if not think or not _thinking_was_the_problem(exc.reason, raw):
                     raise
-        # Thinking used the room the answer needed and never reached the
-        # total. The same receipt read with thinking off finished in 33 s
+        # Thinking used the room the answer needed, or looped, and never
+        # reached the total. The same receipt read with thinking off finished in 33 s
         # (gemma4:12b, 60 items, 2026-11-18), so read it once more that way
         # rather than fail — and say so on the job.
         assert self.last_read is not None
@@ -488,6 +569,7 @@ class AIService:
         self.last_read = ReadMade(
             thinking_setting=await self.settings.get("ai_thinking") or "auto",
             thinking=think,
+            turned=self.turned,
         )
 
     async def _read_receipt(

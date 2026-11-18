@@ -19,11 +19,20 @@ CONNECT_TIMEOUT_S = 10.0
 #: own are "stop" and "length".
 STOP_DEADLINE = "deadline"
 STOP_REPETITION = "repetition"
+#: Ollama aborted the stream itself: its "token repeat limit reached" error.
+#: It sees a loop the app's guard can't — one inside a single string, or in
+#: thinking — and what arrived before it is as good as any cut-short answer.
+STOP_REPEAT_LIMIT = "repeat_limit"
 #: Every reason that means the answer was cut short rather than finished.
-CUT_SHORT = frozenset({"length", STOP_DEADLINE, STOP_REPETITION})
+CUT_SHORT = frozenset({"length", STOP_DEADLINE, STOP_REPETITION, STOP_REPEAT_LIMIT})
+_REPEAT_LIMIT_ERROR = "token repeat limit"
 
 #: Given the answer so far, a reason to stop now, or None to keep reading.
 StopCheck = Callable[[str], str | None]
+
+
+def _is_repeat_limit(detail: object) -> bool:
+    return isinstance(detail, str) and _REPEAT_LIMIT_ERROR in detail
 
 
 def _raise_stream_error(chunk: dict, resp: httpx.Response) -> None:
@@ -39,6 +48,16 @@ def _raise_stream_error(chunk: dict, resp: httpx.Response) -> None:
     )
 
 
+def _error_detail(resp: httpx.Response) -> str | None:
+    """The reason in an Ollama error body, {"error": ...}, if it gave one."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    detail = body.get("error") if isinstance(body, dict) else None
+    return detail if isinstance(detail, str) and detail else None
+
+
 def _raise_with_detail(resp: httpx.Response) -> None:
     """raise_for_status, carrying Ollama's own reason. A 500 from Ollama has a
     body like {"error": "prediction aborted, token repeat limit reached"}; the
@@ -46,12 +65,8 @@ def _raise_with_detail(resp: httpx.Response) -> None:
     an unexplained failure. Still an HTTPStatusError, so retry rules hold."""
     if not resp.is_error:
         return
-    try:
-        body = resp.json()
-    except ValueError:
-        body = None
-    detail = body.get("error") if isinstance(body, dict) else None
-    if not isinstance(detail, str) or not detail:
+    detail = _error_detail(resp)
+    if not detail:
         resp.raise_for_status()
     raise httpx.HTTPStatusError(
         f"Ollama returned {resp.status_code}: {detail}", request=resp.request, response=resp
@@ -71,11 +86,19 @@ class _StreamedReply:
     async def read(self, resp: httpx.Response, stop_when: StopCheck | None) -> None:
         if resp.is_error:
             await resp.aread()
+            if _is_repeat_limit(_error_detail(resp)):
+                self.stopped = STOP_REPEAT_LIMIT
+                return
             _raise_with_detail(resp)
         async for line in resp.aiter_lines():
             if not line.strip():
                 continue
             chunk = json.loads(line)
+            # A deterministic loop, not a server fault: keep what arrived and
+            # stop like the app's own guard, so it is salvaged, not retried.
+            if _is_repeat_limit(chunk.get("error")):
+                self.stopped = STOP_REPEAT_LIMIT
+                return
             _raise_stream_error(chunk, resp)
             piece = chunk.get("response") or ""
             self.answer.append(piece)

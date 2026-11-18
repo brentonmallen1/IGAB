@@ -1022,20 +1022,27 @@ AI_NEEDS_REVIEW = and_(AWAITING_APPROVAL, Transaction.created_via.like("ai%"))
 #: that matches it (`receipt_placement.bank_match`); a row with a receipt is
 #: somebody else's, and an AI row is another scan — offering either would
 #: pair two receipts, or a receipt with itself.
+#: The row carries a receipt image.
+HAS_RECEIPT = exists(
+    select(1)
+    .select_from(TransactionAttachment)
+    .where(
+        TransactionAttachment.transaction_id == Transaction.id,
+        TransactionAttachment.is_deleted == False,  # noqa: E712
+    )
+)
+
 RECEIPT_CANDIDATE_ROW = and_(
     BALANCE_ROW,
     or_(Transaction.created_via.is_(None), not_(Transaction.created_via.like("ai%"))),
-    not_(
-        exists(
-            select(1)
-            .select_from(TransactionAttachment)
-            .where(
-                TransactionAttachment.transaction_id == Transaction.id,
-                TransactionAttachment.is_deleted == False,  # noqa: E712
-            )
-        )
-    ),
+    not_(HAS_RECEIPT),
 )
+
+#: The complement, for the opposite question: a row a receipt has already
+#: been entered as — another scan's row, or one carrying a receipt. Never a
+#: row to pair a new scan with (above), which is exactly why a rescan of an
+#: entered receipt sailed past the matcher and landed beside it, unannounced.
+RECEIPT_ENTERED_ROW = and_(BALANCE_ROW, or_(Transaction.created_via.like("ai%"), HAS_RECEIPT))
 
 
 #: The rows a liability's own ledger is made of, by kind. The line is the one

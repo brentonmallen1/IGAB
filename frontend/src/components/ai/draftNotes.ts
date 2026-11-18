@@ -64,6 +64,19 @@ export function unresolvedCategoryNote(draft: AIJobDraft | undefined): string | 
   return `Suggested “${named}”, which isn’t exactly one of your categories, so it’s left uncategorized.`
 }
 
+/**
+ * The sentence for a category that is not the model's pick: it chose one
+ * named after the store — usually that store's membership or fee — and the
+ * line items, or what the payee is usually filed to, said otherwise. Said
+ * because the model's reason, shown beside it, argues for the other one.
+ */
+export function categoryOverruledNote(draft: AIJobDraft | undefined): string | null {
+  if (!draft?.category_model || !draft.category) return null
+  const why =
+    draft.category_from === 'items' ? 'most of the items are' : 'this payee’s receipts usually are'
+  return `The AI picked “${draft.category_model}” for its name, but ${why} ${draft.category}, so it’s filed there — check the category.`
+}
+
 /** What the receipt's card ending says about the account a scan sits in:
  *  - `switched` — the scan was submitted against another account and the
  *    worker moved it here, to the account the card is on file for. A record,
@@ -140,7 +153,7 @@ export function draftCheckNotes(
   }
   if (checks.includes('items')) {
     notes.push(
-      'The receipt was too long to read item by item, so only the payee, total and date were read — there’s no split to offer.'
+      'The items couldn’t be read one by one, so only the payee, total and date were read — there’s no split to offer.'
     )
   }
   return notes
@@ -190,8 +203,11 @@ export function readNotes(read: AIJobRead | undefined): string[] {
   if (read.attempt > 1) {
     notes.push(`Read on try ${read.attempt} of ${read.max_attempts}`)
   }
+  if (read.turned) {
+    notes.push('Photo was sideways — turned to read it')
+  }
   if (read.thinking_fallback) {
-    notes.push('Thinking turned off — it ran out of room with it on')
+    notes.push('Thinking turned off — it didn’t finish with it on')
   } else if (read.thinking_setting === 'off' && read.thinking === false) {
     notes.push('Thinking off (your setting)')
   } else if (read.thinking_setting === 'on') {

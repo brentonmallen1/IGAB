@@ -7,6 +7,7 @@ import {
   checkStillOpen,
   checkedBoxes,
   draftCheckNotes,
+  categoryOverruledNote,
   readNotes,
   labelNamesCategory,
   unresolvedCategoryNote,
@@ -171,9 +172,9 @@ describe('draftCheckNotes', () => {
     formatMoney: (n: number) => `$${n.toFixed(2)}`,
   }
 
-  it('says a receipt too long to itemize kept only payee, total and date', () => {
+  it('says a receipt whose items could not be read kept only payee, total and date', () => {
     expect(draftCheckNotes(draft({ checks: ['items'] }), fmt)).toEqual([
-      'The receipt was too long to read item by item, so only the payee, total and date were read — there’s no split to offer.',
+      'The items couldn’t be read one by one, so only the payee, total and date were read — there’s no split to offer.',
     ])
   })
 
@@ -274,7 +275,41 @@ describe('checkedBoxes', () => {
   })
 })
 
+describe('categoryOverruledNote', () => {
+  it('says nothing when the category is the model’s own pick', () => {
+    expect(categoryOverruledNote(draft({}))).toBeNull()
+    expect(categoryOverruledNote(undefined)).toBeNull()
+  })
+
+  it('names the pick, where the category came from, and asks for a look', () => {
+    expect(
+      categoryOverruledNote(
+        draft({ category: 'Groceries', category_model: 'Northwind Club', category_from: 'items' })
+      )
+    ).toBe(
+      'The AI picked “Northwind Club” for its name, but most of the items are Groceries, so it’s filed there — check the category.'
+    )
+    expect(
+      categoryOverruledNote(
+        draft({ category: 'Groceries', category_model: 'Northwind Club', category_from: 'history' })
+      )
+    ).toContain('this payee’s receipts usually are Groceries')
+  })
+})
+
 describe('readNotes', () => {
+  it('says a sideways photo was turned', () => {
+    expect(
+      readNotes({
+        attempt: 1,
+        max_attempts: 3,
+        thinking_setting: 'auto',
+        thinking: true,
+        turned: 90,
+      })
+    ).toEqual(['Photo was sideways — turned to read it'])
+  })
+
   const read = { attempt: 1, max_attempts: 3, thinking_setting: 'auto' as const, thinking: true }
 
   it('says nothing about an ordinary read', () => {
@@ -286,7 +321,7 @@ describe('readNotes', () => {
   it('names a retry and the thinking fallback', () => {
     expect(readNotes({ ...read, attempt: 2, thinking: false, thinking_fallback: true })).toEqual([
       'Read on try 2 of 3',
-      'Thinking turned off — it ran out of room with it on',
+      'Thinking turned off — it didn’t finish with it on',
     ])
   })
 

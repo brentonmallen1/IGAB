@@ -1818,6 +1818,16 @@ class TransactionService:
             return await self.session.get(Payee, payee_id)
         if not payee_name:
             return None
+        existing = await self.find_payee(budget_id, payee_name)
+        if existing:
+            return existing
+        # Create new payee
+        return await self.payee_repo.create(budget_id=budget_id, name=payee_name)
+
+    async def find_payee(self, budget_id: uuid.UUID, payee_name: str) -> Payee | None:
+        """The payee a name already refers to, or None — never a new one.
+        The lookup half of `_resolve_payee`, for askers that must not leave
+        a payee behind."""
         # Exact match first
         existing = await self.payee_repo.find_by_name(budget_id, payee_name)
         if existing:
@@ -1827,8 +1837,4 @@ class TransactionService:
         if by_pattern:
             return by_pattern
         # Fuzzy match against names and mapping_samples
-        similar = await self.payee_repo.find_best_match(budget_id, payee_name)
-        if similar:
-            return similar
-        # Create new payee
-        return await self.payee_repo.create(budget_id=budget_id, name=payee_name)
+        return await self.payee_repo.find_best_match(budget_id, payee_name)

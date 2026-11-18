@@ -13,9 +13,12 @@ from igab.domain.receipt_checks import (
     RECEIPT_DATE_WINDOW_DAYS,
     capped_confidence,
     checked_receipt_date,
+    items_overshoot,
     line_items_mismatch,
     looping_items,
+    named_for_payee,
     past_tomorrow,
+    summary_line,
     tender_disagrees,
 )
 
@@ -158,3 +161,75 @@ class TestLoopingItems:
 
     def test_non_items_break_a_run(self):
         assert not looping_items(["x"] * LOOPING_RUN)
+
+    def test_counting_up_is_still_a_loop(self):
+        """Reported 2026-11-18: the same item with its code going up by one
+        each time ran to the 80-item cap, because no two were identical."""
+        counting = [self.item(f"0000392{n:02d} ITEM") for n in range(LOOPING_RUN)]
+        assert looping_items(counting)
+
+    def test_numbered_items_at_different_prices_are_a_receipt(self):
+        priced = [self.item(f"KS WATER {n}PK", amount=n + 0.99) for n in range(LOOPING_RUN)]
+        assert not looping_items(priced)
+
+
+class TestItemsOvershoot:
+    def items(self, *amounts):
+        return [{"description": f"ITEM {n}", "amount": a} for n, a in enumerate(amounts)]
+
+    def test_items_far_past_the_total_have_run_away(self):
+        assert items_overshoot(self.items(30, 30, 30), 40)
+
+    def test_a_discounted_receipt_has_not(self):
+        """Items listed before a 40%-off coupon sum well past the total."""
+        assert not items_overshoot(self.items(50, 50), 60)
+
+    def test_negative_lines_count_against_the_sum(self):
+        assert not items_overshoot(self.items(60, 60, -50), 40)
+
+    @pytest.mark.parametrize("total", [None, 0, -12.5, "abc"])
+    def test_no_usable_total_never_stops_a_read(self, total):
+        assert not items_overshoot(self.items(500), total)
+
+
+class TestNamedForPayee:
+    @pytest.mark.parametrize(
+        ("category", "payee"),
+        [
+            ("Northwind Club", "Northwind Club Wholesale"),
+            ("Northwind Club Membership", "Northwind Club"),
+            ("🛒 Harborstone", "HARBORSTONE MARKET"),
+        ],
+    )
+    def test_every_word_of_one_in_the_other(self, category, payee):
+        assert named_for_payee(category, payee)
+
+    @pytest.mark.parametrize(
+        ("category", "payee"),
+        [
+            ("Groceries", "Harborstone Market"),
+            ("Club Dues", "Northwind Club"),
+            ("Gas", None),
+            ("", "X"),
+        ],
+    )
+    def test_anything_less_is_not(self, category, payee):
+        assert not named_for_payee(category, payee)
+
+
+class TestSummaryLine:
+    def line(self, description, amount=42.5):
+        return [{"description": description, "amount": amount}]
+
+    @pytest.mark.parametrize("words", ["Various items", "GROCERIES", "Misc. merchandise"])
+    def test_general_words_for_the_whole_total(self, words):
+        assert summary_line(self.line(words), D("42.50"))
+
+    def test_a_named_item_is_an_item(self):
+        assert not summary_line(self.line("KS OLIVE OIL 2L"), D("42.50"))
+
+    def test_general_words_for_part_of_the_total_are_an_item(self):
+        assert not summary_line(self.line("Various items", 10), D("42.50"))
+
+    def test_two_lines_are_a_list(self):
+        assert not summary_line(self.line("Items") * 2, D("42.50"))

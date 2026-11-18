@@ -32,6 +32,7 @@ FAILURES = [
     ReplyCutShort("cut off", "length"),
     ReplyCutShort("cut off", "deadline"),
     ReplyCutShort("cut off", "repetition"),
+    ReplyCutShort("cut off", "repeat_limit"),
     ReplyNotJSON("The model's reply held no JSON object: 'I see a receipt'"),
     InvariantViolation("AI extraction returned a zero amount"),
     httpx.ConnectError("All connection attempts failed"),
@@ -80,7 +81,12 @@ def test_a_description_is_never_told_to_read_the_image():
 
 @pytest.mark.parametrize(
     ("reason", "setting"),
-    [("length", THINKING_SETTING), ("deadline", TIMEOUT_SETTING), ("repetition", None)],
+    [
+        ("length", THINKING_SETTING),
+        ("deadline", TIMEOUT_SETTING),
+        ("repetition", None),
+        ("repeat_limit", None),
+    ],
 )
 def test_a_cut_short_read_names_the_setting_that_helps(reason, setting):
     assert explain_failure(ReplyCutShort("x", reason), "receipt").settings == setting
@@ -94,12 +100,18 @@ def test_the_technical_line_carries_the_cause_and_the_call():
     )
 
 
+def test_a_loop_ollama_stopped_says_ollama_stopped_it():
+    failure = explain_failure(ReplyCutShort("x", "repeat_limit"), "receipt", CALL)
+    assert failure.headline == "The model got stuck repeating one line and was stopped."
+    assert (failure.technical or "").startswith("Stopped by Ollama: token repeat limit reached")
+
+
 def test_ollama_problems_point_at_settings_only_when_settings_can_fix_them():
     assert explain_failure(httpx.ConnectError("x"), "receipt").settings == AI_SETTINGS
-    assert explain_failure(FAILURES[9], "receipt").settings == AI_SETTINGS
-    assert explain_failure(FAILURES[10], "receipt").settings is None
+    assert explain_failure(FAILURES[10], "receipt").settings == AI_SETTINGS
+    assert explain_failure(FAILURES[11], "receipt").settings is None
     assert "model 'gemma4:31b' not found" in (
-        explain_failure(FAILURES[9], "receipt").technical or ""
+        explain_failure(FAILURES[10], "receipt").technical or ""
     )
 
 
@@ -161,7 +173,7 @@ def test_a_4xx_that_is_never_retried_does_not_promise_one():
     assert "in a moment" not in explain_failure(status(400, "bad request"), "receipt").next_step
 
 
-@pytest.mark.parametrize("reason", ["length", "deadline", "repetition"])
+@pytest.mark.parametrize("reason", ["length", "deadline", "repetition", "repeat_limit"])
 def test_a_description_cut_short_never_talks_about_a_receipt(reason):
     failure = explain_failure(
         ReplyCutShort("x", reason), "nl_parse", {**CALL, "thinking_enabled": True}

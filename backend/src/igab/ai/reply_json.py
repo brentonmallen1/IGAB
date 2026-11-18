@@ -24,7 +24,12 @@ through instead of moving them into `thinking`.
 import json
 import re
 
-from igab.integrations.ollama.client import CUT_SHORT, STOP_DEADLINE, STOP_REPETITION
+from igab.integrations.ollama.client import (
+    CUT_SHORT,
+    STOP_DEADLINE,
+    STOP_REPEAT_LIMIT,
+    STOP_REPETITION,
+)
 
 #: A complete reasoning block, in either spelling.
 _REASONING_BLOCK = re.compile(r"<think>.*?</think>|<\|channel>thought.*?<channel\|>", re.DOTALL)
@@ -63,6 +68,7 @@ _CUT_SHORT_WHY = {
     "length": "it ran out of room (context window or output limit)",
     STOP_DEADLINE: "the call reached its time limit",
     STOP_REPETITION: "the model was repeating itself and was stopped",
+    STOP_REPEAT_LIMIT: "the model was repeating itself and Ollama stopped it",
 }
 
 

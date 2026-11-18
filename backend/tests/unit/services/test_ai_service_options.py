@@ -18,8 +18,18 @@ import igab.services.ai_service as ai_service_module
 from igab.ai.context import debug_view
 from igab.ai.reply_json import ReplyCutShort
 from igab.integrations.ollama.client import OllamaClient
-from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
-from igab.services.ai_service import RECEIPT_ANSWER_TOKENS, RECEIPT_THINKING_TOKENS, AIService
+from igab.services.ai_draft_service import (
+    MAX_RECEIPT_ITEMS,
+    NL_REPLY_SCHEMA,
+    RAW_CUT_SHORT,
+    RECEIPT_REPLY_SCHEMA,
+)
+from igab.services.ai_service import (
+    RECEIPT_ANSWER_TOKENS,
+    RECEIPT_THINKING_TOKENS,
+    AIService,
+    _receipt_loop_guard,
+)
 from igab.services.settings_service import DEFAULTS
 
 
@@ -428,8 +438,27 @@ class TestTheCallIsRecorded:
             "payee": "Fresh Mart",
             "total": 39.53,
             "date": "2026-09-20",
+            # Kept for the category vote only; the marker bars a split.
+            "line_items": [{"description": "Soap", "amount": 1}],
             RAW_CUT_SHORT: "repetition",
         }
+
+    async def test_a_loop_ollama_stopped_inside_one_string_keeps_the_total(self, monkeypatch):
+        """A cropped long receipt (reported 2026-11-18): the model looped inside one
+        description, Ollama aborted with its repeat limit, and the right total
+        had already been written. It was retried as a 500 and lost."""
+
+        async def aborted(self, prompt, system=None, **kwargs):
+            self.last_meta = {"done_reason": "repeat_limit"}
+            return (
+                '{"payee": "Fresh Mart", "total": 39.53, "date": "2026-09-20",'
+                ' "line_items": [{"description": "1000_0000_0000_0000_0000_0000'
+            )
+
+        svc = self.capture_service(monkeypatch, generate=aborted)
+        kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert kept["total"] == 39.53
+        assert kept[RAW_CUT_SHORT] == "repeat_limit"
 
     async def test_thinking_that_runs_out_of_room_is_read_again_without_it(self, monkeypatch):
         """A long receipt: thinking used the whole budget and never reached the
@@ -452,11 +481,32 @@ class TestTheCallIsRecorded:
             "thinking_setting": "on",
             "thinking": False,
             "thinking_fallback": True,
+            "turned": 0,
         }
 
-    @pytest.mark.parametrize("reason", ["deadline", "repetition"])
-    async def test_only_running_out_of_room_falls_back(self, monkeypatch, reason):
-        """A deadline would spend a second full one; a loop is in the answer."""
+    async def test_thinking_that_looped_until_ollama_stopped_it_is_read_again(self, monkeypatch):
+        """Ollama's repeat limit before any answer was written: the loop was
+        in the thinking, so reading without it is worth one more call."""
+        thinks: list = []
+
+        async def looped_in_thought(self, prompt, system=None, **kwargs):
+            thinks.append(kwargs["think"])
+            if kwargs["think"]:
+                self.last_meta = {"done_reason": "repeat_limit", "thinking": "item item item"}
+                return ""
+            self.last_meta = {"done_reason": "stop"}
+            return '{"payee": "Fresh Mart", "total": 39.53}'
+
+        svc = self.capture_service(monkeypatch, generate=looped_in_thought)
+        kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert kept == {"payee": "Fresh Mart", "total": 39.53}
+        assert thinks == [True, False]
+        assert svc.last_read.thinking_fallback is True
+
+    @pytest.mark.parametrize("reason", ["deadline", "repetition", "repeat_limit"])
+    async def test_a_stop_in_the_answer_does_not_fall_back(self, monkeypatch, reason):
+        """A deadline would spend a second full one; a loop that reached the
+        answer is in the answer."""
         calls: list = []
 
         async def stopped(self, prompt, system=None, **kwargs):
@@ -729,3 +779,100 @@ class TestTheAssistantWindow:
         assert await client.context_length() == 131072
         client.show = AsyncMock(return_value={})  # type: ignore[method-assign]
         assert await client.context_length() is None
+
+
+class TestReceiptLoopGuard:
+    """What stops a receipt stream, each from a real long receipt."""
+
+    HEAD = '{"payee": "Fresh Mart", "total": 100.0, "line_items": ['
+
+    def stream(self, items) -> str:
+        return self.HEAD + ", ".join(json.dumps(i) for i in items)
+
+    def test_a_normal_list_keeps_reading(self):
+        items = [{"description": f"ITEM {chr(65 + n)}", "amount": 2.5} for n in range(20)]
+        assert _receipt_loop_guard(self.stream(items)) is None
+
+    def test_a_counting_loop_stops_as_repetition(self):
+        items = [{"description": f"00003924{n} ITEM", "amount": 1.0} for n in range(8)]
+        assert _receipt_loop_guard(self.stream(items)) == "repetition"
+
+    def test_items_far_past_the_total_stop(self):
+        items = [{"description": name, "amount": 70.0} for name in ("A", "B", "C")]
+        assert _receipt_loop_guard(self.stream(items)) == "repetition"
+
+    def test_the_list_reaching_its_cap_stops_before_a_split_is_written(self):
+        items = [
+            {"description": f"ITEM {chr(65 + n % 26)}{chr(65 + n // 26)}", "amount": 0.5}
+            for n in range(MAX_RECEIPT_ITEMS)
+        ]
+        assert _receipt_loop_guard(self.stream(items[:-1])) is None
+        assert _receipt_loop_guard(self.stream(items)) == "length"
+
+
+class TestUprightImage:
+    """A receipt photographed sideways is turned before it is read — after
+    the gate's say-so is checked, because gemma4:12b answers "90" for
+    either sideways and only tells upright from upside down reliably."""
+
+    def service(self, monkeypatch, answers: list[int | None]) -> tuple[AIService, list]:
+        turns: list = []
+        replies = iter(answers)
+
+        async def fake_generate(self, prompt, system=None, **kwargs):
+            turn = next(replies)
+            body = (
+                {"is_receipt": True}
+                if turn is None
+                else {"is_receipt": True, "rotate_clockwise": turn}
+            )
+            return json.dumps(body)
+
+        def fake_prepare(file_bytes, *, turn=0):
+            turns.append(turn)
+            return f"turned-{turn}"
+
+        monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+        monkeypatch.setattr(ai_service_module, "prepare_image_for_model", fake_prepare)
+        model_reports(monkeypatch, caps=["vision"])
+        return make_service(), turns
+
+    async def read(self, svc) -> str:
+        await svc.is_receipt_image("as-it-came")
+        return await svc.upright_image(b"bytes", "as-it-came")
+
+    async def test_an_upright_photo_is_left_alone_and_asked_once(self, monkeypatch):
+        svc, turns = self.service(monkeypatch, [0])
+        assert await self.read(svc) == "as-it-came"
+        assert (svc.turned, turns) == (0, [])
+
+    async def test_a_gate_prompt_that_never_asks_turns_nothing(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [None])
+        assert await self.read(svc) == "as-it-came"
+
+    async def test_sideways_is_turned_a_quarter_and_confirmed(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [90, 0])
+        assert await self.read(svc) == "turned-90"
+        assert svc.turned == 90
+
+    async def test_the_wrong_quarter_reads_upside_down_and_gets_the_other(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [270, 180])
+        assert await self.read(svc) == "turned-270"
+        assert svc.turned == 270
+
+    async def test_upside_down_is_turned_half_and_confirmed(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [180, 0])
+        assert await self.read(svc) == "turned-180"
+
+    @pytest.mark.parametrize("answers", [[90, 90], [90, 270], [180, 180]])
+    async def test_a_turn_that_does_not_check_out_is_not_made(self, monkeypatch, answers):
+        """A wrong turn costs more than a missed one."""
+        svc, _ = self.service(monkeypatch, answers)
+        assert await self.read(svc) == "as-it-came"
+        assert svc.turned == 0
+
+    @pytest.mark.parametrize("junk", [True, 45, "90", 360])
+    async def test_only_a_quarter_turn_is_a_claim(self, monkeypatch, junk):
+        svc, _ = self.service(monkeypatch, [junk])
+        await svc.is_receipt_image("x")
+        assert svc.gate_turn == 0

@@ -550,3 +550,85 @@ class TestTooLongToItemize:
         )
         assert ReceiptCheck.ITEMS not in draft.checks
         assert draft.suggested_split is not None
+
+    def test_one_line_for_everything_is_not_an_itemized_read(self):
+        """A sideways photo (reported 2026-11-18): one "various items" line
+        equal to the total made the line-item check pass on a read that was
+        wrong everywhere else."""
+        draft = parse_extraction(
+            receipt(line_items=[{"description": "Various items", "amount": 42.5}]),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert draft.checks == [ReceiptCheck.ITEMS]
+        assert draft.confidence == CHECKED_CONFIDENCE_CAP
+
+    def test_a_receipt_for_one_real_item_is_itemized(self):
+        draft = parse_extraction(
+            receipt(line_items=[{"description": "KS OLIVE OIL 2L", "amount": 42.5}]),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=CATEGORIES,
+        )
+        assert draft.checks == []
+
+
+class TestACategoryNamedAfterTheStore:
+    """A sinking fund named after a store (its membership fee) took a whole
+    grocery shop there, matched on the name alone (reported 2026-11-18)."""
+
+    NAMES = [("Groceries", "Food"), ("Northwind Club", "Annual Expenses"), ("Dining Out", "Food")]
+
+    def parse(self, **overrides):
+        raw = receipt(payee="Northwind Club Wholesale", category="Northwind Club", **overrides)
+        return parse_extraction(raw, kind="receipt", client_today=TODAY, category_names=self.NAMES)
+
+    def items(self, *pairs):
+        return [
+            {"description": f"ITEM {n}", "amount": a, "category": c}
+            for n, (c, a) in enumerate(pairs)
+        ]
+
+    def test_the_line_items_overrule_it(self):
+        draft = self.parse(
+            line_items=self.items(("Groceries", 30), ("Groceries", 8), ("Dining Out", 4.5))
+        )
+        assert draft.category_name == "Groceries"
+        assert (draft.category_model, draft.category_from) == ("Northwind Club", "items")
+        assert draft.category_suspect is False
+
+    def test_the_items_of_a_cut_short_read_still_vote(self):
+        draft = self.parse(
+            line_items=self.items(("Groceries", 30), ("Groceries", 8)),
+            **{RAW_CUT_SHORT: "length"},
+        )
+        assert draft.category_name == "Groceries"
+        assert draft.suggested_split is None
+
+    def test_items_that_agree_with_it_confirm_it(self):
+        """The yearly fee itself, on its own receipt."""
+        draft = self.parse(line_items=self.items(("Northwind Club", 42.5)))
+        assert draft.category_name == "Northwind Club"
+        assert draft.category_model is None
+        assert draft.category_suspect is False
+
+    def test_with_no_items_to_ask_it_is_left_for_payee_history(self):
+        draft = self.parse()
+        assert draft.category_name == "Northwind Club"
+        assert draft.category_suspect is True
+
+    def test_items_without_a_majority_do_not_decide(self):
+        draft = self.parse(line_items=self.items(("Groceries", 20), ("Dining Out", 20)))
+        assert draft.category_name == "Northwind Club"
+        assert draft.category_suspect is True
+
+    def test_a_category_that_is_not_the_stores_name_is_never_second_guessed(self):
+        draft = parse_extraction(
+            receipt(line_items=self.items(("Dining Out", 42.5))),
+            kind="receipt",
+            client_today=TODAY,
+            category_names=self.NAMES,
+        )
+        assert draft.category_name == "Groceries"
+        assert draft.category_suspect is False
