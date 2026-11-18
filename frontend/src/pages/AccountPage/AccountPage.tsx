@@ -21,7 +21,7 @@ import { useLiabilities } from '../../api/liabilities'
 import { usePendingReviewCountForAccount } from '../../api/transactions'
 import {
   formatSyncSummary,
-  useSimpleFINConnections,
+  usePrimaryConnection,
   useSyncSimpleFIN,
   usePendingMatchesForAccount,
 } from '../../api/simplefin'
@@ -72,10 +72,9 @@ export function AccountPage() {
     cancelReconciliation,
     setTransactionSearch,
   } = useUIStore()
-  const { data: sfConnections } = useSimpleFINConnections()
-  const firstConnection = sfConnections?.[0] ?? null
+  const firstConnection = usePrimaryConnection()
   const sync = useSyncSimpleFIN(budgetId)
-  const refetchWindow = useRefetchAccountWindow(accountId ?? '', budgetId)
+  const refetchWindow = useRefetchAccountWindow(accountId, budgetId)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const activeModal = useUIStore((s) => s.activeModal)
   const openModal = useUIStore((s) => s.openModal)
@@ -205,15 +204,15 @@ export function AccountPage() {
         )
       : null
 
-  // What the phone's notice pill stands for. While reconciling the review
-  // banner steps aside; so does its notice.
   // What the bank line's refetch button runs — the same action the settings
   // dialog offers, shown here only when the sentence says rows never came.
   const bankRefetch =
     isConnected && refetchWindow.available
-      ? { run: () => void refetchWindow.run(), isPending: refetchWindow.isPending }
+      ? { run: refetchWindow.run, isPending: refetchWindow.isPending }
       : null
 
+  // What the phone's notice pill stands for. While reconciling the review
+  // banner steps aside; so does its notice.
   const notices = accountNotices({
     review: isReconcilingHere ? null : reviewCounts,
     duplicates: pendingMatches.length,

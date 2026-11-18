@@ -29,6 +29,7 @@ vi.mock('../../api/simplefin', () => {
   const idle = () => ({ mutateAsync: vi.fn(), isPending: false })
   return {
     useSimpleFINConnections: () => ({ data: sf.connections }),
+    usePrimaryConnection: () => sf.connections[0] ?? null,
     useSimpleFINRemoteAccounts: () => sf.remote,
     useSimpleFINConfig: () => ({ data: undefined }),
     useLinkSimpleFINAccount: idle,

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAccounts, useUpdateAccount } from '../../api/accounts'
 import { apiErrorMessage } from '../../api/client'
-import { useRefetchAccountWindow } from '../../hooks/useRefetchAccountWindow'
+import { refetchLabel, useRefetchAccountWindow } from '../../hooks/useRefetchAccountWindow'
 import {
   useLinkSimpleFINAccount,
   useUnlinkSimpleFINAccount,
   useUpdateAccountSimpleFINSettings,
-  useSimpleFINConnections,
+  usePrimaryConnection,
   useSimpleFINRemoteAccounts,
 } from '../../api/simplefin'
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
@@ -45,8 +45,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const { formatMoney } = useFormatters()
 
   const updateAccount = useUpdateAccount(budgetId ?? '')
-  const { data: sfConnections } = useSimpleFINConnections()
-  const firstConnection = sfConnections?.[0] ?? null
+  const firstConnection = usePrimaryConnection()
 
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   // Fetched from the moment the modal opens, not when the picker does: the
@@ -350,10 +349,10 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                   <button
                     type="button"
                     className="dialog-btn dialog-btn--secondary acct-modal__start"
-                    onClick={() => void refetch.run()}
+                    onClick={refetch.run}
                     disabled={refetch.isPending}
                   >
-                    {refetch.isPending ? 'Fetching…' : 'Fetch the last 90 days again'}
+                    {refetchLabel(refetch.isPending)}
                   </button>
                   <p className="dialog-form__hint">
                     For after your bank re-linked this account, or when the balance here is off from

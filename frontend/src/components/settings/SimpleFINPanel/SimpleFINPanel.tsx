@@ -1,5 +1,6 @@
 import {
   useDeleteSimpleFINConnection,
+  primaryConnection,
   useSimpleFINConnections,
   useSimpleFINRateLimitStatus,
   useUpdateSimpleFINConnection,
@@ -38,7 +39,7 @@ export function SimpleFINPanel() {
     (appSettings?.find((x) => x.key === 'simplefin_auto_relink')?.value ?? 'true') === 'true'
   const deleteConnection = useDeleteSimpleFINConnection()
 
-  const firstConnectionId = connections && connections.length > 0 ? connections[0].id : null
+  const firstConnectionId = primaryConnection(connections)?.id ?? null
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(firstConnectionId)
 
   if (!connections || connections.length === 0) {

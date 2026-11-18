@@ -5,6 +5,7 @@ import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BalanceEquation } from './AccountBalances'
 import { AccountStatusPills, BankDriftLine, PendingLine } from './AccountFacts'
 import type { DriftNotice } from './bankDriftNotice'
+import type { RefetchHandle } from '../../hooks/useRefetchAccountWindow'
 import type { RegisterToggle } from '../../components/transactions/TransactionTable/registerToggles'
 import './AccountSheets.css'
 
@@ -28,7 +29,7 @@ interface Props {
   drift: DriftNotice | null
   /** The bank line's refetch (`useRefetchAccountWindow`), or null where no
    *  bank is linked. */
-  refetch: { run: () => void; isPending: boolean } | null
+  refetch: RefetchHandle | null
   /** A debt account's terms (LiabilityTermsHeader), or null. */
   terms: ReactNode
   onShowUnreconciled: () => void

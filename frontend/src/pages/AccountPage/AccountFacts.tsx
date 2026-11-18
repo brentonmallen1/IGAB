@@ -12,6 +12,7 @@ import { BUDGET_START_NOTE } from '../../components/accounts/budgetStartNote'
 import { Pill } from '../../components/common/Pill/Pill'
 import { ageLabel } from '../../utils/age'
 import type { DriftNotice } from './bankDriftNotice'
+import { refetchLabel, type RefetchHandle } from '../../hooks/useRefetchAccountWindow'
 
 /**
  * The account's standing facts — what it is, whether it is connected, when it
@@ -122,7 +123,7 @@ export function BankDriftLine({
   refetch = null,
 }: {
   notice: DriftNotice | null
-  refetch?: { run: () => void; isPending: boolean } | null
+  refetch?: RefetchHandle | null
 }) {
   if (notice === null) return null
   return (
@@ -143,7 +144,7 @@ export function BankDriftLine({
               onClick={refetch.run}
               disabled={refetch.isPending}
             >
-              {refetch.isPending ? 'Fetching…' : 'Fetch the last 90 days again'}
+              {refetchLabel(refetch.isPending)}
             </button>
           </>
         )}

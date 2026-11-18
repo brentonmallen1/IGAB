@@ -26,7 +26,7 @@ import {
   partitionAccounts,
 } from '../../components/layout/Sidebar/sidebarGroups'
 import {
-  useSimpleFINConnections,
+  usePrimaryConnection,
   useSyncSimpleFIN,
   useSimpleFINRateLimitStatus,
 } from '../../api/simplefin'
@@ -183,8 +183,7 @@ export function AccountsOverviewPage() {
   const updateAccount = useUpdateAccount(budgetId ?? '')
   const { data: liabilities = [] } = useLiabilities(budgetId)
 
-  const { data: connections = [] } = useSimpleFINConnections()
-  const primaryConnection = connections[0] ?? null
+  const primaryConnection = usePrimaryConnection()
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
   const syncMutation = useSyncSimpleFIN(budgetId)
 

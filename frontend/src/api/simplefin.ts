@@ -39,6 +39,24 @@ export function useSimpleFINConnections() {
   })
 }
 
+/**
+ * The connection a one-account action (sync this account, refetch its
+ * window, the rate-limit readout) goes through: the first one. One home for
+ * that choice — six call sites each spelled `connections[0]` their own way.
+ * Null while loading or when no bank is linked.
+ */
+export function primaryConnection(
+  connections: SimpleFINConnection[] | undefined
+): SimpleFINConnection | null {
+  return connections?.[0] ?? null
+}
+
+/** `primaryConnection` over the shared connections query. */
+export function usePrimaryConnection(): SimpleFINConnection | null {
+  const { data } = useSimpleFINConnections()
+  return primaryConnection(data)
+}
+
 export function useSimpleFINRateLimitStatus(connectionId: string | null) {
   return useQuery({
     queryKey: [ROOT.simplefinRateLimit, connectionId],
@@ -428,22 +446,26 @@ export function useLinkSimpleFINAccount(accountId: string) {
  * after a gap — safe to press any time, because rows already held re-stamp
  * or skip and only what is missing imports.
  */
-export function useRefetchSimpleFINAccount(accountId: string, budgetId: string | null) {
+export function useRefetchSimpleFINAccount(accountId: string | null, budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (connectionId: string) =>
-      apiClient
+    mutationFn: (connectionId: string) => {
+      // The hook is called before the page knows its account; it is never
+      // run until it does (useRefetchAccountWindow's `available`).
+      if (!accountId) throw new Error('No account to refetch')
+      return apiClient
         .post<SyncResult>(`/accounts/${accountId}/simplefin-refetch`, {
           connection_id: connectionId,
         })
-        .then((r) => r.data),
+        .then((r) => r.data)
+    },
     onSuccess: () => {
       invalidateAfterImport(qc, budgetId)
-      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
-      qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
-      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
-      qc.invalidateQueries({ queryKey: [ROOT.syncHealth] })
-      qc.invalidateQueries({ queryKey: [ROOT.syncRuns] })
+      void qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
+      void qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
+      void qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+      void qc.invalidateQueries({ queryKey: [ROOT.syncHealth] })
+      void qc.invalidateQueries({ queryKey: [ROOT.syncRuns] })
     },
   })
 }
