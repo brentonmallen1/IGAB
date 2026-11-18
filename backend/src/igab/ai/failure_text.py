@@ -1,99 +1,177 @@
 """What a failed scan or description says to the person reviewing it — pure.
 
-The job's error is read in the review banner and on the Scans tab, by someone
-holding a receipt, not a stack trace. It used to be the exception's own text
-("ReplyCutShort: The model's reply was cut off before its JSON was complete",
-"ReadTimeout: "), which named the failure in the app's vocabulary and said
-nothing about what to do next.
+The job's error used to be the exception's own text ("ReplyCutShort: The
+model's reply was cut off before its JSON was complete", "ReadTimeout: "),
+read in the review banner by someone holding a receipt. Now each failure is
+three parts, shown in layers:
 
-Each sentence here says what happened in plain words and, when there is one,
-the next step — naming the setting as the screen labels it. A sentence that
-mentions System → AI gets the banner's "Open System → AI" link
-(`isConfigFailure` in the frontend's scanFailure.ts). The technical text stays
-where it is useful: on the model call's record in AI Activity → Model calls.
+- **headline** — what happened, in one short sentence. Always visible: on
+  the Scans row and in bold in the review banner.
+- **next step** — what to do about it. In the banner, and under Details on
+  the Scans row.
+- **technical** — the evidence (why the call stopped, the model, thinking,
+  tokens, time). Only under Details, for whoever is diagnosing it.
+
+`settings` names the setting that helps, as the screen labels it; the page
+links to System → AI under that label.
 """
+
+from dataclasses import dataclass
 
 import httpx
 
 from igab.ai.context import error_text
 from igab.ai.reply_json import ReplyCutShort, ReplyNotJSON
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.receipt_checks import LOOPING_RUN
 from igab.integrations.ollama.client import STALL_TIMEOUT_S, STOP_DEADLINE, STOP_REPETITION
 
-#: Where the two settings that matter for a slow or long read live, as the
-#: screen labels them.
-_THINKING = "System → AI → Advanced → Thinking"
-_TIMEOUT = "System → AI → Advanced → Receipt scan timeout"
+AI_SETTINGS = "System → AI"
+THINKING_SETTING = "System → AI → Advanced → Thinking"
+TIMEOUT_SETTING = "System → AI → Advanced → Receipt scan timeout"
 
 
-def _subject(kind: str) -> str:
-    return "this receipt" if kind == "receipt" else "this description"
+@dataclass(frozen=True)
+class Failure:
+    headline: str
+    next_step: str
+    technical: str | None = None
+    settings: str | None = None
+
+    def sentence(self) -> str:
+        """The headline and next step as one line — `job.error`, for anything
+        that reads the error as text (older clients, the activity log)."""
+        return f"{self.headline} {self.next_step}"
+
+    def as_json(self) -> dict:
+        return {
+            "headline": self.headline,
+            "next_step": self.next_step,
+            "technical": self.technical,
+            "settings": self.settings,
+        }
 
 
-def _cut_short(exc: ReplyCutShort, kind: str) -> str:
-    thing = _subject(kind)
+def _entry(kind: str) -> str:
+    """Where the details go: a scan has its image to read them from."""
+    return "Enter the details from the image" if kind == "receipt" else "Enter the details yourself"
+
+
+def _call_facts(call: dict | None) -> str | None:
+    """The model call's facts, as one line: model · thinking · tokens · time."""
+    if not call:
+        return None
+    facts: list[str] = []
+    model = (call.get("request") or {}).get("model")
+    if model:
+        facts.append(str(model))
+    if "thinking_enabled" in call:
+        facts.append("thinking on" if call["thinking_enabled"] else "thinking off")
+    tokens = call.get("completion_tokens")
+    if isinstance(tokens, int):
+        facts.append(f"{tokens:,} tokens")
+    duration = call.get("duration_ms")
+    if isinstance(duration, int):
+        facts.append(f"{round(duration / 1000)} s")
+    return " · ".join(facts) or None
+
+
+def _technical(cause: str | None, call: dict | None) -> str | None:
+    lines = [line for line in (cause, _call_facts(call)) if line]
+    return "\n".join(lines) or None
+
+
+def _cut_short(exc: ReplyCutShort, kind: str, call: dict | None) -> Failure:
+    entry = _entry(kind)
     if exc.reason == STOP_REPETITION:
-        return (
-            f"The model got stuck repeating one line while reading {thing}, before it"
-            " reached the total, so it was stopped. Enter the details yourself, or try a"
-            " closer photo of just the bottom of the receipt."
+        return Failure(
+            "The model got stuck repeating one line and was stopped.",
+            f"{entry}, or try a closer photo of just the bottom of the receipt."
+            if kind == "receipt"
+            else f"{entry}.",
+            _technical(f"Stopped: one item repeated {LOOPING_RUN} times in a row", call),
         )
     if exc.reason == STOP_DEADLINE:
-        return (
-            f"Reading {thing} took longer than the time limit, and the model hadn't reached"
-            f" the total yet. Enter the details yourself, or allow more time in {_TIMEOUT}."
+        return Failure(
+            "Reading took longer than the time limit.",
+            f"The model hadn't reached the total yet. {entry}, or allow more time and scan again.",
+            _technical("Stopped at the time limit", call),
+            TIMEOUT_SETTING,
         )
-    return (
-        f"The model ran out of room before it finished reading {thing}"
-        " — usually a long receipt with thinking on. Enter the details yourself, or turn"
-        f" thinking off in {_THINKING} and scan it again."
+    return Failure(
+        "The model ran out of room before reaching the total.",
+        f"Usually a long receipt with thinking on. {entry}, or turn thinking off and scan again.",
+        _technical("Cut off: output limit or context window reached", call),
+        THINKING_SETTING,
     )
 
 
-def _ollama_status(exc: httpx.HTTPStatusError) -> str:
+def _ollama_status(exc: httpx.HTTPStatusError, kind: str) -> Failure:
     detail = str(exc).split(": ", 1)[-1]
+    technical = f"{exc.response.status_code}: {detail}"
     if exc.response.status_code == 404:
-        return (
-            f"Ollama doesn't have the model this uses ({detail}). Download it in Ollama, or"
-            " choose another model in System → AI."
+        return Failure(
+            "Ollama doesn't have this model.",
+            "Download it in Ollama, or choose another model.",
+            technical,
+            AI_SETTINGS,
         )
-    return f"Ollama ran into a problem and stopped: {detail}."
+    return Failure(
+        "Ollama ran into a problem.",
+        "It tries again by itself; if it keeps happening, check Ollama's own log.",
+        technical,
+    )
 
 
-def failure_text(exc: BaseException, kind: str) -> str:
-    """One or two sentences for the person: what went wrong, and what to do.
-    `kind` is the job's ("receipt" or "nl_parse")."""
+def explain_failure(exc: BaseException, kind: str, call: dict | None = None) -> Failure:
+    """What went wrong, what to do, and the evidence. `kind` is the job's
+    ("receipt" or "nl_parse"); `call` is the model call's debug view, when
+    the failure came from one."""
     from igab.tasks.ai_worker import NonRetryableJobError  # the worker imports this
 
-    thing = _subject(kind)
+    entry = _entry(kind)
     if isinstance(exc, NonRetryableJobError):
-        return str(exc)  # written for people where it is raised
+        return Failure(str(exc), exc.next_step or f"{entry}.", _call_facts(call), exc.settings)
     if isinstance(exc, ReplyCutShort):
-        return _cut_short(exc, kind)
+        return _cut_short(exc, kind, call)
     if isinstance(exc, ReplyNotJSON):
-        return (
-            f"The model's answer for {thing} couldn't be read. Scanning again sometimes"
-            " works; otherwise enter the details yourself."
+        return Failure(
+            "The model's answer couldn't be read.",
+            f"Scanning again sometimes works; otherwise {entry[0].lower()}{entry[1:]}."
+            if kind == "receipt"
+            else f"Trying again sometimes works; otherwise {entry[0].lower()}{entry[1:]}.",
+            _technical(str(exc), call),
         )
     if isinstance(exc, InvariantViolation):
-        return f"The model didn't read an amount from {thing}. Enter it yourself" + (
-            " from the image." if kind == "receipt" else "."
+        return Failure(
+            "The model didn't read an amount.",
+            "Enter it from the image." if kind == "receipt" else "Enter it yourself.",
+            _technical(str(exc), call),
         )
     if isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout):
-        return (
-            "Couldn't reach Ollama. Check that it's running and that the address in"
-            " System → AI is right."
+        return Failure(
+            "Couldn't reach Ollama.",
+            "Check that it's running and that its address is right.",
+            error_text(exc),
+            AI_SETTINGS,
         )
     if isinstance(exc, httpx.ReadTimeout):
-        return (
-            f"Ollama stopped responding for {int(STALL_TIMEOUT_S // 60)} minutes while"
-            f" reading {thing}. It may be busy with another model or out of memory."
+        return Failure(
+            "Ollama stopped responding.",
+            f"Nothing arrived for {int(STALL_TIMEOUT_S // 60)} minutes — it may be busy with"
+            " another model or out of memory. It tries again by itself.",
+            _technical(f"No data for {int(STALL_TIMEOUT_S)} s", call),
         )
     if isinstance(exc, httpx.HTTPStatusError):
-        return _ollama_status(exc)
+        return _ollama_status(exc, kind)
     if isinstance(exc, httpx.TransportError):
-        return "The connection to Ollama broke off. Check that it's running."
-    return (
-        f"Something unexpected went wrong ({error_text(exc, limit=300)}). Enter the"
-        " details yourself; AI Activity → Model calls has more."
+        return Failure(
+            "The connection to Ollama broke off.",
+            "It tries again by itself; check that Ollama is running.",
+            error_text(exc),
+        )
+    return Failure(
+        "Something unexpected went wrong.",
+        f"{entry}. The details below are worth sending along.",
+        _technical(error_text(exc, limit=300), call),
     )

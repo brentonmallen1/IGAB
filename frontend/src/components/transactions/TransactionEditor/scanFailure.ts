@@ -1,3 +1,5 @@
+import type { AIJob } from '../../../api/aiJobs'
+
 /**
  * Reading a failed receipt job's error for the review banner.
  *
@@ -25,4 +27,35 @@ const GENERIC = 'Scan failed — enter the details from the image, then approve.
 export function scanFailureReason(error: string | null | undefined): string {
   const reason = (error ?? '').replace(/^[A-Z][a-z]+(?:[A-Z][A-Za-z]*)+:\s*/, '').trim()
   return reason || GENERIC
+}
+
+/** A failure as the page shows it: the headline always, the rest behind
+ *  Details (the review banner keeps the next step in view). */
+export interface ScanFailure {
+  headline: string
+  nextStep: string | null
+  technical: string | null
+  /** The setting that helps, as the screen labels it; the link goes to
+   *  System → AI. */
+  settings: string | null
+}
+
+/** The job's failure in layers. A job recorded before the server wrote
+ *  them has one line, which becomes the headline. */
+export function jobFailure(job: Pick<AIJob, 'error' | 'result'>): ScanFailure {
+  const failure = job.result?.failure
+  if (failure) {
+    return {
+      headline: failure.headline,
+      nextStep: failure.next_step || null,
+      technical: failure.technical || null,
+      settings: failure.settings || null,
+    }
+  }
+  return {
+    headline: scanFailureReason(job.error),
+    nextStep: null,
+    technical: null,
+    settings: isConfigFailure(job.error) ? 'System → AI' : null,
+  }
 }

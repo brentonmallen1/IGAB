@@ -236,6 +236,18 @@
   overflow-wrap: anywhere;
 }
 
+.ai-activity__error-headline {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-negative);
+}
+
+.ai-activity__error-next {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
 .ai-activity__error-toggle {
   display: inline-flex;
   align-items: center;

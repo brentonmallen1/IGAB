@@ -1,6 +1,6 @@
 import { parseApiDecimal } from '../../../utils/money'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   Check,
@@ -37,10 +37,14 @@ import { AttachmentLightbox } from '../../../components/attachments/Lightbox'
 import { useFormatters } from '../../../hooks/useFormatters'
 import '../AIActivityPage.css'
 import { confirmAsync } from '../../../stores/confirmStore'
-import { scanFailureReason } from '../../../components/transactions/TransactionEditor/scanFailure'
+import { jobFailure } from '../../../components/transactions/TransactionEditor/scanFailure'
+import { sectionHref } from '../../SettingsPage/settingsSections'
 import { unresolvedCategoryNote } from '../../../components/ai/draftNotes'
 import { CardEndingNotice } from '../../../components/ai/CardEndingNotice'
 import { PlaceReceipt } from './PlaceReceipt'
+
+/** Where the AI model is configured — the System page. */
+const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
 
 const PAGE_SIZE = 50
 
@@ -135,6 +139,7 @@ function JobRow({
   const approve = useBulkApprove(budgetId)
   const remove = useDeleteAIJob(budgetId)
   const [errorOpen, setErrorOpen] = useState(false)
+  const failure = job.error ? jobFailure(job) : null
   const [responseOpen, setResponseOpen] = useState(false)
   const [promptOpen, setPromptOpen] = useState(false)
   const [rawOpen, setRawOpen] = useState(false)
@@ -278,16 +283,34 @@ function JobRow({
         {unresolved && <div className="ai-activity__unresolved">{unresolved}</div>}
         <CardEndingNotice job={job} budgetId={budgetId} canMove />
         {job.status === 'unplaced' && <PlaceReceipt job={job} budgetId={budgetId} />}
-        {job.error && (
+        {failure && (
           <div className="ai-activity__error">
-            <button className="ai-activity__error-toggle" onClick={() => setErrorOpen((v) => !v)}>
-              {errorOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              Error details
-            </button>
-            {/* Through scanFailureReason so the user reads the reason, not the
-                worker's exception class name ("NonRetryableJobError: …"). */}
-            {errorOpen && (
-              <pre className="ai-activity__error-text">{scanFailureReason(job.error)}</pre>
+            {/* The headline on the row itself: a failed job says why at a
+                glance, and Details holds what to do and the evidence. */}
+            <div className="ai-activity__error-headline">{failure.headline}</div>
+            {(failure.nextStep || failure.technical || failure.settings) && (
+              <button
+                className="ai-activity__error-toggle"
+                aria-expanded={errorOpen}
+                onClick={() => setErrorOpen((v) => !v)}
+              >
+                {errorOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                Details
+              </button>
+            )}
+            {errorOpen && (failure.nextStep || failure.settings) && (
+              <div className="ai-activity__error-next">
+                {failure.nextStep}
+                {failure.settings && (
+                  <>
+                    {' '}
+                    <Link to={AI_SETTINGS}>Open {failure.settings}</Link>
+                  </>
+                )}
+              </div>
+            )}
+            {errorOpen && failure.technical && (
+              <pre className="ai-activity__error-text">{failure.technical}</pre>
             )}
           </div>
         )}

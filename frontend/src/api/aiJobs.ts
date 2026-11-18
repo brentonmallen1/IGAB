@@ -92,6 +92,21 @@ export interface AIJobResult {
   /** Thinking transcript, when the model produced one. */
   thinking?: string
   done_reason?: string
+  /** Why a failed (or retrying) job failed, in layers — written by
+   *  `backend/.../ai/failure_text.py`. Absent on jobs recorded before it;
+   *  read through `jobFailure`, which falls back to `error`. */
+  failure?: AIJobFailure
+}
+
+export interface AIJobFailure {
+  /** What happened, one short sentence: always shown. */
+  headline: string
+  /** What to do about it. */
+  next_step: string
+  /** The evidence — why the call stopped, model, thinking, tokens, time. */
+  technical: string | null
+  /** The setting that helps, as the screen labels it ("System → AI → …"). */
+  settings: string | null
 }
 
 export interface ReceiptBankMatch {

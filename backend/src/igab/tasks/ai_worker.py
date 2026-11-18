@@ -24,7 +24,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.ai.context import debug_view
-from igab.ai.failure_text import failure_text
+from igab.ai.failure_text import AI_SETTINGS, explain_failure
 from igab.ai.reply_json import ReplyCutShort
 from igab.config import settings as app_settings
 from igab.db.models import AIJob, Transaction
@@ -49,8 +49,20 @@ class NonRetryableJobError(Exception):
     """Permanent input problem (missing file, deleted account, no vision
     support). Goes straight to 'error' without burning retries."""
 
-    def __init__(self, message: str, *, model: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        next_step: str | None = None,
+        settings: str | None = None,
+    ) -> None:
+        """`message` is the headline a person reads; `next_step` what to do
+        about it, and `settings` the setting that helps, as the screen labels
+        it (see ai/failure_text.py)."""
         super().__init__(message)
+        self.next_step = next_step
+        self.settings = settings
         # The model that produced the failure, when known. Assignments made to
         # the job before the raise are lost with the session rollback, so
         # record_job_failure re-persists this from the exception.
@@ -162,7 +174,10 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
             if stored.exists():
                 file_bytes = stored.read_bytes()
     if file_bytes is None:
-        raise NonRetryableJobError("Receipt image is missing")
+        raise NonRetryableJobError(
+            "The receipt image is missing.",
+            next_step="Enter the details yourself, or scan the receipt again.",
+        )
 
     svcs = _build_services(session)
     account_id = await _job_account(svcs, job)
@@ -173,18 +188,15 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         # Name where the model came from: "set a vision model" is the wrong
         # advice when the real fix is changing the main model.
         if from_override:
-            msg = (
-                f"Receipt scanning used your vision override '{model}', which does"
-                " not support vision. Pick a vision-capable model in System → AI."
-            )
+            msg = f"Your vision override '{model}' does not support vision."
+            step = "Pick a vision-capable model for the override."
         else:
-            msg = (
-                f"Receipt scanning used your main model '{model}' (no vision"
-                " override is set), which does not support vision. Pick a"
-                " vision-capable main model, or set a vision override, in"
-                " System → AI."
+            msg = f"Your main model '{model}' does not support vision."
+            step = (
+                "No vision override is set, so scans use the main model. Pick a"
+                " vision-capable main model, or set a vision override."
             )
-        raise NonRetryableJobError(msg, model=model)
+        raise NonRetryableJobError(msg, model=model, next_step=step, settings=AI_SETTINGS)
 
     client_today = _client_today(job)
 
@@ -196,8 +208,9 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     # Inconclusive (None) proceeds: the gate must never block a real receipt.
     if await svcs["ai"].is_receipt_image(image_b64) is False:
         raise NonRetryableJobError(
-            "The image doesn't appear to be a receipt — created an empty "
-            "transaction with the image attached for manual entry"
+            "The image doesn't appear to be a receipt.",
+            next_step="It's attached to an empty transaction — fill it in if it is one,"
+            " or delete it.",
         )
 
     try:
@@ -240,7 +253,9 @@ async def _process_description(session: AsyncSession, job: AIJob) -> None:
 
     text = ((job.payload or {}).get("text") or "").strip()
     if not text:
-        raise NonRetryableJobError("The description is empty")
+        raise NonRetryableJobError(
+            "The description is empty.", next_step="Type what you bought, then try again."
+        )
 
     svcs = _build_services(session)
     account_id = await _job_account(svcs, job)
@@ -283,7 +298,10 @@ async def _job_account(svcs: dict, job: AIJob) -> uuid.UUID | None:
     if account_id is not None:
         account = await svcs["transactions"].account_repo.get(account_id)
         if account is None or str(account.budget_id) != str(job.budget_id):
-            raise NonRetryableJobError("The account for this entry no longer exists")
+            raise NonRetryableJobError(
+                "The account for this entry no longer exists.",
+                next_step="Enter it yourself in another account.",
+            )
     return account_id
 
 
@@ -412,9 +430,11 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
     """Retry with backoff when the error is transient and attempts remain;
     otherwise terminal — the $0 stub keeps the receipt or description
     reachable."""
-    # Read by a person in the review banner; the technical text is on the
-    # model call's own record.
-    job.error = failure_text(exc, job.kind)
+    ai_debug = getattr(exc, "ai_debug", None)
+    failure = explain_failure(exc, job.kind, ai_debug)
+    # Read by a person: `error` is the one-line form, and `result.failure`
+    # the layered one the page shows (headline, next step, technical).
+    job.error = failure.sentence()
     # The processing session rolled back, taking any job.model assignment with
     # it — restore it here so failed jobs still say which model ran.
     failed_model = getattr(exc, "model", None)
@@ -422,9 +442,7 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
         job.model = failed_model
     # Same rollback story for the model-call evidence: re-persist the prompt
     # and raw response the exception carried out of the dead session.
-    ai_debug = getattr(exc, "ai_debug", None)
-    if ai_debug:
-        job.result = ai_debug
+    job.result = {**(ai_debug or job.result or {}), "failure": failure.as_json()}
     if _is_retryable(exc) and job.attempts < job.max_attempts:
         job.status = "queued"
         delay = RETRY_BASE_DELAY_S * (2 ** (job.attempts - 1))

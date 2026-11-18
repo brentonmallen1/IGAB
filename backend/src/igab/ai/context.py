@@ -170,4 +170,10 @@ def debug_view(result: "AICallResult | None") -> dict:
         view["thinking"] = clip(result.thinking)
     if result.done_reason:
         view["done_reason"] = result.done_reason
+    # What a failed job's Details line names: thinking, tokens, time.
+    view["thinking_enabled"] = result.thinking_enabled
+    if result.completion_tokens is not None:
+        view["completion_tokens"] = result.completion_tokens
+    if result.duration_ms is not None:
+        view["duration_ms"] = result.duration_ms
     return view
