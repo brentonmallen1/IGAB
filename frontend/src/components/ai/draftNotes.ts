@@ -191,7 +191,7 @@ export function readNotes(read: AIJobRead | undefined): string[] {
     notes.push(`Read on try ${read.attempt} of ${read.max_attempts}`)
   }
   if (read.thinking_fallback) {
-    notes.push('Thinking turned off — it ran out of room with it on')
+    notes.push('Thinking turned off — it didn’t finish with it on')
   } else if (read.thinking_setting === 'off' && read.thinking === false) {
     notes.push('Thinking off (your setting)')
   } else if (read.thinking_setting === 'on') {

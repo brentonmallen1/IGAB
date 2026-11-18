@@ -431,6 +431,23 @@ class TestTheCallIsRecorded:
             RAW_CUT_SHORT: "repetition",
         }
 
+    async def test_a_loop_ollama_stopped_inside_one_string_keeps_the_total(self, monkeypatch):
+        """A cropped long receipt (reported 2026-11-18): the model looped inside one
+        description, Ollama aborted with its repeat limit, and the right total
+        had already been written. It was retried as a 500 and lost."""
+
+        async def aborted(self, prompt, system=None, **kwargs):
+            self.last_meta = {"done_reason": "repeat_limit"}
+            return (
+                '{"payee": "Fresh Mart", "total": 39.53, "date": "2026-09-20",'
+                ' "line_items": [{"description": "1000_0000_0000_0000_0000_0000'
+            )
+
+        svc = self.capture_service(monkeypatch, generate=aborted)
+        kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert kept["total"] == 39.53
+        assert kept[RAW_CUT_SHORT] == "repeat_limit"
+
     async def test_thinking_that_runs_out_of_room_is_read_again_without_it(self, monkeypatch):
         """A long receipt: thinking used the whole budget and never reached the
         total. The re-read without thinking is the read, and says so."""
@@ -454,9 +471,29 @@ class TestTheCallIsRecorded:
             "thinking_fallback": True,
         }
 
-    @pytest.mark.parametrize("reason", ["deadline", "repetition"])
-    async def test_only_running_out_of_room_falls_back(self, monkeypatch, reason):
-        """A deadline would spend a second full one; a loop is in the answer."""
+    async def test_thinking_that_looped_until_ollama_stopped_it_is_read_again(self, monkeypatch):
+        """Ollama's repeat limit before any answer was written: the loop was
+        in the thinking, so reading without it is worth one more call."""
+        thinks: list = []
+
+        async def looped_in_thought(self, prompt, system=None, **kwargs):
+            thinks.append(kwargs["think"])
+            if kwargs["think"]:
+                self.last_meta = {"done_reason": "repeat_limit", "thinking": "item item item"}
+                return ""
+            self.last_meta = {"done_reason": "stop"}
+            return '{"payee": "Fresh Mart", "total": 39.53}'
+
+        svc = self.capture_service(monkeypatch, generate=looped_in_thought)
+        kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert kept == {"payee": "Fresh Mart", "total": 39.53}
+        assert thinks == [True, False]
+        assert svc.last_read.thinking_fallback is True
+
+    @pytest.mark.parametrize("reason", ["deadline", "repetition", "repeat_limit"])
+    async def test_a_stop_in_the_answer_does_not_fall_back(self, monkeypatch, reason):
+        """A deadline would spend a second full one; a loop that reached the
+        answer is in the answer."""
         calls: list = []
 
         async def stopped(self, prompt, system=None, **kwargs):

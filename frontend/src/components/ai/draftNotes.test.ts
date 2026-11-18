@@ -286,7 +286,7 @@ describe('readNotes', () => {
   it('names a retry and the thinking fallback', () => {
     expect(readNotes({ ...read, attempt: 2, thinking: false, thinking_fallback: true })).toEqual([
       'Read on try 2 of 3',
-      'Thinking turned off — it ran out of room with it on',
+      'Thinking turned off — it didn’t finish with it on',
     ])
   })
 

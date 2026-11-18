@@ -99,16 +99,29 @@ class TestShow:
 class TestOllamaErrors:
     @respx.mock
     async def test_the_reason_ollama_gave_is_kept(self, client):
-        """gemma4:12b at temperature 0 looped until Ollama aborted it. The job
-        said "Server error '500 Internal Server Error'" and nothing more."""
+        """The job used to say "Server error '500 Internal Server Error'" and
+        nothing more."""
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(
+                500, json={"error": "model runner has unexpectedly stopped"}
+            )
+        )
+        with pytest.raises(httpx.HTTPStatusError, match="unexpectedly stopped") as exc:
+            await client.generate("p")
+        assert exc.value.response.status_code == 500
+
+    @respx.mock
+    async def test_a_repeat_limit_before_the_stream_is_a_stop_not_a_fault(self, client):
+        """gemma4:12b at temperature 0 looped until Ollama aborted it. The
+        same call loops the same way, so it must not read as a server fault
+        the worker retries."""
         respx.post(f"{HOST}/api/generate").mock(
             return_value=httpx.Response(
                 500, json={"error": "prediction aborted, token repeat limit reached"}
             )
         )
-        with pytest.raises(httpx.HTTPStatusError, match="token repeat limit reached") as exc:
-            await client.generate("p")
-        assert exc.value.response.status_code == 500
+        assert await client.generate("p") == ""
+        assert client.last_meta == {"done_reason": "repeat_limit"}
 
     @respx.mock
     async def test_a_body_without_a_reason_still_raises(self, client):
@@ -200,12 +213,29 @@ class TestStreaming:
     async def test_an_error_line_raises_as_the_500_it_would_have_been(self, client):
         respx.post(f"{HOST}/api/generate").mock(
             return_value=httpx.Response(
-                200, content=ndjson({"response": "{"}, {"error": "token repeat limit reached"})
+                200, content=ndjson({"response": "{"}, {"error": "model runner crashed"})
             )
         )
-        with pytest.raises(httpx.HTTPStatusError, match="token repeat limit") as raised:
+        with pytest.raises(httpx.HTTPStatusError, match="model runner crashed") as raised:
             await client.generate("p")
         assert raised.value.response.status_code == 500
+
+    @respx.mock
+    async def test_a_repeat_limit_mid_stream_keeps_what_arrived(self, client):
+        """A cropped long receipt looped inside one description; the right
+        total had already streamed when Ollama aborted."""
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(
+                200,
+                content=ndjson(
+                    {"response": '{"total": 39.53, "line_items": [{"description": "1000_'},
+                    {"error": "prediction aborted, token repeat limit reached"},
+                ),
+            )
+        )
+        answer = await client.generate("p")
+        assert answer.startswith('{"total": 39.53')
+        assert client.last_meta == {"done_reason": "repeat_limit"}
 
 
 class TestTimeouts:

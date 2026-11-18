@@ -24,7 +24,7 @@ from igab.ai.context import error_text
 from igab.ai.reply_json import ReplyCutShort, ReplyNotJSON
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.receipt_checks import LOOPING_RUN
-from igab.integrations.ollama.client import STOP_DEADLINE, STOP_REPETITION
+from igab.integrations.ollama.client import STOP_DEADLINE, STOP_REPEAT_LIMIT, STOP_REPETITION
 
 AI_SETTINGS = "System → AI"
 THINKING_SETTING = "System → AI → Advanced → Thinking"
@@ -107,18 +107,25 @@ def _technical(cause: str | None, call: dict | None) -> str | None:
     return "\n".join(lines) or None
 
 
+#: The two ways a loop is stopped: the app's guard, or Ollama's own limit.
+_LOOP_CAUSE = {
+    STOP_REPETITION: f"Stopped: one item repeated {LOOPING_RUN} times in a row",
+    STOP_REPEAT_LIMIT: "Stopped by Ollama: token repeat limit reached",
+}
+
+
 def _cut_short(exc: ReplyCutShort, kind: str, call: dict | None, read: dict | None) -> Failure:
     """A reply cut short: never retried (the same call stops the same way)."""
     receipt = kind == "receipt"
     entry = _entry(kind)
     reached = "reaching the total" if receipt else "finishing"
-    if exc.reason == STOP_REPETITION:
+    if exc.reason in _LOOP_CAUSE:
         return Failure(
             "The model got stuck repeating one line and was stopped.",
             f"{entry}, or try a closer photo of just the bottom of the receipt."
             if receipt
             else f"{entry}.",
-            _technical(f"Stopped: one item repeated {LOOPING_RUN} times in a row", call),
+            _technical(_LOOP_CAUSE[exc.reason], call),
         )
     if exc.reason == STOP_DEADLINE:
         return Failure(

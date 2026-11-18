@@ -23,7 +23,7 @@ from igab.ai.reply_json import (
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
 from igab.domain.receipt_checks import looping_items
-from igab.integrations.ollama.client import STOP_REPETITION, OllamaClient
+from igab.integrations.ollama.client import STOP_REPEAT_LIMIT, STOP_REPETITION, OllamaClient
 from igab.repositories.category_repo import CategoryRepository
 from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
@@ -100,7 +100,7 @@ class ReadMade:
     #: Whether the call that produced the read thought; None when the model
     #: doesn't think at all.
     thinking: bool | None
-    #: Thinking ran out of room, so the read was made again without it.
+    #: Thinking ran out of room or looped, so the read was made again without it.
     thinking_fallback: bool = False
 
     def as_json(self) -> dict:
@@ -119,6 +119,19 @@ def _receipt_loop_guard(answer: str) -> str | None:
     """Stop the stream once the line items so far are one item repeating."""
     items = [obj for obj in complete_objects(answer) if "description" in obj]
     return STOP_REPETITION if looping_items(items) else None
+
+
+def _thinking_was_the_problem(reason: str, answer: str) -> bool:
+    """Whether a cut-short thinking read is worth repeating with thinking off.
+
+    Running out of room is thinking's fault. So is a loop Ollama stopped
+    before any answer was written — the loop was in the thinking. A deadline
+    would spend a second full one, and the app's own guard only sees loops in
+    the answer.
+    """
+    if reason == "length":
+        return True
+    return reason == STOP_REPEAT_LIMIT and not answer.strip()
 
 
 def _salvaged_receipt(raw: str, exc: ReplyCutShort) -> dict:
@@ -465,12 +478,10 @@ class AIService:
             try:
                 return _salvaged_receipt(raw, exc)
             except ReplyCutShort:
-                # Only running out of room is thinking's fault. A deadline
-                # would spend a second full one, and a loop is in the answer.
-                if not think or exc.reason != "length":
+                if not think or not _thinking_was_the_problem(exc.reason, raw):
                     raise
-        # Thinking used the room the answer needed and never reached the
-        # total. The same receipt read with thinking off finished in 33 s
+        # Thinking used the room the answer needed, or looped, and never
+        # reached the total. The same receipt read with thinking off finished in 33 s
         # (gemma4:12b, 60 items, 2026-11-18), so read it once more that way
         # rather than fail — and say so on the job.
         assert self.last_read is not None

@@ -110,7 +110,7 @@ export interface AIJobRead {
   /** Whether the call that produced the read thought; null when the model
    *  doesn't think at all. */
   thinking?: boolean | null
-  /** Thinking ran out of room, so the receipt was read again without it. */
+  /** Thinking ran out of room or looped, so the receipt was read again without it. */
   thinking_fallback?: boolean
 }
 
