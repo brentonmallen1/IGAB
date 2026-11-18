@@ -14,6 +14,7 @@ from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.account_move import MoveRequest, refusal_for_move
 from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.card_charges import is_interest_or_fee
+from igab.domain.category_guess import guess_category
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
 from igab.domain.merging import MergePlan, MergeSide, Refused, plan_merge
@@ -328,17 +329,19 @@ class TransactionService:
         payee = await self._resolve_payee(budget_id, data.payee_id, data.payee_name)
         payee_id = payee.id if payee else None
 
-        # Auto-categorization: use the most recent category for this payee.
-        # Falls back to default_category_id for new payees with no transaction
-        # history. Never offered to an off-budget row: a synced brokerage or
-        # mortgage row would otherwise inherit whatever category its payee
-        # last used on the checking side, recurring every sync.
+        # Auto-categorization: the payee's best-scoring rule (exact amount,
+        # nearest amount, or most recent — domain/category_guess.py), left
+        # blank when no rule has served this payee well. The payee's
+        # default_category_id answers only for a payee with no history: an
+        # abstain is a decision, and a stored default would overrule it.
+        # Never offered to an off-budget row: a synced brokerage or mortgage
+        # row would otherwise inherit whatever category its payee last used
+        # on the checking side, recurring every sync.
         category_id = data.category_id
         if payee and not category_id and data.auto_categorize and account.on_budget:
-            category_id = await self.transaction_repo.get_most_recent_category_for_payee(
-                budget_id, payee.id
-            )
-            if not category_id and payee.default_category_id:
+            history = await self.transaction_repo.recent_categorized_for_payee(budget_id, payee.id)
+            category_id = guess_category(history, data.amount).category_id
+            if not history and payee.default_category_id:
                 # The same rule the caller's own category was held to, asked
                 # rather than enforced. This resolution happens *after*
                 # `require_categorizable`, so a default pointing at a card's

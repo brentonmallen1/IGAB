@@ -418,17 +418,17 @@ async def test_auto_categorize_never_returns_a_deleted_category(db_session):
     )
     await db_session.flush()
 
-    found = await services.transactions.transaction_repo.get_most_recent_category_for_payee(
+    found = await services.transactions.transaction_repo.recent_categorized_for_payee(
         budget.id, payee.id
     )
-    assert found == groceries.id
+    assert [row.category_id for row in found] == [groceries.id]
 
     await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
 
-    after = await services.transactions.transaction_repo.get_most_recent_category_for_payee(
+    after = await services.transactions.transaction_repo.recent_categorized_for_payee(
         budget.id, payee.id
     )
-    assert after is None
+    assert after == []
 
 
 # ─── Linked categories ────────────────────────────────────────────────────────

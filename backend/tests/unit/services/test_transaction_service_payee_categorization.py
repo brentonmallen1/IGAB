@@ -2,9 +2,12 @@
 Tests for payee auto-categorization memory in TransactionService.create().
 
 Rules:
-  1. When a transaction is created with a payee but NO category, the system uses
-     the most recent category from that payee's transaction history.
-  2. If there is no transaction history, it falls back to payee.default_category_id.
+  1. When a transaction is created with a payee but NO category, the system asks
+     domain/category_guess.py for the payee's best-scoring rule over its history
+     (exact amount, nearest amount, most recent) — and leaves the row blank when
+     no rule has served the payee well.
+  2. Only if there is no transaction history does it fall back to
+     payee.default_category_id; a deliberate abstain stays blank.
   3. When a transaction is created with an explicit category, that category is used.
   4. When there is no payee at all, no category is inferred.
 
@@ -18,6 +21,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
+from igab.domain.category_guess import HistoryRow
 from igab.services.transaction_service import TransactionCreate, TransactionService
 
 from ..session_stubs import without_projected_interest, writable_session
@@ -88,7 +92,7 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     txn_repo = MagicMock()
     txn_repo.refresh = AsyncMock()
     txn_repo.create = AsyncMock(return_value=txn)
-    txn_repo.get_most_recent_category_for_payee = AsyncMock(return_value=None)
+    txn_repo.recent_categorized_for_payee = AsyncMock(return_value=[])
 
     # The default-category fallback is liveness-checked, so a deleted category
     # can never be handed to a brand-new transaction. Return the category the
@@ -135,6 +139,18 @@ def base_txn_data(**kwargs) -> TransactionCreate:
 
 
 RECENT_CAT_ID = uuid.UUID("00000000-0000-0000-0000-000000000006")
+OTHER_CAT_IDS = [uuid.UUID(f"00000000-0000-0000-0000-0000000000{n:02d}") for n in range(10, 14)]
+
+
+def mixed_history() -> list[HistoryRow]:
+    """Eight rows over four envelopes in no pattern of amount or order —
+    no rule is right 60% of the time."""
+    amounts = ["-12.00", "-55.00", "-23.00", "-80.00", "-17.00", "-34.00", "-61.00", "-9.00"]
+    rows = [
+        HistoryRow(date(2025, 12, 1 + i), D(a), OTHER_CAT_IDS[(i * 3 + i // 2) % 4])
+        for i, a in enumerate(amounts)
+    ]
+    return list(reversed(rows))
 
 
 class TestMostRecentCategoryApplied:
@@ -144,8 +160,8 @@ class TestMostRecentCategoryApplied:
         """Most recent category takes precedence over default_category_id."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
-        svc.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
-            return_value=RECENT_CAT_ID
+        svc.transaction_repo.recent_categorized_for_payee = AsyncMock(
+            return_value=[HistoryRow(date(2026, 1, 10), D("-25.00"), RECENT_CAT_ID)]
         )
 
         data = base_txn_data(payee_name="Grocery Store")
@@ -158,13 +174,46 @@ class TestMostRecentCategoryApplied:
         """Falls back to default_category_id when no transaction history exists."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
-        svc.transaction_repo.get_most_recent_category_for_payee = AsyncMock(return_value=None)
+        svc.transaction_repo.recent_categorized_for_payee = AsyncMock(return_value=[])
 
         data = base_txn_data(payee_name="Grocery Store")
         await svc.create(BUDGET_ID, data)
 
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["category_id"] == DEFAULT_CAT_ID
+
+    async def test_abstain_stays_blank_even_with_a_default(self):
+        """A payee with history that no rule serves is left blank: the
+        stored default must not overrule a deliberate abstain."""
+        payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
+        svc = make_service(payee)
+        svc.transaction_repo.recent_categorized_for_payee = AsyncMock(return_value=mixed_history())
+
+        data = base_txn_data(payee_name="Everything Store", amount=D("-30.00"))
+        await svc.create(BUDGET_ID, data)
+
+        create_call = svc.transaction_repo.create.call_args
+        assert create_call.kwargs["category_id"] is None
+
+    async def test_guess_reads_the_new_rows_amount(self):
+        """The amount being created is what the rule matches on."""
+        payee = MockPayee()
+        svc = make_service(payee)
+        history = [
+            HistoryRow(date(2026, 1, 12), D("-60.00"), OTHER_CAT_IDS[0]),
+            HistoryRow(date(2026, 1, 12), D("-180.00"), RECENT_CAT_ID),
+            HistoryRow(date(2026, 1, 5), D("-150.00"), RECENT_CAT_ID),
+            HistoryRow(date(2025, 12, 20), D("-210.00"), RECENT_CAT_ID),
+            HistoryRow(date(2025, 12, 6), D("-120.00"), RECENT_CAT_ID),
+            HistoryRow(date(2025, 11, 22), D("-165.00"), RECENT_CAT_ID),
+        ]
+        svc.transaction_repo.recent_categorized_for_payee = AsyncMock(return_value=history)
+
+        await svc.create(BUDGET_ID, base_txn_data(payee_name="Club", amount=D("-170.00")))
+        assert svc.transaction_repo.create.call_args.kwargs["category_id"] == RECENT_CAT_ID
+
+        await svc.create(BUDGET_ID, base_txn_data(payee_name="Club", amount=D("-60.00")))
+        assert svc.transaction_repo.create.call_args.kwargs["category_id"] == OTHER_CAT_IDS[0]
 
     async def test_no_category_when_no_history_and_no_default(self):
         """No category when payee has neither history nor default."""
@@ -195,8 +244,8 @@ class TestExplicitCategoryOverridesAll:
         """Explicit category_id takes precedence over most recent."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
-        svc.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
-            return_value=RECENT_CAT_ID
+        svc.transaction_repo.recent_categorized_for_payee = AsyncMock(
+            return_value=[HistoryRow(date(2026, 1, 10), D("-25.00"), RECENT_CAT_ID)]
         )
 
         data = base_txn_data(payee_name="Grocery Store", category_id=EXPLICIT_CAT_ID)
