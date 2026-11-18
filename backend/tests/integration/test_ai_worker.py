@@ -405,7 +405,8 @@ class TestReceiptFailures:
         # The copy must name where the model came from — "set a vision model"
         # is the wrong advice when the fix is changing the main model.
         assert "main model 'llama3.2'" in str(exc_info.value)
-        assert "no vision override is set" in str(exc_info.value)
+        # The headline names the model; the next step says why it was used.
+        assert "No vision override is set" in (exc_info.value.next_step or "")
         # And the failure recorder must persist the model even though the
         # processing session's job.model assignment rolls back.
         await record_job_failure(db_session, job, exc_info.value)

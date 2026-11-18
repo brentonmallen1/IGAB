@@ -25,7 +25,7 @@ const GENERIC = 'Scan failed — enter the details from the image, then approve.
  *  here — and a bare "ReadTimeout: " with nothing after it reads as the
  *  general guidance, not as a blank banner. */
 export function scanFailureReason(error: string | null | undefined): string {
-  const reason = (error ?? '').replace(/^[A-Z][a-z]+(?:[A-Z][A-Za-z]*)+:\s*/, '').trim()
+  const reason = (error ?? '').replace(/^[A-Z][a-z]+[A-Z][A-Za-z]*:\s*/, '').trim()
   return reason || GENERIC
 }
 
