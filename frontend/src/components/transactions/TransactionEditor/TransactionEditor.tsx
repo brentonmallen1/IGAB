@@ -93,7 +93,7 @@ import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 import { openAccounts, recentAccounts } from '../../../utils/accountLists'
-import { categoryForLabel } from '../../ai/draftNotes'
+import { categoryForLabel, checkStillOpen } from '../../ai/draftNotes'
 import { buildCategoryLabels } from '../../../utils/categoryLabels'
 
 interface Props {
@@ -185,6 +185,17 @@ export function TransactionEditor({
   // what is in them is not an amount; see editorAmount.ts for why that is
   // not the same answer as zero.
   const typed = editorAmount(outflow, inflow)
+
+  // A field the read failed a check on stays outlined until it no longer
+  // holds what the read put there (the banner names what was read).
+  const reviewDraft = isReview ? aiJob?.result?.draft : undefined
+  const checkedNow = { date, cents: typed?.cents ?? null }
+  const dateCheckOpen = checkStillOpen(reviewDraft, 'date', checkedNow)
+  const amountCheckOpen = checkStillOpen(reviewDraft, 'amount', checkedNow)
+  const CHECK_CLASS = ' txn-editor__input--check'
+  // The box the amount is in: outflow for a purchase, inflow for a refund.
+  const outflowCheckClass = amountCheckOpen && (typed?.cents ?? 0) < 0 ? CHECK_CLASS : ''
+  const inflowCheckClass = amountCheckOpen && (typed?.cents ?? 0) > 0 ? CHECK_CLASS : ''
 
   // Reconciled: the money is locked — amount, date, cleared state — and
   // everything else stays editable (domain/reconciliation.py, one rule).
@@ -952,7 +963,8 @@ export function TransactionEditor({
                     <label className="txn-editor__label">Date</label>
                     <input
                       type="date"
-                      className="txn-editor__input"
+                      className={`txn-editor__input${dateCheckOpen ? CHECK_CLASS : ''}`}
+                      aria-label="Date"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
                       required
@@ -1218,7 +1230,7 @@ export function TransactionEditor({
                   <div className="txn-editor__field txn-editor__field--outflow">
                     <label className="txn-editor__label">Outflow</label>
                     <AmountInput
-                      className="txn-editor__input txn-outflow"
+                      className={`txn-editor__input txn-outflow${outflowCheckClass}`}
                       value={outflow}
                       onValueChange={handleOutflowChange}
                       placeholder="0.00"
@@ -1235,7 +1247,7 @@ export function TransactionEditor({
                   <div className="txn-editor__field txn-editor__field--inflow">
                     <label className="txn-editor__label">Inflow</label>
                     <AmountInput
-                      className="txn-editor__input txn-inflow"
+                      className={`txn-editor__input txn-inflow${inflowCheckClass}`}
                       value={inflow}
                       onValueChange={handleInflowChange}
                       placeholder="0.00"

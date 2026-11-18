@@ -2,7 +2,8 @@ import { AlertTriangle, RefreshCw, Sparkles, Split } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { type AIJob, useReprocessAIJob } from '../../../api/aiJobs'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
-import { unresolvedCategoryNote } from '../../ai/draftNotes'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { draftCheckNotes, unresolvedCategoryNote } from '../../ai/draftNotes'
 import { CardEndingNotice } from '../../ai/CardEndingNotice'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
 
@@ -25,6 +26,8 @@ interface Props {
  *  the form can carry. */
 export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Props) {
   const reprocess = useReprocessAIJob(budgetId)
+  const formatters = useFormatters()
+  const checkNotes = draftCheckNotes(job.result?.draft, formatters)
   return (
     <div
       className={`txn-editor__ai-banner ${job.status === 'error' ? 'txn-editor__ai-banner--error' : ''}`}
@@ -61,6 +64,14 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
           {job.kind === 'nl_parse' && job.payload.text && (
             <span className="txn-editor__ai-banner-note">You said: “{job.payload.text}”</span>
           )}
+          {/* A field the read failed a check on, named with what was read:
+              the confidence above is already capped, but a number does not
+              say which field to look at. */}
+          {checkNotes.map((note) => (
+            <span key={note} className="txn-editor__ai-banner-note txn-editor__ai-banner-check">
+              {note}
+            </span>
+          ))}
           {unresolvedCategoryNote(job.result?.draft) && (
             <span className="txn-editor__ai-banner-note">
               {unresolvedCategoryNote(job.result?.draft)}

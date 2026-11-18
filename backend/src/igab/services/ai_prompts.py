@@ -51,6 +51,7 @@ DEFAULT_PROMPTS: dict[str, str] = {
         '  "payee": "merchant name, cleaned up (e.g. \'Whole Foods\', not'
         " 'WHOLEFDS MKT 10847'), or null if unreadable\",\n"
         '  "total": 0.00,\n'
+        '  "tender_amount": 0.00,\n'
         '  "date": "YYYY-MM-DD or null if not visible",\n'
         '  "category": "the single best-matching category NAME from the list, or null",\n'
         '  "reason": "one short sentence: why this category, mentioning the runner-up'
@@ -67,7 +68,15 @@ DEFAULT_PROMPTS: dict[str, str] = {
         ' number is shown"\n'
         "}\n\n"
         "Rules:\n"
-        "- total is the grand total actually paid, after tax and discounts.\n"
+        "- total is the grand total actually paid, after tax and discounts. Prefer the"
+        " amount on the payment line (card tender, APPROVED / AMOUNT) — it is the"
+        " amount charged. If there are several TOTAL lines, the last one before"
+        " payment is the one paid.\n"
+        "- tender_amount is the amount charged on the payment line (the card line,"
+        " APPROVED / AMOUNT), read on its own — null for cash or when no payment line"
+        " is shown.\n"
+        "- line_items: a discount, coupon, or reward line is a negative amount; every"
+        " other line is positive.\n"
         "- suggested_split: group the line items by category and distribute tax"
         " proportionally so the split amounts sum exactly to total. If everything"
         " belongs to one category, return an empty array.\n"
@@ -76,7 +85,8 @@ DEFAULT_PROMPTS: dict[str, str] = {
         " proportionally, exactly like tax — unless the receipt is solely a"
         " shipping or postage charge.\n"
         "- confidence is your overall confidence in payee+total+date, from 0 to 1.\n"
-        "- Amounts are positive numbers. Output only the JSON object."
+        "- Amounts are positive numbers, except a line item that is a discount."
+        " Output only the JSON object."
     ),
     "ai_prompt_nl_parse": (
         "Parse this natural-language description of a financial transaction into JSON.\n"

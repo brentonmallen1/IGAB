@@ -1031,6 +1031,56 @@ describe('TransactionEditor reviewing a scanned receipt', () => {
     expect(screen.getByTestId('receipt-button')).toBeInTheDocument()
     expect(screen.queryByTestId('receipt-pane')).toBeNull()
   })
+
+  describe('a read that failed its checks', () => {
+    // The date read years back and was set to today; the total disagrees
+    // with the payment line. Invented figures.
+    const checked = {
+      ...job,
+      status: 'done',
+      result: {
+        draft: {
+          payee: 'Warehouse Club',
+          amount: '-42.00',
+          date: '2030-01-10',
+          category: null,
+          memo: null,
+          confidence: 0.5,
+          checks: ['date', 'amount'],
+          date_read: '2027-07-09',
+          tender_amount: '42.30',
+          line_items_total: null,
+        },
+      },
+    } as unknown as AIJob
+
+    it('names each field in the banner', () => {
+      renderEditor({ transaction: scanned, aiJob: checked })
+      expect(screen.getByText(/The date read as .*2027.* check it\./)).toBeInTheDocument()
+      expect(
+        screen.getByText(/The total read as .*42\.00, but the payment line says .*42\.30/)
+      ).toBeInTheDocument()
+    })
+
+    it('outlines the date and the outflow box until each is changed', () => {
+      renderEditor({ transaction: scanned, aiJob: checked })
+      const dateInput = screen.getByLabelText('Date')
+      const [outflow, inflow] = amountInputs()
+      expect(dateInput).toHaveClass('txn-editor__input--check')
+      expect(outflow).toHaveClass('txn-editor__input--check')
+      expect(inflow).not.toHaveClass('txn-editor__input--check')
+
+      setDate('2030-01-09')
+      fireEvent.change(outflow, { target: { value: '42.30' } })
+      expect(dateInput).not.toHaveClass('txn-editor__input--check')
+      expect(outflow).not.toHaveClass('txn-editor__input--check')
+    })
+
+    it('outlines nothing for a read that passed', () => {
+      renderEditor({ transaction: scanned, aiJob: job })
+      expect(document.querySelector('.txn-editor__input--check')).toBeNull()
+    })
+  })
 })
 
 /**

@@ -31,25 +31,30 @@ class AttachmentService:
         self.repo = repo
         self.base_dir = Path(settings.ATTACHMENTS_DIR)
 
-    def _build_storage_path(self, txn: Transaction, filename: str) -> Path:
-        """Layout for NEW uploads only. Existing files must be located via the
-        attachment's stored storage_path — the transaction date may have been
-        edited since upload, so re-deriving the path from txn.date is wrong."""
-        txn_date: date = txn.date
+    def _build_storage_path(self, txn: Transaction, filename: str, filed_on: date) -> Path:
+        """Layout for NEW uploads: filed under the day of the upload
+        (`filed_on`), never the transaction's date. A scan's date is a
+        model's guess until someone checks it, and a guess years out
+        scattered files across the tree (reported 2026-11-17). Existing
+        files are located via the attachment's stored storage_path."""
         return (
             self.base_dir
-            / str(txn_date.year)
-            / f"{txn_date.month:02d}"
-            / f"{txn_date.day:02d}"
+            / str(filed_on.year)
+            / f"{filed_on.month:02d}"
+            / f"{filed_on.day:02d}"
             / str(txn.id)
             / filename
         )
 
+    def _new_storage_path(self, txn: Transaction, filename: str) -> Path:
+        return self._build_storage_path(txn, filename, datetime.now(UTC).date())
+
     def _resolve_path(self, attachment: TransactionAttachment, txn: Transaction) -> Path:
         if attachment.storage_path:
             return self.base_dir / attachment.storage_path
-        # Legacy rows without a stored path (pre-migration)
-        return self._build_storage_path(txn, attachment.filename)
+        # Legacy rows without a stored path (pre-migration) were filed under
+        # the transaction's date.
+        return self._build_storage_path(txn, attachment.filename, txn.date)
 
     async def upload(
         self,
@@ -77,7 +82,7 @@ class AttachmentService:
         if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
             img.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.Resampling.LANCZOS)
 
-        storage_path = self._build_storage_path(txn, filename)
+        storage_path = self._new_storage_path(txn, filename)
         storage_path.parent.mkdir(parents=True, exist_ok=True)
 
         img.save(storage_path, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
@@ -119,7 +124,7 @@ class AttachmentService:
         if page.mode != "RGB":
             page = page.convert("RGB")
 
-        storage_path = self._build_storage_path(txn, filename)
+        storage_path = self._new_storage_path(txn, filename)
         storage_path.parent.mkdir(parents=True, exist_ok=True)
         storage_path.write_bytes(file_content)
 

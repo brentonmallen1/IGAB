@@ -36,7 +36,21 @@ export interface AIJobDraft {
   card_last4?: string | null
   memo: string | null
   confidence: number
+  /** The fields the read failed a plausibility check on — a date outside
+   *  the window, a total its payment line or items disagree with
+   *  (`backend/.../domain/receipt_checks.py`). Any check has already capped
+   *  `confidence`. Absent on jobs recorded before it existed. */
+  checks?: AIJobDraftCheck[]
+  /** The date the receipt read as, when it was out of window and `date` is
+   *  today instead. */
+  date_read?: string | null
+  /** The payment line's amount, when it disagrees with the total. */
+  tender_amount?: string | null
+  /** What the line items add up to, when that disagrees with the total. */
+  line_items_total?: string | null
 }
+
+export type AIJobDraftCheck = 'date' | 'amount'
 
 export interface AIJobSplitLine {
   category: string

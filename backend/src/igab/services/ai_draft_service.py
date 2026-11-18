@@ -20,6 +20,16 @@ from typing import Any, cast
 from igab.db.models import Transaction
 from igab.domain.card_endings import card_last4
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.receipt_checks import (
+    AMOUNT,
+    DATE,
+    DATE_FUTURE_SLACK_DAYS,
+    MODEL_ROUNDING_SLACK,
+    capped_confidence,
+    checked_receipt_date,
+    line_items_disagree,
+    tender_disagrees,
+)
 from igab.domain.splits import split_balances
 from igab.services.category_matching import Candidate, canonical_label, match_category
 from igab.services.transaction_service import SplitSpec, TransactionCreate, TransactionService
@@ -30,7 +40,7 @@ _CENT = Decimal("0.01")
 #: is repaired to sum exactly before it is offered, so what reaches
 #: TransactionService always satisfies require_split_balances. The ledger
 #: invariant has no tolerance — see domain/splits.py.
-_LLM_ROUNDING_SLACK = Decimal("0.01")
+_LLM_ROUNDING_SLACK = MODEL_ROUNDING_SLACK
 # Tolerant fallbacks for models that ignore the YYYY-MM-DD instruction
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d")
 
@@ -44,12 +54,14 @@ _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d")
 # model reads the prompt and the grammar reads this. test_ai_reply_schema
 # holds the two together, and holds this to what parse_extraction reads.
 _TEXT_OR_NULL = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+_NUMBER_OR_NULL = {"anyOf": [{"type": "number"}, {"type": "null"}]}
 
 RECEIPT_REPLY_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "payee": _TEXT_OR_NULL,
         "total": {"type": "number"},
+        "tender_amount": _NUMBER_OR_NULL,
         "date": _TEXT_OR_NULL,
         "category": _TEXT_OR_NULL,
         "reason": _TEXT_OR_NULL,
@@ -80,6 +92,7 @@ RECEIPT_REPLY_SCHEMA: dict = {
     "required": [
         "payee",
         "total",
+        "tender_amount",
         "date",
         "category",
         "reason",
@@ -134,6 +147,17 @@ class AIDraft:
     #: The last four digits of the card that paid, when the receipt prints
     #: them — which account owns them is `card_ending_owner`'s question.
     card_last4: str | None = None
+    #: The fields the read failed a plausibility check on (`DATE`, `AMOUNT`
+    #: from domain/receipt_checks), for the review to point at. Any check
+    #: has already capped `confidence`.
+    checks: list[str] = field(default_factory=list)
+    #: The date the receipt was read as when it fell outside the window and
+    #: `date` is today instead.
+    date_read: datetime.date | None = None
+    #: The payment line's amount, when it disagrees with the total.
+    tender_amount: Decimal | None = None
+    #: What the line items add up to, when that disagrees with the total.
+    line_items_total: Decimal | None = None
 
 
 def _parse_amount(value: object) -> Decimal:
@@ -150,10 +174,10 @@ def _parse_amount(value: object) -> Decimal:
     return amount
 
 
-def _parse_date(value: object, client_today: datetime.date) -> datetime.date:
-    """Best-effort date parse; receipts are past events, so anything
-    unparseable or in the future falls back to today rather than failing
-    the whole extraction."""
+def _parse_date(value: object) -> datetime.date | None:
+    """Best-effort date parse; None when the model gave nothing readable.
+    Unreadable never fails the whole extraction — the caller falls back to
+    today."""
     parsed: datetime.date | None = None
     if isinstance(value, str) and value.strip():
         text = value.strip()
@@ -168,9 +192,45 @@ def _parse_date(value: object, client_today: datetime.date) -> datetime.date:
                 parsed = datetime.date.fromisoformat(text)
             except ValueError:
                 parsed = None
-    if parsed is None or parsed > client_today + datetime.timedelta(days=1):
+    return parsed
+
+
+def _description_date(parsed: datetime.date | None, client_today: datetime.date) -> datetime.date:
+    """A description's date: what the person said, or today. Not held to a
+    receipt's window — a person typing a date long past means it — but a
+    future one is still a misread."""
+    if parsed is None or parsed > client_today + datetime.timedelta(days=DATE_FUTURE_SLACK_DAYS):
         return client_today
     return parsed
+
+
+def _optional_amount(value: object) -> Decimal | None:
+    """A number the model may leave null; anything unreadable is None too."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _line_amounts(raw_items: object) -> list[Decimal]:
+    """The line items' amounts, discounts negative as the model wrote them.
+    Empty when there are none or any one is unreadable: a partial sum
+    would flag a total that is right."""
+    if not isinstance(raw_items, list):
+        return []
+    amounts: list[Decimal] = []
+    for item in raw_items:
+        amount = (
+            _optional_amount(cast(dict[str, Any], item).get("amount"))
+            if isinstance(item, dict)
+            else None
+        )
+        if amount is None:
+            return []
+        amounts.append(amount)
+    return amounts
 
 
 def _clean_str(value: object) -> str | None:
@@ -286,20 +346,40 @@ def parse_extraction(
         confidence = 0.0
 
     suggested_split = None
+    checks: list[str] = []
+    date_read = tender = line_total = None
     if kind == "receipt":
         suggested_split = _parse_split(raw.get("suggested_split"), signed, candidates)
+        dated = checked_receipt_date(_parse_date(raw.get("date")), client_today)
+        draft_date, date_read = dated.date, dated.read_as
+        if date_read is not None:
+            checks.append(DATE)
+        tender_read = _optional_amount(raw.get("tender_amount"))
+        if tender_disagrees(amount, tender_read):
+            tender = tender_read
+        lines = _line_amounts(raw.get("line_items"))
+        if line_items_disagree(amount, lines):
+            line_total = sum(lines, Decimal("0"))
+        if tender is not None or line_total is not None:
+            checks.append(AMOUNT)
+    else:
+        draft_date = _description_date(_parse_date(raw.get("date")), client_today)
 
     return AIDraft(
         payee_name=_clean_str(raw.get("payee")),
         amount=signed,
-        date=_parse_date(raw.get("date"), client_today),
+        date=draft_date,
         category_name=category_name,
         memo=_clean_str(raw.get("memo")),
-        confidence=confidence,
+        confidence=capped_confidence(confidence, checks),
         suggested_split=suggested_split,
         raw=raw,
         category_unresolved=named if named and category_name is None else None,
         card_last4=card_last4(raw.get("card_last4")) if kind == "receipt" else None,
+        checks=checks,
+        date_read=date_read,
+        tender_amount=tender,
+        line_items_total=line_total,
     )
 
 
@@ -317,6 +397,14 @@ def draft_result_json(draft: AIDraft) -> dict:
             "card_last4": draft.card_last4,
             "memo": draft.memo,
             "confidence": draft.confidence,
+            # Which fields failed a plausibility check, and what was read
+            # for each — the review names them (AIReviewBanner).
+            "checks": draft.checks,
+            "date_read": draft.date_read.isoformat() if draft.date_read else None,
+            "tender_amount": str(draft.tender_amount) if draft.tender_amount is not None else None,
+            "line_items_total": (
+                str(draft.line_items_total) if draft.line_items_total is not None else None
+            ),
         },
         "suggested_split": (
             [{"category": s.category_name, "amount": str(s.amount)} for s in draft.suggested_split]

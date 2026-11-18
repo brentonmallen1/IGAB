@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.receipt_checks import CHECKED_CONFIDENCE_CAP
 from igab.services.ai_draft_service import parse_extraction
 
 TODAY = date(2026, 8, 2)
@@ -120,9 +121,9 @@ class TestDates:
         assert draft.date == date(2026, 7, 14)
 
     def test_non_padded_iso(self):
-        # date.fromisoformat handles 2026-2-3 on 3.11+
-        draft = parse_extraction(receipt(date="2026-2-3"), kind="receipt", client_today=TODAY)
-        assert draft.date == date(2026, 2, 3)
+        # date.fromisoformat handles 2026-7-3 on 3.11+
+        draft = parse_extraction(receipt(date="2026-7-3"), kind="receipt", client_today=TODAY)
+        assert draft.date == date(2026, 7, 3)
 
     @pytest.mark.parametrize("bad", ["yesterday", "not a date", "", None, 20260714])
     def test_garbage_falls_back_to_today(self, bad):
@@ -137,6 +138,122 @@ class TestDates:
         # One day of slack for timezone skew between client and receipt
         draft = parse_extraction(receipt(date="2026-08-03"), kind="receipt", client_today=TODAY)
         assert draft.date == date(2026, 8, 3)
+
+    def test_two_years_back_is_today_with_a_check(self):
+        """A reverse-video date line read ~2 years early (reported 2026-11-17):
+        the draft takes today, flags the date, and keeps what was read."""
+        draft = parse_extraction(
+            receipt(date="2024-08-01", confidence=1.0), kind="receipt", client_today=TODAY
+        )
+        assert draft.date == TODAY
+        assert draft.checks == ["date"]
+        assert draft.date_read == date(2024, 8, 1)
+        assert draft.confidence == CHECKED_CONFIDENCE_CAP
+
+    def test_a_recent_date_is_not_flagged(self):
+        draft = parse_extraction(receipt(date="2026-07-14"), kind="receipt", client_today=TODAY)
+        assert draft.checks == [] and draft.date_read is None
+
+    def test_unreadable_date_is_today_without_a_check(self):
+        draft = parse_extraction(receipt(date=None), kind="receipt", client_today=TODAY)
+        assert draft.date == TODAY and draft.checks == []
+
+    def test_a_description_keeps_an_old_date(self):
+        """A person typing a date long past means it — the window is a
+        receipt's."""
+        draft = parse_extraction(
+            {"amount": 20, "direction": "outflow", "date": "2024-08-01"},
+            kind="nl_parse",
+            client_today=TODAY,
+        )
+        assert draft.date == date(2024, 8, 1) and draft.checks == []
+
+    def test_a_description_in_the_future_is_today(self):
+        draft = parse_extraction(
+            {"amount": 20, "date": "2027-01-01"}, kind="nl_parse", client_today=TODAY
+        )
+        assert draft.date == TODAY
+
+
+class TestAmountChecks:
+    def test_tender_mismatch_checks_the_amount_and_caps_confidence(self):
+        """The TOTAL bar read with its cents dropped; the card line has them."""
+        draft = parse_extraction(
+            receipt(total=84.00, tender_amount=84.30, confidence=1.0),
+            kind="receipt",
+            client_today=TODAY,
+        )
+        assert draft.checks == ["amount"]
+        assert draft.tender_amount == Decimal("84.30")
+        assert draft.confidence == CHECKED_CONFIDENCE_CAP
+        assert draft.amount == Decimal("-84.00")  # flagged, not overridden
+
+    def test_agreeing_tender_is_not_flagged(self):
+        draft = parse_extraction(
+            receipt(total=84.30, tender_amount=84.30, confidence=0.9),
+            kind="receipt",
+            client_today=TODAY,
+        )
+        assert draft.checks == [] and draft.confidence == 0.9
+
+    def test_line_item_mismatch_checks_the_amount_and_caps_confidence(self):
+        """Discounts added as charges: the items come to more than was paid."""
+        items = [
+            {"description": "SHALLOTS", "amount": 80.00, "category": None},
+            {"description": "TOWELS", "amount": 12.00, "category": None},
+            {"description": "INSTANT SAVINGS", "amount": 2.30, "category": None},
+        ]
+        draft = parse_extraction(
+            receipt(total=84.30, line_items=items, confidence=1.0),
+            kind="receipt",
+            client_today=TODAY,
+        )
+        assert draft.checks == ["amount"]
+        assert draft.line_items_total == Decimal("94.30")
+        assert draft.confidence == CHECKED_CONFIDENCE_CAP
+
+    def test_line_items_with_discounts_negative_reconcile(self):
+        items = [
+            {"description": "SHALLOTS", "amount": 80.00, "category": None},
+            {"description": "INSTANT SAVINGS", "amount": -2.30, "category": None},
+        ]
+        draft = parse_extraction(
+            receipt(total=83.92, line_items=items), kind="receipt", client_today=TODAY
+        )
+        assert draft.checks == []
+
+    def test_an_unreadable_line_skips_the_check(self):
+        items = [
+            {"description": "A", "amount": 80.00, "category": None},
+            {"description": "B", "amount": "??", "category": None},
+        ]
+        draft = parse_extraction(
+            receipt(total=10.00, line_items=items), kind="receipt", client_today=TODAY
+        )
+        assert draft.checks == []
+
+    def test_both_fields_flagged_together(self):
+        draft = parse_extraction(
+            receipt(date="2024-08-01", total=84.00, tender_amount=84.30),
+            kind="receipt",
+            client_today=TODAY,
+        )
+        assert draft.checks == ["date", "amount"]
+
+    def test_the_checks_are_served(self):
+        from igab.services.ai_draft_service import draft_result_json
+
+        draft = parse_extraction(
+            receipt(date="2024-08-01", total=84.00, tender_amount=84.30),
+            kind="receipt",
+            client_today=TODAY,
+        )
+        served = draft_result_json(draft)["draft"]
+        assert served["checks"] == ["date", "amount"]
+        assert served["date_read"] == "2024-08-01"
+        assert served["date"] == TODAY.isoformat()
+        assert served["tender_amount"] == "84.30"
+        assert served["line_items_total"] is None
 
 
 class TestCategories:
