@@ -5,6 +5,7 @@ import {
   cardEndingNote,
   categoryForLabel,
   checkStillOpen,
+  checkedBoxes,
   draftCheckNotes,
   labelNamesCategory,
   unresolvedCategoryNote,
@@ -237,5 +238,31 @@ describe('checkStillOpen', () => {
 
   it('is not open while the amount is unreadable', () => {
     expect(checkStillOpen(checked, 'amount', { date: '2026-09-20', cents: null })).toBe(false)
+  })
+})
+
+describe('checkedBoxes', () => {
+  const checked = draft({ amount: '-24.00', date: '2026-09-20', checks: ['date', 'amount'] })
+
+  it('outlines the box the amount sits in', () => {
+    expect(checkedBoxes(checked, { date: '2026-09-20', cents: -2400 })).toEqual({
+      date: true,
+      outflow: true,
+      inflow: false,
+    })
+    const refund = draft({ amount: '24.00', checks: ['amount'] })
+    expect(checkedBoxes(refund, { date: '2026-09-20', cents: 2400 })).toEqual({
+      date: false,
+      outflow: false,
+      inflow: true,
+    })
+  })
+
+  it('outlines nothing once both are changed', () => {
+    expect(checkedBoxes(checked, { date: '2026-09-19', cents: -2430 })).toEqual({
+      date: false,
+      outflow: false,
+      inflow: false,
+    })
   })
 })

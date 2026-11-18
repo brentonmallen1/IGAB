@@ -155,3 +155,21 @@ export function checkStillOpen(
   if (field === 'date') return current.date === draft.date
   return current.cents === toCents(parseApiDecimal(draft.amount))
 }
+
+/**
+ * Which of the editor's boxes to outline for an open check: the date, and
+ * the amount box the figure sits in — outflow for a purchase, inflow for a
+ * refund.
+ */
+export function checkedBoxes(
+  draft: AIJobDraft | undefined,
+  current: { date: string; cents: number | null }
+): { date: boolean; outflow: boolean; inflow: boolean } {
+  const amount = checkStillOpen(draft, 'amount', current)
+  const cents = current.cents ?? 0
+  return {
+    date: checkStillOpen(draft, 'date', current),
+    outflow: amount && cents < 0,
+    inflow: amount && cents > 0,
+  }
+}
