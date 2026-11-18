@@ -14,6 +14,7 @@ import type { Transaction, TransactionMatch } from '../../types'
 import { useTransaction } from '../../api/transactions'
 import { Dialog } from '../common/Dialog/Dialog'
 import { Tooltip } from '../common/Tooltip/Tooltip'
+import { hasBankRecord } from '../../utils/bankRecord'
 // After Dialog, so its one-class variations are declared after the shared ones.
 import './MatchReviewModal.css'
 
@@ -143,7 +144,7 @@ function MergedPreview({
   // replaces the user's on accept (backend domain/bank_posting.py; the
   // server decides, this only previews it).
   const bankPostedDate = manualTxn.bank_posted_date ?? syncedTxn.bank_posted_date ?? syncedTxn.date
-  const syncedIsBank = syncedTxn.has_sync_source || !!syncedTxn.sync_source
+  const syncedIsBank = hasBankRecord(syncedTxn)
   const mergedAmount = syncedIsBank ? syncedTxn.amount : manualTxn.amount
   const payeeName = manualTxn.payee_id
     ? (payeeMap.get(manualTxn.payee_id) ?? '—')

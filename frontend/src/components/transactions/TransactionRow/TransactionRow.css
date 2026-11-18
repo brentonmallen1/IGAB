@@ -669,8 +669,9 @@
   }
 }
 
-/* Entered from a schedule — provenance, same weight as the bank glyph. */
-.txn-status-icon--scheduled {
+/* Entered from a schedule, or by hand — provenance, same weight as the bank glyph. */
+.txn-status-icon--scheduled,
+.txn-status-icon--manual {
   color: var(--text-muted);
 }
 

@@ -1,9 +1,14 @@
 /**
+ * The status column's provenance glyphs, on one row harness.
+ *
  * The projected-interest badge. The server writes a loan's monthly interest
  * row from its terms and serves `projected_interest_month` on it; the row
  * says so, and stops saying so the moment the person adopts the row (an edit
  * that clears the month) — which is also why the field is in the memo
  * comparator: an adoption can move nothing else the row compares.
+ *
+ * The manual-entry glyph: a row typed in by hand with no bank record behind
+ * it. Once the bank matches it, BankRecordIcon's Link2 takes over.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -93,5 +98,38 @@ describe('projected interest badge', () => {
     expect(screen.getByLabelText(PROJECTED_INTEREST_LABEL)).toBeInTheDocument()
     rerenderRow(txn({ projected_interest_month: null }))
     expect(screen.queryByLabelText(PROJECTED_INTEREST_LABEL)).not.toBeInTheDocument()
+  })
+})
+
+describe('manual entry glyph', () => {
+  const MANUAL = 'Entered by hand'
+  const manual = (overrides: Partial<Transaction> = {}) =>
+    txn({ projected_interest_month: null, created_via: 'manual', ...overrides })
+
+  it('marks a row entered by hand', () => {
+    renderRow(manual())
+    expect(screen.getByLabelText(MANUAL)).toBeInTheDocument()
+  })
+
+  it.each(['sync', 'import', 'ynab', 'scheduled', 'ai_receipt', null])(
+    'does not mark a row created via %s',
+    (via) => {
+      renderRow(manual({ created_via: via }))
+      expect(screen.queryByLabelText(MANUAL)).not.toBeInTheDocument()
+    }
+  )
+
+  it('gives way to the bank glyph once the bank matches it', () => {
+    renderRow(manual({ has_sync_source: true }))
+    expect(screen.queryByLabelText(MANUAL)).not.toBeInTheDocument()
+  })
+
+  it('appears and drops away with created_via, though nothing else on the row moved', () => {
+    const { rerenderRow } = renderRow(manual({ created_via: 'sync' }))
+    expect(screen.queryByLabelText(MANUAL)).not.toBeInTheDocument()
+    rerenderRow(manual())
+    expect(screen.getByLabelText(MANUAL)).toBeInTheDocument()
+    rerenderRow(manual({ has_sync_source: true }))
+    expect(screen.queryByLabelText(MANUAL)).not.toBeInTheDocument()
   })
 })

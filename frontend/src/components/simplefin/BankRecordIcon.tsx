@@ -2,6 +2,7 @@ import { Landmark, Link2 } from 'lucide-react'
 import { Tooltip } from '../common/Tooltip/Tooltip'
 import type { Transaction } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
+import { hasBankRecord } from '../../utils/bankRecord'
 import './BankRecordIcon.css'
 
 /**
@@ -13,7 +14,7 @@ import './BankRecordIcon.css'
 export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
   const { formatMoney, formatDate } = useFormatters()
 
-  if (!transaction.has_sync_source && !transaction.sync_source) return null
+  if (!hasBankRecord(transaction)) return null
 
   // A row the user entered (by hand, from a schedule, or via the AI paths)
   // that the bank later matched reads differently from one the bank wrote:

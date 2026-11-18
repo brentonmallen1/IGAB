@@ -14,6 +14,7 @@ import {
   CalendarClock,
   CalendarArrowUp,
   Percent,
+  PencilLine,
 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import {
@@ -44,6 +45,7 @@ import { DatePicker } from '../../common/DatePicker/DatePicker'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import type { AnchorSource } from '../../../hooks/useAnchoredPosition'
 import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
+import { isUnmatchedManualEntry } from '../../../utils/bankRecord'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import { AccountCell, accountCellLock } from './AccountCell'
@@ -135,6 +137,8 @@ const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
   },
 ]
 
+const MANUAL_ENTRY_LABEL = 'Entered by hand'
+
 function txnPropsEqual(prev: Props, next: Props): boolean {
   if (prev.isSelected !== next.isSelected) return false
   if (prev.highlighted !== next.highlighted) return false
@@ -173,7 +177,8 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     a.counts_in_month !== b.counts_in_month ||
     a.predates_import !== b.predates_import ||
     a.bank_payee !== b.bank_payee ||
-    a.has_sync_source !== b.has_sync_source
+    a.has_sync_source !== b.has_sync_source ||
+    a.sync_source !== b.sync_source
   )
     return false
   if (prev.payeeMap !== next.payeeMap) return false
@@ -580,6 +585,20 @@ export const TransactionRow = memo(function TransactionRow({
               aria-label={lateArrivalLabel(txn.counts_in_month)}
             >
               <CalendarArrowUp size={11} />
+            </span>
+          </Tooltip>
+        )}
+        {/* Typed in by hand, and no bank record backs it yet. Once the bank
+            matches it, BankRecordIcon's Link2 says so instead. Provenance,
+            same weight as the schedule glyph. */}
+        {isUnmatchedManualEntry(txn) && (
+          <Tooltip content={MANUAL_ENTRY_LABEL}>
+            <span
+              className="txn-status-icon txn-status-icon--manual"
+              role="img"
+              aria-label={MANUAL_ENTRY_LABEL}
+            >
+              <PencilLine size={11} />
             </span>
           </Tooltip>
         )}
