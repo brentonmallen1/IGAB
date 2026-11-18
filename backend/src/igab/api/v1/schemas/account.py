@@ -91,40 +91,42 @@ class AccountResponse(ApiModel):
     simplefin_balance_date: datetime | None = None
     # Computed
     balance: Decimal = Decimal("0")
+    #: The drift fields below are all required, served together by
+    #: `api/v1/accounts._served_drift`: a path that forgets them raises
+    #: rather than serving a gap without its reason, or no gap at all.
+    #:
     #: `simplefin_balance - cleared_balance`, signed, or null when the bank
     #: has reported nothing. Served rather than computed on the client because
     #: the sync decides on the same rule whether a run is degraded
     #: (domain.bank_balance).
-    bank_drift: Decimal | None = None
+    bank_drift: Decimal | None
     #: Why the two figures differ: "agree" | "in_review" | "unposted" |
     #: "stale" | "unexplained", or null when the bank has reported nothing.
     #: The whole point of the banner — only "unexplained" means rows may be
     #: missing, and the others used to be reported as if they did.
-    bank_drift_reason: str | None = None
+    bank_drift_reason: str | None
     #: The part of `bank_drift` that `bank_unposted_cleared` and
     #: `bank_in_review` do not account for. Signed, same frame as
     #: `bank_drift`.
-    bank_drift_unexplained: Decimal | None = None
+    bank_drift_unexplained: Decimal | None
     #: Cleared money the bank has not posted against — the ledger running
     #: ahead of the feed, which is the ordinary result of ticking a hold the
     #: bank's own site already shows as posted.
-    bank_unposted_cleared: Decimal | None = None
+    bank_unposted_cleared: Decimal | None
     #: Cleared money a pending review holds beside the bank's own copy — the
     #: ledger counting a row twice until the review queue is answered
     #: (txn_filters.IN_REVIEW_CLEARED).
-    bank_in_review: Decimal | None = None
+    bank_in_review: Decimal | None
     #: Whether the sync would call this gap a fault. Served rather than
     #: re-derived from `bank_drift_reason` and `last_reconciled_at` on the
     #: client, because the sync decides it (domain.bank_balance) and a page
     #: that reached its own verdict would be free to disagree with the badge.
-    bank_drift_is_fault: bool = False
+    bank_drift_is_fault: bool
     #: The advisory beside the fault: an unreconciled bank-fed checking or
     #: savings account whose ledger has sat the same amount off the bank for
     #: the last `PERSISTENT_GAP_RUNS` syncs and still does — rows a lapsed
     #: link never delivered (domain.bank_balance.drift_persists). Not a
-    #: fault: the run is not degraded by it. Required, not defaulted: a path
-    #: that forgot to judge it must raise rather than report a standing gap
-    #: as nothing.
+    #: fault: the run is not degraded by it.
     bank_drift_persists: bool
     cleared_balance: Decimal = Decimal("0")
     uncleared_balance: Decimal = Decimal("0")

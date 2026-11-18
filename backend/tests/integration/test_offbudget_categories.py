@@ -615,9 +615,48 @@ class TestEveryAccountResponseCarriesTheSavingsFlag:
             ("update", updated.json()),
         ]:
             assert body["counts_as_savings"] is False, f"{label}: {body}"
-            # Required too: the standing-gap advisory
-            # (domain.bank_balance.drift_persists) is judged on every path.
+            # Required too: every drift field is judged on every path
+            # (api/v1/accounts._served_drift), and the bank has reported
+            # nothing for this account, so the gap fields are null.
             assert body["bank_drift_persists"] is False, f"{label}: {body}"
+            assert body["bank_drift_is_fault"] is False, f"{label}: {body}"
+            for field in (
+                "bank_drift",
+                "bank_drift_reason",
+                "bank_drift_unexplained",
+                "bank_unposted_cleared",
+                "bank_in_review",
+            ):
+                assert field in body and body[field] is None, f"{label} {field}: {body}"
+
+
+class TestAnAccountResponseWithoutItsDriftFieldsRaises:
+    """The drift fields are required, so a path that builds a response
+    straight from the row — skipping `_served_drift` — fails at validation
+    instead of serving a gap without its reason, or a standing gap as
+    nothing (CLAUDE.md, "Serving a computed field", step 4)."""
+
+    async def test_validating_the_bare_row_raises(self, db_session):
+        import pytest
+        from pydantic import ValidationError
+
+        from igab.api.v1.schemas.account import AccountResponse
+
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        account = await create_account(db_session, budget, "Harborstone Checking")
+        with pytest.raises(ValidationError) as raised:
+            AccountResponse.model_validate(account)
+        missing = {e["loc"][0] for e in raised.value.errors() if e["type"] == "missing"}
+        assert {
+            "bank_drift",
+            "bank_drift_reason",
+            "bank_drift_unexplained",
+            "bank_unposted_cleared",
+            "bank_in_review",
+            "bank_drift_is_fault",
+            "bank_drift_persists",
+        } <= missing
 
 
 class TestEveryCategoryResponseCarriesInCardSection:

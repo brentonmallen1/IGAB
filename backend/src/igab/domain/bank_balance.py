@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from igab.domain.account_types import STEADY_FEED_ACCOUNT_TYPE_KEYS
+
 ZERO = Decimal("0")
 
 
@@ -199,12 +201,6 @@ def drift_is_a_fault(explanation: DriftExplanation | None, *, reconciled: bool) 
 #: that a lapse is still well inside the bridge's 90-day reach when noticed.
 PERSISTENT_GAP_RUNS = 6
 
-#: The accounts whose gap is worth an advisory even unreconciled: bank-fed
-#: cash. A mortgage accrues interest between statements, a loan's payoff
-#: figure drifts daily and an investment moves with the market — none of
-#: those hold still, so the rule could only ever misfire on them.
-PERSISTENT_GAP_ACCOUNT_TYPES = frozenset({"checking", "savings"})
-
 
 def drift_persists(
     explanation: DriftExplanation | None,
@@ -230,11 +226,14 @@ def drift_persists(
     gap as it stands now is still that amount and unexplained — so it
     clears the moment the missing rows land, without waiting for a run.
 
-    A reconciled account already has the fault, which says more; this is
+    Only on types whose feed balance should hold still
+    (`account_types.STEADY_FEED_ACCOUNT_TYPE_KEYS`: checking and savings);
+    a loan's payoff figure drifts daily, so the rule could only misfire
+    there. A reconciled account already has the fault, which says more; this is
     never raised on one. Not a fault either way: the sync is not degraded
     by it and the badge does not light.
     """
-    if reconciled or not bank_fed or account_type not in PERSISTENT_GAP_ACCOUNT_TYPES:
+    if reconciled or not bank_fed or account_type not in STEADY_FEED_ACCOUNT_TYPE_KEYS:
         return False
     if explanation is None or explanation.reason != "unexplained":
         return False
