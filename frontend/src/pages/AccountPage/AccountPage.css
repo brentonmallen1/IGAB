@@ -105,6 +105,14 @@
   font-weight: 700;
 }
 
+/* Cleared, folded: beside the headline and a step smaller, so Working stays
+   the figure you navigate by and Cleared is the one you check the bank by. */
+.account-page__balance-headline .account-page__balance-value--secondary {
+  margin-left: var(--spacing-sm);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
 .account-page__notices {
   display: flex;
   flex-direction: column;

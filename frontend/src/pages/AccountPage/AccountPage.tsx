@@ -230,6 +230,7 @@ export function AccountPage() {
           <PageHeader title={account.name} back />
           <AccountPhoneHeader
             balance={account.balance}
+            clearedBalance={account.cleared_balance}
             formatMoney={formatMoney}
             notices={notices}
             // A debt account's main action is its payment; Reconcile moves
