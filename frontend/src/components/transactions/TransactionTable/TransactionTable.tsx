@@ -256,7 +256,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const enterScheduled = useEnterScheduledTransaction(budgetId)
   const skipScheduled = useSkipScheduledTransaction(budgetId)
 
-  const { splitEditing, startSplitEditing } = useTransactionEditStore()
+  const { splitEditing, startSplitEditing, stopSplitEditing } = useTransactionEditStore()
 
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
   // Naming, not choosing: archived categories included, so a row filed in an
@@ -529,9 +529,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       // An existing split's lines come from the server (the editor fetches
       // them); this page never holds them, so rebuilding from it produced an
       // empty draft that saved over the real lines.
+      //
+      // A toggle: the chevron again closes the editor it opened. Read from the
+      // store at call time, so the callback (a row memo input) stays stable
+      // while the draft changes under every keystroke.
+      if (useTransactionEditStore.getState().splitEditing?.transactionId === txn.id) {
+        stopSplitEditing()
+        return
+      }
       startSplitEditing(txn.id, txn.amount, txn.is_split)
     },
-    [startSplitEditing]
+    [startSplitEditing, stopSplitEditing]
   )
 
   // Bulk operations

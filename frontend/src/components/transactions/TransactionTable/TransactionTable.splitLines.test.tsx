@@ -5,7 +5,8 @@
  * row's lines rather than stacking under them.
  *
  * The running-balance toggle rides on the same harness: the order it asks
- * for, the column it draws, and the order the rows are drawn in.
+ * for, the column it draws, and the order the rows are drawn in. So does the
+ * split chevron's open/close toggle.
  *
  * The network is the mocked `apiClient`, and `useSplitLinesFor` is the real
  * hook — "no request" is asserted on the wire, not on a stubbed hook.
@@ -153,14 +154,20 @@ const lines: Transaction[] = [
   }),
 ]
 
+/** Mounted inside a `#root`, as the app is: click-away deselect judges a
+ *  press by whether it landed inside the app root. */
 function renderTable() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const root = document.createElement('div')
+  root.id = 'root'
+  document.body.appendChild(root)
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <TransactionTable accountId="acc-1" budgetId="budget-1" />
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { container: root }
   )
 }
 
@@ -189,7 +196,9 @@ beforeEach(() => {
 
 afterEach(() => {
   useUIStore.setState({ showSplitLines: false, showRunningBalance: false })
+  useUIStore.getState().clearTransactionSelection()
   useTransactionEditStore.getState().stopSplitEditing()
+  document.getElementById('root')?.remove()
 })
 
 describe('register split lines', () => {
@@ -370,5 +379,48 @@ describe('register running balance', () => {
     })
     expect(screen.queryByText('Balance')).not.toBeInTheDocument()
     expect(document.querySelector('.txn-col--balance')).toBeNull()
+  })
+})
+
+describe('register split chevron', () => {
+  const chevron = () => document.querySelector('[data-txn-id="split-1"] .txn-col--category')!
+  const editing = () => useTransactionEditStore.getState().splitEditing
+
+  it('a second click closes the editor instead of sticking on "Loading lines…"', async () => {
+    renderTable()
+    await screen.findByText('Split Transaction')
+
+    act(() => (chevron() as HTMLElement).click())
+    expect(editing()?.transactionId).toBe('split-1')
+    // The lines arrive and seed the editor.
+    await waitFor(() => expect(screen.getAllByPlaceholderText('0.00')).toHaveLength(2))
+
+    act(() => (chevron() as HTMLElement).click())
+    expect(editing()).toBeNull()
+    expect(screen.queryByText('Loading lines…')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel split' })).not.toBeInTheDocument()
+  })
+
+  it('reopens with its lines, from the same cached fetch', async () => {
+    renderTable()
+    await screen.findByText('Split Transaction')
+    act(() => (chevron() as HTMLElement).click())
+    await waitFor(() => expect(screen.getAllByPlaceholderText('0.00')).toHaveLength(2))
+    act(() => (chevron() as HTMLElement).click())
+    act(() => (chevron() as HTMLElement).click())
+
+    await waitFor(() => expect(screen.getAllByPlaceholderText('0.00')).toHaveLength(2))
+    expect(screen.queryByText('Loading lines…')).not.toBeInTheDocument()
+  })
+
+  it('a second start on the row already open keeps the draft in hand', async () => {
+    renderTable()
+    await screen.findByText('Split Transaction')
+    act(() => (chevron() as HTMLElement).click())
+    await waitFor(() => expect(editing()?.loaded).toBe(true))
+    const draft = editing()
+
+    act(() => useTransactionEditStore.getState().startSplitEditing('split-1', -100, true))
+    expect(editing()).toBe(draft)
   })
 })

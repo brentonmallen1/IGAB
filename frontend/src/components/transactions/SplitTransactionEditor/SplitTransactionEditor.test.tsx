@@ -4,7 +4,7 @@
  * only. Before this, an existing split opened with two empty lines and a
  * save replaced the real ones with them.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,9 +15,10 @@ const convertMutate = vi.hoisted(() =>
   vi.fn((_payload: Record<string, unknown>) => Promise.resolve({}))
 )
 let serverLines: unknown[] | undefined
+let linesFailed = false
 
 vi.mock('../../../api/transactions', () => ({
-  useTransactionSplits: () => ({ data: serverLines }),
+  useTransactionSplits: () => ({ data: serverLines, isError: linesFailed }),
   useConvertToSplit: () => ({ mutateAsync: convertMutate, isPending: false }),
   useReplaceSplits: () => ({ mutateAsync: replaceMutate, isPending: false }),
 }))
@@ -58,6 +59,7 @@ describe('SplitTransactionEditor', () => {
   beforeEach(() => {
     replaceMutate.mockClear()
     convertMutate.mockClear()
+    linesFailed = false
     useAppStore.setState({ currentBudgetId: 'b1' })
     useTransactionEditStore.getState().stopSplitEditing()
   })
@@ -120,5 +122,34 @@ describe('SplitTransactionEditor', () => {
       )
     ).toBe(true)
     expect(replaceMutate).not.toHaveBeenCalled()
+  })
+
+  it('re-seeds when reopened on the same row, from the same cached lines', async () => {
+    serverLines = [
+      { id: 'l1', amount: -60, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -40, category_id: 'cat-2', memo: null },
+    ]
+    useTransactionEditStore.getState().startSplitEditing(PARENT.id, -100, true)
+    renderEditor(PARENT)
+    await waitFor(() => expect(amountInputs()).toHaveLength(2))
+
+    // Closed and reopened while mounted: `lines` is the same reference, so
+    // only the reset `loaded` can tell the seed effect to run again.
+    act(() => useTransactionEditStore.getState().stopSplitEditing())
+    act(() => useTransactionEditStore.getState().startSplitEditing(PARENT.id, -100, true))
+
+    await waitFor(() => expect(amountInputs()).toHaveLength(2))
+    expect(screen.queryByText(/Loading lines/)).not.toBeInTheDocument()
+  })
+
+  it('says the lines failed rather than loading forever', () => {
+    serverLines = undefined
+    linesFailed = true
+    useTransactionEditStore.getState().startSplitEditing(PARENT.id, -100, true)
+    renderEditor(PARENT)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('could not be loaded')
+    expect(screen.queryByText(/Loading lines/)).not.toBeInTheDocument()
+    expect(screen.getByText('Save Split')).toBeDisabled()
   })
 })

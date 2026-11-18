@@ -16,6 +16,7 @@ import { apiErrorMessage } from '../../../api/client'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { Combobox } from '../../common/Combobox/Combobox'
 import { filingCategoryOptions } from '../../../utils/categoryPickers'
+import { keepsSelection } from '../../../utils/keepsSelection'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
 import './SplitTransactionEditor.css'
 
@@ -34,10 +35,16 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   const replaceSplits = useReplaceSplits(budgetId)
 
   // An existing split's lines live on the server, never in the loaded page.
-  const { data: lines } = useTransactionSplits(txn.id, txn.is_split)
+  const { data: lines, isError: linesFailed } = useTransactionSplits(txn.id, txn.is_split)
+  // `loaded` is a dependency on purpose: a reset back to "awaiting lines"
+  // (the editor reopened on this row) must re-seed from the same cached
+  // `lines`, which as a reference never changes — without it the editor sat
+  // on "Loading lines…" for good.
+  const editingThis = splitEditing?.transactionId === txn.id
+  const awaitingLines = editingThis && !splitEditing.loaded
   useEffect(() => {
-    if (lines) seedSplits(txn.id, draftsFromLines(lines))
-  }, [lines, txn.id, seedSplits])
+    if (lines && awaitingLines) seedSplits(txn.id, draftsFromLines(lines))
+  }, [lines, awaitingLines, txn.id, seedSplits])
 
   if (!splitEditing || splitEditing.transactionId !== txn.id) return null
 
@@ -75,7 +82,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   const saving = convertToSplit.isPending || replaceSplits.isPending
 
   return (
-    <div className="split-editor">
+    <div className="split-editor" {...keepsSelection}>
       <div className="split-editor__header">
         <span className="split-editor__title">
           Split <strong>{formatMoney(Math.abs(totalAmount))}</strong>
@@ -90,7 +97,11 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
         </button>
       </div>
 
-      {!loaded ? (
+      {!loaded && linesFailed ? (
+        <div className="split-editor__loading split-editor__loading--error" role="alert">
+          This split’s lines could not be loaded. Cancel and try again.
+        </div>
+      ) : !loaded ? (
         <div className="split-editor__loading" role="status">
           <RefreshCw size={14} className="spin" aria-hidden />
           Loading lines…

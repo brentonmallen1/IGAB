@@ -35,7 +35,8 @@ interface TransactionEditState {
 
   startEditing: (transactionId: string, field: EditableField) => void
   stopEditing: () => void
-  /** `awaitLines` = the row is already split; its lines arrive via seedSplits. */
+  /** `awaitLines` = the row is already split; its lines arrive via seedSplits.
+   *  Does nothing for a row whose split is already being edited. */
   startSplitEditing: (transactionId: string, totalAmount: number, awaitLines?: boolean) => void
   seedSplits: (transactionId: string, splits: SplitDraft[]) => void
   updateSplit: (tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) => void
@@ -55,6 +56,9 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
   stopEditing: () => set({ editingField: null }),
 
   startSplitEditing: (transactionId, totalAmount, awaitLines = false) => {
+    // Already open on this row: a second start would reset it to "awaiting
+    // lines" and discard the draft in hand.
+    if (get().splitEditing?.transactionId === transactionId) return
     const splits: SplitDraft[] = awaitLines
       ? []
       : [
