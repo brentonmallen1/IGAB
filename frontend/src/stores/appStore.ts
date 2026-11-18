@@ -4,6 +4,8 @@ import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
 import { currentMonthStart, monthAfterResume } from '../utils/dates'
 import {
+  DEFAULT_BUDGET_COLOR_MODE,
+  DEFAULT_CARD_OVERSPEND_TONE,
   normalizeBudgetColorMode,
   normalizeCardOverspendTone,
   type BudgetColorMode,
@@ -260,8 +262,8 @@ export const useAppStore = create<AppState>()(
       locationEnabled: false,
       privacyMode: false,
       viewportRulerOn: false,
-      budgetColors: 'full',
-      cardOverspendTone: 'red',
+      budgetColors: DEFAULT_BUDGET_COLOR_MODE,
+      cardOverspendTone: DEFAULT_CARD_OVERSPEND_TONE,
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)

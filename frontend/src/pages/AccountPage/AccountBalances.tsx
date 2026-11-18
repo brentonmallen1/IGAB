@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, CheckCircle, CircleDot } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { balanceTone } from './balanceTone'
+import { amountTone } from '../../utils/figureTone'
 
 /**
  * The account header's balance region: the fold control and the figures.
@@ -54,12 +54,12 @@ export function AccountBalances({
     <>
       {collapsed && (
         <div className="account-page__balance-headline">
-          <span className={`account-page__balance-value ${balanceTone(balance)}`}>
+          <span className={`account-page__balance-value ${amountTone(balance)}`}>
             {formatMoney(balance)}
           </span>
           <span className="account-page__balance-label">Working balance</span>
           <span
-            className={`account-page__balance-value account-page__balance-value--secondary ${balanceTone(clearedBalance)}`}
+            className={`account-page__balance-value account-page__balance-value--secondary ${amountTone(clearedBalance)}`}
           >
             {formatMoney(clearedBalance)}
           </span>
@@ -132,7 +132,7 @@ export function BalanceEquation({
           <CheckCircle size={10} />
           Cleared
         </>,
-        balanceTone(clearedBalance)
+        amountTone(clearedBalance)
       )}
       <span className="account-page__balance-op">+</span>
       {figure(
@@ -143,7 +143,7 @@ export function BalanceEquation({
         </>
       )}
       <span className="account-page__balance-op">=</span>
-      {figure(balance, 'Working balance', balanceTone(balance), true)}
+      {figure(balance, 'Working balance', amountTone(balance), true)}
     </div>
   )
 }

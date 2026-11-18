@@ -1,4 +1,5 @@
 import type { CategoryBalance } from '../types'
+import { normalizeOneOf } from './normalizeOneOf'
 
 /**
  * How a budget figure is coloured — the one home for the rule.
@@ -32,6 +33,16 @@ export type FigureRole = 'flow' | 'balance'
 /** Sign alone: above zero, zero, below. */
 export function signTone(n: number): 'positive' | 'zero' | 'negative' {
   return n > 0 ? 'positive' : n < 0 ? 'negative' : 'zero'
+}
+
+/**
+ * Sign as two readings: below zero is negative, zero and up positive. For an
+ * amount that is not a budget figure and has no muted zero — an account's
+ * Working, Cleared and Uncleared balances, a scheduled row's amount. Not
+ * `signTone`: a zero balance there reads green, not muted.
+ */
+export function amountTone(n: number): 'positive' | 'negative' {
+  return n < 0 ? 'negative' : 'positive'
 }
 
 /**
@@ -103,8 +114,10 @@ export const BUDGET_COLOR_MODE_COPY: Record<BudgetColorMode, { label: string; de
   },
 }
 
+export const DEFAULT_BUDGET_COLOR_MODE: BudgetColorMode = 'full'
+
 export function normalizeBudgetColorMode(value: unknown): BudgetColorMode {
-  return BUDGET_COLOR_MODES.includes(value as BudgetColorMode) ? (value as BudgetColorMode) : 'full'
+  return normalizeOneOf(BUDGET_COLOR_MODES, value, DEFAULT_BUDGET_COLOR_MODE)
 }
 
 /**
@@ -122,8 +135,8 @@ export function normalizeBudgetColorMode(value: unknown): BudgetColorMode {
 export const CARD_OVERSPEND_TONES = ['red', 'yellow'] as const
 export type CardOverspendTone = (typeof CARD_OVERSPEND_TONES)[number]
 
+export const DEFAULT_CARD_OVERSPEND_TONE: CardOverspendTone = 'red'
+
 export function normalizeCardOverspendTone(value: unknown): CardOverspendTone {
-  return CARD_OVERSPEND_TONES.includes(value as CardOverspendTone)
-    ? (value as CardOverspendTone)
-    : 'red'
+  return normalizeOneOf(CARD_OVERSPEND_TONES, value, DEFAULT_CARD_OVERSPEND_TONE)
 }

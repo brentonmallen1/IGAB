@@ -7,9 +7,11 @@ import { describe, expect, it } from 'vitest'
 import {
   BUDGET_COLOR_MODES,
   alarmOnly,
+  amountTone,
   availableTone,
   figureClass,
   normalizeBudgetColorMode,
+  normalizeCardOverspendTone,
   signTone,
 } from './figureTone'
 import { sumBalances } from '../components/budget/budgetTotals'
@@ -45,6 +47,24 @@ describe('availableTone', () => {
 
   it('ignores card spending on an envelope that is not negative', () => {
     expect(tone(10, 25)).toBe('positive')
+  })
+})
+
+describe('amountTone', () => {
+  // One rule for the account page's two headers, the accounts overview's
+  // Uncleared figure and a scheduled row's amount — four hand copies before.
+  it('is negative below zero and positive from zero up, with no muted zero', () => {
+    expect(amountTone(-0.01)).toBe('negative')
+    expect(amountTone(0)).toBe('positive')
+    expect(amountTone(8243.24)).toBe('positive')
+  })
+})
+
+describe('normalizeCardOverspendTone', () => {
+  it('keeps a known tone and reads anything else as red', () => {
+    expect(normalizeCardOverspendTone('yellow')).toBe('yellow')
+    expect(normalizeCardOverspendTone('amber')).toBe('red')
+    expect(normalizeCardOverspendTone(undefined)).toBe('red')
   })
 })
 

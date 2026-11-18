@@ -2,6 +2,7 @@ import type { ScheduledTransaction } from '../../../types'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../../utils/schedule'
 import { UNKNOWN_CATEGORY, type CategoryDisplay } from '../../../utils/categoryLabels'
+import { amountTone } from '../../../utils/figureTone'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './ScheduledRow.css'
 
@@ -74,7 +75,7 @@ export function ScheduledRow({
         {names.category?.name ?? UNKNOWN_CATEGORY}
       </Tooltip>
       <span className="scheduled-row__memo txn-text-clip">{s.memo ?? ''}</span>
-      <span className={`scheduled-row__amount tabular ${out ? 'negative' : 'positive'}`}>
+      <span className={`scheduled-row__amount tabular ${amountTone(s.amount)}`}>
         {formatMoney(Math.abs(s.amount))}
         <span className="scheduled-row__direction">{out ? ' out' : ' in'}</span>
       </span>

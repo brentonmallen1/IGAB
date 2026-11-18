@@ -1,5 +1,5 @@
 import { AlertTriangle, Info, SlidersHorizontal } from 'lucide-react'
-import { balanceTone } from './balanceTone'
+import { amountTone } from '../../utils/figureTone'
 import { type AccountNotice, noticesLabel, noticesTone } from './accountNotices'
 import './AccountPhoneHeader.css'
 
@@ -46,14 +46,14 @@ export function AccountPhoneHeader({
           the row still fits a 390px phone. */}
       <div className="account-phone-header__figures">
         <span
-          className={`account-phone-header__balance tabular ${balanceTone(balance)}`}
+          className={`account-phone-header__balance tabular ${amountTone(balance)}`}
           title="Working balance"
         >
           {formatMoney(balance)}
         </span>
         <span className="account-phone-header__cleared" title="Cleared balance">
           <span className="account-phone-header__cleared-label">Cleared</span>{' '}
-          <span className={`tabular ${balanceTone(clearedBalance)}`}>
+          <span className={`tabular ${amountTone(clearedBalance)}`}>
             {formatMoney(clearedBalance)}
           </span>
         </span>
