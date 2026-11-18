@@ -386,6 +386,125 @@ class TestTargetAssigned:
         assert self.ask(t, "160.00", "-5.00") == Decimal("160.00"), "already red: nothing to take"
 
 
+class TestCoverAndTarget:
+    """ "Cover + target" (`TargetService.cover_and_target_assigned`): the
+    month's spending covered and the duty on top, so Available reaches the
+    duty — assigned + max(0, duty − available). Target $100 a month unless
+    stated; figures are (assigned, activity, available), nothing carried in
+    unless stated."""
+
+    svc = TargetService(repo=None)  # type: ignore[arg-type]
+
+    def both(self, target, assigned, activity, available, *, month=MAY):
+        figures = dict(
+            assigned=Decimal(assigned),
+            activity=Decimal(activity),
+            available=Decimal(available),
+            month=month,
+        )
+        return (
+            self.svc.target_assigned(target, **figures),
+            self.svc.cover_and_target_assigned(target, **figures),
+        )
+
+    def monthly(self):
+        return make_target("monthly_funding", "100.00")
+
+    def test_a_overspend_already_covered(self):
+        # $30 spent, $30 assigned to cover it: Target says 100 and leaves 70.
+        assert self.both(self.monthly(), "30.00", "-30.00", "0") == (
+            Decimal("100.00"),
+            Decimal("130.00"),
+        ), "assigned 130, Available 100"
+
+    def test_b_overspend_partly_covered(self):
+        assert self.both(self.monthly(), "10.00", "-30.00", "-20.00") == (
+            Decimal("100.00"),
+            Decimal("130.00"),
+        )
+
+    def test_c_overspend_uncovered(self):
+        # Assigned 0 → 130: a +130 move, where Target moves +100.
+        assert self.both(self.monthly(), "0", "-30.00", "-30.00") == (
+            Decimal("100.00"),
+            Decimal("130.00"),
+        )
+
+    def test_d_target_met_then_overspent(self):
+        # Assigned 100, spent 130: Target sees the duty met and moves nothing.
+        assert self.both(self.monthly(), "100.00", "-130.00", "-30.00") == (
+            Decimal("100.00"),
+            Decimal("230.00"),
+        )
+
+    def test_e_spent_everything_it_was_given(self):
+        # Assigned 130, spent 130: Target reads 130 (nothing left to return)
+        # and moves nothing; Cover + target is +100.
+        assert self.both(self.monthly(), "130.00", "-130.00", "0") == (
+            Decimal("130.00"),
+            Decimal("230.00"),
+        )
+
+    def test_carried_in_money_counts_toward_what_is_covered(self):
+        # Carried in 50, spent 80, nothing assigned: −30, so 130 brings it to 100.
+        _, cover = self.both(self.monthly(), "0", "-80.00", "-30.00")
+        assert cover == Decimal("130.00")
+
+    def test_weekly_reads_its_weekdays(self):
+        t = make_target("weekly_funding", "50.00", weekday=FRIDAY)
+        # $50 a Friday: a 250 duty in May (five), 200 in June (four).
+        assert self.both(t, "0", "-30.00", "-30.00", month=MAY) == (
+            Decimal("250.00"),
+            Decimal("280.00"),
+        )
+        assert self.both(t, "0", "-30.00", "-30.00", month=JUNE) == (
+            Decimal("200.00"),
+            Decimal("230.00"),
+        )
+
+    def test_stop_limited_duty(self):
+        # $100 a month, stop at $1,000; carried in 960, so the duty is 40.
+        # Spent 990 with nothing assigned: Available −30, and 70 brings it
+        # to the 40 the stop still wants.
+        t = make_target("monthly_funding", "100.00", limit="1000.00")
+        assert self.both(t, "0", "-990.00", "-30.00") == (Decimal("40.00"), Decimal("70.00"))
+
+    def test_stop_already_reached_covers_and_adds_nothing(self):
+        # Carried in 1,000 (duty 0), spent 1,030: covering the 30 is all.
+        t = make_target("monthly_funding", "100.00", limit="1000.00")
+        assert self.both(t, "0", "-1030.00", "-30.00") == (Decimal("0"), Decimal("30.00"))
+
+    def test_savings_balance_is_not_offered(self):
+        # A savings balance already measures Available — there is no gap
+        # between the two readings to offer.
+        undated = make_target("savings_balance", "1000.00")
+        dated = make_target("savings_balance", "1000.00", date(2026, 8, 1))
+        assert self.both(undated, "0", "-30.00", "-30.00")[1] is None
+        assert self.both(dated, "0", "-30.00", "-30.00")[1] is None
+
+    def test_not_offered_while_the_envelope_still_holds_money(self):
+        assert self.both(self.monthly(), "100.00", "-30.00", "70.00")[1] is None
+        assert self.both(self.monthly(), "100.00", "-99.99", "0.01")[1] is None
+
+    def test_not_offered_without_spending(self):
+        assert self.both(self.monthly(), "0", "0", "0")[1] is None
+        # Overspent opening carried in, nothing spent this month.
+        assert self.both(self.monthly(), "0", "0", "-30.00")[1] is None
+        # Money arrived (a refund) and the envelope is still red.
+        assert self.both(self.monthly(), "0", "10.00", "-30.00")[1] is None
+
+    def test_not_offered_where_it_equals_the_target_figure(self):
+        # Stop reached, everything spent to exactly zero: both read 0.
+        t = make_target("monthly_funding", "100.00", limit="1000.00")
+        assert self.both(t, "0", "-1000.00", "0") == (Decimal("0"), None)
+
+    def test_rounds_to_cents(self):
+        t = make_target("monthly_funding", "33.333")
+        _, cover = self.both(t, "0", "-10.00", "-10.00")
+        assert cover == Decimal("43.33")
+        assert cover is not None and cover.as_tuple().exponent == -2
+
+
 class TestReturnable:
     """What Reduce Overfunded hands back (`TargetService.returnable`).
 

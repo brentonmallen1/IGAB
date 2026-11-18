@@ -857,6 +857,17 @@ async def get_budget_month(
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
+                cover_target_assigned=(
+                    target_service.cover_and_target_assigned(
+                        t,
+                        assigned=b.assigned,
+                        activity=b.activity,
+                        available=b.available,
+                        month=month,
+                    )
+                    if not b.in_system_group and (t := targets.get(b.category_id))
+                    else None
+                ),
                 is_card_payment=b.is_card_payment,
                 repaid_uncovered_debt=b.repaid_uncovered_debt,
                 credit_overspent=b.credit_overspent,
@@ -1188,7 +1199,14 @@ async def auto_assign_categories(
 ) -> None:
     with budget_service.changes.batch():
         if body.action == "target_amount":
-            await assign_service.set_to_targets(budget_id, body.month, body.category_ids)
+            await assign_service.set_to_targets(
+                budget_id, body.month, body.category_ids, cover_ids=body.cover_ids
+            )
+            return
+        if body.action == "cover_and_target":
+            await assign_service.set_to_targets(
+                budget_id, body.month, body.category_ids, cover_ids=body.category_ids
+            )
             return
         await budget_service.auto_assign(budget_id, body.category_ids, body.month, body.action)
 
@@ -1206,6 +1224,8 @@ def _assign_preview_out(preview: AssignPreview) -> AssignPreviewResponse:
                 current_assigned=i.current_assigned,
                 delta=i.delta,
                 new_assigned=i.new_assigned,
+                target_assigned=i.target_assigned,
+                cover_target_assigned=i.cover_target_assigned,
             )
             for i in preview.items
         ],
@@ -1254,9 +1274,11 @@ async def assign_strategy_preview(
     assign_service: Annotated[AssignService, Depends(get_assign_service)],
     month: date = Query(...),
     strategy: str = Query(...),
+    #: `target_amount` only: the categories previewed as "Cover + target".
+    cover_ids: list[uuid.UUID] = Query(default=[]),
 ) -> AssignPreviewResponse:
     try:
-        preview = await assign_service.preview(budget_id, month, strategy)
+        preview = await assign_service.preview(budget_id, month, strategy, cover_ids)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
     return _assign_preview_out(preview)
@@ -1274,7 +1296,7 @@ async def assign_strategy_apply(
     The body carries no amounts on purpose: applied deltas are derived from
     live balances, so a stale preview can never over- or mis-assign."""
     try:
-        applied = await assign_service.apply(budget_id, body.month, body.strategy)
+        applied = await assign_service.apply(budget_id, body.month, body.strategy, body.cover_ids)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
     return AssignApplyResponse(

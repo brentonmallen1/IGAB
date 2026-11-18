@@ -282,6 +282,62 @@ class TargetService:
             target, assigned=assigned, activity=activity, available=available, month=month
         )
 
+    def cover_and_target_assigned(
+        self,
+        target: CategoryTarget,
+        *,
+        assigned: Decimal,
+        activity: Decimal,
+        available: Decimal,
+        month: date,
+    ) -> Decimal | None:
+        """What ASSIGNED should read for "Cover + target": the month's
+        spending covered, and the target's duty on top — so Available
+        reaches the duty afterwards. None when the option is not offered.
+
+        `target_assigned` credits every dollar assigned toward the duty,
+        including the dollars that went to cover spending; an envelope that
+        spent what it was given reads its target as met with nothing left in
+        it. This one measures the duty against AVAILABLE instead:
+
+            assigned + max(0, duty − available)
+
+        **Offered only** for a monthly or weekly target (a savings balance
+        already measures Available — `target_assigned` IS this for it), and
+        only when spending has used everything the envelope was given:
+        `activity < 0` and `available ≤ 0`. An envelope still holding money
+        has nothing to cover. Also None where the figure would equal
+        `target_assigned`, so the choice is never between two equal numbers.
+
+        Target $100 a month (cents; nothing carried in unless stated):
+
+        - **A** — $30 spent and already covered (assigned 30, Available 0):
+          130, Available 100. Target amount says 100, which leaves 70.
+        - **B** — $30 spent, $10 of it covered (assigned 10, Available −20):
+          130, Available 100.
+        - **C** — $30 spent, uncovered (assigned 0, Available −30): 130,
+          a +130 move. Target amount moves +100 and leaves 70.
+        - **D** — assigned 100, $130 spent (Available −30): 230, +130.
+          Target amount sees the duty met and moves nothing.
+        - **E** — assigned 130, $130 spent (Available 0): 230, offered as
+          +100. Target amount reads 130 and moves nothing.
+
+        A weekly target's duty counts its weekdays in the month; a target
+        with a stop uses its stop-limited duty (`duty`), so one whose stop
+        is already reached covers the spending and adds nothing more.
+        """
+        kind = TargetType(target.target_type)
+        if kind not in CAPPABLE or activity >= ZERO or available > ZERO:
+            return None
+        duty = self.duty(
+            target, assigned=assigned, activity=activity, available=available, month=month
+        )
+        figure = quantize_cents(assigned + max(ZERO, duty - available))
+        plain = self.target_assigned(
+            target, assigned=assigned, activity=activity, available=available, month=month
+        )
+        return None if figure == plain else figure
+
     def returnable(
         self,
         target: CategoryTarget,
