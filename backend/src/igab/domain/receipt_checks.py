@@ -8,15 +8,16 @@ Nothing here tries to read the receipt better. These rules say when the read
 contradicts itself or the calendar, so the review can point at the field
 instead of showing a confident number.
 
-Each check names the draft field a person should look at — ``"date"`` or
-``"amount"`` — and any check caps the model's confidence: a read that failed
-one is not 100% sure of anything.
+Each check names the draft field a person should look at (a `ReceiptCheck`),
+and any check caps the model's confidence: a read that failed one is not
+100% sure of anything.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from enum import StrEnum
 
 #: How far back a receipt's date may fall before the read is treated as a
 #: misread. A scan is almost always days old, not months; a date beyond
@@ -38,8 +39,19 @@ MODEL_ROUNDING_SLACK = Decimal("0.01")
 #: The highest confidence a read that failed any check may carry.
 CHECKED_CONFIDENCE_CAP = 0.5
 
-DATE = "date"
-AMOUNT = "amount"
+
+class ReceiptCheck(StrEnum):
+    """The draft field a failed check points at — the frontend's
+    `AIJobDraftCheck` union spells the same two values."""
+
+    DATE = "date"
+    AMOUNT = "amount"
+
+
+def past_tomorrow(read: date, today: date) -> bool:
+    """A read date later than tomorrow: a misread, since what was read
+    already happened — a receipt and a description alike."""
+    return read > today + timedelta(days=DATE_FUTURE_SLACK_DAYS)
 
 
 @dataclass(frozen=True)
@@ -58,11 +70,9 @@ def checked_receipt_date(read: date | None, today: date) -> CheckedDate:
     none exist, and today is the right guess for a fresh scan."""
     if read is None:
         return CheckedDate(date=today, read_as=None)
-    earliest = today - timedelta(days=RECEIPT_DATE_WINDOW_DAYS)
-    latest = today + timedelta(days=DATE_FUTURE_SLACK_DAYS)
-    if earliest <= read <= latest:
-        return CheckedDate(date=read, read_as=None)
-    return CheckedDate(date=today, read_as=read)
+    if read < today - timedelta(days=RECEIPT_DATE_WINDOW_DAYS) or past_tomorrow(read, today):
+        return CheckedDate(date=today, read_as=read)
+    return CheckedDate(date=read, read_as=None)
 
 
 def tender_disagrees(total: Decimal, tender: Decimal | None) -> bool:
@@ -74,19 +84,21 @@ def tender_disagrees(total: Decimal, tender: Decimal | None) -> bool:
     return tender.copy_abs() != total.copy_abs()
 
 
-def line_items_disagree(total: Decimal, line_amounts: Sequence[Decimal]) -> bool:
-    """The items, discounts negative, do not add up to the total within
-    the tax tolerance. No items read checks nothing."""
+def line_items_mismatch(total: Decimal, line_amounts: Sequence[Decimal]) -> Decimal | None:
+    """What the items add up to (discounts negative) when that disagrees
+    with the total beyond the tax tolerance, for the review to name; None
+    when they agree. No items read checks nothing."""
     if not line_amounts:
-        return False
-    items = sum(line_amounts, Decimal("0")).copy_abs()
+        return None
+    line_sum = sum(line_amounts, Decimal("0"))
+    items = line_sum.copy_abs()
     paid = total.copy_abs()
-    if items > paid + MODEL_ROUNDING_SLACK:
-        return True
-    return paid > items * (1 + LINE_ITEM_TAX_TOLERANCE) + MODEL_ROUNDING_SLACK
+    over = items > paid + MODEL_ROUNDING_SLACK
+    under = paid > items * (1 + LINE_ITEM_TAX_TOLERANCE) + MODEL_ROUNDING_SLACK
+    return line_sum if over or under else None
 
 
-def capped_confidence(confidence: float, checks: Sequence[str]) -> float:
+def capped_confidence(confidence: float, checks: Sequence[ReceiptCheck]) -> float:
     """The model's confidence, held at `CHECKED_CONFIDENCE_CAP` when any
     field failed a check."""
     return min(confidence, CHECKED_CONFIDENCE_CAP) if checks else confidence

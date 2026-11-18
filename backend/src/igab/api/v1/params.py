@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Query, status
 
 from igab.services.report_day import reader_today
+from igab.utils.clock import recorded_on
 
 
 def parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
@@ -60,3 +61,21 @@ def _reader_today(client_today: Annotated[date | None, Query()] = None) -> date:
 #: `services/report_day.py` for why that is a different day every evening.
 #: Resolved here, once, so an endpoint receives a date rather than a choice.
 ReaderToday = Annotated[date, Depends(_reader_today)]
+
+
+def parse_form_client_today(value: str | None) -> date:
+    """The multipart spelling of `ClientDated`: an upload takes Form fields,
+    so the date arrives as a string and is parsed by hand rather than by
+    pydantic. The ranking itself is `clock.recorded_on`, so the receipt
+    flow, attachment uploads and the asset/liability bodies cannot drift
+    about which clock wins.
+    """
+    if not value:
+        return recorded_on(None, None)
+    try:
+        return recorded_on(None, date.fromisoformat(value))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="client_today must be an ISO date (YYYY-MM-DD)",
+        )

@@ -96,6 +96,9 @@ import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 import { categoryForLabel, checkStillOpen } from '../../ai/draftNotes'
 import { buildCategoryLabels } from '../../../utils/categoryLabels'
 
+/** Outlines a date or amount box a receipt check points at (see CSS). */
+const CHECK_CLASS = ' txn-editor__input--check'
+
 interface Props {
   budgetId: string
   /** Fixed account context (account page). Omit to let the user pick the
@@ -192,7 +195,6 @@ export function TransactionEditor({
   const checkedNow = { date, cents: typed?.cents ?? null }
   const dateCheckOpen = checkStillOpen(reviewDraft, 'date', checkedNow)
   const amountCheckOpen = checkStillOpen(reviewDraft, 'amount', checkedNow)
-  const CHECK_CLASS = ' txn-editor__input--check'
   // The box the amount is in: outflow for a purchase, inflow for a refund.
   const outflowCheckClass = amountCheckOpen && (typed?.cents ?? 0) < 0 ? CHECK_CLASS : ''
   const inflowCheckClass = amountCheckOpen && (typed?.cents ?? 0) > 0 ? CHECK_CLASS : ''

@@ -1,10 +1,11 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from igab.api.route import CommitRoute
+from igab.api.v1.params import parse_form_client_today
 from igab.api.v1.schemas.attachment import AttachmentResponse, AttachmentRotateRequest
 from igab.dependencies import (
     AttachmentAccess,
@@ -66,6 +67,7 @@ async def upload_attachment(
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
     recorder: Recorder,
     file: UploadFile = File(...),
+    client_today: str | None = Form(None),
 ) -> AttachmentResponse:
     txn = await txn_repo.get(transaction_id)
     if txn is None:
@@ -90,6 +92,7 @@ async def upload_attachment(
             file_content=content,
             original_filename=file.filename or "attachment",
             content_type=file.content_type or "image/jpeg",
+            client_today=parse_form_client_today(client_today),
         )
     except ValueError as e:
         # Corrupt/unreadable PDF or image

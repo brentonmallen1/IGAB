@@ -196,17 +196,28 @@ class TestStoredImageCompression:
         assert (tmp_path / att.storage_path).read_bytes() == pdf
 
 
-async def test_a_new_file_is_filed_under_the_upload_date(service, tmp_path):
+async def test_a_new_file_is_filed_under_the_uploaders_day(service):
     """Not the transaction's date: a scan's date is a model's guess, and a
-    guess years out filed the receipt under that year (reported 2026-11-17)."""
-    from datetime import UTC, datetime
-
+    guess years out filed the receipt under that year (reported 2026-11-17).
+    The uploader's own day, so an evening upload west of UTC is not filed
+    under tomorrow."""
     txn = SimpleNamespace(id=uuid.uuid4(), date=date(2024, 3, 10))
-    before = datetime.now(UTC).date()
+    attachment = await service.upload(
+        txn=txn,
+        file_content=_png_bytes(),
+        original_filename="r.png",
+        content_type="image/png",
+        client_today=date(2026, 11, 16),
+    )
+    assert attachment.storage_path.startswith(f"2026/11/16/{txn.id}/")
+
+
+async def test_without_the_uploaders_day_the_servers_is_used(service, monkeypatch):
+    from igab.utils import clock
+
+    monkeypatch.setattr(clock, "today_utc", lambda: date(2026, 11, 17))
+    txn = SimpleNamespace(id=uuid.uuid4(), date=date(2024, 3, 10))
     attachment = await service.upload(
         txn=txn, file_content=_png_bytes(), original_filename="r.png", content_type="image/png"
     )
-    after = datetime.now(UTC).date()
-    filed = attachment.storage_path.split("/")[:3]
-    assert filed in ([str(d.year), f"{d.month:02d}", f"{d.day:02d}"] for d in {before, after})
-    assert "2024" not in attachment.storage_path
+    assert attachment.storage_path.startswith("2026/11/17/")

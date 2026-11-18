@@ -14,33 +14,26 @@ import datetime
 import uuid
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, cast
 
 from igab.db.models import Transaction
 from igab.domain.card_endings import card_last4
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.money import model_cents
 from igab.domain.receipt_checks import (
-    AMOUNT,
-    DATE,
-    DATE_FUTURE_SLACK_DAYS,
     MODEL_ROUNDING_SLACK,
+    ReceiptCheck,
     capped_confidence,
     checked_receipt_date,
-    line_items_disagree,
+    line_items_mismatch,
+    past_tomorrow,
     tender_disagrees,
 )
 from igab.domain.splits import split_balances
 from igab.services.category_matching import Candidate, canonical_label, match_category
 from igab.services.transaction_service import SplitSpec, TransactionCreate, TransactionService
 
-_CENT = Decimal("0.01")
-#: How far a model's own arithmetic may be off before we refuse its split.
-#: This is slack for the MODEL, not for the ledger: a split that survives it
-#: is repaired to sum exactly before it is offered, so what reaches
-#: TransactionService always satisfies require_split_balances. The ledger
-#: invariant has no tolerance — see domain/splits.py.
-_LLM_ROUNDING_SLACK = MODEL_ROUNDING_SLACK
 # Tolerant fallbacks for models that ignore the YYYY-MM-DD instruction
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d")
 
@@ -147,10 +140,9 @@ class AIDraft:
     #: The last four digits of the card that paid, when the receipt prints
     #: them — which account owns them is `card_ending_owner`'s question.
     card_last4: str | None = None
-    #: The fields the read failed a plausibility check on (`DATE`, `AMOUNT`
-    #: from domain/receipt_checks), for the review to point at. Any check
-    #: has already capped `confidence`.
-    checks: list[str] = field(default_factory=list)
+    #: The fields the read failed a plausibility check on, for the review to
+    #: point at. Any check has already capped `confidence`.
+    checks: list[ReceiptCheck] = field(default_factory=list)
     #: The date the receipt was read as when it fell outside the window and
     #: `date` is today instead.
     date_read: datetime.date | None = None
@@ -163,11 +155,8 @@ class AIDraft:
 def _parse_amount(value: object) -> Decimal:
     if value is None:
         raise InvariantViolation("AI extraction returned no amount")
-    if isinstance(value, bool):  # bool is an int subclass; reject explicitly
-        raise InvariantViolation(f"AI extraction returned a non-numeric amount: {value!r}")
-    try:
-        amount = Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError):
+    amount = model_cents(value)
+    if amount is None:
         raise InvariantViolation(f"AI extraction returned a non-numeric amount: {value!r}")
     if amount == 0:
         raise InvariantViolation("AI extraction returned a zero amount")
@@ -199,19 +188,9 @@ def _description_date(parsed: datetime.date | None, client_today: datetime.date)
     """A description's date: what the person said, or today. Not held to a
     receipt's window — a person typing a date long past means it — but a
     future one is still a misread."""
-    if parsed is None or parsed > client_today + datetime.timedelta(days=DATE_FUTURE_SLACK_DAYS):
+    if parsed is None or past_tomorrow(parsed, client_today):
         return client_today
     return parsed
-
-
-def _optional_amount(value: object) -> Decimal | None:
-    """A number the model may leave null; anything unreadable is None too."""
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        return Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError):
-        return None
 
 
 def _line_amounts(raw_items: object) -> list[Decimal]:
@@ -223,7 +202,7 @@ def _line_amounts(raw_items: object) -> list[Decimal]:
     amounts: list[Decimal] = []
     for item in raw_items:
         amount = (
-            _optional_amount(cast(dict[str, Any], item).get("amount"))
+            model_cents(cast(dict[str, Any], item).get("amount"))
             if isinstance(item, dict)
             else None
         )
@@ -261,9 +240,11 @@ def _parse_split(
     """Validate a suggested split.
 
     Offerable only when every line's category resolves against the budget and
-    the lines sum to the total within `_LLM_ROUNDING_SLACK`. Anything else
-    returns None — the raw line_items stay in the job result for display, but
-    we never offer a split we can't apply.
+    the lines sum to the total within `MODEL_ROUNDING_SLACK`. That is slack
+    for the MODEL, not for the ledger, whose invariant has no tolerance (see
+    domain/splits.py). Anything else returns None — the raw line_items stay
+    in the job result for display, but we never offer a split we can't
+    apply.
 
     A surviving split whose lines are a cent out is repaired here rather than
     passed along: the residual is absorbed into the last line so the result
@@ -282,17 +263,14 @@ def _parse_split(
         matched = match_category(name, candidates)
         if matched is None:
             return None
-        try:
-            line_amount = Decimal(str(entry.get("amount"))).quantize(_CENT, rounding=ROUND_HALF_UP)
-        except (InvalidOperation, ValueError, TypeError):
-            return None
-        if line_amount == 0:
+        line_amount = model_cents(entry.get("amount"))
+        if line_amount is None or line_amount == 0:
             return None
         # Model amounts are positive; carry the draft's sign
         signed = -line_amount.copy_abs() if total < 0 else line_amount.copy_abs()
         running += signed
         lines.append(SplitLine(category_name=canonical_label(matched, candidates), amount=signed))
-    if (running - total).copy_abs() > _LLM_ROUNDING_SLACK:
+    if (running - total).copy_abs() > MODEL_ROUNDING_SLACK:
         return None
 
     # Absorb the model's rounding residual into the last line, then hold the
@@ -346,22 +324,20 @@ def parse_extraction(
         confidence = 0.0
 
     suggested_split = None
-    checks: list[str] = []
+    checks: list[ReceiptCheck] = []
     date_read = tender = line_total = None
     if kind == "receipt":
         suggested_split = _parse_split(raw.get("suggested_split"), signed, candidates)
         dated = checked_receipt_date(_parse_date(raw.get("date")), client_today)
         draft_date, date_read = dated.date, dated.read_as
         if date_read is not None:
-            checks.append(DATE)
-        tender_read = _optional_amount(raw.get("tender_amount"))
+            checks.append(ReceiptCheck.DATE)
+        tender_read = model_cents(raw.get("tender_amount"))
         if tender_disagrees(amount, tender_read):
             tender = tender_read
-        lines = _line_amounts(raw.get("line_items"))
-        if line_items_disagree(amount, lines):
-            line_total = sum(lines, Decimal("0"))
+        line_total = line_items_mismatch(amount, _line_amounts(raw.get("line_items")))
         if tender is not None or line_total is not None:
-            checks.append(AMOUNT)
+            checks.append(ReceiptCheck.AMOUNT)
     else:
         draft_date = _description_date(_parse_date(raw.get("date")), client_today)
 
@@ -399,7 +375,7 @@ def draft_result_json(draft: AIDraft) -> dict:
             "confidence": draft.confidence,
             # Which fields failed a plausibility check, and what was read
             # for each — the review names them (AIReviewBanner).
-            "checks": draft.checks,
+            "checks": [check.value for check in draft.checks],
             "date_read": draft.date_read.isoformat() if draft.date_read else None,
             "tender_amount": str(draft.tender_amount) if draft.tender_amount is not None else None,
             "line_items_total": (

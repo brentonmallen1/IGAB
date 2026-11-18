@@ -56,7 +56,9 @@ class TestReceiptAmounts:
         draft = parse_extraction(receipt(total=0.1 + 0.2), kind="receipt", client_today=TODAY)
         assert draft.amount == Decimal("-0.30")
 
-    @pytest.mark.parametrize("bad", [0, 0.0, "0.00", None, "abc", "", [], {}, True, False])
+    @pytest.mark.parametrize(
+        "bad", [0, 0.0, "0.00", None, "abc", "", [], {}, True, False, "NaN", "inf"]
+    )
     def test_zero_or_garbage_total_raises(self, bad):
         with pytest.raises(InvariantViolation):
             parse_extraction(

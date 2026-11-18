@@ -374,6 +374,7 @@ async def finish_placement(
             file_bytes,
             payload.get("original_filename") or "receipt.jpg",
             payload.get("content_type") or "image/jpeg",
+            client_today=_client_today(job),
         )
         job.attachment_id = attachment.id
     job.transaction_id = txn.id

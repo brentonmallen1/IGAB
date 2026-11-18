@@ -5,13 +5,15 @@ from decimal import Decimal
 
 import pytest
 
+from igab.domain.money import model_cents
 from igab.domain.receipt_checks import (
     CHECKED_CONFIDENCE_CAP,
     LINE_ITEM_TAX_TOLERANCE,
     RECEIPT_DATE_WINDOW_DAYS,
     capped_confidence,
     checked_receipt_date,
-    line_items_disagree,
+    line_items_mismatch,
+    past_tomorrow,
     tender_disagrees,
 )
 
@@ -69,35 +71,58 @@ class TestTender:
 
 class TestLineItems:
     def test_items_plus_tax_inside_the_tolerance(self):
-        assert not line_items_disagree(D("108.00"), [D("60.00"), D("40.00")])
+        assert line_items_mismatch(D("108.00"), [D("60.00"), D("40.00")]) is None
 
     def test_items_exactly_the_total(self):
-        assert not line_items_disagree(D("100.00"), [D("60.00"), D("40.00")])
+        assert line_items_mismatch(D("100.00"), [D("60.00"), D("40.00")]) is None
 
     def test_discounts_negative_reconcile(self):
-        assert not line_items_disagree(D("93.50"), [D("50.00"), D("50.00"), D("-6.50")])
+        assert line_items_mismatch(D("93.50"), [D("50.00"), D("50.00"), D("-6.50")]) is None
 
     def test_discounts_read_as_charges_disagree(self):
-        """Discounts added as positive: the items come to more than was paid."""
-        assert line_items_disagree(D("84.30"), [D("80.00"), D("12.00"), D("2.30"), D("4.20")])
+        """Discounts added as positive: the items come to more than was paid,
+        and the sum is what the review names."""
+        items = [D("80.00"), D("12.00"), D("2.30"), D("4.20")]
+        assert line_items_mismatch(D("84.30"), items) == D("98.50")
 
     def test_a_cent_of_model_rounding_either_way(self):
-        assert not line_items_disagree(D("100.00"), [D("100.01")])
+        assert line_items_mismatch(D("100.00"), [D("100.01")]) is None
 
     def test_items_over_the_total_by_more_than_rounding(self):
-        assert line_items_disagree(D("100.00"), [D("100.02")])
+        assert line_items_mismatch(D("100.00"), [D("100.02")]) is not None
 
     def test_total_beyond_the_tax_tolerance(self):
         items = D("100.00")
         over = items * (1 + LINE_ITEM_TAX_TOLERANCE) + D("0.02")
-        assert line_items_disagree(over, [items])
+        assert line_items_mismatch(over, [items]) is not None
 
     def test_total_at_the_tax_tolerance(self):
         items = D("100.00")
-        assert not line_items_disagree(items * (1 + LINE_ITEM_TAX_TOLERANCE), [items])
+        assert line_items_mismatch(items * (1 + LINE_ITEM_TAX_TOLERANCE), [items]) is None
 
     def test_no_items(self):
-        assert not line_items_disagree(D("84.30"), [])
+        assert line_items_mismatch(D("84.30"), []) is None
+
+
+class TestFutureDates:
+    def test_tomorrow_is_not_past_tomorrow(self):
+        assert not past_tomorrow(TODAY + timedelta(days=1), TODAY)
+
+    def test_the_day_after_is(self):
+        assert past_tomorrow(TODAY + timedelta(days=2), TODAY)
+
+
+class TestModelCents:
+    @pytest.mark.parametrize(
+        ("value", "cents"),
+        [(5.499, D("5.50")), (0.1 + 0.2, D("0.30")), ("19.99", D("19.99")), (2.345, D("2.35"))],
+    )
+    def test_half_up_to_the_cent(self, value, cents):
+        assert model_cents(value) == cents
+
+    @pytest.mark.parametrize("bad", [None, True, False, "abc", "", [], {}, "nan", "inf"])
+    def test_no_number_is_none(self, bad):
+        assert model_cents(bad) is None
 
 
 class TestConfidence:

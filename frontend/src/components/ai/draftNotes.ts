@@ -153,5 +153,5 @@ export function checkStillOpen(
 ): boolean {
   if (!draft?.checks?.includes(field)) return false
   if (field === 'date') return current.date === draft.date
-  return current.cents === toCents(draft.amount)
+  return current.cents === toCents(parseApiDecimal(draft.amount))
 }
