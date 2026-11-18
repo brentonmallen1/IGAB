@@ -34,7 +34,7 @@ import {
 import { moveItem } from '../../utils/listOrder'
 import { useDeleteCategoryFlow } from '../../components/budget/DeleteCategoryModal/useDeleteCategoryFlow'
 import './BudgetPage.css'
-import { useDeselectOnOutsidePointer } from './useDeselectOnOutsidePointer'
+import { useDeselectOnOutsidePointer } from '../../hooks/useDeselectOnOutsidePointer'
 import { confirmAsync } from '../../stores/confirmStore'
 
 export function BudgetPage() {
