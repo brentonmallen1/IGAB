@@ -5,8 +5,9 @@
  * row's lines rather than stacking under them.
  *
  * The running-balance toggle rides on the same harness: the order it asks
- * for, the column it draws, and the order the rows are drawn in. So does the
- * split chevron's open/close toggle.
+ * for, the column it draws, and the order the rows are drawn in. So do the
+ * split chevron's open/close toggle, select-all's three steps, and
+ * click-away deselect.
  *
  * The network is the mocked `apiClient`, and `useSplitLinesFor` is the real
  * hook — "no request" is asserted on the wire, not on a stubbed hook.
@@ -422,5 +423,93 @@ describe('register split chevron', () => {
 
     act(() => useTransactionEditStore.getState().startSplitEditing('split-1', -100, true))
     expect(editing()).toBe(draft)
+  })
+})
+
+describe('register select all', () => {
+  const locked = makeTransaction({
+    id: 'locked-1',
+    account_id: 'acc-1',
+    amount: -25,
+    category_id: 'cat-groceries',
+    cleared: 'reconciled',
+  })
+  const selected = () => [...useUIStore.getState().selectedTransactionIds].sort()
+  const header = () =>
+    screen.getByRole('checkbox', { name: 'Select all transactions' }) as HTMLInputElement
+
+  beforeEach(() => {
+    h.rows = [plain, locked]
+  })
+
+  it('reconciled rows are locked, so the first click leaves them out', async () => {
+    renderTable()
+    await screen.findAllByText('Groceries')
+
+    act(() => header().click())
+    expect(selected()).toEqual(['plain-1'])
+    expect(header().indeterminate).toBe(true)
+    expect(header().checked).toBe(false)
+
+    act(() => header().click())
+    expect(selected()).toEqual(['locked-1', 'plain-1'])
+    expect(header().indeterminate).toBe(false)
+    expect(header().checked).toBe(true)
+
+    act(() => header().click())
+    expect(selected()).toEqual([])
+  })
+})
+
+describe('register click-away deselect', () => {
+  const press = (el: Element) =>
+    act(() => {
+      el.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    })
+  const selectedCount = () => useUIStore.getState().selectedTransactionIds.size
+
+  beforeEach(() => {
+    h.rows = [plain]
+  })
+
+  async function renderSelected() {
+    renderTable()
+    await screen.findByText('Groceries')
+    act(() => useUIStore.getState().selectAllTransactions(['plain-1']))
+    expect(selectedCount()).toBe(1)
+  }
+
+  it('a press on page chrome clears the selection', async () => {
+    await renderSelected()
+    press(screen.getByRole('button', { name: 'Payee' }))
+    expect(selectedCount()).toBe(0)
+  })
+
+  it('a press on a row, even one of its cells, keeps it', async () => {
+    await renderSelected()
+    press(document.querySelector('[data-txn-id="plain-1"] .txn-col--memo')!)
+    expect(selectedCount()).toBe(1)
+  })
+
+  it('a press on the selection bar keeps it', async () => {
+    await renderSelected()
+    press(document.querySelector('.fsb')!)
+    expect(selectedCount()).toBe(1)
+  })
+
+  it('a press on the select-all control keeps it (it acts on the selection)', async () => {
+    await renderSelected()
+    press(screen.getByRole('checkbox', { name: 'Select all transactions' }))
+    expect(selectedCount()).toBe(1)
+  })
+
+  it('a press in a menu portalled outside the app root keeps it', async () => {
+    await renderSelected()
+    const menu = document.createElement('div')
+    menu.setAttribute('role', 'menu')
+    document.body.appendChild(menu)
+    press(menu)
+    menu.remove()
+    expect(selectedCount()).toBe(1)
   })
 })

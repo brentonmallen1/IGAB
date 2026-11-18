@@ -46,6 +46,7 @@ import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/Cont
 import type { AnchorSource } from '../../../hooks/useAnchoredPosition'
 import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
 import { isUnmatchedManualEntry } from '../../../utils/bankRecord'
+import { keepsSelection } from '../../../utils/keepsSelection'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import { AccountCell, accountCellLock } from './AccountCell'
@@ -502,6 +503,7 @@ export const TransactionRow = memo(function TransactionRow({
       onDoubleClick={() => !isMobile && onEdit(txn)}
       onContextMenu={handleContextMenu}
       {...(isMobile ? longPress : {})}
+      {...keepsSelection}
     >
       {/* Checkbox */}
       <div className="txn-col txn-col--checkbox" onClick={(e) => e.stopPropagation()}>

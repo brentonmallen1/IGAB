@@ -9,6 +9,7 @@ import {
 } from '../categoryCell'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import type { NamedCategory } from '../../../utils/categoryLabels'
+import { keepsSelection } from '../../../utils/keepsSelection'
 import type { Transaction } from '../../../types'
 import './SplitLineRows.css'
 
@@ -54,7 +55,7 @@ export const SplitLineRows = memo(function SplitLineRows({
         : null
 
   return (
-    <div className="split-lines" role="group" aria-label="Split lines">
+    <div className="split-lines" role="group" aria-label="Split lines" {...keepsSelection}>
       {lines.map((line) => {
         // A line is never a split itself, so its label is a category, a
         // needs-category, or a transfer — the register row's own rule.

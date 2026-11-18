@@ -74,6 +74,7 @@ import {
   withinLedgerFrontier,
 } from './registerOrder'
 import { registerPayAction } from './payButton'
+import { selectAllStep } from './selectAll'
 import {
   sectionOpen,
   shouldDropSearch,
@@ -81,6 +82,8 @@ import {
   upcomingOpen,
 } from './highlightReveal'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useDeselectOnOutsidePointer } from '../../../hooks/useDeselectOnOutsidePointer'
+import { keepsSelection } from '../../../utils/keepsSelection'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
 import { accountNameMap, openAccounts } from '../../../utils/accountLists'
@@ -235,6 +238,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   useEffect(() => {
     return () => useUIStore.getState().clearTransactionSelection()
   }, [])
+  // A click anywhere that does not act on the selection ends it, as on the
+  // budget — see utils/keepsSelection.
+  useDeselectOnOutsidePointer(selectedTransactionIds.size > 0, clearTransactionSelection)
 
   useEffect(() => {
     if (selectedTransactionIds.size !== 1) {
@@ -466,10 +472,18 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     headerCheckboxRef.current.indeterminate = someSelected && !allSelected
   }
 
+  // Unreconciled rows first, then everything, then nothing — see selectAllStep.
   const handleSelectAll = useCallback(() => {
-    if (allSelected) clearTransactionSelection()
-    else selectAllTransactions(allOrderedIds)
-  }, [allSelected, clearTransactionSelection, selectAllTransactions, allOrderedIds])
+    const next = selectAllStep(sorted, selectedTransactionIds)
+    if (next.size === 0) clearTransactionSelection()
+    else selectAllTransactions(allOrderedIds.filter((id) => next.has(id)))
+  }, [
+    sorted,
+    selectedTransactionIds,
+    clearTransactionSelection,
+    selectAllTransactions,
+    allOrderedIds,
+  ])
 
   const handleSelectLinked = useCallback(() => {
     const linkedIds = sorted.filter((t) => t.has_sync_source).map((t) => t.id)
@@ -837,7 +851,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <div className="txn-duplicate-group">
           {renderTxnRow(txn)}
           {renderTxnRow(partner)}
-          <div className="txn-duplicate-group__bar">
+          <div className="txn-duplicate-group__bar" {...keepsSelection}>
             <span className="txn-duplicate-group__label">
               <Link2 size={11} />
               Potential duplicate
@@ -1113,7 +1127,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
         {/* Sticky header */}
         <div className="transaction-table__header">
-          <div className="txn-col txn-col--checkbox txn-col--checkbox-group">
+          <div className="txn-col txn-col--checkbox txn-col--checkbox-group" {...keepsSelection}>
             <input
               ref={headerCheckboxRef}
               type="checkbox"
