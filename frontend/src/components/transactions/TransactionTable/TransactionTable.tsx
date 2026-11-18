@@ -75,6 +75,7 @@ import {
 } from './registerOrder'
 import { registerPayAction } from './payButton'
 import { selectAllStep } from './selectAll'
+import { isWholeRow, mayActOnAsRow, mayActOnInBulk } from './bulkActionable'
 import { hasBankRecord } from '../../../utils/bankRecord'
 import {
   sectionOpen,
@@ -581,7 +582,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const handleBulkDelete = useCallback(async () => {
     const eligibleIds = [...selectedTransactionIds].filter((id) => {
       const txn = transactionMap.get(id)
-      return txn && txn.cleared !== 'reconciled'
+      return !!txn && mayActOnInBulk(txn)
     })
     const { result } = await bulkDelete.mutateAsync({ transactionIds: eligibleIds, accountId })
     clearTransactionSelection()
@@ -620,9 +621,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const handleBulkDuplicate = useCallback(() => {
     const selected = [...selectedTransactionIds]
       .map((id) => transactionMap.get(id))
-      .filter(
-        (t): t is Transaction => !!t && t.cleared !== 'reconciled' && !t.parent_transaction_id
-      )
+      .filter((t): t is Transaction => !!t && mayActOnAsRow(t))
     selected.forEach(duplicateTransaction)
     clearTransactionSelection()
   }, [selectedTransactionIds, transactionMap, duplicateTransaction, clearTransactionSelection])
@@ -635,7 +634,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const makeRepeatingFromSelection = useCallback(() => {
     const [onlyId] = [...selectedTransactionIds]
     const txn = onlyId ? transactionMap.get(onlyId) : undefined
-    if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
+    if (txn && isWholeRow(txn)) setMakeRepeatingTxn(txn)
   }, [selectedTransactionIds, transactionMap])
   useShortcut(SHORTCUTS.makeRepeating.combo, makeRepeatingFromSelection, {
     enabled: selectedTransactionIds.size === 1,
@@ -659,7 +658,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     () =>
       [...selectedTransactionIds].some((id) => {
         const t = transactionMap.get(id)
-        return t && t.awaiting_approval && t.cleared !== 'reconciled'
+        return !!t && t.awaiting_approval && mayActOnInBulk(t)
       }),
     [selectedTransactionIds, transactionMap]
   )
@@ -680,7 +679,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const editableSelectedTxn = useMemo((): Transaction | null => {
     if (selectedTransactionIds.size !== 1) return null
     const txn = transactionMap.get([...selectedTransactionIds][0])
-    if (!txn || txn.cleared === 'reconciled' || txn.parent_transaction_id) return null
+    if (!txn || !mayActOnAsRow(txn)) return null
     return txn
   }, [selectedTransactionIds, transactionMap])
 

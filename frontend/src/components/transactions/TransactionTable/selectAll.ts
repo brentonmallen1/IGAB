@@ -1,4 +1,5 @@
 import type { Transaction } from '../../../types'
+import { mayActOnInBulk } from './bulkActionable'
 
 /**
  * What the register's select-all checkbox selects next. Three steps:
@@ -7,9 +8,8 @@ import type { Transaction } from '../../../types'
  * 2. every non-reconciled row selected → every row, reconciled included
  * 3. every row selected → nothing
  *
- * Reconciled rows are locked — bulk delete and duplicate skip them, and an
- * edit to one is refused — so the first click selects what the bulk actions
- * can act on. The locked rows stay one more click away.
+ * Reconciled rows are locked (bulkActionable.ts), so the first click selects
+ * what the bulk actions can act on. The locked rows stay one more click away.
  *
  * A register with no unlocked rows skips step 1: its first click selects all.
  */
@@ -18,7 +18,7 @@ export function selectAllStep(
   selected: ReadonlySet<string>
 ): Set<string> {
   if (rows.length > 0 && rows.every((t) => selected.has(t.id))) return new Set()
-  const unlocked = rows.filter((t) => t.cleared !== 'reconciled')
+  const unlocked = rows.filter(mayActOnInBulk)
   if (unlocked.every((t) => selected.has(t.id))) return new Set(rows.map((t) => t.id))
   return new Set(unlocked.map((t) => t.id))
 }
