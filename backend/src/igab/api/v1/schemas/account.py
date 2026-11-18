@@ -118,6 +118,14 @@ class AccountResponse(ApiModel):
     #: client, because the sync decides it (domain.bank_balance) and a page
     #: that reached its own verdict would be free to disagree with the badge.
     bank_drift_is_fault: bool = False
+    #: The advisory beside the fault: an unreconciled bank-fed checking or
+    #: savings account whose ledger has sat the same amount off the bank for
+    #: the last `PERSISTENT_GAP_RUNS` syncs and still does — rows a lapsed
+    #: link never delivered (domain.bank_balance.drift_persists). Not a
+    #: fault: the run is not degraded by it. Required, not defaulted: a path
+    #: that forgot to judge it must raise rather than report a standing gap
+    #: as nothing.
+    bank_drift_persists: bool
     cleared_balance: Decimal = Decimal("0")
     uncleared_balance: Decimal = Decimal("0")
     #: Authorised by the bank, not yet posted. NOT a term in

@@ -12,8 +12,16 @@ const review = (over: Partial<PendingReviewCounts> = {}): PendingReviewCounts =>
   ...over,
 })
 
-const fault = { tone: 'fault' as const, text: 'Bank reports $5,570.00 — $18.60 more.' }
-const calm = { tone: 'calm' as const, text: 'Bank reports $5,570.00 — not posted yet.' }
+const fault = {
+  tone: 'fault' as const,
+  text: 'Bank reports $5,570.00 — $18.60 more.',
+  refetch: false,
+}
+const calm = {
+  tone: 'calm' as const,
+  text: 'Bank reports $5,570.00 — not posted yet.',
+  refetch: false,
+}
 
 describe('accountNotices', () => {
   it('is empty when nothing is waiting', () => {

@@ -25,6 +25,7 @@ gap that raises an alarm is the one nothing accounts for.
 Pure: takes the figures, reads nothing.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -190,6 +191,57 @@ def drift_is_a_fault(explanation: DriftExplanation | None, *, reconciled: bool) 
     if explanation is None or not reconciled:
         return False
     return explanation.reason == "unexplained"
+
+
+#: How many consecutive runs must record the same gap before an
+#: unreconciled account is told about it. Six hourly runs is long enough
+#: that a bank posting on its own schedule has caught up, and short enough
+#: that a lapse is still well inside the bridge's 90-day reach when noticed.
+PERSISTENT_GAP_RUNS = 6
+
+#: The accounts whose gap is worth an advisory even unreconciled: bank-fed
+#: cash. A mortgage accrues interest between statements, a loan's payoff
+#: figure drifts daily and an investment moves with the market — none of
+#: those hold still, so the rule could only ever misfire on them.
+PERSISTENT_GAP_ACCOUNT_TYPES = frozenset({"checking", "savings"})
+
+
+def drift_persists(
+    explanation: DriftExplanation | None,
+    recorded_gaps: Sequence[Decimal | None],
+    *,
+    reconciled: bool,
+    account_type: str,
+    bank_fed: bool,
+) -> bool:
+    """Whether an unreconciled cash account's gap is exact and standing.
+
+    The advisory beside `drift_is_a_fault`, for the accounts that rule
+    leaves silent. Two outflows posted while a bridge's link had lapsed and
+    never arrived; the ledger then sat exactly their sum above the bank on
+    every run for six days, and because the account had never been
+    reconciled nothing said so. A gap that does not move while the bank
+    keeps refreshing is not interest or timing — it is rows.
+
+    `recorded_gaps` is `bank_balance - ledger_cleared_balance` from this
+    account's most recent sync-run records, newest first (None where a run
+    recorded either figure as unknown). Fires only when the last
+    `PERSISTENT_GAP_RUNS` of them are all the same nonzero amount AND the
+    gap as it stands now is still that amount and unexplained — so it
+    clears the moment the missing rows land, without waiting for a run.
+
+    A reconciled account already has the fault, which says more; this is
+    never raised on one. Not a fault either way: the sync is not degraded
+    by it and the badge does not light.
+    """
+    if reconciled or not bank_fed or account_type not in PERSISTENT_GAP_ACCOUNT_TYPES:
+        return False
+    if explanation is None or explanation.reason != "unexplained":
+        return False
+    latest = list(recorded_gaps[:PERSISTENT_GAP_RUNS])
+    if len(latest) < PERSISTENT_GAP_RUNS:
+        return False
+    return all(gap == explanation.amount for gap in latest)
 
 
 def describe_drift(account_name: str, drift: DriftExplanation) -> str:

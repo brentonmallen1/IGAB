@@ -259,6 +259,29 @@ class TestGetFeed:
         assert route.calls[0].request.url.params["start-date"] == str(int(since.timestamp()))
 
     @respx.mock
+    async def test_each_account_keeps_its_institution_connection(self, client):
+        """A `con.auth` error names the bridge's institution connection, and
+        each account carries the one it belongs to. Dropping it left no way
+        to tell which accounts a lapse had stopped serving, so every one had
+        its window advanced over days the lapse never delivered."""
+        respx.get(ACCOUNTS_URL).mock(
+            return_value=self._response(
+                [
+                    {"id": "ACT-harborstone", "conn_id": "CON-harborstone", "transactions": []},
+                    {"id": "ACT-sapphire", "transactions": []},
+                ],
+                errlist=[
+                    {"code": "con.auth", "msg": "Auth required", "conn_id": "CON-harborstone"}
+                ],
+            )
+        )
+        feed = await client.get_feed(ACCESS)
+        assert feed.account_connections == {"ACT-harborstone": "CON-harborstone"}
+        [error] = feed.errors
+        assert error.needs_auth
+        assert error.connection_id == feed.account_connections["ACT-harborstone"]
+
+    @respx.mock
     async def test_a_naive_since_is_read_as_utc(self, client):
         """The caller's clock is not the bridge's. A naive datetime is stamped
         UTC rather than the runner's local zone, or the window would slide by

@@ -111,8 +111,19 @@ export function PendingLine({ amount, formatted }: { amount: number; formatted: 
   )
 }
 
-/** The bank's sentence (./bankDriftNotice.ts), in the sync's own tone. */
-export function BankDriftLine({ notice }: { notice: DriftNotice | null }) {
+/**
+ * The bank's sentence (./bankDriftNotice.ts), in the sync's own tone. When the
+ * sentence says rows may never have arrived, the refetch it names is a button
+ * right here — `refetch` is the shared hook's handle, null where no bank is
+ * linked.
+ */
+export function BankDriftLine({
+  notice,
+  refetch = null,
+}: {
+  notice: DriftNotice | null
+  refetch?: { run: () => void; isPending: boolean } | null
+}) {
   if (notice === null) return null
   return (
     <div
@@ -121,7 +132,22 @@ export function BankDriftLine({ notice }: { notice: DriftNotice | null }) {
       }`}
     >
       <AlertTriangle size={11} aria-hidden />
-      <span>{notice.text}</span>
+      <span>
+        {notice.text}
+        {notice.refetch && refetch && (
+          <>
+            {' '}
+            <button
+              type="button"
+              className="account-page__bank-refetch"
+              onClick={refetch.run}
+              disabled={refetch.isPending}
+            >
+              {refetch.isPending ? 'Fetching…' : 'Fetch the last 90 days again'}
+            </button>
+          </>
+        )}
+      </span>
     </div>
   )
 }

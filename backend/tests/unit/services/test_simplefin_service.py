@@ -276,8 +276,21 @@ class TestLookbackCalculation:
         )
 
     @staticmethod
-    def _account(last_sync: datetime | None):
-        return SimpleNamespace(id=uuid.uuid4(), last_simplefin_sync_at=last_sync)
+    def _account(last_sync: datetime | None, balance_date: datetime | None = None):
+        return SimpleNamespace(
+            id=uuid.uuid4(), last_simplefin_sync_at=last_sync, simplefin_balance_date=balance_date
+        )
+
+    def test_a_frozen_bank_refresh_holds_the_window_back(self, svc: SimpleFINService) -> None:
+        """The lapse report. Six hourly runs answered from a refresh frozen days
+        earlier each stamped their own time; the window measured from the
+        stamp began after the rows the frozen stretch had hidden. Measured
+        from the bank's own `balance-date`, it reaches back over them."""
+        frozen = datetime.now(UTC) - timedelta(days=8)
+        account = self._account(datetime.now(UTC) - timedelta(hours=1), frozen)
+        window = svc._lookback_window([account], False, None)
+        expected = frozen - timedelta(days=SYNC_OVERLAP_DAYS)
+        assert abs((window.start - expected).total_seconds()) < 5
 
     def test_first_sync_uses_90_days(self, svc: SimpleFINService) -> None:
         window = svc._lookback_window([self._account(None)], True, None)

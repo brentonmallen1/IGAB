@@ -26,6 +26,9 @@ interface Props {
   formatMoney: (amount: number) => string
   formatDate: (date: string) => string
   drift: DriftNotice | null
+  /** The bank line's refetch (`useRefetchAccountWindow`), or null where no
+   *  bank is linked. */
+  refetch: { run: () => void; isPending: boolean } | null
   /** A debt account's terms (LiabilityTermsHeader), or null. */
   terms: ReactNode
   onShowUnreconciled: () => void
@@ -69,6 +72,7 @@ export function AccountToolsSheet({
   formatMoney,
   formatDate,
   drift,
+  refetch,
   terms,
   onShowUnreconciled,
   onSync,
@@ -125,7 +129,20 @@ export function AccountToolsSheet({
             amount={account.pending_balance}
             formatted={formatMoney(account.pending_balance)}
           />
-          <BankDriftLine notice={drift} />
+          {/* Closes the sheet first, like every action here: the refetch
+              ends in a toast, which must not land under the sheet. */}
+          <BankDriftLine
+            notice={drift}
+            refetch={
+              refetch && {
+                run: () => {
+                  onClose()
+                  refetch.run()
+                },
+                isPending: refetch.isPending,
+              }
+            }
+          />
         </section>
 
         <section className="account-sheet__section" aria-label="This account">

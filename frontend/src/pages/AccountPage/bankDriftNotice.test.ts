@@ -30,6 +30,7 @@ const facts = (over: Partial<DriftFacts> = {}): DriftFacts => ({
   isFault: true,
   asOf: null,
   reconciled: true,
+  persists: false,
   ...over,
 })
 
@@ -180,5 +181,44 @@ describe('direction', () => {
     expect(bankDriftNotice(facts({ drift: -120, unexplained: -120 }), money)?.text).toContain(
       '$120.00 less than the cleared balance'
     )
+  })
+})
+
+describe('a gap that has stood still on an unreconciled account', () => {
+  /** The lapse report: two $40.00 outflows a lapsed bank link never delivered
+   *  held the ledger exactly $80.00 above the bank on every sync, and the
+   *  line said only "reconcile". */
+  const standing = facts({
+    reported: 1920,
+    drift: -80,
+    unexplained: -80,
+    isFault: false,
+    reconciled: false,
+    persists: true,
+  })
+
+  it('names the refetch and offers it as an action', () => {
+    const notice = bankDriftNotice(standing, money)
+    expect(notice?.text).toContain('sync after sync')
+    expect(notice?.text).toContain('fetch the last 90 days again')
+    expect(notice?.refetch).toBe(true)
+  })
+
+  it('stays calm: an advisory, not the sync calling a fault', () => {
+    expect(bankDriftNotice(standing, money)?.tone).toBe('calm')
+  })
+
+  it('without the served advisory, still only says reconcile', () => {
+    const notice = bankDriftNotice({ ...standing, persists: false }, money)
+    expect(notice?.text).toContain('Reconcile to bring them together')
+    expect(notice?.refetch).toBe(false)
+  })
+
+  it('never offers the refetch for an explained gap', () => {
+    const notice = bankDriftNotice(
+      { ...standing, reason: 'unposted', unexplained: 0, unposted: 80 },
+      money
+    )
+    expect(notice?.refetch).toBe(false)
   })
 })

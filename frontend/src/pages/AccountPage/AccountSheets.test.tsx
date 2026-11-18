@@ -42,6 +42,7 @@ function renderTools(over: Partial<Parameters<typeof AccountToolsSheet>[0]> = {}
     formatMoney: money,
     formatDate: (d: string) => d,
     drift: null,
+    refetch: null,
     terms: null,
     onShowUnreconciled: vi.fn(),
     onSync: vi.fn(),
@@ -102,6 +103,32 @@ describe('AccountToolsSheet', () => {
     expect(props.onClose).not.toHaveBeenCalled()
   })
 
+  // A gap that has stood still on an unreconciled account: the line names
+  // the refetch and offers it, closing the sheet first so its toast lands
+  // on the page.
+  it('offers the refetch the bank line names, and closes before running it', () => {
+    const run = vi.fn()
+    const props = renderTools({
+      drift: {
+        tone: 'calm',
+        text: 'Bank reports $1,920.00 — $80.00 less than the cleared balance here.',
+        refetch: true,
+      },
+      refetch: { run, isPending: false },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Fetch the last 90 days again' }))
+    expect(props.onClose).toHaveBeenCalled()
+    expect(run).toHaveBeenCalledOnce()
+  })
+
+  it('offers no refetch where the bank line does not name one', () => {
+    renderTools({
+      drift: { tone: 'calm', text: 'Bank reports $5,570.00 — not posted yet.', refetch: false },
+      refetch: { run: vi.fn(), isPending: false },
+    })
+    expect(screen.queryByRole('button', { name: 'Fetch the last 90 days again' })).toBeNull()
+  })
+
   it('shows a debt account’s terms', () => {
     renderTools({ terms: <div>APR 6.25%</div> })
     expect(screen.getByRole('region', { name: 'Terms' })).toHaveTextContent('APR 6.25%')
@@ -119,7 +146,11 @@ describe('AccountNoticesSheet', () => {
       uncategorized: 3,
     },
     duplicates: 2,
-    drift: { tone: 'fault', text: 'Bank reports $5,570.00 — $18.60 more than cleared here.' },
+    drift: {
+      tone: 'fault',
+      text: 'Bank reports $5,570.00 — $18.60 more than cleared here.',
+      refetch: false,
+    },
   })
 
   it('lists each kind with the way to deal with it', () => {
