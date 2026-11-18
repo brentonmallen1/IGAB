@@ -25,7 +25,10 @@ DEFAULT_PROMPTS: dict[str, str] = {
         "an invoice, or a bill — a document listing items or services and an "
         "amount paid or owed.\n\n"
         "Return ONLY a JSON object: "
-        '{"is_receipt": true or false}\n\n'
+        '{"is_receipt": true or false, "rotate_clockwise": 0}\n\n'
+        "rotate_clockwise is how many degrees (0, 90, 180 or 270) the image must be"
+        " turned clockwise so its printed text reads upright, left to right. 0 when"
+        " it already does.\n\n"
         "Photos of people, pets, scenery, screenshots of apps, memes, or any "
         "other non-financial document are NOT receipts."
     ),

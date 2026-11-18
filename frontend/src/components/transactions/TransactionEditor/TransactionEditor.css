@@ -214,6 +214,17 @@
   background: color-mix(in srgb, var(--color-warning) 8%, transparent);
 }
 
+/* A link inside a banner note: the note's own colour, underlined. */
+.txn-editor__ai-banner-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .txn-editor__ai-banner-action {
   display: inline-flex;
   align-items: center;

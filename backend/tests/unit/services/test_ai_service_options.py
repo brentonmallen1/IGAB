@@ -438,6 +438,8 @@ class TestTheCallIsRecorded:
             "payee": "Fresh Mart",
             "total": 39.53,
             "date": "2026-09-20",
+            # Kept for the category vote only; the marker bars a split.
+            "line_items": [{"description": "Soap", "amount": 1}],
             RAW_CUT_SHORT: "repetition",
         }
 
@@ -479,6 +481,7 @@ class TestTheCallIsRecorded:
             "thinking_setting": "on",
             "thinking": False,
             "thinking_fallback": True,
+            "turned": 0,
         }
 
     async def test_thinking_that_looped_until_ollama_stopped_it_is_read_again(self, monkeypatch):
@@ -805,3 +808,71 @@ class TestReceiptLoopGuard:
         ]
         assert _receipt_loop_guard(self.stream(items[:-1])) is None
         assert _receipt_loop_guard(self.stream(items)) == "length"
+
+
+class TestUprightImage:
+    """A receipt photographed sideways is turned before it is read — after
+    the gate's say-so is checked, because gemma4:12b answers "90" for
+    either sideways and only tells upright from upside down reliably."""
+
+    def service(self, monkeypatch, answers: list[int | None]) -> tuple[AIService, list]:
+        turns: list = []
+        replies = iter(answers)
+
+        async def fake_generate(self, prompt, system=None, **kwargs):
+            turn = next(replies)
+            body = (
+                {"is_receipt": True}
+                if turn is None
+                else {"is_receipt": True, "rotate_clockwise": turn}
+            )
+            return json.dumps(body)
+
+        def fake_prepare(file_bytes, *, turn=0):
+            turns.append(turn)
+            return f"turned-{turn}"
+
+        monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+        monkeypatch.setattr(ai_service_module, "prepare_image_for_model", fake_prepare)
+        model_reports(monkeypatch, caps=["vision"])
+        return make_service(), turns
+
+    async def read(self, svc) -> str:
+        await svc.is_receipt_image("as-it-came")
+        return await svc.upright_image(b"bytes", "as-it-came")
+
+    async def test_an_upright_photo_is_left_alone_and_asked_once(self, monkeypatch):
+        svc, turns = self.service(monkeypatch, [0])
+        assert await self.read(svc) == "as-it-came"
+        assert (svc.turned, turns) == (0, [])
+
+    async def test_a_gate_prompt_that_never_asks_turns_nothing(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [None])
+        assert await self.read(svc) == "as-it-came"
+
+    async def test_sideways_is_turned_a_quarter_and_confirmed(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [90, 0])
+        assert await self.read(svc) == "turned-90"
+        assert svc.turned == 90
+
+    async def test_the_wrong_quarter_reads_upside_down_and_gets_the_other(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [270, 180])
+        assert await self.read(svc) == "turned-270"
+        assert svc.turned == 270
+
+    async def test_upside_down_is_turned_half_and_confirmed(self, monkeypatch):
+        svc, _ = self.service(monkeypatch, [180, 0])
+        assert await self.read(svc) == "turned-180"
+
+    @pytest.mark.parametrize("answers", [[90, 90], [90, 270], [180, 180]])
+    async def test_a_turn_that_does_not_check_out_is_not_made(self, monkeypatch, answers):
+        """A wrong turn costs more than a missed one."""
+        svc, _ = self.service(monkeypatch, answers)
+        assert await self.read(svc) == "as-it-came"
+        assert svc.turned == 0
+
+    @pytest.mark.parametrize("junk", [True, 45, "90", 360])
+    async def test_only_a_quarter_turn_is_a_claim(self, monkeypatch, junk):
+        svc, _ = self.service(monkeypatch, [junk])
+        await svc.is_receipt_image("x")
+        assert svc.gate_turn == 0

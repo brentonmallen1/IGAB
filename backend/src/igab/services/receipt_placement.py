@@ -42,7 +42,7 @@ from igab.domain.receipt_fields import (
     writable_fields,
 )
 from igab.repositories.card_ending_repo import card_ending_owner
-from igab.repositories.txn_filters import RECEIPT_CANDIDATE_ROW
+from igab.repositories.txn_filters import RECEIPT_CANDIDATE_ROW, RECEIPT_ENTERED_ROW
 
 if TYPE_CHECKING:
     from igab.services.ai_draft_service import AIDraft
@@ -101,6 +101,38 @@ async def bank_match(
         stmt = stmt.where(Transaction.account_id == account_id)
     rows = list((await session.execute(stmt)).scalars().all())
     return rows[0] if len(rows) == 1 else None
+
+
+async def entered_already(
+    session: AsyncSession,
+    budget_id: uuid.UUID,
+    account_id: uuid.UUID,
+    amount: Decimal,
+    on: date,
+    *,
+    besides: uuid.UUID,
+) -> Transaction | None:
+    """A row in the account that this receipt looks already entered as: the
+    exact amount within `DATE_WINDOW_DAYS`, scanned in or carrying a receipt
+    — other than the scan's own row (`besides`). The nearest by date.
+
+    Nothing is done about it: the same amount twice in a week is also two
+    trips to the same till. The review says so and a person decides."""
+    window = timedelta(days=DATE_WINDOW_DAYS)
+    stmt = (
+        select(Transaction)
+        .where(
+            Transaction.budget_id == budget_id,
+            Transaction.account_id == account_id,
+            RECEIPT_ENTERED_ROW,
+            Transaction.id != besides,
+            Transaction.amount == amount,
+            Transaction.date.between(on - window, on + window),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id)
+    )
+    rows = list((await session.execute(stmt)).scalars().all())
+    return min(rows, key=lambda row: abs((row.date - on).days)) if rows else None
 
 
 async def create_in(

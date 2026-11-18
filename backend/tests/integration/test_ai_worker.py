@@ -24,6 +24,7 @@ from igab.db.models import (
     TransactionAttachment,
 )
 from igab.repositories.ai_job_repo import AIJobRepository
+from igab.services.ai_draft_service import RAW_CUT_SHORT
 from igab.services.ai_service import AIService
 from igab.tasks.ai_worker import (
     FAILURE_STUB_MEMO,
@@ -1085,3 +1086,135 @@ class TestImageOrientation:
         # The tag is gone after the WEBP save, which is exactly why the pixels
         # themselves had to be corrected first.
         assert stored.getexif().get(274) is None
+
+
+class TestAlreadyEntered:
+    """A rescan of a receipt that is already in landed beside it with no
+    word (reported 2026-11-18): rows another scan made, or that carry a
+    receipt, are never offered as a match — and were never checked either."""
+
+    async def _scan(self, db_session, attachments_dir, budget, account) -> AIJob:
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        return job
+
+    async def test_a_second_scan_of_the_same_receipt_names_the_first(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        first = await self._scan(db_session, attachments_dir, budget, account)
+        second = await self._scan(db_session, attachments_dir, budget, account)
+
+        assert "already_entered" not in first.result
+        assert second.transaction_id != first.transaction_id  # still created: a person decides
+        assert second.result["already_entered"] == {
+            "transaction_id": str(first.transaction_id),
+            "account_id": str(account.id),
+            "date": "2026-08-01",
+        }
+
+    async def test_a_plain_row_at_the_same_amount_is_not_a_receipt_already_entered(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        other = await create_account(db_session, budget, "Savings")
+        # Elsewhere, and typed in by hand with no receipt: neither is this one.
+        await create_transaction(db_session, budget, other, "-42.50", date(2026, 8, 1))
+        job = await self._scan(db_session, attachments_dir, budget, account)
+        assert "already_entered" not in job.result
+
+    async def test_the_same_amount_weeks_apart_is_another_trip(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        await self._scan(db_session, attachments_dir, budget, account)
+        mock_extraction.return_value = {**GOOD_EXTRACTION, "date": "2026-07-10"}
+        later = await self._scan(db_session, attachments_dir, budget, account)
+        assert "already_entered" not in later.result
+
+
+class TestACategoryNamedAfterTheStore:
+    """The model files a shop to the category carrying the store's name —
+    its membership fund. With no line items to ask, payee history decides."""
+
+    async def test_payee_history_overrules_the_name_match(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        from .factories import create_payee
+
+        budget, account = await _setup(db_session, attachments_dir)
+        group = await create_category_group(db_session, budget, "Annual")
+        await create_category(db_session, budget, group, "Northwind Club")
+        groceries = await _category_named(db_session, budget, "Groceries")
+        payee = await create_payee(db_session, budget, "Northwind Club")
+        for day in (5, 12, 19):
+            await create_transaction(
+                db_session,
+                budget,
+                account,
+                "-80.00",
+                date(2026, 7, day),
+                category=groceries,
+                payee=payee,
+            )
+        mock_extraction.return_value = {
+            **UNSPLIT_EXTRACTION,
+            "payee": "Northwind Club",
+            "category": "Northwind Club",
+            "line_items": [],
+            RAW_CUT_SHORT: "length",
+        }
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.category_id == groceries.id
+        assert job.result["draft"]["category"] == "Groceries"
+        assert job.result["draft"]["category_model"] == "Northwind Club"
+        assert job.result["draft"]["category_from"] == "history"
+
+    async def test_a_payee_with_no_history_keeps_the_models_pick(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        group = await create_category_group(db_session, budget, "Annual")
+        club = await create_category(db_session, budget, group, "Northwind Club")
+        mock_extraction.return_value = {
+            **UNSPLIT_EXTRACTION,
+            "payee": "Northwind Club",
+            "category": "Northwind Club",
+            "line_items": [],
+        }
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.category_id == club.id
+        assert job.result["draft"]["category_model"] is None
+
+
+class TestASidewaysPhoto:
+    async def test_the_copy_kept_is_turned_the_way_it_was_read(
+        self, db_session, attachments_dir, mock_extraction, monkeypatch
+    ):
+        """The gate saw the photo sideways and the read was made turned; the
+        picture in the review is the one the model saw."""
+        from igab.services.ai_service import ReadMade
+
+        async def turned(self, file_bytes, image_b64):
+            self.last_read = ReadMade(thinking_setting="auto", thinking=None, turned=90)
+            return image_b64
+
+        monkeypatch.setattr(AIService, "upright_image", turned)
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        buf = BytesIO()
+        Image.new("RGB", (160, 80), "white").save(buf, "JPEG")
+        (attachments_dir / "ai_staging" / str(job.id) / "receipt.jpg").write_bytes(buf.getvalue())
+
+        await process_one_job(db_session, job)
+
+        attachment = await db_session.get(TransactionAttachment, job.attachment_id)
+        stored = Image.open(attachments_dir / attachment.storage_path)
+        assert stored.size == (80, 160)
+        assert job.result["read"]["turned"] == 90

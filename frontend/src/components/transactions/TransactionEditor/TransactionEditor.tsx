@@ -841,6 +841,7 @@ export function TransactionEditor({
                 : null
             }
             onApplySplit={applySuggestedSplit}
+            onNavigate={onClose}
           />
         )}
 

@@ -48,10 +48,16 @@ export interface AIJobDraft {
   tender_amount?: string | null
   /** What the line items add up to, when that disagrees with the total. */
   line_items_total?: string | null
+  /** The category the model picked, when `category` is another one instead:
+   *  a category named after the store, overruled by most of the line items
+   *  (`items`) or by what this payee is usually filed to (`history`). */
+  category_model?: string | null
+  category_from?: 'items' | 'history' | null
 }
 
-/** `items`: the read was cut short or looped in its line items, so only
- *  the fields before them were kept and no split is offered. */
+/** `items`: the read was cut short or looped in its line items, or gave one
+ *  line for everything, so only the fields before them count and no split
+ *  is offered. */
 export type AIJobDraftCheck = 'date' | 'amount' | 'items'
 
 export interface AIJobSplitLine {
@@ -84,6 +90,10 @@ export interface AIJobResult {
   /** Set when the card that paid decided where the scan landed. */
   placed_by?: 'card_ending'
   account_switched?: AIJobAccountSwitch
+  /** A row in the same account this receipt looks already entered as — the
+   *  same amount within a few days, scanned in or carrying a receipt
+   *  (`receipt_placement.entered_already`). As of the scan. */
+  already_entered?: { transaction_id: string; account_id: string; date: string }
   request?: AIJobRequest
   /** Exactly what the model returned, pre-parse — present on success AND on
    * failure, so a structured-output problem is distinguishable from
@@ -112,6 +122,9 @@ export interface AIJobRead {
   thinking?: boolean | null
   /** Thinking ran out of room or looped, so the receipt was read again without it. */
   thinking_fallback?: boolean
+  /** Degrees clockwise the photo was turned before it was read, because it
+   *  was taken sideways or upside down. Absent or 0: read as it came. */
+  turned?: number
 }
 
 export interface AIJobFailure {

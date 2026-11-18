@@ -1,7 +1,8 @@
 import { AlertTriangle, RefreshCw, Sparkles, Split } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { type AIJob, useReprocessAIJob } from '../../../api/aiJobs'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { draftCheckNotes, unresolvedCategoryNote } from '../../ai/draftNotes'
+import { categoryOverruledNote, draftCheckNotes, unresolvedCategoryNote } from '../../ai/draftNotes'
 import { CardEndingNotice } from '../../ai/CardEndingNotice'
 import { ReadNotes } from '../../ai/ReadNotes'
 import { jobFailure } from './scanFailure'
@@ -15,15 +16,22 @@ interface Props {
    *  hides it. */
   splitOffer: number | null
   onApplySplit: () => void
+  /** Leaving for another row: the editor closes itself. */
+  onNavigate: () => void
 }
 
 /** The review banner over an AI-drafted row: where it came from and how
  *  sure the model was, or — when the job failed — the specific reason and a
  *  retry. Its own component so the editor holds the form, not every banner
  *  the form can carry. */
-export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Props) {
+export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit, onNavigate }: Props) {
   const reprocess = useReprocessAIJob(budgetId)
+  const navigate = useNavigate()
   const formatters = useFormatters()
+  const overruled = categoryOverruledNote(job.result?.draft)
+  // As of the scan, so only while the row still waits for review: once it
+  // is approved the question has been answered.
+  const twin = job.needs_review ? job.result?.already_entered : undefined
   const checkNotes = draftCheckNotes(job.result?.draft, formatters)
   const failure = job.status === 'error' ? jobFailure(job) : null
   return (
@@ -61,6 +69,23 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
               {note}
             </span>
           ))}
+          {twin && (
+            <span className="txn-editor__ai-banner-note txn-editor__ai-banner-check">
+              This receipt looks already entered: the same amount on{' '}
+              {formatters.formatDate(twin.date)}. If it’s the same one, delete this copy.{' '}
+              <button
+                type="button"
+                className="txn-editor__ai-banner-link"
+                onClick={() => {
+                  onNavigate()
+                  navigate(`/accounts/${twin.account_id}?highlight=${twin.transaction_id}`)
+                }}
+              >
+                Show the other one
+              </button>
+            </span>
+          )}
+          {overruled && <span className="txn-editor__ai-banner-note">{overruled}</span>}
           {unresolvedCategoryNote(job.result?.draft) && (
             <span className="txn-editor__ai-banner-note">
               {unresolvedCategoryNote(job.result?.draft)}
@@ -72,15 +97,29 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
           <ReadNotes read={job.result?.read} />
         </>
       )}
-      {job.status === 'error' && (
+      {/* A failed read is tried again; a finished receipt can be scanned
+          again too — after turning its photo upright in the viewer, say,
+          which is the copy the scan reads. */}
+      {(job.status === 'error' || (job.kind === 'receipt' && job.needs_review)) && (
         <button
           type="button"
           className="txn-editor__ai-banner-action"
           onClick={() => reprocess.mutate(job.id)}
           disabled={reprocess.isPending}
+          title={
+            job.status === 'error'
+              ? undefined
+              : 'Reads the attached photo again. Turn it upright in the photo viewer first if it’s sideways.'
+          }
         >
           <RefreshCw size={12} />
-          {reprocess.isPending ? 'Retrying…' : 'Try again'}
+          {job.status === 'error'
+            ? reprocess.isPending
+              ? 'Retrying…'
+              : 'Try again'
+            : reprocess.isPending
+              ? 'Scanning…'
+              : 'Scan again'}
         </button>
       )}
       {splitOffer !== null && (

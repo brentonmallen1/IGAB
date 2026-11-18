@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime
 import uuid
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, cast
 
@@ -28,7 +28,9 @@ from igab.domain.receipt_checks import (
     checked_receipt_date,
     line_items_mismatch,
     looping_items,
+    named_for_payee,
     past_tomorrow,
+    summary_line,
     tender_disagrees,
 )
 from igab.domain.splits import split_balances
@@ -165,6 +167,15 @@ class AIDraft:
     tender_amount: Decimal | None = None
     #: What the line items add up to, when that disagrees with the total.
     line_items_total: Decimal | None = None
+    #: The category the model picked, when the draft carries another one
+    #: instead — and where the other came from: "items" (most of the line
+    #: items' dollars) or "history" (what this payee is usually filed to).
+    category_model: str | None = None
+    category_from: str | None = None
+    #: The model's category carries the store's own name and the line items
+    #: had no say: payee history is asked before it is filed
+    #: (`AIDraftService.second_opinion`).
+    category_suspect: bool = False
 
 
 def _parse_amount(value: object) -> Decimal:
@@ -300,6 +311,28 @@ def _parse_split(
     return lines
 
 
+def _items_vote(items: object, candidates: Sequence[Candidate]) -> int | None:
+    """The category most of the line items' dollars name — a majority, or
+    None. The header category is written before the items are read, so the
+    items are the better-informed of the two."""
+    if not isinstance(items, list):
+        return None
+    weights: dict[int, Decimal] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        entry = cast(dict[str, Any], item)
+        index = match_category(_clean_str(entry.get("category")), candidates)
+        amount = model_cents(entry.get("amount"))
+        if index is None or amount is None:
+            continue
+        weights[index] = weights.get(index, Decimal("0")) + amount.copy_abs()
+    if not weights:
+        return None
+    best = max(weights, key=lambda index: weights[index])
+    return best if weights[best] * 2 > sum(weights.values()) else None
+
+
 def parse_extraction(
     raw: dict,
     *,
@@ -338,48 +371,68 @@ def parse_extraction(
     except (TypeError, ValueError):
         confidence = 0.0
 
-    suggested_split = None
-    checks: list[ReceiptCheck] = []
-    date_read = tender = line_total = None
-    if kind == "receipt":
-        items = raw.get("line_items")
-        itemized = not raw.get(RAW_CUT_SHORT) and not (
-            isinstance(items, list) and looping_items(items)
-        )
-        if itemized:
-            suggested_split = _parse_split(raw.get("suggested_split"), signed, candidates)
-        dated = checked_receipt_date(_parse_date(raw.get("date")), client_today)
-        draft_date, date_read = dated.date, dated.read_as
-        if date_read is not None:
-            checks.append(ReceiptCheck.DATE)
-        tender_read = model_cents(raw.get("tender_amount"))
-        if tender_disagrees(amount, tender_read):
-            tender = tender_read
-        if itemized:
-            line_total = line_items_mismatch(amount, _line_amounts(items))
-        if tender is not None or line_total is not None:
-            checks.append(ReceiptCheck.AMOUNT)
-        if not itemized:
-            checks.append(ReceiptCheck.ITEMS)
-    else:
-        draft_date = _description_date(_parse_date(raw.get("date")), client_today)
-
-    return AIDraft(
+    draft = AIDraft(
         payee_name=_clean_str(raw.get("payee")),
         amount=signed,
-        date=draft_date,
+        date=_description_date(_parse_date(raw.get("date")), client_today),
         category_name=category_name,
         memo=_clean_str(raw.get("memo")),
-        confidence=capped_confidence(confidence, checks),
-        suggested_split=suggested_split,
+        confidence=confidence,
+        suggested_split=None,
         raw=raw,
         category_unresolved=named if named and category_name is None else None,
-        card_last4=card_last4(raw.get("card_last4")) if kind == "receipt" else None,
-        checks=checks,
-        date_read=date_read,
-        tender_amount=tender,
-        line_items_total=line_total,
     )
+    if kind == "receipt":
+        _check_receipt(draft, amount, client_today, candidates)
+        if matched is not None:
+            _second_guess_category(draft, matched, candidates)
+    return draft
+
+
+def _check_receipt(
+    draft: AIDraft, amount: Decimal, client_today: datetime.date, candidates: Sequence[Candidate]
+) -> None:
+    """What only a receipt has, written onto its draft: the split when the
+    items can carry one, the card ending, and the plausibility checks —
+    each failed one named, and the confidence capped for any."""
+    raw = draft.raw
+    items = raw.get("line_items")
+    itemized = not raw.get(RAW_CUT_SHORT) and not (
+        isinstance(items, list) and (looping_items(items) or summary_line(items, amount))
+    )
+    checks: list[ReceiptCheck] = []
+    dated = checked_receipt_date(_parse_date(raw.get("date")), client_today)
+    draft.date, draft.date_read = dated.date, dated.read_as
+    if draft.date_read is not None:
+        checks.append(ReceiptCheck.DATE)
+    tender_read = model_cents(raw.get("tender_amount"))
+    if tender_disagrees(amount, tender_read):
+        draft.tender_amount = tender_read
+    if itemized:
+        draft.suggested_split = _parse_split(raw.get("suggested_split"), draft.amount, candidates)
+        draft.line_items_total = line_items_mismatch(amount, _line_amounts(items))
+    if draft.tender_amount is not None or draft.line_items_total is not None:
+        checks.append(ReceiptCheck.AMOUNT)
+    if not itemized:
+        checks.append(ReceiptCheck.ITEMS)
+    draft.card_last4 = card_last4(raw.get("card_last4"))
+    draft.checks = checks
+    draft.confidence = capped_confidence(draft.confidence, checks)
+
+
+def _second_guess_category(draft: AIDraft, matched: int, candidates: Sequence[Candidate]) -> None:
+    """A category with the store's own name was matched on the name. The
+    line items decide when they can — even those of a cut-short read;
+    otherwise the draft is marked for payee history to be asked
+    (`AIDraftService.second_opinion`)."""
+    if not named_for_payee(candidates[matched][0], draft.payee_name):
+        return
+    vote = _items_vote(draft.raw.get("line_items"), candidates)
+    if vote is None:
+        draft.category_suspect = True
+    elif vote != matched:
+        draft.category_model, draft.category_from = draft.category_name, "items"
+        draft.category_name = canonical_label(vote, candidates)
 
 
 def draft_result_json(draft: AIDraft) -> dict:
@@ -393,6 +446,11 @@ def draft_result_json(draft: AIDraft) -> dict:
             "date": draft.date.isoformat(),
             "category": draft.category_name,
             "category_unresolved": draft.category_unresolved,
+            # Set when the draft's category is not the model's pick: a
+            # category named after the store, overruled by the line items
+            # or by what this payee is usually filed to.
+            "category_model": draft.category_model,
+            "category_from": draft.category_from,
             "card_last4": draft.card_last4,
             "memo": draft.memo,
             "confidence": draft.confidence,
@@ -428,6 +486,33 @@ class AIDraftService:
         pairs = await self.transactions.category_repo.get_fileable_with_group_names(budget_id)
         matched = match_category(name, [(cat.name, group) for cat, group in pairs])
         return pairs[matched][0].id if matched is not None else None
+
+    async def second_opinion(self, budget_id: uuid.UUID, draft: AIDraft) -> AIDraft:
+        """Payee history's say over a category that carries the store's name
+        and that the line items could not confirm (`category_suspect`).
+
+        Asked of `guess_category_for` — the one answer for "what is this
+        payee usually filed to". The model's pick stands when the payee is
+        new, when history has no answer, or when history agrees."""
+        if not draft.category_suspect or not draft.payee_name:
+            return draft
+        payee = await self.transactions.find_payee(budget_id, draft.payee_name)
+        if payee is None:
+            return draft
+        usual = await self.transactions.guess_category_for(budget_id, payee.id, draft.amount)
+        if usual is None:
+            return draft
+        pairs = await self.transactions.category_repo.get_fileable_with_group_names(budget_id)
+        candidates = [(cat.name, group) for cat, group in pairs]
+        index = next((i for i, (cat, _) in enumerate(pairs) if cat.id == usual), None)
+        if index is None or index == match_category(draft.category_name, candidates):
+            return draft
+        return replace(
+            draft,
+            category_name=canonical_label(index, candidates),
+            category_model=draft.category_name,
+            category_from="history",
+        )
 
     async def split_lines(self, budget_id: uuid.UUID, draft: AIDraft) -> list[SplitSpec] | None:
         """The draft's split as lines to file, or None when there is none to

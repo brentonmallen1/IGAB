@@ -5,6 +5,7 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-txn' })))
@@ -157,13 +158,15 @@ function renderEditor(props: Partial<Parameters<typeof TransactionEditor>[0]> = 
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <TransactionEditor
-        budgetId="b1"
-        accountId="acc-1"
-        transaction={null}
-        onClose={vi.fn()}
-        {...props}
-      />
+      <MemoryRouter>
+        <TransactionEditor
+          budgetId="b1"
+          accountId="acc-1"
+          transaction={null}
+          onClose={vi.fn()}
+          {...props}
+        />
+      </MemoryRouter>
     </QueryClientProvider>
   )
 }

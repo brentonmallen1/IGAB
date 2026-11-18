@@ -16,7 +16,9 @@ from igab.domain.receipt_checks import (
     items_overshoot,
     line_items_mismatch,
     looping_items,
+    named_for_payee,
     past_tomorrow,
+    summary_line,
     tender_disagrees,
 )
 
@@ -188,3 +190,46 @@ class TestItemsOvershoot:
     @pytest.mark.parametrize("total", [None, 0, -12.5, "abc"])
     def test_no_usable_total_never_stops_a_read(self, total):
         assert not items_overshoot(self.items(500), total)
+
+
+class TestNamedForPayee:
+    @pytest.mark.parametrize(
+        ("category", "payee"),
+        [
+            ("Northwind Club", "Northwind Club Wholesale"),
+            ("Northwind Club Membership", "Northwind Club"),
+            ("🛒 Harborstone", "HARBORSTONE MARKET"),
+        ],
+    )
+    def test_every_word_of_one_in_the_other(self, category, payee):
+        assert named_for_payee(category, payee)
+
+    @pytest.mark.parametrize(
+        ("category", "payee"),
+        [
+            ("Groceries", "Harborstone Market"),
+            ("Club Dues", "Northwind Club"),
+            ("Gas", None),
+            ("", "X"),
+        ],
+    )
+    def test_anything_less_is_not(self, category, payee):
+        assert not named_for_payee(category, payee)
+
+
+class TestSummaryLine:
+    def line(self, description, amount=42.5):
+        return [{"description": description, "amount": amount}]
+
+    @pytest.mark.parametrize("words", ["Various items", "GROCERIES", "Misc. merchandise"])
+    def test_general_words_for_the_whole_total(self, words):
+        assert summary_line(self.line(words), D("42.50"))
+
+    def test_a_named_item_is_an_item(self):
+        assert not summary_line(self.line("KS OLIVE OIL 2L"), D("42.50"))
+
+    def test_general_words_for_part_of_the_total_are_an_item(self):
+        assert not summary_line(self.line("Various items", 10), D("42.50"))
+
+    def test_two_lines_are_a_list(self):
+        assert not summary_line(self.line("Items") * 2, D("42.50"))

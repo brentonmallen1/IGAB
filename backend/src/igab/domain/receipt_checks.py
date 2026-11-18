@@ -163,3 +163,47 @@ def items_overshoot(items: Sequence[object], total: object) -> bool:
     amounts = [model_cents(i.get("amount")) for i in items if isinstance(i, dict)]
     line_sum = sum((a for a in amounts if a is not None), Decimal("0"))
     return line_sum > paid * RUNAWAY_ITEMS_FACTOR
+
+
+_WORDS = re.compile(r"[a-z0-9]+")
+
+
+def _words(text: str | None) -> frozenset[str]:
+    return frozenset(_WORDS.findall((text or "").casefold()))
+
+
+def named_for_payee(category: str, payee: str | None) -> bool:
+    """Whether a category carries the store's own name: every word of one is
+    in the other ("Northwind Club" for "Northwind Club Wholesale").
+
+    Such a category is usually the store's membership or fee, kept as a
+    sinking fund — and a model matches a receipt to it on the name alone,
+    whatever was bought (reported 2026-11-18: a full grocery shop filed to
+    the yearly-fee envelope while every line item said Groceries). A match
+    is a reason to ask for a second opinion, not a verdict."""
+    category_words, payee_words = _words(category), _words(payee)
+    if not category_words or not payee_words:
+        return False
+    return category_words <= payee_words or payee_words <= category_words
+
+
+#: Words a model uses for a line that stands for the whole receipt.
+_SUMMARY_WORDS = frozenset(
+    "various items item misc miscellaneous assorted groceries grocery merchandise goods"
+    " purchase purchases products multiple several general sundry sundries food other"
+    " and total".split()
+)
+
+
+def summary_line(items: Sequence[object], total: Decimal) -> bool:
+    """One line item, for the whole total, described in general words
+    ("various items"): the model declined to itemize. Not a one-item
+    receipt — and it made the line-item check pass trivially on a read that
+    was wrong everywhere else (a sideways photo, reported 2026-11-18)."""
+    if len(items) != 1 or not isinstance(items[0], dict):
+        return False
+    amount = model_cents(items[0].get("amount"))
+    if amount is None or (amount.copy_abs() - total.copy_abs()).copy_abs() > MODEL_ROUNDING_SLACK:
+        return False
+    words = _words(str(items[0].get("description") or ""))
+    return bool(words) and words <= _SUMMARY_WORDS
