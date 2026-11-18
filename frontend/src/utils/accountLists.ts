@@ -95,3 +95,68 @@ export function recentAccounts<T extends IdentifiedAccount>(
 export function accountNameMap(accounts: readonly NamedAccount[]): Map<string, string> {
   return new Map(accounts.map((a) => [a.id, a.name]))
 }
+
+export interface PickableAccount extends NamedAccount {
+  on_budget: boolean
+}
+
+/** One option in an account picker — the `ComboboxOption` shape, so a
+ *  Combobox or SelectionSheet takes the list as it is. */
+export interface AccountOption {
+  id: string
+  label: string
+  group: string
+}
+
+export const ACCOUNT_GROUPS = {
+  recent: 'Recent',
+  budget: 'Budget accounts',
+  tracking: 'Tracking',
+} as const
+
+export interface AccountPicker {
+  /** The full list, grouped: Budget accounts, then Tracking. */
+  options: AccountOption[]
+  /** The Recent shortlist pinned above it, or undefined when there is none.
+   *  It repeats accounts from `options` on purpose — a shortcut to the same
+   *  accounts, not a different set. */
+  pinned: { label: string; options: AccountOption[] } | undefined
+}
+
+/**
+ * What an account picker offers, under the house group headers: a Recent
+ * shortlist pinned on top (when given), then Budget accounts, then Tracking.
+ * One call, because the two halves decide each other: budget accounts get
+ * their header only when there is something to tell them apart from — a
+ * Tracking group below, or a shortlist above. Otherwise a lone "Budget
+ * accounts" header over every option says nothing, and the list is drawn bare.
+ *
+ * Pass what the picker may offer (`openAccounts`), in its own order; budget
+ * accounts are listed before tracking ones whatever that order is.
+ *
+ * This was written five times — the editor's native <select>, quick add, the
+ * register's account cell and two AI Activity pickers — and they disagreed:
+ * quick add always headed budget accounts, three others never did, and the
+ * editor did only when tracking accounts existed.
+ */
+export function accountPicker(
+  accounts: readonly PickableAccount[],
+  recent: readonly NamedAccount[] = []
+): AccountPicker {
+  const budget = accounts.filter((a) => a.on_budget)
+  const tracking = accounts.filter((a) => !a.on_budget)
+  const budgetGroup = tracking.length > 0 || recent.length > 0 ? ACCOUNT_GROUPS.budget : ''
+  return {
+    options: [
+      ...budget.map((a) => ({ id: a.id, label: a.name, group: budgetGroup })),
+      ...tracking.map((a) => ({ id: a.id, label: a.name, group: ACCOUNT_GROUPS.tracking })),
+    ],
+    pinned:
+      recent.length > 0
+        ? {
+            label: ACCOUNT_GROUPS.recent,
+            options: recent.map((a) => ({ id: a.id, label: a.name, group: ACCOUNT_GROUPS.recent })),
+          }
+        : undefined,
+  }
+}

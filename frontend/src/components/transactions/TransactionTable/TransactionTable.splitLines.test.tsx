@@ -5,7 +5,9 @@
  * row's lines rather than stacking under them.
  *
  * The running-balance toggle rides on the same harness: the order it asks
- * for, the column it draws, and the order the rows are drawn in.
+ * for, the column it draws, and the order the rows are drawn in. So do the
+ * split chevron's open/close toggle, select-all's three steps, and
+ * click-away deselect.
  *
  * The network is the mocked `apiClient`, and `useSplitLinesFor` is the real
  * hook — "no request" is asserted on the wire, not on a stubbed hook.
@@ -153,14 +155,20 @@ const lines: Transaction[] = [
   }),
 ]
 
+/** Mounted inside a `#root`, as the app is: click-away deselect judges a
+ *  press by whether it landed inside the app root. */
 function renderTable() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const root = document.createElement('div')
+  root.id = 'root'
+  document.body.appendChild(root)
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <TransactionTable accountId="acc-1" budgetId="budget-1" />
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { container: root }
   )
 }
 
@@ -189,7 +197,9 @@ beforeEach(() => {
 
 afterEach(() => {
   useUIStore.setState({ showSplitLines: false, showRunningBalance: false })
+  useUIStore.getState().clearTransactionSelection()
   useTransactionEditStore.getState().stopSplitEditing()
+  document.getElementById('root')?.remove()
 })
 
 describe('register split lines', () => {
@@ -370,5 +380,158 @@ describe('register running balance', () => {
     })
     expect(screen.queryByText('Balance')).not.toBeInTheDocument()
     expect(document.querySelector('.txn-col--balance')).toBeNull()
+  })
+})
+
+describe('register split chevron', () => {
+  const chevron = () => document.querySelector('[data-txn-id="split-1"] .txn-col--category')!
+  const editing = () => useTransactionEditStore.getState().splitEditing
+
+  it('a second click closes the editor instead of sticking on "Loading lines…"', async () => {
+    renderTable()
+    await screen.findByText('Split Transaction')
+
+    act(() => (chevron() as HTMLElement).click())
+    expect(editing()?.transactionId).toBe('split-1')
+    // The lines arrive and seed the editor.
+    await waitFor(() => expect(screen.getAllByPlaceholderText('0.00')).toHaveLength(2))
+
+    act(() => (chevron() as HTMLElement).click())
+    expect(editing()).toBeNull()
+    expect(screen.queryByText('Loading lines…')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel split' })).not.toBeInTheDocument()
+  })
+
+  it('reopens with its lines, from the same cached fetch', async () => {
+    renderTable()
+    await screen.findByText('Split Transaction')
+    act(() => (chevron() as HTMLElement).click())
+    await waitFor(() => expect(screen.getAllByPlaceholderText('0.00')).toHaveLength(2))
+    act(() => (chevron() as HTMLElement).click())
+    act(() => (chevron() as HTMLElement).click())
+
+    await waitFor(() => expect(screen.getAllByPlaceholderText('0.00')).toHaveLength(2))
+    expect(screen.queryByText('Loading lines…')).not.toBeInTheDocument()
+  })
+
+  it('a second start on the row already open keeps the draft in hand', async () => {
+    renderTable()
+    await screen.findByText('Split Transaction')
+    act(() => (chevron() as HTMLElement).click())
+    await waitFor(() => expect(editing()?.loaded).toBe(true))
+    const draft = editing()
+
+    act(() => useTransactionEditStore.getState().startSplitEditing('split-1', -100, true))
+    expect(editing()).toBe(draft)
+  })
+})
+
+describe('register select all', () => {
+  const locked = makeTransaction({
+    id: 'locked-1',
+    account_id: 'acc-1',
+    amount: -25,
+    category_id: 'cat-groceries',
+    cleared: 'reconciled',
+  })
+  const selected = () => [...useUIStore.getState().selectedTransactionIds].sort()
+  const header = () =>
+    screen.getByRole('checkbox', { name: 'Select all transactions' }) as HTMLInputElement
+
+  beforeEach(() => {
+    h.rows = [plain, locked]
+  })
+
+  it('reconciled rows are locked, so the first click leaves them out', async () => {
+    renderTable()
+    await screen.findAllByText('Groceries')
+
+    act(() => header().click())
+    expect(selected()).toEqual(['plain-1'])
+    expect(header().indeterminate).toBe(true)
+    expect(header().checked).toBe(false)
+
+    act(() => header().click())
+    expect(selected()).toEqual(['locked-1', 'plain-1'])
+    expect(header().indeterminate).toBe(false)
+    expect(header().checked).toBe(true)
+
+    act(() => header().click())
+    expect(selected()).toEqual([])
+  })
+})
+
+describe('register select linked', () => {
+  // A row read before the server served has_sync_source carries only
+  // sync_source. The bank glyph counted it as linked; Select linked did not.
+  const legacyBankRow = makeTransaction({
+    id: 'legacy-bank',
+    account_id: 'acc-1',
+    amount: -18,
+    category_id: 'cat-groceries',
+    cleared: 'cleared',
+    has_sync_source: false,
+    sync_source: 'simplefin',
+  })
+
+  it('selects every row with a bank record, by the same rule as the bank glyph', async () => {
+    h.rows = [plain, legacyBankRow]
+    renderTable()
+    await screen.findAllByText('Groceries')
+    act(() => screen.getByRole('button', { name: 'Select linked transactions' }).click())
+    expect([...useUIStore.getState().selectedTransactionIds]).toEqual(['legacy-bank'])
+  })
+})
+
+describe('register click-away deselect', () => {
+  const press = (el: Element) =>
+    act(() => {
+      el.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    })
+  const selectedCount = () => useUIStore.getState().selectedTransactionIds.size
+
+  beforeEach(() => {
+    h.rows = [plain]
+  })
+
+  async function renderSelected() {
+    renderTable()
+    await screen.findByText('Groceries')
+    act(() => useUIStore.getState().selectAllTransactions(['plain-1']))
+    expect(selectedCount()).toBe(1)
+  }
+
+  it('a press on page chrome clears the selection', async () => {
+    await renderSelected()
+    press(screen.getByRole('button', { name: 'Payee' }))
+    expect(selectedCount()).toBe(0)
+  })
+
+  it('a press on a row, even one of its cells, keeps it', async () => {
+    await renderSelected()
+    press(document.querySelector('[data-txn-id="plain-1"] .txn-col--memo')!)
+    expect(selectedCount()).toBe(1)
+  })
+
+  it('a press on the selection bar keeps it', async () => {
+    await renderSelected()
+    press(document.querySelector('.fsb')!)
+    expect(selectedCount()).toBe(1)
+  })
+
+  it('a press on the select-all control keeps it (it acts on the selection)', async () => {
+    await renderSelected()
+    press(screen.getByRole('checkbox', { name: 'Select all transactions' }))
+    expect(selectedCount()).toBe(1)
+  })
+
+  it('a press in a menu portalled outside the app root keeps it', async () => {
+    await renderSelected()
+    const menu = document.createElement('div')
+    menu.setAttribute('role', 'menu')
+    document.body.appendChild(menu)
+    press(menu)
+    menu.remove()
+    expect(selectedCount()).toBe(1)
   })
 })

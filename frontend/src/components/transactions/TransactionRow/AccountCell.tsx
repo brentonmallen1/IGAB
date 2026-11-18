@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { useAccountMove } from '../../../hooks/useAccountMove'
 import { accountLockReason } from '../TransactionEditor/accountMove'
-import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
+import { Combobox } from '../../common/Combobox/Combobox'
+import { accountPicker } from '../../../utils/accountLists'
 import type { Account, Transaction } from '../../../types'
 
 /**
@@ -77,10 +78,10 @@ export function AccountCell({
   const commitMove = useAccountMove(budgetId)
   const editable = lock.movable && !isMobile
 
-  const options = useMemo<ComboboxOption[]>(
+  const options = useMemo(
     // `useAccounts` leaves closed accounts out and the server refuses to move
     // a row into one, so every option here is somewhere the row may go.
-    () => accounts.map((a) => ({ id: a.id, label: a.name, group: a.on_budget ? '' : 'Tracking' })),
+    () => accountPicker(accounts).options,
     [accounts]
   )
 

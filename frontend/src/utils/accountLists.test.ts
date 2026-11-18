@@ -13,7 +13,13 @@
  * times, and six copies of a filter is how the seventh gets written wrong.
  */
 import { describe, expect, it } from 'vitest'
-import { accountNameMap, closedAccounts, openAccounts, recentAccounts } from './accountLists'
+import {
+  accountNameMap,
+  accountPicker,
+  closedAccounts,
+  openAccounts,
+  recentAccounts,
+} from './accountLists'
 
 const ACCOUNTS = [
   { id: 'a1', name: 'Harborstone Checking', is_closed: false },
@@ -75,5 +81,41 @@ describe('recentAccounts', () => {
 
   it('is empty before anything has been filed, which pins nothing', () => {
     expect(recentAccounts(ACCOUNTS, [])).toEqual([])
+  })
+})
+
+describe('accountPicker', () => {
+  const checking = { id: 'a1', name: 'Harborstone Checking', on_budget: true }
+  const card = { id: 'a2', name: 'Sapphire Visa', on_budget: true }
+  const brokerage = { id: 'a3', name: 'Cascade Point Brokerage', on_budget: false }
+  const groups = (accounts: (typeof checking)[], recent: (typeof checking)[] = []) =>
+    accountPicker(accounts, recent).options.map((o) => o.group)
+
+  it('heads budget and tracking accounts when both are offered, budget first', () => {
+    // Given tracking first, as a fetch might order them.
+    const { options } = accountPicker([brokerage, checking, card])
+    expect(options.map((o) => o.id)).toEqual(['a1', 'a2', 'a3'])
+    expect(options.map((o) => o.group)).toEqual(['Budget accounts', 'Budget accounts', 'Tracking'])
+  })
+
+  // The register's account cell and the AI Activity pickers never headed
+  // budget accounts, so a Tracking header sat under a bare list.
+  it('heads budget accounts beside a Tracking group, which three pickers left bare', () => {
+    expect(groups([checking, brokerage])[0]).toBe('Budget accounts')
+  })
+
+  // Quick add headed them always, over a list with nothing to tell apart.
+  it('lists budget accounts bare when there is nothing else, which quick add headed anyway', () => {
+    expect(groups([checking, card])).toEqual(['', ''])
+    expect(accountPicker([checking, card]).pinned).toBeUndefined()
+  })
+
+  it('pins the shortlist under Recent, and heads budget accounts beneath it', () => {
+    const picker = accountPicker([checking, card], [card])
+    expect(picker.pinned).toEqual({
+      label: 'Recent',
+      options: [{ id: 'a2', label: 'Sapphire Visa', group: 'Recent' }],
+    })
+    expect(picker.options.map((o) => o.group)).toEqual(['Budget accounts', 'Budget accounts'])
   })
 })

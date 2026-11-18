@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useDeselectOnOutsidePointer } from './useDeselectOnOutsidePointer'
-import { KEEPS_SELECTION_ATTR } from '../../utils/keepsSelection'
+import { KEEPS_SELECTION_ATTR } from '../utils/keepsSelection'
 
 function press(el: Element) {
   el.dispatchEvent(new Event('pointerdown', { bubbles: true }))

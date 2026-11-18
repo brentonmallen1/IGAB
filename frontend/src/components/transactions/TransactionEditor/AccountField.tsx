@@ -1,26 +1,36 @@
+import { useMemo } from 'react'
 import { Lock } from 'lucide-react'
+import { PickerField } from '../../common/PickerField/PickerField'
+import { accountPicker } from '../../../utils/accountLists'
 import type { Account } from '../../../types'
 
 interface Props {
+  /** The field's label, and the picker's accessible name. */
+  label?: string
   /** Open accounts, as offered. A closed one the row already sits in is added
    *  back below — see the comment on that option. */
   accounts: Account[]
   /** The ones used most recently, pinned above the rest (utils/accountLists).
    *  A shortlist, never a default — nothing here is pre-selected. */
-  recent: Account[]
-  value: string
-  onChange: (accountId: string) => void
+  recent?: Account[]
+  /** Null while nothing is picked; never ''. */
+  value: string | null
+  onChange: (accountId: string | null) => void
   /** The account the row is in right now, for the locked reading and for the
    *  closed-account case. Null while a new row has not picked one. */
-  current: Account | null
+  current?: Account | null
   /** Why the account cannot be changed (accountMove.ts), or null. */
-  lockReason: string | null
+  lockReason?: string | null
   /** What changing it will cost — today, a category that cannot follow. */
-  note: string | null
+  note?: string | null
 }
 
+const NO_RECENT: Account[] = []
+
 /**
- * The editor's Account field: which account this transaction is in.
+ * The editor's Account field: which account this transaction is in. The
+ * transfer's destination ("To account" / "From account") is the same field
+ * under its own label, with no shortlist and no lock.
  *
  * Shown for a new row that has no register to inherit from, and for any
  * existing row that may be moved. The row opened from an account register is
@@ -29,70 +39,56 @@ interface Props {
  * landed in, so hiding the field there hid it everywhere.
  *
  * Locked rows read like the locked Cleared field beside them: the value, a
- * lock glyph, and the reason underneath. A disabled `<select>` would say
+ * lock glyph, and the reason underneath. A disabled picker would say
  * "not now" without ever saying why.
+ *
+ * The picker is the shared PickerField (Combobox on desktop, SelectionSheet
+ * on a phone), so its groups — Recent, Budget accounts, Tracking — draw the
+ * house group headers a native <select> could not.
  */
 export function AccountField({
+  label = 'Account',
   accounts,
-  recent,
+  recent = NO_RECENT,
   value,
   onChange,
-  current,
-  lockReason,
-  note,
+  current = null,
+  lockReason = null,
+  note = null,
 }: Props) {
-  const hasTracking = accounts.some((a) => !a.on_budget)
-  const option = (a: Account, prefix = '') => (
-    <option key={`${prefix}${a.id}`} value={a.id}>
-      {a.name}
-    </option>
-  )
+  const picker = useMemo(() => accountPicker(accounts, recent), [accounts, recent])
+  const options = useMemo(() => {
+    const offered = picker.options
+    // A closed account the row already sits in is not in the list. Offer it
+    // anyway, or the picker would show a blank selection and the next save
+    // would re-file the row somewhere it never was.
+    return current?.is_closed
+      ? [{ id: current.id, label: `${current.name} (closed)`, group: '' }, ...offered]
+      : offered
+  }, [picker, current])
 
   return (
     <div className="txn-editor__field">
-      <label className="txn-editor__label" htmlFor="txn-editor-account">
-        Account
-      </label>
+      <span className="txn-editor__label">{label}</span>
       {lockReason ? (
         <div
           className="txn-editor__input txn-editor__locked"
-          aria-label={`Account: ${current?.name ?? ''}`}
+          aria-label={`${label}: ${current?.name ?? ''}`}
         >
           <Lock size={12} aria-hidden />
           {current?.name ?? '—'}
         </div>
       ) : (
-        <select
-          id="txn-editor-account"
-          className="txn-editor__select"
+        <PickerField
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          required
-          aria-label="Account"
-        >
-          <option value="">Select account…</option>
-          {/* A closed account the row already sits in is not in the list.
-              Offer it anyway, or the picker would show a blank selection and
-              the next save would re-file the row somewhere it never was. */}
-          {current?.is_closed && <option value={current.id}>{current.name} (closed)</option>}
-          {/* Repeated below in their own group — the shortlist is a shortcut
-              to the same accounts, not a different set. */}
-          {recent.length > 0 && (
-            <optgroup label="Recent">{recent.map((a) => option(a, 'recent'))}</optgroup>
-          )}
-          {hasTracking ? (
-            <>
-              <optgroup label="Budget accounts">
-                {accounts.filter((a) => a.on_budget).map((a) => option(a))}
-              </optgroup>
-              <optgroup label="Tracking">
-                {accounts.filter((a) => !a.on_budget).map((a) => option(a))}
-              </optgroup>
-            </>
-          ) : (
-            accounts.map((a) => option(a))
-          )}
-        </select>
+          onChange={onChange}
+          options={options}
+          pinned={picker.pinned}
+          noneLabel="Select account…"
+          sheetTitle={label}
+          searchPlaceholder="Search accounts…"
+          aria-label={label}
+        />
       )}
       {(lockReason || note) && <span className="txn-editor__field-note">{lockReason ?? note}</span>}
     </div>

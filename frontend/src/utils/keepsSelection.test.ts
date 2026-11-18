@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KEEPS_SELECTION_ATTR, keepsCategorySelection } from './keepsSelection'
+import { KEEPS_SELECTION_ATTR, pressKeepsSelection } from './keepsSelection'
 
 function page() {
   document.body.innerHTML = `
@@ -16,34 +16,34 @@ function page() {
   return { root: $('root'), $ }
 }
 
-describe('keepsCategorySelection', () => {
+describe('pressKeepsSelection', () => {
   it('deselects on a press in the page outside the rows and inspector', () => {
     const { root, $ } = page()
-    expect(keepsCategorySelection($('empty-grid'), root)).toBe(false)
-    expect(keepsCategorySelection($('hero-btn'), root)).toBe(false)
+    expect(pressKeepsSelection($('empty-grid'), root)).toBe(false)
+    expect(pressKeepsSelection($('hero-btn'), root)).toBe(false)
   })
 
   it('keeps it on a press inside a row, even on a control within it', () => {
     const { root, $ } = page()
-    expect(keepsCategorySelection($('row-input'), root)).toBe(true)
+    expect(pressKeepsSelection($('row-input'), root)).toBe(true)
   })
 
   it('keeps it on a press in the inspector', () => {
     const { root, $ } = page()
-    expect(keepsCategorySelection($('inspector-btn'), root)).toBe(true)
+    expect(pressKeepsSelection($('inspector-btn'), root)).toBe(true)
   })
 
   // Dialogs, menus and sheets opened from the selection are portalled to
   // <body>; pressing in one must not cancel what it acts on.
   it('keeps it on a press in anything portalled outside the app root', () => {
     const { root, $ } = page()
-    expect(keepsCategorySelection($('dialog-btn'), root)).toBe(true)
+    expect(pressKeepsSelection($('dialog-btn'), root)).toBe(true)
   })
 
   it('keeps it when there is no element target or no root to judge by', () => {
     const { root, $ } = page()
-    expect(keepsCategorySelection(null, root)).toBe(true)
-    expect(keepsCategorySelection(document, root)).toBe(true)
-    expect(keepsCategorySelection($('empty-grid'), null)).toBe(true)
+    expect(pressKeepsSelection(null, root)).toBe(true)
+    expect(pressKeepsSelection(document, root)).toBe(true)
+    expect(pressKeepsSelection($('empty-grid'), null)).toBe(true)
   })
 })

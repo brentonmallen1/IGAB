@@ -9,6 +9,7 @@ import {
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { fromCents, toCents } from '../../utils/money'
+import { keepsSelection } from '../../utils/keepsSelection'
 import './ReconcileStatusBar.css'
 
 interface Props {
@@ -97,6 +98,7 @@ export function ReconcileStatusBar({ accountId, onReviewDuplicates }: Props) {
     <div
       className={`reconcile-bar${selectedTransactionIds.size > 0 ? ' reconcile-bar--stacked' : ''}`}
       role="status"
+      {...keepsSelection}
     >
       <button
         className="reconcile-bar__close"

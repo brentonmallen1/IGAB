@@ -61,7 +61,7 @@ import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
-import { openAccounts, recentAccounts } from '../../../utils/accountLists'
+import { accountPicker, openAccounts, recentAccounts } from '../../../utils/accountLists'
 import { choosablePayees } from '../../../utils/payees'
 
 type Direction = 'outflow' | 'inflow'
@@ -219,15 +219,7 @@ export function QuickAddSheet() {
       .map((p) => ({ id: p.id, label: p.name }))
   }, [payees, nearbyPayees])
 
-  const accountOptions = useMemo<SelectionSheetOption[]>(
-    () =>
-      choosable.map((a) => ({
-        id: a.id,
-        label: a.name,
-        group: a.on_budget ? 'Budget accounts' : 'Tracking',
-      })),
-    [choosable]
-  )
+  const accountChoices = useMemo(() => accountPicker(choosable, recent), [choosable, recent])
 
   const payeeName = payeeId ? (payees.find((p) => p.id === payeeId)?.name ?? '') : ''
   const categoryName = categoryId ? (categories.find((c) => c.id === categoryId)?.name ?? '') : ''
@@ -693,7 +685,7 @@ export function QuickAddSheet() {
               <button
                 role="radio"
                 aria-checked={direction === 'outflow'}
-                className={`quick-add__direction-btn ${direction === 'outflow' ? 'quick-add__direction-btn--active' : ''}`}
+                className={`quick-add__direction-btn quick-add__direction-btn--outflow ${direction === 'outflow' ? 'quick-add__direction-btn--active' : ''}`}
                 onClick={() => {
                   hapticTick()
                   setDirection('outflow')
@@ -704,7 +696,7 @@ export function QuickAddSheet() {
               <button
                 role="radio"
                 aria-checked={direction === 'inflow'}
-                className={`quick-add__direction-btn ${direction === 'inflow' ? 'quick-add__direction-btn--active' : ''}`}
+                className={`quick-add__direction-btn quick-add__direction-btn--inflow ${direction === 'inflow' ? 'quick-add__direction-btn--active' : ''}`}
                 onClick={() => {
                   hapticTick()
                   setDirection('inflow')
@@ -1055,14 +1047,10 @@ export function QuickAddSheet() {
               ? 'Account for this description'
               : 'Account'
         }
-        options={accountOptions}
+        options={accountChoices.options}
         allowNone={mayDecideLater}
         noneLabel="Decide later — it waits in AI Activity"
-        topSection={
-          recent.length > 0
-            ? { label: 'Recent', options: recent.map((a) => ({ id: a.id, label: a.name })) }
-            : undefined
-        }
+        topSection={accountChoices.pinned}
         value={accountId ?? undefined}
         onChange={(id) => (id ? chooseAccount(id) : decideLater())}
         placeholder="Search accounts…"

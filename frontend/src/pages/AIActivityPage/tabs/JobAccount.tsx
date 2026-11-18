@@ -2,9 +2,8 @@ import { useMemo } from 'react'
 import { Wallet } from 'lucide-react'
 import { useAccounts } from '../../../api/accounts'
 import type { AIJob } from '../../../api/aiJobs'
-import type { ComboboxOption } from '../../../components/common/Combobox/Combobox'
 import { useAccountMove } from '../../../hooks/useAccountMove'
-import { accountNameMap, openAccounts } from '../../../utils/accountLists'
+import { accountNameMap, accountPicker, openAccounts } from '../../../utils/accountLists'
 import { JobField } from './JobField'
 
 /**
@@ -30,15 +29,7 @@ export function JobAccount({ job, budgetId }: { job: AIJob; budgetId: string }) 
   // The unfiltered list names the row; only open accounts are offered as
   // destinations (utils/accountLists).
   const names = useMemo(() => accountNameMap(accounts), [accounts])
-  const options = useMemo<ComboboxOption[]>(
-    () =>
-      openAccounts(accounts).map((a) => ({
-        id: a.id,
-        label: a.name,
-        group: a.on_budget ? '' : 'Tracking',
-      })),
-    [accounts]
-  )
+  const options = useMemo(() => accountPicker(openAccounts(accounts)).options, [accounts])
 
   const currentId = job.transaction_account_id ?? job.payload.account_id ?? null
   if (!currentId) return null

@@ -74,6 +74,9 @@ import {
   withinLedgerFrontier,
 } from './registerOrder'
 import { registerPayAction } from './payButton'
+import { selectAllStep } from './selectAll'
+import { isWholeRow, mayActOnAsRow, mayActOnInBulk } from './bulkActionable'
+import { hasBankRecord } from '../../../utils/bankRecord'
 import {
   sectionOpen,
   shouldDropSearch,
@@ -81,6 +84,8 @@ import {
   upcomingOpen,
 } from './highlightReveal'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useDeselectOnOutsidePointer } from '../../../hooks/useDeselectOnOutsidePointer'
+import { keepsSelection } from '../../../utils/keepsSelection'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
 import { accountNameMap, openAccounts } from '../../../utils/accountLists'
@@ -235,6 +240,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   useEffect(() => {
     return () => useUIStore.getState().clearTransactionSelection()
   }, [])
+  // A click anywhere that does not act on the selection ends it, as on the
+  // budget — see utils/keepsSelection.
+  useDeselectOnOutsidePointer(selectedTransactionIds.size > 0, clearTransactionSelection)
 
   useEffect(() => {
     if (selectedTransactionIds.size !== 1) {
@@ -256,7 +264,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const enterScheduled = useEnterScheduledTransaction(budgetId)
   const skipScheduled = useSkipScheduledTransaction(budgetId)
 
-  const { splitEditing, startSplitEditing } = useTransactionEditStore()
+  const { splitEditing, startSplitEditing, stopSplitEditing } = useTransactionEditStore()
 
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
   // Naming, not choosing: archived categories included, so a row filed in an
@@ -466,17 +474,25 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     headerCheckboxRef.current.indeterminate = someSelected && !allSelected
   }
 
+  // Unreconciled rows first, then everything, then nothing — see selectAllStep.
   const handleSelectAll = useCallback(() => {
-    if (allSelected) clearTransactionSelection()
-    else selectAllTransactions(allOrderedIds)
-  }, [allSelected, clearTransactionSelection, selectAllTransactions, allOrderedIds])
+    const next = selectAllStep(sorted, selectedTransactionIds)
+    if (next.size === 0) clearTransactionSelection()
+    else selectAllTransactions(allOrderedIds.filter((id) => next.has(id)))
+  }, [
+    sorted,
+    selectedTransactionIds,
+    clearTransactionSelection,
+    selectAllTransactions,
+    allOrderedIds,
+  ])
 
   const handleSelectLinked = useCallback(() => {
-    const linkedIds = sorted.filter((t) => t.has_sync_source).map((t) => t.id)
+    const linkedIds = sorted.filter(hasBankRecord).map((t) => t.id)
     if (linkedIds.length > 0) selectAllTransactions(linkedIds)
   }, [sorted, selectAllTransactions])
 
-  const hasLinkedTransactions = useMemo(() => sorted.some((t) => t.has_sync_source), [sorted])
+  const hasLinkedTransactions = useMemo(() => sorted.some(hasBankRecord), [sorted])
 
   const handleSelect = useCallback(
     (id: string, shiftKey: boolean) => {
@@ -529,9 +545,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       // An existing split's lines come from the server (the editor fetches
       // them); this page never holds them, so rebuilding from it produced an
       // empty draft that saved over the real lines.
+      //
+      // A toggle: the chevron again closes the editor it opened. Read from the
+      // store at call time, so the callback (a row memo input) stays stable
+      // while the draft changes under every keystroke.
+      if (useTransactionEditStore.getState().splitEditing?.transactionId === txn.id) {
+        stopSplitEditing()
+        return
+      }
       startSplitEditing(txn.id, txn.amount, txn.is_split)
     },
-    [startSplitEditing]
+    [startSplitEditing, stopSplitEditing]
   )
 
   // Bulk operations
@@ -558,7 +582,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const handleBulkDelete = useCallback(async () => {
     const eligibleIds = [...selectedTransactionIds].filter((id) => {
       const txn = transactionMap.get(id)
-      return txn && txn.cleared !== 'reconciled'
+      return !!txn && mayActOnInBulk(txn)
     })
     const { result } = await bulkDelete.mutateAsync({ transactionIds: eligibleIds, accountId })
     clearTransactionSelection()
@@ -597,9 +621,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const handleBulkDuplicate = useCallback(() => {
     const selected = [...selectedTransactionIds]
       .map((id) => transactionMap.get(id))
-      .filter(
-        (t): t is Transaction => !!t && t.cleared !== 'reconciled' && !t.parent_transaction_id
-      )
+      .filter((t): t is Transaction => !!t && mayActOnAsRow(t))
     selected.forEach(duplicateTransaction)
     clearTransactionSelection()
   }, [selectedTransactionIds, transactionMap, duplicateTransaction, clearTransactionSelection])
@@ -612,7 +634,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const makeRepeatingFromSelection = useCallback(() => {
     const [onlyId] = [...selectedTransactionIds]
     const txn = onlyId ? transactionMap.get(onlyId) : undefined
-    if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
+    if (txn && isWholeRow(txn)) setMakeRepeatingTxn(txn)
   }, [selectedTransactionIds, transactionMap])
   useShortcut(SHORTCUTS.makeRepeating.combo, makeRepeatingFromSelection, {
     enabled: selectedTransactionIds.size === 1,
@@ -636,7 +658,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     () =>
       [...selectedTransactionIds].some((id) => {
         const t = transactionMap.get(id)
-        return t && t.awaiting_approval && t.cleared !== 'reconciled'
+        return !!t && t.awaiting_approval && mayActOnInBulk(t)
       }),
     [selectedTransactionIds, transactionMap]
   )
@@ -657,7 +679,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const editableSelectedTxn = useMemo((): Transaction | null => {
     if (selectedTransactionIds.size !== 1) return null
     const txn = transactionMap.get([...selectedTransactionIds][0])
-    if (!txn || txn.cleared === 'reconciled' || txn.parent_transaction_id) return null
+    if (!txn || !mayActOnAsRow(txn)) return null
     return txn
   }, [selectedTransactionIds, transactionMap])
 
@@ -829,7 +851,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <div className="txn-duplicate-group">
           {renderTxnRow(txn)}
           {renderTxnRow(partner)}
-          <div className="txn-duplicate-group__bar">
+          <div className="txn-duplicate-group__bar" {...keepsSelection}>
             <span className="txn-duplicate-group__label">
               <Link2 size={11} />
               Potential duplicate
@@ -1105,7 +1127,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
         {/* Sticky header */}
         <div className="transaction-table__header">
-          <div className="txn-col txn-col--checkbox txn-col--checkbox-group">
+          <div className="txn-col txn-col--checkbox txn-col--checkbox-group" {...keepsSelection}>
             <input
               ref={headerCheckboxRef}
               type="checkbox"

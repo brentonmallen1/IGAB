@@ -3,9 +3,9 @@ import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { usePlaceReceipt, type AIJob, type PlaceTarget } from '../../../api/aiJobs'
 import { apiErrorMessage } from '../../../api/client'
-import { Combobox, type ComboboxOption } from '../../../components/common/Combobox/Combobox'
+import { Combobox } from '../../../components/common/Combobox/Combobox'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { accountNameMap, openAccounts } from '../../../utils/accountLists'
+import { accountNameMap, accountPicker, openAccounts } from '../../../utils/accountLists'
 import { parseApiDecimal } from '../../../utils/money'
 import './PlaceReceipt.css'
 
@@ -24,15 +24,7 @@ export function PlaceReceipt({ job, budgetId }: { job: AIJob; budgetId: string }
   const place = usePlaceReceipt(budgetId)
   const { formatMoney, formatDayMonth } = useFormatters()
   const names = useMemo(() => accountNameMap(accounts), [accounts])
-  const options = useMemo<ComboboxOption[]>(
-    () =>
-      openAccounts(accounts).map((a) => ({
-        id: a.id,
-        label: a.name,
-        group: a.on_budget ? '' : 'Tracking',
-      })),
-    [accounts]
-  )
+  const options = useMemo(() => accountPicker(openAccounts(accounts)).options, [accounts])
 
   const noun = job.kind === 'receipt' ? 'receipt' : 'entry'
 

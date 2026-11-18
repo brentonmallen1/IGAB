@@ -1,4 +1,4 @@
-.category-combobox__trigger {
+.picker-field__trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -13,22 +13,22 @@
   text-align: left;
 }
 
-.category-combobox__trigger:disabled {
+.picker-field__trigger:disabled {
   opacity: 0.6;
 }
 
-.category-combobox__trigger svg {
+.picker-field__trigger svg {
   color: var(--text-muted);
   flex-shrink: 0;
 }
 
-.category-combobox__value {
+.picker-field__value {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.category-combobox__placeholder {
+.picker-field__placeholder {
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
