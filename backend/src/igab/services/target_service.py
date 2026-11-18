@@ -216,12 +216,7 @@ class TargetService:
         amount = target.target_amount
         kind = TargetType(target.target_type)
         if kind in CAPPABLE:
-            if kind is TargetType.MONTHLY_FUNDING:
-                rate = amount
-            else:
-                if target.weekday is None:
-                    raise InvariantViolation("A weekly target needs the day of the week it funds")
-                rate = amount * weekday_occurrences(month, target.weekday)
+            rate = self.rate(target, month)
             if target.target_limit is None:
                 return rate
             opening = carried_in(assigned=assigned, activity=activity, available=available)
@@ -231,6 +226,20 @@ class TargetService:
         opening = available - assigned
         months_left = months_between(month_start(month), target.target_date)
         return max(ZERO, amount - opening) / months_left
+
+    @staticmethod
+    def rate(target: CategoryTarget, month: date) -> Decimal:
+        """A monthly or weekly target's ask for `month` before any stop: the
+        amount, or a weekly amount times that weekday's occurrences (4 or 5).
+        `duty` bounds it by the stop; Cover + target does not."""
+        kind = TargetType(target.target_type)
+        if kind not in CAPPABLE:
+            raise InvariantViolation("Only a monthly or weekly target has a rate")
+        if kind is TargetType.MONTHLY_FUNDING:
+            return target.target_amount
+        if target.weekday is None:
+            raise InvariantViolation("A weekly target needs the day of the week it funds")
+        return target.target_amount * weekday_occurrences(month, target.weekday)
 
     def measures_balance(self, target: CategoryTarget) -> bool:
         """Does this target's progress read AVAILABLE rather than ASSIGNED?
@@ -281,6 +290,66 @@ class TargetService:
         return assigned - self.returnable(
             target, assigned=assigned, activity=activity, available=available, month=month
         )
+
+    def cover_and_target_assigned(
+        self,
+        target: CategoryTarget,
+        *,
+        assigned: Decimal,
+        activity: Decimal,
+        available: Decimal,
+        month: date,
+    ) -> Decimal | None:
+        """What ASSIGNED should read for "Cover + target": the month's
+        spending covered, and the target's rate on top — so Available reaches
+        the rate afterwards. None when the option is not offered.
+
+        `target_assigned` credits every dollar assigned toward the duty,
+        including the dollars that went to cover spending; an envelope that
+        spent what it was given reads its target as met with nothing left in
+        it. This one measures the rate against AVAILABLE instead:
+
+            assigned + max(0, rate − available)
+
+        `rate` (`TargetService.rate`) is the monthly amount, or a weekly
+        amount times the month's weekdays — **never bounded by a stop**. The
+        person asked for the spending covered and a month's worth on top; a
+        stop governs what Target Amount asks, not this. Target Amount keeps
+        its stop-limited figure, so the two readings stay distinct.
+
+        **Offered only** for a monthly or weekly target (a savings balance
+        already measures Available — `target_assigned` IS this for it), and
+        only when spending has used everything the envelope was given:
+        `activity < 0` and `available ≤ 0`. An envelope still holding money
+        has nothing to cover. Also None where the figure would equal
+        `target_assigned` — money carried in and spent to exactly zero with
+        nothing assigned (carried in 30, spent 30: both read 100) — so the
+        choice is never between two equal numbers.
+
+        Target $100 a month (nothing carried in unless stated):
+
+        - **A** — $30 spent and already covered (assigned 30, Available 0):
+          130, Available 100. Target amount says 100, which leaves 70.
+        - **B** — $30 spent, $10 of it covered (assigned 10, Available −20):
+          130, Available 100.
+        - **C** — $30 spent, uncovered (assigned 0, Available −30): 130,
+          a +130 move. Target amount moves +100 and leaves 70.
+        - **D** — assigned 100, $130 spent (Available −30): 230, +130.
+          Target amount sees the duty met and moves nothing.
+        - **E** — assigned 130, $130 spent (Available 0): 230, offered as
+          +100. Target amount reads 130 and moves nothing.
+        - **Stopped** — "$100 a month until $1,000", arriving holding the
+          $1,000 stop and spending $1,030 (Available −30): 130, Available
+          100. Target amount's duty is 0 there, so it moves nothing.
+        """
+        kind = TargetType(target.target_type)
+        if kind not in CAPPABLE or activity >= ZERO or available > ZERO:
+            return None
+        figure = quantize_cents(assigned + max(ZERO, self.rate(target, month) - available))
+        plain = self.target_assigned(
+            target, assigned=assigned, activity=activity, available=available, month=month
+        )
+        return None if figure == plain else figure
 
     def returnable(
         self,

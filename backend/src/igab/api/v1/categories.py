@@ -2,7 +2,7 @@ import uuid
 from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -65,7 +65,7 @@ from igab.api.v1.schemas.category import (
     RepairOrphansResponse,
     TargetSuggestionsResponse,
 )
-from igab.db.models import Budget, Category, CategoryGroup, Transaction
+from igab.db.models import Budget, Category, CategoryGroup, CategoryTarget, Transaction
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
@@ -98,6 +98,7 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
+from igab.services.budget_service import CategoryBalance as ServiceCategoryBalance
 from igab.services.category_service import (
     CategoryArchivePreview,
     CategoryDeletePreview,
@@ -761,6 +762,46 @@ async def get_import_history_month(
     )
 
 
+def _target_figures(
+    target_service: TargetService,
+    target: CategoryTarget | None,
+    b: ServiceCategoryBalance,
+    *,
+    month: date,
+    today: date,
+    funding_day: int,
+) -> dict[str, Any]:
+    """A budget-month row's four target fields, all None without a target —
+    and an income category never has one here: it has no envelope money."""
+    if target is None:
+        return dict(
+            target_status=None,
+            needed_this_month=None,
+            target_assigned=None,
+            cover_target_assigned=None,
+        )
+    return dict(
+        target_status=target_service.calculate_status(
+            target,
+            b.assigned,
+            b.available,
+            activity=b.activity,
+            month=month,
+            today=today,
+            funding_day=funding_day,
+        ),
+        needed_this_month=target_service.calculate_needed(
+            target, b.assigned, b.available, activity=b.activity, month=month
+        ),
+        target_assigned=target_service.target_assigned(
+            target, assigned=b.assigned, activity=b.activity, available=b.available, month=month
+        ),
+        cover_target_assigned=target_service.cover_and_target_assigned(
+            target, assigned=b.assigned, activity=b.activity, available=b.available, month=month
+        ),
+    )
+
+
 @router.get("/{budget_id}/months/{month}", response_model=BudgetMonthResponse)
 async def get_budget_month(
     budget_id: BudgetAccess,
@@ -826,36 +867,13 @@ async def get_budget_month(
                 assigned=None if b.in_system_group else b.assigned,
                 activity=b.activity,
                 available=None if b.in_system_group else b.available,
-                target_status=(
-                    target_service.calculate_status(
-                        t,
-                        b.assigned,
-                        b.available,
-                        activity=b.activity,
-                        month=month,
-                        today=today,
-                        funding_day=funding_day,
-                    )
-                    if not b.in_system_group and (t := targets.get(b.category_id))
-                    else None
-                ),
-                needed_this_month=(
-                    target_service.calculate_needed(
-                        t, b.assigned, b.available, activity=b.activity, month=month
-                    )
-                    if not b.in_system_group and (t := targets.get(b.category_id))
-                    else None
-                ),
-                target_assigned=(
-                    target_service.target_assigned(
-                        t,
-                        assigned=b.assigned,
-                        activity=b.activity,
-                        available=b.available,
-                        month=month,
-                    )
-                    if not b.in_system_group and (t := targets.get(b.category_id))
-                    else None
+                **_target_figures(
+                    target_service,
+                    None if b.in_system_group else targets.get(b.category_id),
+                    b,
+                    month=month,
+                    today=today,
+                    funding_day=funding_day,
                 ),
                 is_card_payment=b.is_card_payment,
                 repaid_uncovered_debt=b.repaid_uncovered_debt,
@@ -1188,7 +1206,9 @@ async def auto_assign_categories(
 ) -> None:
     with budget_service.changes.batch():
         if body.action == "target_amount":
-            await assign_service.set_to_targets(budget_id, body.month, body.category_ids)
+            await assign_service.set_to_targets(
+                budget_id, body.month, body.category_ids, cover_ids=body.cover_ids
+            )
             return
         await budget_service.auto_assign(budget_id, body.category_ids, body.month, body.action)
 
@@ -1206,6 +1226,8 @@ def _assign_preview_out(preview: AssignPreview) -> AssignPreviewResponse:
                 current_assigned=i.current_assigned,
                 delta=i.delta,
                 new_assigned=i.new_assigned,
+                target_assigned=i.target_assigned,
+                cover_target_assigned=i.cover_target_assigned,
             )
             for i in preview.items
         ],
@@ -1225,9 +1247,14 @@ async def assign_strategy_totals(
     current_user: CurrentUser,
     assign_service: Annotated[AssignService, Depends(get_assign_service)],
     month: date = Query(...),
+    #: The device's Target Amount setting (frontend `targetCoverMode`):
+    #: `cover` reads the Target Amount row as "Cover + target" wherever it is
+    #: offered, as the preview then defaults to; `ask` and `target` read it
+    #: as target amounts.
+    cover_mode: Literal["ask", "target", "cover"] = Query(default="ask"),
 ) -> AssignStrategyTotalsResponse:
     """Per-strategy totals for the Assign dropdown menu — one call, all rows."""
-    totals = await assign_service.strategy_totals(budget_id, month)
+    totals = await assign_service.strategy_totals(budget_id, month, cover_all=cover_mode == "cover")
     return AssignStrategyTotalsResponse(
         month=totals.month,
         tba=totals.tba,
@@ -1254,9 +1281,17 @@ async def assign_strategy_preview(
     assign_service: Annotated[AssignService, Depends(get_assign_service)],
     month: date = Query(...),
     strategy: str = Query(...),
+    #: `target_amount` only: the categories previewed as "Cover + target".
+    cover_ids: list[uuid.UUID] = Query(default=[]),
+    #: `target_amount` only: the device's setting (frontend `targetCoverMode`)
+    #: before any row is picked. `cover` previews every offered row as
+    #: "Cover + target" and ignores `cover_ids`; the others read `cover_ids`.
+    cover_mode: Literal["ask", "target", "cover"] = Query(default="ask"),
 ) -> AssignPreviewResponse:
     try:
-        preview = await assign_service.preview(budget_id, month, strategy)
+        preview = await assign_service.preview(
+            budget_id, month, strategy, cover_ids, cover_all=cover_mode == "cover"
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
     return _assign_preview_out(preview)
@@ -1274,7 +1309,7 @@ async def assign_strategy_apply(
     The body carries no amounts on purpose: applied deltas are derived from
     live balances, so a stale preview can never over- or mis-assign."""
     try:
-        applied = await assign_service.apply(budget_id, body.month, body.strategy)
+        applied = await assign_service.apply(budget_id, body.month, body.strategy, body.cover_ids)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
     return AssignApplyResponse(

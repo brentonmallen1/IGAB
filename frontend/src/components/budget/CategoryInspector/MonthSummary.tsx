@@ -3,7 +3,7 @@ import { BalanceBreakdownRows } from './BalanceBreakdownRows'
 import { useState } from 'react'
 import { ChevronDown, Clock, Zap } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
-import { useCategoryHistoryBatch, useAutoAssign } from '../../../api/categoryHistory'
+import { useCategoryHistoryBatch } from '../../../api/categoryHistory'
 import { useTargetsByBudget } from '../../../api/targets'
 import { useDeleteTarget } from '../../../api/targets'
 import { useAppStore } from '../../../stores/appStore'
@@ -12,8 +12,8 @@ import { today } from '../../../utils/dates'
 import { describeTarget } from '../../../utils/targets'
 import { TargetEditor } from '../TargetEditor'
 import type { Category, CategoryTarget } from '../../../types'
-import type { AutoAssignAction } from '../../../types'
-import { autoAssignAmounts, autoAssignCategoryIds, autoAssignRows } from './autoAssignActions'
+import { autoAssignCategoryIds } from './autoAssignActions'
+import { useAutoAssignActions } from './useAutoAssignActions'
 
 interface Props {
   budgetId: string
@@ -66,7 +66,6 @@ export function MonthSummary({ budgetId, categories }: Props) {
   const allCategoryIds = autoAssignCategoryIds(categories)
   const { data: histories } = useCategoryHistoryBatch(budgetId, allCategoryIds, month)
   const { data: allTargets } = useTargetsByBudget(budgetId)
-  const autoAssign = useAutoAssign(budgetId, month)
 
   const [summaryOpen, setSummaryOpen] = useState(true)
   const [autoAssignOpen, setAutoAssignOpen] = useState(true)
@@ -93,16 +92,20 @@ export function MonthSummary({ budgetId, categories }: Props) {
   // categories — landed entirely in "left over".
   const monthTotals = sumBalances(budgetMonth?.category_balances ?? [])
 
-  const balances = budgetMonth?.category_balances
-  const autoActions = autoAssignRows(allCategoryIds, histories, balances)
-  const press = (action: AutoAssignAction) =>
-    autoAssign.mutate({
-      categoryIds: allCategoryIds,
-      action,
-      amounts: autoAssignAmounts(action, allCategoryIds, histories, balances),
-    })
+  const {
+    rows: autoActions,
+    press,
+    isPending,
+    dialog: targetCoverDialog,
+  } = useAutoAssignActions(
+    budgetId,
+    month,
+    allCategoryIds,
+    histories,
+    budgetMonth?.category_balances
+  )
 
-  const isDisabled = autoAssign.isPending || allCategoryIds.length === 0
+  const isDisabled = isPending || allCategoryIds.length === 0
 
   return (
     <div className="month-summary">
@@ -149,21 +152,23 @@ export function MonthSummary({ budgetId, categories }: Props) {
         {autoAssignOpen && (
           <div className="month-summary__section-body">
             <div className="inspector-autoassign">
-              {autoActions.map(({ action, label, value }) => (
+              {autoActions.map((row) => (
                 <button
-                  key={action}
+                  key={row.label}
                   className="inspector-autoassign__btn"
-                  onClick={() => press(action)}
+                  onClick={() => press(row)}
                   disabled={isDisabled}
                 >
-                  <span className="inspector-autoassign__label">{label}</span>
-                  <span className="inspector-autoassign__value tabular">{formatMoney(value)}</span>
+                  <span className="inspector-autoassign__label">{row.label}</span>
+                  <span className="inspector-autoassign__value tabular">
+                    {formatMoney(row.value)}
+                  </span>
                 </button>
               ))}
               <div className="inspector-autoassign__divider" />
               <button
                 className="inspector-autoassign__btn"
-                onClick={() => press('reset')}
+                onClick={() => press({ action: 'reset' })}
                 disabled={isDisabled}
               >
                 <span className="inspector-autoassign__label">Reset Assigned Amounts</span>
@@ -238,6 +243,7 @@ export function MonthSummary({ budgetId, categories }: Props) {
           onClose={() => setEditingTarget(null)}
         />
       )}
+      {targetCoverDialog}
     </div>
   )
 }

@@ -938,3 +938,249 @@ async def test_an_unknown_inspector_action_is_refused_not_zeroed(api_client, db_
     assert {b.category_id: b for b in summary.category_balances}[groceries.id].assigned == Decimal(
         "100.00"
     )
+
+
+# ─── Cover + target ───────────────────────────────────────────────────────────
+
+
+async def _cover_setup(api_client, db_session):
+    """Four $100-a-month envelopes in July, $1,000 of income:
+
+    - Groceries: $30 spent and covered (assigned 30, Available 0) — case A.
+    - Dining: $30 spent, uncovered (assigned 0, Available −30) — case C.
+    - Fuel: assigned 130, spent 130 (Available 0) — case E: Target moves nothing.
+    - Rent: nothing spent — no Cover + target to offer.
+    """
+    services = make_services(db_session)
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+    income_cat = await create_category(db_session, budget, income_group, "Inflow")
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    cats = {
+        name: await create_category(db_session, budget, everyday, name)
+        for name in ("Groceries", "Dining", "Fuel", "Rent")
+    }
+    await create_transaction(
+        db_session, budget, checking, "1000.00", date(2026, 7, 2), category=income_cat
+    )
+    for name, assigned, spent in (
+        ("Groceries", "30.00", "-30.00"),
+        ("Dining", "0", "-30.00"),
+        ("Fuel", "130.00", "-130.00"),
+    ):
+        if Decimal(assigned):
+            await services.budgets.set_assignment(
+                budget.id, cats[name].id, MONTH, Decimal(assigned)
+            )
+        await create_transaction(
+            db_session, budget, checking, spent, date(2026, 7, 9), category=cats[name]
+        )
+    target_service = TargetService(TargetRepository(db_session))
+    for cat in cats.values():
+        await target_service.upsert(
+            category_id=cat.id,
+            target_type="monthly_funding",
+            target_amount=Decimal("100.00"),
+            target_limit=None,
+        )
+    await db_session.flush()
+    return services, budget, cats
+
+
+async def _assigned(services, budget, cats) -> dict[str, Decimal]:
+    summary = await services.budgets.get_budget_summary(budget.id, MONTH)
+    by_cat = {b.category_id: b for b in summary.category_balances}
+    return {name: by_cat[c.id].assigned for name, c in cats.items()}
+
+
+def _dec(value) -> Decimal | None:
+    return None if value is None else Decimal(str(value))
+
+
+async def test_cover_target_assigned_is_served_beside_target_assigned(api_client, db_session):
+    _, budget, cats = await _cover_setup(api_client, db_session)
+    month = (await api_client.get(f"/api/v1/{budget.id}/months/2026-07-01")).json()
+    served = {b["category_id"]: b for b in month["category_balances"]}
+
+    def pair(name):
+        row = served[str(cats[name].id)]
+        return _dec(row["target_assigned"]), _dec(row["cover_target_assigned"])
+
+    assert pair("Groceries") == (Decimal("100.00"), Decimal("130.00"))
+    assert pair("Dining") == (Decimal("100.00"), Decimal("130.00"))
+    assert pair("Fuel") == (Decimal("130.00"), Decimal("230.00"))
+    assert pair("Rent") == (Decimal("100.00"), None)
+    # Required on the schema: every row carries the key, null or not.
+    assert all("cover_target_assigned" in b for b in month["category_balances"])
+
+
+async def test_bulk_target_amount_with_mixed_cover_ids_is_one_undoable_change(
+    api_client, db_session
+):
+    """Groceries and Fuel take Cover + target, Dining its target amount, and
+    Rent — named in cover_ids but not offered the choice — its target amount.
+    One apply, one ⌘Z."""
+    services, budget, cats = await _cover_setup(api_client, db_session)
+    cover_ids = [str(cats[n].id) for n in ("Groceries", "Fuel", "Rent")]
+
+    preview = await api_client.get(
+        f"/api/v1/{budget.id}/assign/preview",
+        params={"month": "2026-07-01", "strategy": "target_amount", "cover_ids": cover_ids},
+    )
+    assert preview.status_code == 200
+    figures = {
+        i["category_name"]: (
+            _dec(i["new_assigned"]),
+            _dec(i["target_assigned"]),
+            _dec(i["cover_target_assigned"]),
+        )
+        for i in preview.json()["items"]
+    }
+    assert figures == {
+        "Groceries": (Decimal("130.00"), Decimal("100.00"), Decimal("130.00")),
+        "Dining": (Decimal("100.00"), Decimal("100.00"), Decimal("130.00")),
+        "Fuel": (Decimal("230.00"), Decimal("130.00"), Decimal("230.00")),
+        "Rent": (Decimal("100.00"), None, None),
+    }
+
+    # Without cover_ids, Fuel's target amount moves nothing — and it is still
+    # listed, because Cover + target is the way to reach it from here.
+    plain = await api_client.get(
+        f"/api/v1/{budget.id}/assign/preview",
+        params={"month": "2026-07-01", "strategy": "target_amount"},
+    )
+    fuel = next(i for i in plain.json()["items"] if i["category_name"] == "Fuel")
+    assert _dec(fuel["delta"]) == 0
+    assert _dec(fuel["cover_target_assigned"]) == Decimal("230.00")
+    # TBA 1000 − 160 assigned = 840; the plain run moves 70 + 100 + 100.
+    assert _dec(plain.json()["tba_after"]) == Decimal("570.00")
+    # Covered: 100 + 100 + 100 + 100.
+    assert _dec(preview.json()["tba_after"]) == Decimal("440.00")
+
+    applied = await api_client.post(
+        f"/api/v1/{budget.id}/assign/apply",
+        json={"month": "2026-07-01", "strategy": "target_amount", "cover_ids": cover_ids},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["batch_id"]
+    assert _dec(applied.json()["tba_after"]) == Decimal("440.00")
+    assert await _assigned(services, budget, cats) == {
+        "Groceries": Decimal("130.00"),
+        "Dining": Decimal("100.00"),
+        "Fuel": Decimal("230.00"),
+        "Rent": Decimal("100.00"),
+    }
+    await assert_financial_invariants(db_session, budget.id)
+
+    undo = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert undo.status_code == 200
+    assert await _assigned(services, budget, cats) == {
+        "Groceries": Decimal("30.00"),
+        "Dining": Decimal("0"),
+        "Fuel": Decimal("130.00"),
+        "Rent": Decimal("0"),
+    }, "one undo takes back the whole run"
+
+
+async def test_inspector_cover_and_target_and_target_amount_with_cover_ids(api_client, db_session):
+    services, budget, cats = await _cover_setup(api_client, db_session)
+    url = f"/api/v1/{budget.id}/categories/auto-assign"
+
+    # The single-category row: Target Amount with Dining as its own cover_ids.
+    resp = await api_client.post(
+        url,
+        json={
+            "month": "2026-07-01",
+            "action": "target_amount",
+            "category_ids": [str(cats["Dining"].id)],
+            "cover_ids": [str(cats["Dining"].id)],
+        },
+    )
+    assert resp.status_code == 204
+    # Several selected, the dialog's answer: Groceries covered, Rent plain.
+    resp = await api_client.post(
+        url,
+        json={
+            "month": "2026-07-01",
+            "action": "target_amount",
+            "category_ids": [str(cats["Groceries"].id), str(cats["Rent"].id)],
+            "cover_ids": [str(cats["Groceries"].id)],
+        },
+    )
+    assert resp.status_code == 204
+    assert await _assigned(services, budget, cats) == {
+        "Groceries": Decimal("130.00"),
+        "Dining": Decimal("130.00"),
+        "Fuel": Decimal("130.00"),
+        "Rent": Decimal("100.00"),
+    }
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_cover_and_target_is_not_a_second_action(api_client, db_session):
+    """One wire spelling: Cover + target is Target Amount with `cover_ids`."""
+    services, budget, cats = await _cover_setup(api_client, db_session)
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/categories/auto-assign",
+        json={
+            "month": "2026-07-01",
+            "action": "cover_and_target",
+            "category_ids": [str(cats["Dining"].id)],
+        },
+    )
+    assert resp.status_code == 422
+    assert (await _assigned(services, budget, cats))["Dining"] == Decimal("0")
+
+
+async def test_the_menu_total_honours_the_cover_setting(api_client, db_session):
+    """The Assign dropdown's Target Amount row reads what the preview will
+    default to: target amounts under Ask and Target only, Cover + target
+    wherever offered under Cover + target."""
+    _, budget, _ = await _cover_setup(api_client, db_session)
+
+    async def row(mode):
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/assign/strategies",
+            params={"month": "2026-07-01", "cover_mode": mode},
+        )
+        assert resp.status_code == 200
+        return next(s for s in resp.json()["strategies"] if s["strategy"] == "target_amount")
+
+    # Groceries 100, Dining 100, Fuel 130, Rent 100.
+    for mode in ("ask", "target"):
+        plain = await row(mode)
+        assert _dec(plain["total_amount"]) == Decimal("430.00")
+        assert _dec(plain["to_assign"]) == Decimal("270.00")
+    # Groceries 130, Dining 130, Fuel 230, Rent 100.
+    covered = await row("cover")
+    assert _dec(covered["total_amount"]) == Decimal("590.00")
+    assert _dec(covered["to_assign"]) == Decimal("430.00")
+    # And it is the preview's own figure under the same choice.
+    ids = [str(c) for c in (await _offered(api_client, budget))]
+    preview = await api_client.get(
+        f"/api/v1/{budget.id}/assign/preview",
+        params={"month": "2026-07-01", "strategy": "target_amount", "cover_ids": ids},
+    )
+    assert _dec(preview.json()["to_assign"]) == Decimal("430.00")
+    # The preview's own default under the setting, before any row is picked.
+    defaulted = await api_client.get(
+        f"/api/v1/{budget.id}/assign/preview",
+        params={"month": "2026-07-01", "strategy": "target_amount", "cover_mode": "cover"},
+    )
+    assert _dec(defaulted.json()["to_assign"]) == Decimal("430.00")
+
+    bogus = await api_client.get(
+        f"/api/v1/{budget.id}/assign/strategies",
+        params={"month": "2026-07-01", "cover_mode": "always"},
+    )
+    assert bogus.status_code == 422
+
+
+async def _offered(api_client, budget) -> list[str]:
+    month = (await api_client.get(f"/api/v1/{budget.id}/months/2026-07-01")).json()
+    return [
+        b["category_id"]
+        for b in month["category_balances"]
+        if b["cover_target_assigned"] is not None
+    ]

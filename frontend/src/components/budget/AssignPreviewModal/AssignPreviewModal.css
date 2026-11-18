@@ -31,3 +31,9 @@
   font-size: var(--font-size-xs);
   line-height: 1.5;
 }
+
+/* Target / Cover + target: under the category name on a row offered it, and
+   once above the table for every such row (TargetCoverAll). */
+.assign-preview-modal__cover-choice {
+  margin-top: var(--spacing-xs);
+}

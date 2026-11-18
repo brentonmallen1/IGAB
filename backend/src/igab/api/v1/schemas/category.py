@@ -364,6 +364,14 @@ class CategoryBalance(ApiModel):
     #: inspector shows it on the button. `TargetService.target_assigned`, the
     #: rule the apply runs. None when there is no target.
     target_assigned: Decimal | None = None
+    #: What Auto-assign's "Cover + target" would set assigned to: the month's
+    #: spending covered and the target's duty on top
+    #: (`TargetService.cover_and_target_assigned`). Null when it is not
+    #: offered — no target, not monthly or weekly, nothing spent past what
+    #: the envelope was given, or the same figure as `target_assigned`.
+    #: Required, not optional: a path that forgets it must raise, not quietly
+    #: stop offering the choice.
+    cover_target_assigned: Decimal | None
     #: A card's envelope (linked to the card account). Not drawn in
     #: the category grid — the cards section owns it. Below zero it is
     #: overspent like any envelope and counts in the overspent totals; Cover
@@ -942,6 +950,10 @@ class AutoAssignRequest(ApiModel):
         "target_amount",
     ]
     month: datetime.date
+    #: `target_amount` only: the categories that take "Cover + target"
+    #: instead (`TargetService.cover_and_target_assigned`); the rest take the
+    #: target amount. One not offered the choice takes the target amount.
+    cover_ids: list[uuid.UUID] = []
 
 
 class CoverOverspentPreviewItem(ApiModel):
@@ -1007,6 +1019,12 @@ class AssignPreviewItemOut(ApiModel):
     current_assigned: Decimal
     delta: Decimal
     new_assigned: Decimal
+    #: `target_amount` only: what this row reads under each choice, so the
+    #: preview can offer "Target" or "Cover + target" per row. Both null on
+    #: a row with no such choice (every row of every other strategy);
+    #: `new_assigned` is whichever the request's `cover_ids` picked.
+    target_assigned: Decimal | None
+    cover_target_assigned: Decimal | None
 
 
 class AssignPreviewResponse(ApiModel):
@@ -1029,6 +1047,9 @@ class AssignPreviewResponse(ApiModel):
 class AssignApplyRequest(ApiModel):
     month: datetime.date
     strategy: str
+    #: `target_amount` only: the categories applied as "Cover + target"
+    #: instead of their target amount. Ignored by every other strategy.
+    cover_ids: list[uuid.UUID] = []
 
 
 class AssignApplyResponse(ApiModel):

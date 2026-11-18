@@ -95,6 +95,53 @@ describe('autoAssignAmounts', () => {
   })
 })
 
+describe('Cover + target', () => {
+  // Target $100 a month. a: $30 overspend already covered (case A) — Target
+  // 100, Cover + target 130. b: not overspent — no choice served. c: no target.
+  const covered = (category_id: string, target: number | null, cover: number | null) =>
+    ({
+      category_id,
+      target_assigned: target,
+      cover_target_assigned: cover,
+    }) as unknown as CategoryBalance
+  const balances = [covered('a', 100, 130), covered('b', 100, null), covered('c', null, null)]
+
+  it('takes the served cover figure for the envelopes named, the target for the rest', () => {
+    expect(
+      autoAssignAmounts('target_amount', ['a', 'b', 'c'], undefined, balances, new Set(['a', 'b']))
+    ).toEqual(
+      new Map([
+        ['a', 130],
+        ['b', 100],
+      ])
+    )
+  })
+
+  it('is its own row for one category the server offers it on — Target Amount with its id', () => {
+    const rows = autoAssignRows(['a'], [], balances)
+    expect(rows.slice(0, 2)).toEqual([
+      { action: 'target_amount', label: 'Target Amount', value: 100 },
+      { action: 'target_amount', label: 'Cover + target', value: 130, coverIds: ['a'] },
+    ])
+  })
+
+  it('is no row for a category not offered it, nor for several selected', () => {
+    const labels = (ids: string[]) => autoAssignRows(ids, [], balances).map((r) => r.label)
+    expect(labels(['b'])).not.toContain('Cover + target')
+    expect(labels(['a', 'b'])).not.toContain('Cover + target')
+  })
+
+  it('sums in cents, not floats', () => {
+    const cents = [covered('x', 0.1, null), covered('y', 0.2, null)]
+    expect(autoAssignRows(['x', 'y'], [], cents)[0].value).toBe(0.3)
+  })
+
+  it('Target Amount over several says what the chosen cover_ids set', () => {
+    const rows = autoAssignRows(['a', 'b'], [], balances, new Set(['a']))
+    expect(rows[0]).toEqual({ action: 'target_amount', label: 'Target Amount', value: 230 })
+  })
+})
+
 describe('autoAssignCategoryIds', () => {
   it('acts on the envelopes money may enter — never Income, never an archived group', () => {
     // The month summary sent every listed category, Income included, and the

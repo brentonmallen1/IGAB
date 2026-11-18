@@ -11,6 +11,11 @@ import {
 } from '../../stores/appStore'
 import { MAX_FUNDING_DAY } from '../../utils/targets'
 import {
+  TARGET_COVER_MODE_COPY,
+  TARGET_COVER_MODES,
+  type TargetCoverMode,
+} from '../../utils/targetCover'
+import {
   useAccounts,
   useCreateAccount,
   useUpdateAccount,
@@ -115,6 +120,8 @@ export function SettingsPage() {
   const setBudgetColors = useAppStore((s) => s.setBudgetColors)
   const cardOverspendTone = useAppStore((s) => s.cardOverspendTone)
   const setCardOverspendTone = useAppStore((s) => s.setCardOverspendTone)
+  const targetCoverMode = useAppStore((s) => s.targetCoverMode)
+  const setTargetCoverMode = useAppStore((s) => s.setTargetCoverMode)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const autoOpenLastBudget = useAppStore((s) => s.autoOpenLastBudget)
   const setAutoOpenLastBudget = useAppStore((s) => s.setAutoOpenLastBudget)
@@ -370,6 +377,30 @@ export function SettingsPage() {
                     {Array.from({ length: MAX_FUNDING_DAY }, (_, i) => i + 1).map((day) => (
                       <option key={day} value={day}>
                         {day}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Target Amount on overspent categories</div>
+                    <div className="settings-row__desc">
+                      When several categories are assigned their targets at once, what to do with
+                      ones that spent everything they were given — in the inspector, and as the
+                      starting choice in the Assign menu&rsquo;s Target Amount preview.{' '}
+                      {TARGET_COVER_MODE_COPY[targetCoverMode].desc} On this device.
+                    </div>
+                  </div>
+                  <select
+                    className="settings-select"
+                    aria-label="Target Amount on overspent categories"
+                    value={targetCoverMode}
+                    onChange={(e) => setTargetCoverMode(e.target.value as TargetCoverMode)}
+                  >
+                    {TARGET_COVER_MODES.map((m) => (
+                      <option key={m} value={m}>
+                        {TARGET_COVER_MODE_COPY[m].label}
                       </option>
                     ))}
                   </select>

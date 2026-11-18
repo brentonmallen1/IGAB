@@ -41,15 +41,24 @@ export interface AutoAssignVariables {
    *  the server writes it. Null when the figures are not known yet — then
    *  the grid waits for the server instead of guessing. */
   amounts: Map<string, number> | null
+  /** Target Amount only: the envelopes that take "Cover + target" instead
+   *  (utils/targetCover.ts). The server falls back to the target amount for
+   *  any it does not offer the choice. */
+  coverIds?: string[]
 }
 
 export function useAutoAssign(budgetId: string, month: string) {
   const qc = useQueryClient()
   const key = [ROOT.budgetMonth, budgetId, month]
   return useMutation({
-    mutationFn: ({ categoryIds, action }: AutoAssignVariables) =>
+    mutationFn: ({ categoryIds, action, coverIds = [] }: AutoAssignVariables) =>
       apiClient
-        .post(`/${budgetId}/categories/auto-assign`, { category_ids: categoryIds, action, month })
+        .post(`/${budgetId}/categories/auto-assign`, {
+          category_ids: categoryIds,
+          action,
+          month,
+          cover_ids: coverIds,
+        })
         .then((r) => r.data),
     // Optimistic, as a typed cell is: the envelopes show their new figures
     // at once, and the refetch below replaces them with the server's.
