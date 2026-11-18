@@ -18,6 +18,7 @@ import pytest
 
 from igab.services.ai_draft_service import (
     NL_REPLY_SCHEMA,
+    RAW_CUT_SHORT,
     RECEIPT_REPLY_SCHEMA,
     parse_extraction,
 )
@@ -72,7 +73,31 @@ def test_every_key_the_parser_reads_is_required(kind, prompt_key, schema, minima
     reply = Recording(minimal)
     parse_extraction(reply, kind=kind, client_today=datetime.date(2026, 9, 25))
     assert reply.read, "the recording saw nothing — parse_extraction stopped reading .get"
-    assert reply.read <= set(schema["required"])
+    # The app's own marker on a salvaged reply, never something the model writes.
+    assert reply.read - {RAW_CUT_SHORT} <= set(schema["required"])
+
+
+def test_every_scalar_comes_before_the_arrays():
+    """The grammar writes members in schema order, so a reply cut short in
+    its line items has already written everything else — which is what
+    `_salvaged_receipt` keeps. A scalar after an array would be lost."""
+    kinds = [sub.get("type") for sub in RECEIPT_REPLY_SCHEMA["properties"].values()]
+    first_array = kinds.index("array")
+    assert all(kind == "array" for kind in kinds[first_array:])
+    assert list(RECEIPT_REPLY_SCHEMA["properties"]) == RECEIPT_REPLY_SCHEMA["required"]
+
+
+def test_the_prompt_lists_the_fields_in_schema_order():
+    """The model writes what the prompt shows; showing a different order
+    than the grammar enforces is two instructions that disagree."""
+    example = DEFAULT_PROMPTS["ai_prompt_receipt_extract"].split("Return ONLY a JSON object", 1)[1]
+    top_level = [
+        name
+        for name in re.findall(r'"(\w+)":', example)
+        if name in RECEIPT_REPLY_SCHEMA["properties"]
+    ]
+    ordered = list(dict.fromkeys(top_level))
+    assert ordered == list(RECEIPT_REPLY_SCHEMA["properties"])
 
 
 @pytest.mark.parametrize(("kind", "prompt_key", "schema", "minimal"), CASES)

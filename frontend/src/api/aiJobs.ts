@@ -50,7 +50,9 @@ export interface AIJobDraft {
   line_items_total?: string | null
 }
 
-export type AIJobDraftCheck = 'date' | 'amount'
+/** `items`: the read was cut short or looped in its line items, so only
+ *  the fields before them were kept and no split is offered. */
+export type AIJobDraftCheck = 'date' | 'amount' | 'items'
 
 export interface AIJobSplitLine {
   category: string

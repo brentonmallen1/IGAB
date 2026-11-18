@@ -170,6 +170,12 @@ describe('draftCheckNotes', () => {
     formatMoney: (n: number) => `$${n.toFixed(2)}`,
   }
 
+  it('says a receipt too long to itemize kept only payee, total and date', () => {
+    expect(draftCheckNotes(draft({ checks: ['items'] }), fmt)).toEqual([
+      'The receipt was too long to read item by item, so only the payee, total and date were read — there’s no split to offer.',
+    ])
+  })
+
   it('names the date as it was read', () => {
     expect(draftCheckNotes(draft({ checks: ['date'], date_read: '2024-03-10' }), fmt)).toEqual([
       'The date read as D(2024-03-10), too far from today, so it’s set to today — check it.',

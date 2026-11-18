@@ -9,10 +9,12 @@ from igab.domain.money import model_cents
 from igab.domain.receipt_checks import (
     CHECKED_CONFIDENCE_CAP,
     LINE_ITEM_TAX_TOLERANCE,
+    LOOPING_RUN,
     RECEIPT_DATE_WINDOW_DAYS,
     capped_confidence,
     checked_receipt_date,
     line_items_mismatch,
+    looping_items,
     past_tomorrow,
     tender_disagrees,
 )
@@ -135,3 +137,24 @@ class TestConfidence:
 
     def test_no_check_leaves_it(self):
         assert capped_confidence(1.0, []) == 1.0
+
+
+class TestLoopingItems:
+    def item(self, name="SOAP", amount=1.99):
+        return {"description": name, "amount": amount, "category": None}
+
+    def test_a_run_of_eight_is_a_loop(self):
+        assert looping_items([self.item("A"), *[self.item()] * LOOPING_RUN])
+
+    def test_three_of_the_same_yogurt_is_a_receipt(self):
+        assert not looping_items([self.item("YOGURT")] * 3 + [self.item("MILK")])
+
+    def test_a_run_broken_by_another_item_starts_over(self):
+        half = [self.item()] * (LOOPING_RUN - 1)
+        assert not looping_items([*half, self.item("MILK"), *half])
+
+    def test_the_same_name_at_another_price_is_not_a_repeat(self):
+        assert not looping_items([self.item(amount=float(n)) for n in range(LOOPING_RUN)])
+
+    def test_non_items_break_a_run(self):
+        assert not looping_items(["x"] * LOOPING_RUN)

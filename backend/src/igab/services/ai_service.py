@@ -13,12 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.ai.context import AICallContext
 from igab.ai.context_window import resolve_num_ctx
 from igab.ai.gateway import AIGateway
-from igab.ai.reply_json import parse_json_reply
+from igab.ai.reply_json import (
+    ReplyCutShort,
+    complete_objects,
+    parse_json_reply,
+    parse_partial_object,
+)
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
-from igab.integrations.ollama.client import OllamaClient
+from igab.domain.receipt_checks import looping_items
+from igab.integrations.ollama.client import STOP_REPETITION, OllamaClient
 from igab.repositories.category_repo import CategoryRepository
-from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RECEIPT_REPLY_SCHEMA
+from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
 from igab.services.settings_service import SettingsService
@@ -81,6 +87,34 @@ def prepare_image_for_model(file_content: bytes) -> str:
     buf = BytesIO()
     img.save(buf, "JPEG", quality=MODEL_IMAGE_JPEG_QUALITY)
     return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+#: The output cap on a receipt read. Without one, a model looping in its
+#: line items wrote until the client timed out at 5 minutes, then the worker
+#: ran it twice more. A 60-item answer is ~2.5k tokens; thinking counts
+#: against the same cap, and thought for up to ~5k on a 22-item receipt.
+RECEIPT_ANSWER_TOKENS = 4096
+RECEIPT_THINKING_TOKENS = 12288
+
+
+def _receipt_loop_guard(answer: str) -> str | None:
+    """Stop the stream once the line items so far are one item repeating."""
+    items = [obj for obj in complete_objects(answer) if "description" in obj]
+    return STOP_REPETITION if looping_items(items) else None
+
+
+def _salvaged_receipt(raw: str, exc: ReplyCutShort) -> dict:
+    """What a cut-short receipt reply finished before the cut: payee, total,
+    date and the rest of the scalars, which the schema puts before the
+    arrays. Marked so the draft says it was not itemized. A reply cut off
+    before its total has nothing worth keeping, and fails as it did."""
+    kept = parse_partial_object(raw)
+    if "total" not in kept:
+        raise exc
+    kept.pop("line_items", None)
+    kept.pop("suggested_split", None)
+    kept[RAW_CUT_SHORT] = exc.reason
+    return kept
 
 
 class AIService:
@@ -416,11 +450,20 @@ class AIService:
             format=RECEIPT_REPLY_SCHEMA,
             think=think,
             options=await self._merged_options(
-                client, vision=True, task_defaults=self._sampling(think)
+                client,
+                vision=True,
+                task_defaults={
+                    **self._sampling(think),
+                    "num_predict": RECEIPT_THINKING_TOKENS if think else RECEIPT_ANSWER_TOKENS,
+                },
             ),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
+            stop_when=_receipt_loop_guard,
         )
-        return self._reply_object(raw)
+        try:
+            return self._reply_object(raw)
+        except ReplyCutShort as exc:
+            return _salvaged_receipt(raw, exc)
 
     async def parse_nl_transaction(
         self, budget_id: uuid.UUID, text: str, client_today: date

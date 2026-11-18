@@ -16,10 +16,10 @@ import respx
 
 import igab.services.ai_service as ai_service_module
 from igab.ai.context import debug_view
-from igab.ai.reply_json import ReplyNotJSON
+from igab.ai.reply_json import ReplyCutShort
 from igab.integrations.ollama.client import OllamaClient
-from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RECEIPT_REPLY_SCHEMA
-from igab.services.ai_service import AIService
+from igab.services.ai_draft_service import NL_REPLY_SCHEMA, RAW_CUT_SHORT, RECEIPT_REPLY_SCHEMA
+from igab.services.ai_service import RECEIPT_ANSWER_TOKENS, RECEIPT_THINKING_TOKENS, AIService
 from igab.services.settings_service import DEFAULTS
 
 
@@ -397,18 +397,52 @@ class TestTheCallIsRecorded:
     def test_debug_view_of_nothing_is_empty(self):
         assert debug_view(None) == {}
 
-    async def test_a_cut_off_reply_says_so(self, monkeypatch):
+    async def test_a_reply_cut_off_before_its_total_says_so(self, monkeypatch):
         """Without the stop reason a reply the window cut short read exactly
         like a malformed one."""
 
         async def cut_off(self, prompt, system=None, **kwargs):
             self.last_meta = {"done_reason": "length"}
-            return '```json\n{"total": 39.53, "line_items": [{"description": "Soap", "amount": 1}'
+            return '```json\n{"payee": "Corner Mar'
 
         svc = self.capture_service(monkeypatch, generate=cut_off)
-        with pytest.raises(ReplyNotJSON, match="cut off"):
+        with pytest.raises(ReplyCutShort, match="cut off") as raised:
             await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert raised.value.reason == "length"
         assert debug_view(svc.gateway.last_result)["done_reason"] == "length"
+
+    async def test_a_reply_cut_off_in_its_items_keeps_what_came_before(self, monkeypatch):
+        """A long receipt runs out of room in its line items; payee, total
+        and date were already written, and are kept, marked as not itemized."""
+
+        async def cut_off(self, prompt, system=None, **kwargs):
+            self.last_meta = {"done_reason": "repetition"}
+            return (
+                '{"payee": "Fresh Mart", "total": 39.53, "date": "2026-09-20",'
+                ' "line_items": [{"description": "Soap", "amount": 1}'
+            )
+
+        svc = self.capture_service(monkeypatch, generate=cut_off)
+        kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert kept == {
+            "payee": "Fresh Mart",
+            "total": 39.53,
+            "date": "2026-09-20",
+            RAW_CUT_SHORT: "repetition",
+        }
+
+    async def test_the_receipt_read_is_capped_and_guarded(self, monkeypatch):
+        seen = {}
+
+        async def record(self, prompt, system=None, **kwargs):
+            seen.update(kwargs)
+            self.last_meta = {"done_reason": "stop"}
+            return '{"total": 1}'
+
+        svc = self.capture_service(monkeypatch, generate=record)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert seen["options"]["num_predict"] in (RECEIPT_ANSWER_TOKENS, RECEIPT_THINKING_TOKENS)
+        assert seen["stop_when"] is not None
 
     async def test_an_answer_left_in_the_thinking_is_read(self, monkeypatch):
         async def thought_it(self, prompt, system=None, **kwargs):

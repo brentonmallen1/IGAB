@@ -38,14 +38,23 @@ LINE_ITEM_TAX_TOLERANCE = Decimal("0.12")
 MODEL_ROUNDING_SLACK = Decimal("0.01")
 #: The highest confidence a read that failed any check may carry.
 CHECKED_CONFIDENCE_CAP = 0.5
+#: How many identical line items in a row mean the model is looping, not
+#: reading. A till prints three of the same yogurt on three lines; a model
+#: stuck on one item writes it until something stops it (reported 2026-11-18:
+#: one item, hundreds of times, on a ~53-item receipt). Eight is past any
+#: honest run and still stops a loop within a few hundred tokens.
+LOOPING_RUN = 8
 
 
 class ReceiptCheck(StrEnum):
     """The draft field a failed check points at — the frontend's
-    `AIJobDraftCheck` union spells the same two values."""
+    `AIJobDraftCheck` union spells the same values."""
 
     DATE = "date"
     AMOUNT = "amount"
+    #: The receipt was too long to itemize: the reply was cut short or
+    #: looped, so payee, total and date were kept and no split is offered.
+    ITEMS = "items"
 
 
 def past_tomorrow(read: date, today: date) -> bool:
@@ -102,3 +111,18 @@ def capped_confidence(confidence: float, checks: Sequence[ReceiptCheck]) -> floa
     """The model's confidence, held at `CHECKED_CONFIDENCE_CAP` when any
     field failed a check."""
     return min(confidence, CHECKED_CONFIDENCE_CAP) if checks else confidence
+
+
+def looping_items(items: Sequence[object]) -> bool:
+    """`LOOPING_RUN` identical line items in a row: the model repeating one
+    item, not a receipt that lists it. Compared on description and amount;
+    anything that is not an item object breaks a run."""
+    run = 0
+    previous: tuple[object, object] | None = None
+    for item in items:
+        key = (item.get("description"), item.get("amount")) if isinstance(item, dict) else None
+        run = run + 1 if key is not None and key == previous else 1
+        previous = key
+        if key is not None and run >= LOOPING_RUN:
+            return True
+    return False

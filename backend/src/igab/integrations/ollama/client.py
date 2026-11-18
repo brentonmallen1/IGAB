@@ -1,9 +1,42 @@
+import asyncio
+import json
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
 import httpx
 
 #: Response fields worth keeping off a completion. `prompt_eval_count` and
 #: `eval_count` are Ollama's token counts; the app discarded both until the
 #: call log needed them.
 _META_KEYS = ("thinking", "done_reason", "prompt_eval_count", "eval_count")
+
+#: How long Ollama may send nothing before the call fails. The first gap
+#: includes loading the model and reading the image, which is the slow part.
+STALL_TIMEOUT_S = 120.0
+CONNECT_TIMEOUT_S = 10.0
+
+#: `done_reason` values the app sets itself when it stops a stream. Ollama's
+#: own are "stop" and "length".
+STOP_DEADLINE = "deadline"
+STOP_REPETITION = "repetition"
+#: Every reason that means the answer was cut short rather than finished.
+CUT_SHORT = frozenset({"length", STOP_DEADLINE, STOP_REPETITION})
+
+#: Given the answer so far, a reason to stop now, or None to keep reading.
+StopCheck = Callable[[str], str | None]
+
+
+def _raise_stream_error(chunk: dict, resp: httpx.Response) -> None:
+    """Ollama reports a failure after the 200 as an {"error": ...} line. Raised
+    as the 500 it would have been unstreamed, so the retry rules hold."""
+    detail = chunk.get("error")
+    if not detail:
+        return
+    raise httpx.HTTPStatusError(
+        f"Ollama returned 500: {detail}",
+        request=resp.request,
+        response=httpx.Response(500, request=resp.request),
+    )
 
 
 def _raise_with_detail(resp: httpx.Response) -> None:
@@ -23,6 +56,50 @@ def _raise_with_detail(resp: httpx.Response) -> None:
     raise httpx.HTTPStatusError(
         f"Ollama returned {resp.status_code}: {detail}", request=resp.request, response=resp
     )
+
+
+@dataclass
+class _StreamedReply:
+    """What a streamed /api/generate call has sent so far. Kept outside the
+    read so a deadline that interrupts it still leaves the partial answer."""
+
+    answer: list[str] = field(default_factory=list)
+    thinking: list[str] = field(default_factory=list)
+    final: dict = field(default_factory=dict)
+    stopped: str | None = None
+
+    async def read(self, resp: httpx.Response, stop_when: StopCheck | None) -> None:
+        if resp.is_error:
+            await resp.aread()
+            _raise_with_detail(resp)
+        async for line in resp.aiter_lines():
+            if not line.strip():
+                continue
+            chunk = json.loads(line)
+            _raise_stream_error(chunk, resp)
+            piece = chunk.get("response") or ""
+            self.answer.append(piece)
+            self.thinking.append(chunk.get("thinking") or "")
+            if chunk.get("done"):
+                self.final = chunk
+                return
+            # Only worth checking when something closed: guards look at
+            # whole objects.
+            if stop_when is not None and "}" in piece:
+                self.stopped = stop_when("".join(self.answer))
+                if self.stopped:
+                    return
+
+    def meta(self) -> dict:
+        """The same keys an unstreamed body carried, plus the app's own stop
+        reason when it ended the stream."""
+        meta = {key: self.final[key] for key in _META_KEYS if key in self.final}
+        thinking = "".join(self.thinking)
+        if thinking:
+            meta["thinking"] = thinking
+        if self.stopped:
+            meta["done_reason"] = self.stopped
+        return meta
 
 
 class OllamaClient:
@@ -46,15 +123,30 @@ class OllamaClient:
         think: bool | None = None,
         options: dict | None = None,
         timeout: float = 60.0,
+        stop_when: StopCheck | None = None,
     ) -> str:
-        """Call /api/generate.
+        """Call /api/generate, streamed, and return the whole answer text.
 
         images: base64-encoded image bytes (no data-URI prefix).
         format: "json" for JSON mode, or a JSON-schema dict (newer Ollama).
         think: only sent when not None — older servers reject the field.
         options: model options (temperature, num_ctx, ...) passed through as-is.
+
+        Streamed so that `timeout` can be a deadline on the whole call rather
+        than the only thing that ends it. Unstreamed, a model looping in its
+        answer ran until httpx's read timeout, and the stop reason Ollama
+        would have given never arrived. Now:
+
+        - Ollama going silent for `STALL_TIMEOUT_S` still raises ReadTimeout.
+        - Reaching `timeout` stops reading and returns what arrived, with
+          `done_reason` "deadline".
+        - `stop_when(answer_so_far)` returning a reason stops the same way,
+          with that reason as `done_reason`.
+
+        Leaving the stream closes the connection, which is what makes Ollama
+        stop generating.
         """
-        payload: dict = {"model": self.model, "prompt": prompt, "stream": False}
+        payload: dict = {"model": self.model, "prompt": prompt, "stream": True}
         if system:
             payload["system"] = system
         if images:
@@ -65,12 +157,19 @@ class OllamaClient:
             payload["think"] = think
         if options:
             payload["options"] = options
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(f"{self.host}/api/generate", json=payload)
-            _raise_with_detail(resp)
-            body = resp.json()
-            self.last_meta = {key: body[key] for key in _META_KEYS if key in body}
-            return body["response"]
+        reply = _StreamedReply()
+        http_timeout = httpx.Timeout(min(timeout, STALL_TIMEOUT_S), connect=CONNECT_TIMEOUT_S)
+        async with httpx.AsyncClient(timeout=http_timeout) as client:
+            try:
+                async with asyncio.timeout(timeout):
+                    async with client.stream(
+                        "POST", f"{self.host}/api/generate", json=payload
+                    ) as resp:
+                        await reply.read(resp, stop_when)
+            except TimeoutError:
+                reply.stopped = STOP_DEADLINE
+        self.last_meta = reply.meta()
+        return "".join(reply.answer)
 
     async def chat(
         self,

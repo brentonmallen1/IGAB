@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -23,7 +24,7 @@ class TestGeneratePayload:
         result = await client.generate("hello")
         assert result == "ok"
         payload = json.loads(route.calls[0].request.content)
-        assert payload == {"model": "gemma4", "prompt": "hello", "stream": False}
+        assert payload == {"model": "gemma4", "prompt": "hello", "stream": True}
         for absent in ("system", "images", "format", "think", "options"):
             assert absent not in payload
 
@@ -124,3 +125,84 @@ class TestOllamaErrors:
         )
         with pytest.raises(httpx.HTTPStatusError, match="does not support tools"):
             await client.chat([{"role": "user", "content": "hi"}])
+
+
+def ndjson(*chunks: dict) -> bytes:
+    return b"".join(json.dumps(chunk).encode() + b"\n" for chunk in chunks)
+
+
+class SlowStream(httpx.AsyncByteStream):
+    """Sends one chunk, then nothing for longer than the test's deadline."""
+
+    def __init__(self, first: bytes) -> None:
+        self.first = first
+
+    async def __aiter__(self):
+        yield self.first
+        await asyncio.sleep(5)
+        yield ndjson({"response": "never", "done": True})
+
+
+class TestStreaming:
+    @respx.mock
+    async def test_chunks_are_joined_and_the_final_line_gives_the_meta(self, client):
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(
+                200,
+                content=ndjson(
+                    {"response": "", "thinking": "Looking. "},
+                    {"response": "", "thinking": "Done."},
+                    {"response": '{"total": '},
+                    {"response": "1}"},
+                    {"response": "", "done": True, "done_reason": "stop", "eval_count": 9},
+                ),
+            )
+        )
+        assert await client.generate("p") == '{"total": 1}'
+        assert client.last_meta == {
+            "thinking": "Looking. Done.",
+            "done_reason": "stop",
+            "eval_count": 9,
+        }
+
+    @respx.mock
+    async def test_a_stop_check_ends_the_stream_with_its_reason(self, client):
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(
+                200,
+                content=ndjson(
+                    {"response": '{"a": {"x": 1}'},
+                    {"response": ', "b": {"x": 1}'},
+                    {"response": ', "c": 3}', "done": True, "done_reason": "stop"},
+                ),
+            )
+        )
+        seen: list[str] = []
+
+        def stop_on_second(answer: str) -> str | None:
+            seen.append(answer)
+            return "repetition" if len(seen) == 2 else None
+
+        assert (
+            await client.generate("p", stop_when=stop_on_second) == '{"a": {"x": 1}, "b": {"x": 1}'
+        )
+        assert client.last_meta == {"done_reason": "repetition"}
+
+    @respx.mock
+    async def test_the_deadline_keeps_what_arrived(self, client):
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(200, stream=SlowStream(ndjson({"response": '{"total": 4'})))
+        )
+        assert await client.generate("p", timeout=0.2) == '{"total": 4'
+        assert client.last_meta == {"done_reason": "deadline"}
+
+    @respx.mock
+    async def test_an_error_line_raises_as_the_500_it_would_have_been(self, client):
+        respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(
+                200, content=ndjson({"response": "{"}, {"error": "token repeat limit reached"})
+            )
+        )
+        with pytest.raises(httpx.HTTPStatusError, match="token repeat limit") as raised:
+            await client.generate("p")
+        assert raised.value.response.status_code == 500

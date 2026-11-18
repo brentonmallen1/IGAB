@@ -23,7 +23,8 @@ from pathlib import Path
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.ai.context import debug_view
+from igab.ai.context import debug_view, error_text
+from igab.ai.reply_json import ReplyCutShort
 from igab.config import settings as app_settings
 from igab.db.models import AIJob, Transaction
 from igab.domain.exceptions import InvariantViolation
@@ -90,6 +91,11 @@ def cleanup_staging(job_id: uuid.UUID) -> None:
 
 def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, NonRetryableJobError):
+        return False
+    # Cut short by an output cap, the deadline or a loop: the same call stops
+    # the same way again. Retrying this is how one long receipt held the
+    # model for 15 minutes.
+    if isinstance(exc, ReplyCutShort):
         return False
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code >= 500
@@ -405,7 +411,7 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
     """Retry with backoff when the error is transient and attempts remain;
     otherwise terminal — the $0 stub keeps the receipt or description
     reachable."""
-    job.error = f"{type(exc).__name__}: {exc}"[:2000]
+    job.error = error_text(exc)
     # The processing session rolled back, taking any job.model assignment with
     # it — restore it here so failed jobs still say which model ran.
     failed_model = getattr(exc, "model", None)

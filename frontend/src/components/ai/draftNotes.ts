@@ -138,6 +138,11 @@ export function draftCheckNotes(
       notes.push('The total doesn’t match the rest of the receipt — check the amount.')
     }
   }
+  if (checks.includes('items')) {
+    notes.push(
+      'The receipt was too long to read item by item, so only the payee, total and date were read — there’s no split to offer.'
+    )
+  }
   return notes
 }
 

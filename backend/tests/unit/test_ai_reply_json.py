@@ -7,7 +7,13 @@ temperature 0 failed every retry the same way.
 
 import pytest
 
-from igab.ai.reply_json import ReplyNotJSON, parse_json_reply
+from igab.ai.reply_json import (
+    ReplyCutShort,
+    ReplyNotJSON,
+    complete_objects,
+    parse_json_reply,
+    parse_partial_object,
+)
 
 OBJ = '{"payee": "Corner Market", "total": 39.53, "card_last4": "4417"}'
 PARSED = {"payee": "Corner Market", "total": 39.53, "card_last4": "4417"}
@@ -163,3 +169,44 @@ class TestTheErrorNamesTheCause:
 
     def test_it_is_a_value_error_so_the_worker_retries_it(self):
         assert issubclass(ReplyNotJSON, ValueError)
+
+
+class TestPartialObject:
+    """What a reply cut short had finished — top-level members only."""
+
+    def test_members_before_the_cut_are_kept(self):
+        text = '{"payee": "Fresh Mart", "total": 134.83, "line_items": [{"description": "Soap"'
+        assert parse_partial_object(text) == {"payee": "Fresh Mart", "total": 134.83}
+
+    def test_a_number_cut_mid_digit_is_not_kept(self):
+        assert parse_partial_object('{"payee": "Fresh Mart", "total": 13') == {
+            "payee": "Fresh Mart"
+        }
+
+    def test_a_string_cut_off_is_not_kept(self):
+        assert parse_partial_object('{"total": 4.5, "memo": "Groceries and pap') == {"total": 4.5}
+
+    def test_a_nested_object_is_never_the_answer(self):
+        text = '```json\n{"line_items": [{"description": "Soap", "amount": 1}, {"desc'
+        assert parse_partial_object(text) == {}
+
+    def test_a_complete_object_reads_whole(self):
+        assert parse_partial_object('{"a": 1, "b": [1, 2]}') == {"a": 1, "b": [1, 2]}
+
+    def test_no_object_is_empty(self):
+        assert parse_partial_object("I could not read it.") == {}
+        assert parse_partial_object(None) == {}
+
+
+class TestCompleteObjects:
+    def test_finished_items_inside_an_unfinished_answer(self):
+        text = '{"total": 1, "line_items": [{"description": "A", "amount": 1}, {"description": "B"'
+        assert complete_objects(text) == [{"description": "A", "amount": 1}]
+
+
+class TestCutShort:
+    @pytest.mark.parametrize("reason", ["length", "deadline", "repetition"])
+    def test_every_cut_short_reason_raises_the_non_retryable_kind(self, reason):
+        with pytest.raises(ReplyCutShort, match="cut off") as raised:
+            parse_json_reply('{"total": 1, "line_items": [', done_reason=reason)
+        assert raised.value.reason == reason
