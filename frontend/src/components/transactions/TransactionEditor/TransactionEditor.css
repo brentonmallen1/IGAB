@@ -279,10 +279,13 @@
 
 /* The two amount boxes wear their direction, as the register's columns do:
    Outflow red, Inflow green — label, border and value, filled or empty. The
-   value takes the register's own .txn-outflow / .txn-inflow class; the border
-   is held to 3:1 on --input-bg by contrast.test.ts. Like the register, these
-   follow the direction, not the budget colour mode. */
-.txn-editor__field--outflow .txn-editor__label {
+   colour is set here, at the label's specificity: `.txn-editor__input` sets
+   --text-primary and beats the register's single-class .txn-outflow /
+   .txn-inflow, which the inputs keep only for the glow themes' text-shadow
+   (base.css). The border is held to 3:1 on --input-bg by contrast.test.ts.
+   Like the register, these follow the direction, not the budget colour mode. */
+.txn-editor__field--outflow .txn-editor__label,
+.txn-editor__field--outflow .txn-editor__input {
   color: var(--color-negative);
 }
 
@@ -291,7 +294,8 @@
   border-color: var(--color-negative);
 }
 
-.txn-editor__field--inflow .txn-editor__label {
+.txn-editor__field--inflow .txn-editor__label,
+.txn-editor__field--inflow .txn-editor__input {
   color: var(--color-positive);
 }
 
