@@ -53,10 +53,7 @@ describe('AIReviewBanner on a failed scan', () => {
     expect(screen.queryByText(/Cut off: output limit/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Details' }))
     expect(screen.getByText(/Cut off: output limit/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hide details' })).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    )
+    expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('shows an older one-line failure as its headline, without Details', () => {

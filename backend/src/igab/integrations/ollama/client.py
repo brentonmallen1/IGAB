@@ -158,7 +158,10 @@ class OllamaClient:
         if options:
             payload["options"] = options
         reply = _StreamedReply()
-        http_timeout = httpx.Timeout(min(timeout, STALL_TIMEOUT_S), connect=CONNECT_TIMEOUT_S)
+        # The stall timeout is fixed, never cut to the deadline: below it the
+        # deadline always fires first, so a slow call is reliably "deadline"
+        # and a silent server reliably a ReadTimeout — the two never race.
+        http_timeout = httpx.Timeout(STALL_TIMEOUT_S, connect=CONNECT_TIMEOUT_S)
         async with httpx.AsyncClient(timeout=http_timeout) as client:
             try:
                 async with asyncio.timeout(timeout):

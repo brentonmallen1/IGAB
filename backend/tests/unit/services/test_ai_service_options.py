@@ -448,11 +448,26 @@ class TestTheCallIsRecorded:
         kept = await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
         assert kept == {"payee": "Fresh Mart", "total": 39.53}
         assert thinks == [True, False]
-        assert svc.last_read == {
+        assert svc.last_read.as_json() == {
             "thinking_setting": "on",
             "thinking": False,
             "thinking_fallback": True,
         }
+
+    @pytest.mark.parametrize("reason", ["deadline", "repetition"])
+    async def test_only_running_out_of_room_falls_back(self, monkeypatch, reason):
+        """A deadline would spend a second full one; a loop is in the answer."""
+        calls: list = []
+
+        async def stopped(self, prompt, system=None, **kwargs):
+            calls.append(kwargs["think"])
+            self.last_meta = {"done_reason": reason}
+            return '{"payee": "Fresh Ma'
+
+        svc = self.capture_service(monkeypatch, generate=stopped)
+        with pytest.raises(ReplyCutShort):
+            await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
+        assert calls == [True]
 
     async def test_a_read_that_kept_its_total_is_not_read_again(self, monkeypatch):
         calls: list = []
@@ -465,7 +480,7 @@ class TestTheCallIsRecorded:
         svc = self.capture_service(monkeypatch, generate=cut_in_items)
         await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 9, 25))
         assert calls == [True]
-        assert svc.last_read["thinking_fallback"] is False
+        assert svc.last_read.thinking_fallback is False
 
         seen = {}
 

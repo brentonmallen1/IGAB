@@ -236,44 +236,6 @@
   overflow-wrap: anywhere;
 }
 
-.ai-activity__error-headline {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--color-negative);
-}
-
-.ai-activity__error-next {
-  margin-top: 4px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.ai-activity__error-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--color-negative);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.ai-activity__error-text {
-  margin: 4px 0 0;
-  padding: var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  background: var(--bg-tertiary);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 120px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 .ai-activity__response {
   margin-top: 4px;
 }

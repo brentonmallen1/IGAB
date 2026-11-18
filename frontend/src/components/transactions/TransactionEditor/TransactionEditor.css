@@ -209,54 +209,9 @@
   flex-shrink: 0;
 }
 
-.txn-editor__ai-banner-link {
-  color: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  white-space: nowrap;
-}
-
 .txn-editor__ai-banner--error {
   color: var(--color-warning);
   background: color-mix(in srgb, var(--color-warning) 8%, transparent);
-}
-
-/* A failure in layers: the headline, what to do, then the evidence on
-   request. A column, so the next step starts under the headline instead of
-   running on after it. */
-.txn-editor__ai-banner-failure {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 240px;
-}
-
-.txn-editor__ai-banner-next {
-  color: var(--text-secondary);
-}
-
-.txn-editor__ai-banner-details {
-  align-self: flex-start;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: var(--font-size-xs);
-  color: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.txn-editor__ai-banner-technical {
-  margin: 4px 0 0;
-  padding: var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  background: var(--bg-tertiary);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .txn-editor__ai-banner-action {

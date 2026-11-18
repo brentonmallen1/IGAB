@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from collections.abc import Sequence
+from dataclasses import asdict, dataclass, replace
 from datetime import date
 from io import BytesIO
 
@@ -89,6 +90,23 @@ def prepare_image_for_model(file_content: bytes) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+@dataclass(frozen=True)
+class ReadMade:
+    """How a read was made — what the review names when it differs from the
+    default. The job stores it (plus the attempt) as `result.read`."""
+
+    #: System → AI → Advanced → Thinking at the time: auto | on | off.
+    thinking_setting: str
+    #: Whether the call that produced the read thought; None when the model
+    #: doesn't think at all.
+    thinking: bool | None
+    #: Thinking ran out of room, so the read was made again without it.
+    thinking_fallback: bool = False
+
+    def as_json(self) -> dict:
+        return asdict(self)
+
+
 #: The output cap on a receipt read. Without one, a model looping in its
 #: line items wrote until the client timed out at 5 minutes, then the worker
 #: ran it twice more. A 60-item answer is ~2.5k tokens; thinking counts
@@ -132,7 +150,7 @@ class AIService:
         self.last_call: AICallContext | None = None
         #: How the last read was made (`_note_read`); the worker stores it on
         #: the job as `result.read`.
-        self.last_read: dict | None = None
+        self.last_read: ReadMade | None = None
 
     async def _client(self) -> OllamaClient:
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
@@ -447,14 +465,16 @@ class AIService:
             try:
                 return _salvaged_receipt(raw, exc)
             except ReplyCutShort:
-                if not think:
+                # Only running out of room is thinking's fault. A deadline
+                # would spend a second full one, and a loop is in the answer.
+                if not think or exc.reason != "length":
                     raise
         # Thinking used the room the answer needed and never reached the
         # total. The same receipt read with thinking off finished in 33 s
         # (gemma4:12b, 60 items, 2026-11-18), so read it once more that way
         # rather than fail — and say so on the job.
         assert self.last_read is not None
-        self.last_read.update(thinking=False, thinking_fallback=True)
+        self.last_read = replace(self.last_read, thinking=False, thinking_fallback=True)
         raw = await self._read_receipt(client, prompt, image_b64, False)
         try:
             return self._reply_object(raw)
@@ -465,11 +485,10 @@ class AIService:
         """Record how this read is made, for the review to say what differed
         from the default: the Thinking setting, and whether the call thinks
         (None: the model doesn't think at all)."""
-        self.last_read = {
-            "thinking_setting": await self.settings.get("ai_thinking") or "auto",
-            "thinking": think,
-            "thinking_fallback": False,
-        }
+        self.last_read = ReadMade(
+            thinking_setting=await self.settings.get("ai_thinking") or "auto",
+            thinking=think,
+        )
 
     async def _read_receipt(
         self, client: OllamaClient, prompt: str, image_b64: str, think: bool | None

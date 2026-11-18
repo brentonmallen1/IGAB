@@ -137,3 +137,34 @@ def test_a_read_that_never_thought_is_not_told_to_stop_thinking():
     failure = explain_failure(ReplyCutShort("x", "length"), "receipt", call)
     assert failure.settings is None
     assert "thinking" not in failure.next_step
+
+
+RETRYABLE = [
+    ReplyNotJSON("no object"),
+    InvariantViolation("zero amount"),
+    httpx.ConnectError("refused"),
+    httpx.ReadTimeout(""),
+    status(500, "out of memory"),
+    httpx.RemoteProtocolError("peer closed"),
+]
+
+
+@pytest.mark.parametrize("exc", RETRYABLE, ids=lambda e: type(e).__name__)
+def test_a_retry_is_promised_only_when_one_is_coming(exc):
+    assert "try again in a moment" in explain_failure(exc, "receipt", will_retry=True).next_step
+    final = explain_failure(exc, "receipt", will_retry=False)
+    assert "try again in a moment" not in final.next_step
+    assert not JARGON.search(final.next_step)
+
+
+def test_a_4xx_that_is_never_retried_does_not_promise_one():
+    assert "in a moment" not in explain_failure(status(400, "bad request"), "receipt").next_step
+
+
+@pytest.mark.parametrize("reason", ["length", "deadline", "repetition"])
+def test_a_description_cut_short_never_talks_about_a_receipt(reason):
+    failure = explain_failure(
+        ReplyCutShort("x", reason), "nl_parse", {**CALL, "thinking_enabled": True}
+    )
+    assert "receipt" not in failure.headline + failure.next_step
+    assert "total" not in failure.headline

@@ -24,7 +24,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.ai.context import debug_view
-from igab.ai.failure_text import AI_SETTINGS, explain_failure
+from igab.ai.failure_text import AI_SETTINGS, NonRetryableJobError, explain_failure
 from igab.ai.reply_json import ReplyCutShort
 from igab.config import settings as app_settings
 from igab.db.models import AIJob, Transaction
@@ -45,30 +45,6 @@ POLL_INTERVAL_S = 15
 SHUTDOWN_GRACE_S = 10
 
 
-class NonRetryableJobError(Exception):
-    """Permanent input problem (missing file, deleted account, no vision
-    support). Goes straight to 'error' without burning retries."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        model: str | None = None,
-        next_step: str | None = None,
-        settings: str | None = None,
-    ) -> None:
-        """`message` is the headline a person reads; `next_step` what to do
-        about it, and `settings` the setting that helps, as the screen labels
-        it (see ai/failure_text.py)."""
-        super().__init__(message)
-        self.next_step = next_step
-        self.settings = settings
-        # The model that produced the failure, when known. Assignments made to
-        # the job before the raise are lost with the session rollback, so
-        # record_job_failure re-persists this from the exception.
-        self.model = model
-
-
 def _attach_ai_debug(exc: Exception, ai) -> None:
     """Ride the model-call evidence on the exception itself. Everything
     assigned to the job in the processing session is rolled back on failure,
@@ -81,7 +57,7 @@ def _attach_ai_debug(exc: Exception, ai) -> None:
     same object the call log stores. The worker used to assemble its own copy
     from fields on AIService; two captures of one call is one too many."""
     if ai.last_read:
-        setattr(exc, "ai_read", dict(ai.last_read))  # noqa: B010
+        setattr(exc, "ai_read", ai.last_read.as_json())  # noqa: B010
     debug = debug_view(ai.gateway.last_result)
     if debug:
         # setattr, not attribute syntax: the payload rides on arbitrary
@@ -342,7 +318,8 @@ async def _place(
     # Raw response on success too: "extraction" is the parsed object, and a
     # thinking transcript exists only here.
     result.update(debug_view(svcs["ai"].gateway.last_result))
-    result["read"] = _read_record(job, svcs["ai"].last_read)
+    last_read = svcs["ai"].last_read
+    result["read"] = _read_record(job, last_read.as_json() if last_read else None)
 
     if txn is None:
         # The card that paid decides, when it is on file — over no account,
@@ -442,7 +419,8 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
     reachable."""
     ai_debug = getattr(exc, "ai_debug", None)
     ai_read = getattr(exc, "ai_read", None)
-    failure = explain_failure(exc, job.kind, ai_debug, ai_read)
+    will_retry = _is_retryable(exc) and job.attempts < job.max_attempts
+    failure = explain_failure(exc, job.kind, ai_debug, ai_read, will_retry=will_retry)
     # Read by a person: `error` is the one-line form, and `result.failure`
     # the layered one the page shows (headline, next step, technical).
     job.error = failure.sentence()
@@ -458,7 +436,7 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
         "failure": failure.as_json(),
         "read": _read_record(job, ai_read),
     }
-    if _is_retryable(exc) and job.attempts < job.max_attempts:
+    if will_retry:
         job.status = "queued"
         delay = RETRY_BASE_DELAY_S * (2 ** (job.attempts - 1))
         job.available_at = datetime.now(UTC) + timedelta(seconds=delay)

@@ -301,6 +301,9 @@ export function sectionHref(section: Pick<VisibleSection, 'id' | 'page'>): strin
   return `${SETTINGS_PAGES[section.page].path}/${section.id}`
 }
 
+/** System → AI: where every "fix it in settings" link from an AI feature goes. */
+export const AI_SETTINGS_HREF = sectionHref({ id: 'ai', page: 'system' })
+
 /**
  * The section a path names, or null: `/settings/budget` → `budget`. Read
  * from the pathname rather than a route param so it works wherever the

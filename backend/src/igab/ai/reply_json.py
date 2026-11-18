@@ -91,17 +91,22 @@ def _closing(text: str, start: int) -> int | None:
     return None
 
 
-def _scan(text: str) -> tuple[list[dict], bool]:
+def _scan(text: str, *, enter_unfinished: bool = False) -> tuple[list[dict], bool]:
     """(every complete top-level object, whether one was left unfinished).
 
     Scanning stops at an unfinished object: everything after its start is
-    inside it, and a nested object of a truncated answer is not an answer."""
+    inside it, and a nested object of a truncated answer is not an answer.
+    `enter_unfinished` steps inside it instead, for a guard that wants the
+    finished pieces of an answer still arriving — never for the answer."""
     found: list[dict] = []
     pos = 0
     while match := _OBJECT_START.search(text, pos):
         start = match.start()
         end = _closing(text, start)
         if end is None:
+            if enter_unfinished:
+                pos = start + 1
+                continue
             return found, True
         try:
             value = json.loads(text[start:end])
@@ -187,23 +192,7 @@ def complete_objects(response: str) -> list[dict]:
     """Every complete object in a reply that may still be arriving, in order,
     nested ones included once their parent is unfinished — what a stream
     guard looks at to see the line items written so far."""
-    found: list[dict] = []
-    text = _answer_text(response)
-    pos = 0
-    while match := _OBJECT_START.search(text, pos):
-        start = match.start()
-        end = _closing(text, start)
-        if end is None:
-            # Unfinished: step inside it and keep looking for finished children.
-            pos = start + 1
-            continue
-        try:
-            value = json.loads(text[start:end])
-        except json.JSONDecodeError:
-            value = None
-        if isinstance(value, dict):
-            found.append(value)
-        pos = end
+    found, _ = _scan(_answer_text(response), enter_unfinished=True)
     return found
 
 

@@ -206,3 +206,14 @@ class TestStreaming:
         with pytest.raises(httpx.HTTPStatusError, match="token repeat limit") as raised:
             await client.generate("p")
         assert raised.value.response.status_code == 500
+
+
+class TestTimeouts:
+    @respx.mock
+    async def test_the_stall_timeout_is_never_cut_to_the_deadline(self, client):
+        """Below it the deadline always fires first, so the two never race."""
+        route = respx.post(f"{HOST}/api/generate").mock(
+            return_value=httpx.Response(200, content=ndjson({"response": "{}", "done": True}))
+        )
+        await client.generate("p", timeout=30)
+        assert route.calls[0].request.extensions["timeout"]["read"] == 120.0

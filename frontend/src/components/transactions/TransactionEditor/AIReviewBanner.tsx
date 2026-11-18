@@ -1,16 +1,11 @@
-import { useState } from 'react'
 import { AlertTriangle, RefreshCw, Sparkles, Split } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { type AIJob, useReprocessAIJob } from '../../../api/aiJobs'
-import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { draftCheckNotes, unresolvedCategoryNote } from '../../ai/draftNotes'
 import { CardEndingNotice } from '../../ai/CardEndingNotice'
 import { ReadNotes } from '../../ai/ReadNotes'
-import { jobFailure, type ScanFailure } from './scanFailure'
-
-/** Where the AI model is configured — the System page, not the budget's Settings. */
-const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
+import { jobFailure } from './scanFailure'
+import { FailureDetails } from '../../ai/FailureDetails'
 
 interface Props {
   job: AIJob
@@ -20,43 +15,6 @@ interface Props {
    *  hides it. */
   splitOffer: number | null
   onApplySplit: () => void
-}
-
-function FailureText({ failure }: { failure: ScanFailure }) {
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  return (
-    <span className="txn-editor__ai-banner-failure">
-      <strong>{failure.headline}</strong>
-      {(failure.nextStep || failure.settings) && (
-        <span className="txn-editor__ai-banner-next">
-          {failure.nextStep}
-          {failure.settings && (
-            <>
-              {' '}
-              <Link to={AI_SETTINGS} className="txn-editor__ai-banner-link">
-                Open {failure.settings}
-              </Link>
-            </>
-          )}
-        </span>
-      )}
-      {failure.technical && (
-        <>
-          <button
-            type="button"
-            className="txn-editor__ai-banner-details"
-            aria-expanded={detailsOpen}
-            onClick={() => setDetailsOpen((open) => !open)}
-          >
-            {detailsOpen ? 'Hide details' : 'Details'}
-          </button>
-          {detailsOpen && (
-            <pre className="txn-editor__ai-banner-technical">{failure.technical}</pre>
-          )}
-        </>
-      )}
-    </span>
-  )
 }
 
 /** The review banner over an AI-drafted row: where it came from and how
@@ -79,7 +37,7 @@ export function AIReviewBanner({ job, budgetId, splitOffer, onApplySplit }: Prop
               what to do, then — only when asked — the evidence. A model
               without vision and an unreadable photo produce the same stub,
               and only one of them is fixable in System → AI. */}
-          {failure && <FailureText failure={failure} />}
+          {failure && <FailureDetails failure={failure} variant="banner" />}
         </>
       ) : (
         <>
