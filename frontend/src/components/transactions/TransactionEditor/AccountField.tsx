@@ -1,4 +1,7 @@
+import { useMemo } from 'react'
 import { Lock } from 'lucide-react'
+import { PickerField } from '../../common/PickerField/PickerField'
+import { accountOptions, recentAccountsSection } from '../../../utils/accountLists'
 import type { Account } from '../../../types'
 
 interface Props {
@@ -29,8 +32,12 @@ interface Props {
  * landed in, so hiding the field there hid it everywhere.
  *
  * Locked rows read like the locked Cleared field beside them: the value, a
- * lock glyph, and the reason underneath. A disabled `<select>` would say
+ * lock glyph, and the reason underneath. A disabled picker would say
  * "not now" without ever saying why.
+ *
+ * The picker is the shared PickerField (Combobox on desktop, SelectionSheet
+ * on a phone), so its groups — Recent, Budget accounts, Tracking — draw the
+ * house group headers a native <select> could not.
  */
 export function AccountField({
   accounts,
@@ -41,18 +48,20 @@ export function AccountField({
   lockReason,
   note,
 }: Props) {
-  const hasTracking = accounts.some((a) => !a.on_budget)
-  const option = (a: Account, prefix = '') => (
-    <option key={`${prefix}${a.id}`} value={a.id}>
-      {a.name}
-    </option>
-  )
+  const options = useMemo(() => {
+    const offered = accountOptions(accounts, recent.length > 0)
+    // A closed account the row already sits in is not in the list. Offer it
+    // anyway, or the picker would show a blank selection and the next save
+    // would re-file the row somewhere it never was.
+    return current?.is_closed
+      ? [{ id: current.id, label: `${current.name} (closed)`, group: '' }, ...offered]
+      : offered
+  }, [accounts, recent.length, current])
+  const pinned = useMemo(() => recentAccountsSection(recent), [recent])
 
   return (
     <div className="txn-editor__field">
-      <label className="txn-editor__label" htmlFor="txn-editor-account">
-        Account
-      </label>
+      <span className="txn-editor__label">Account</span>
       {lockReason ? (
         <div
           className="txn-editor__input txn-editor__locked"
@@ -62,37 +71,16 @@ export function AccountField({
           {current?.name ?? '—'}
         </div>
       ) : (
-        <select
-          id="txn-editor-account"
-          className="txn-editor__select"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          required
+        <PickerField
+          value={value || null}
+          onChange={(id) => onChange(id ?? '')}
+          options={options}
+          pinned={pinned}
+          noneLabel="Select account…"
+          sheetTitle="Account"
+          searchPlaceholder="Search accounts…"
           aria-label="Account"
-        >
-          <option value="">Select account…</option>
-          {/* A closed account the row already sits in is not in the list.
-              Offer it anyway, or the picker would show a blank selection and
-              the next save would re-file the row somewhere it never was. */}
-          {current?.is_closed && <option value={current.id}>{current.name} (closed)</option>}
-          {/* Repeated below in their own group — the shortlist is a shortcut
-              to the same accounts, not a different set. */}
-          {recent.length > 0 && (
-            <optgroup label="Recent">{recent.map((a) => option(a, 'recent'))}</optgroup>
-          )}
-          {hasTracking ? (
-            <>
-              <optgroup label="Budget accounts">
-                {accounts.filter((a) => a.on_budget).map((a) => option(a))}
-              </optgroup>
-              <optgroup label="Tracking">
-                {accounts.filter((a) => !a.on_budget).map((a) => option(a))}
-              </optgroup>
-            </>
-          ) : (
-            accounts.map((a) => option(a))
-          )}
-        </select>
+        />
       )}
       {(lockReason || note) && <span className="txn-editor__field-note">{lockReason ?? note}</span>}
     </div>

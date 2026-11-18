@@ -165,11 +165,11 @@ function submitButton(name = 'Add') {
 }
 
 /**
- * Category is picked through CategoryCombobox, not a native <select>: focus
+ * Category and account are picked through PickerField, not a native <select>: focus
  * opens the portalled listbox, typing filters it, and options commit on
  * mousedown (so the input never blurs first).
  */
-function pickCategory(name: string, label = 'Category', index = 0) {
+function pickOption(name: string, label = 'Category', index = 0) {
   const input = screen.getAllByRole('combobox', { name: label })[index]
   fireEvent.focus(input)
   fireEvent.change(input, { target: { value: name } })
@@ -231,7 +231,7 @@ describe('TransactionEditor future-overspend gate (B1)', () => {
   it('sends the categorized amount as a probe before saving', async () => {
     renderEditor()
     setDate('2030-01-15')
-    pickCategory('Groceries')
+    pickOption('Groceries')
     fireEvent.change(amountInputs()[0], { target: { value: '50' } })
     fireEvent.click(submitButton())
 
@@ -246,7 +246,7 @@ describe('TransactionEditor future-overspend gate (B1)', () => {
   it('does not save when the user declines the warning', async () => {
     confirmOverspend.mockImplementation(() => Promise.resolve(false))
     renderEditor()
-    pickCategory('Groceries')
+    pickOption('Groceries')
     fireEvent.change(amountInputs()[0], { target: { value: '50' } })
     fireEvent.click(submitButton())
 
@@ -312,8 +312,8 @@ describe('TransactionEditor split-mode validation', () => {
     expect(submitButton()).toBeDisabled()
 
     // Two split rows, one category picker each
-    pickCategory('Groceries', 'Split category', 0)
-    pickCategory('Fun', 'Split category', 1)
+    pickOption('Groceries', 'Split category', 0)
+    pickOption('Fun', 'Split category', 1)
     expect(submitButton()).toBeEnabled()
 
     fireEvent.click(submitButton())
@@ -469,7 +469,7 @@ describe('TransactionEditor transfers', () => {
   it('opens an existing transfer showing where it goes', () => {
     renderEditor({ transaction: linkedLeg })
     const select = screen.getByRole('combobox', { name: 'To account' })
-    expect((select as HTMLSelectElement).value).toBe('acc-2')
+    expect((select as HTMLInputElement).value).toBe('Savings')
   })
 
   it('treats an unpaired leg as a transfer too', () => {
@@ -481,9 +481,7 @@ describe('TransactionEditor transfers', () => {
 
   it('sends the new destination when retargeted', async () => {
     renderEditor({ transaction: linkedLeg })
-    fireEvent.change(screen.getByRole('combobox', { name: 'To account' }), {
-      target: { value: 'acc-3' },
-    })
+    pickOption('Vacation Fund', 'To account')
     fireEvent.click(submitButton('Save'))
 
     await waitFor(() => expect(updateMutate).toHaveBeenCalled())
@@ -555,9 +553,7 @@ describe('TransactionEditor transfers', () => {
     const onClose = vi.fn()
     updateMutate.mockRejectedValueOnce(new Error('refused'))
     renderEditor({ transaction: linkedLeg, onClose })
-    fireEvent.change(screen.getByRole('combobox', { name: 'To account' }), {
-      target: { value: 'acc-3' },
-    })
+    pickOption('Vacation Fund', 'To account')
     fireEvent.click(submitButton('Save'))
 
     await waitFor(() => expect(toastError).toHaveBeenCalled())
@@ -646,8 +642,8 @@ describe('TransactionEditor transfer payee', () => {
 
     // The box and the account control say the same thing — one destination.
     expect(payeeBox().value).toBe('Transfer : Vacation Fund')
-    expect((screen.getByRole('combobox', { name: 'To account' }) as HTMLSelectElement).value).toBe(
-      'acc-3'
+    expect((screen.getByRole('combobox', { name: 'To account' }) as HTMLInputElement).value).toBe(
+      'Vacation Fund'
     )
     fireEvent.click(submitButton('Save'))
 
@@ -667,9 +663,7 @@ describe('TransactionEditor transfer payee', () => {
   it('keeps the payee box in step with the account control', () => {
     renderEditor({ transaction: linkedLeg })
     expect(payeeBox().value).toBe('Transfer : Savings')
-    fireEvent.change(screen.getByRole('combobox', { name: 'To account' }), {
-      target: { value: 'acc-3' },
-    })
+    pickOption('Vacation Fund', 'To account')
     expect(payeeBox().value).toBe('Transfer : Vacation Fund')
   })
 
@@ -837,12 +831,12 @@ describe('TransactionEditor account picker', () => {
     // The case the editor used to hide: a row is only visible from the
     // register it landed in, so hiding the field there hid it everywhere.
     renderEditor({ transaction: row, accountId: 'acc-1' })
-    expect((accountSelect() as HTMLSelectElement).value).toBe('acc-1')
+    expect((accountSelect() as HTMLInputElement).value).toBe('Checking')
   })
 
   it('sends the new account with the rest of the edit', async () => {
     renderEditor({ transaction: row, accountId: 'acc-1' })
-    fireEvent.change(accountSelect(), { target: { value: 'acc-2' } })
+    pickOption('Savings', 'Account')
     fireEvent.click(submitButton('Save'))
 
     await waitFor(() => expect(updateMutate).toHaveBeenCalled())
@@ -855,7 +849,7 @@ describe('TransactionEditor account picker', () => {
     // Nothing is pre-selected: a default account is a choice nobody made,
     // and it put rows in whichever account the previous entry used.
     renderEditor({ accountId: null })
-    expect((accountSelect() as HTMLSelectElement).value).toBe('')
+    expect((accountSelect() as HTMLInputElement).value).toBe('')
   })
 
   it('leaves a new row started from a register pinned to that register', () => {
@@ -879,7 +873,7 @@ describe('TransactionEditor account picker', () => {
     // The field disappears with the account change, so the note is the only
     // place the user hears about it — and an omitted field clears nothing.
     renderEditor({ transaction: row, accountId: 'acc-1' })
-    fireEvent.change(accountSelect(), { target: { value: 'acc-4' } })
+    pickOption('Cascade Point Brokerage', 'Account')
     expect(screen.getByText(/Groceries will be cleared/)).toBeInTheDocument()
 
     fireEvent.click(submitButton('Save'))
@@ -902,7 +896,7 @@ describe('TransactionEditor account picker', () => {
       { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
     ]
     renderEditor({ transaction: { ...row, is_split: true }, accountId: 'acc-1' })
-    fireEvent.change(accountSelect(), { target: { value: 'acc-2' } })
+    pickOption('Savings', 'Account')
     fireEvent.click(submitButton('Save'))
 
     await waitFor(() => expect(replaceSplitsMutate).toHaveBeenCalled())
@@ -917,9 +911,9 @@ describe('TransactionEditor account picker', () => {
     const legs = splitAmountInputs()
     fireEvent.change(legs[0], { target: { value: '40.00' } })
     fireEvent.change(legs[1], { target: { value: '1.80' } })
-    pickCategory('Groceries', 'Split category', 0)
-    pickCategory('Fun', 'Split category', 1)
-    fireEvent.change(accountSelect(), { target: { value: 'acc-2' } })
+    pickOption('Groceries', 'Split category', 0)
+    pickOption('Fun', 'Split category', 1)
+    pickOption('Savings', 'Account')
     fireEvent.click(submitButton('Save'))
 
     await waitFor(() => expect(convertMutate).toHaveBeenCalled())
@@ -934,7 +928,7 @@ describe('TransactionEditor account picker', () => {
     // row's own (now unchanged) account.
     const leg = { ...row, transfer_id: 't11', counterpart_account_id: 'acc-2' }
     renderEditor({ transaction: leg as unknown as Transaction, accountId: 'acc-1' })
-    fireEvent.change(accountSelect(), { target: { value: 'acc-3' } })
+    pickOption('Vacation Fund', 'Account')
     fireEvent.click(submitButton('Save'))
 
     await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(2))
@@ -1066,9 +1060,7 @@ describe('TransactionEditor Describe tab', () => {
 
   it('sends with the account picked above it', () => {
     renderEditor({ accountId: null })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
-      target: { value: 'acc-2' },
-    })
+    pickOption('Savings', 'Account')
     fireEvent.click(screen.getByRole('tab', { name: /Describe it/ }))
     expect(nlForm.accountId).toBe('acc-2')
   })
@@ -1167,7 +1159,7 @@ describe('TransactionEditor starting and stopping a split', () => {
   it('carries the chosen category into the first line, and back out', () => {
     renderEditor({ accountId: 'acc-1' })
     fireEvent.change(amountInputs()[0], { target: { value: '120' } })
-    pickCategory('Groceries')
+    pickOption('Groceries')
     fireEvent.click(screen.getByTitle('Split this transaction'))
 
     const legs = screen.getAllByRole<HTMLInputElement>('combobox', { name: 'Split category' })

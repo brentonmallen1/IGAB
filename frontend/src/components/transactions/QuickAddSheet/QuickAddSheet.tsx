@@ -61,7 +61,12 @@ import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
-import { openAccounts, recentAccounts } from '../../../utils/accountLists'
+import {
+  accountOptions,
+  openAccounts,
+  recentAccounts,
+  recentAccountsSection,
+} from '../../../utils/accountLists'
 import { choosablePayees } from '../../../utils/payees'
 
 type Direction = 'outflow' | 'inflow'
@@ -219,14 +224,9 @@ export function QuickAddSheet() {
       .map((p) => ({ id: p.id, label: p.name }))
   }, [payees, nearbyPayees])
 
-  const accountOptions = useMemo<SelectionSheetOption[]>(
-    () =>
-      choosable.map((a) => ({
-        id: a.id,
-        label: a.name,
-        group: a.on_budget ? 'Budget accounts' : 'Tracking',
-      })),
-    [choosable]
+  const accountPickerOptions = useMemo(
+    () => accountOptions(choosable, recent.length > 0),
+    [choosable, recent]
   )
 
   const payeeName = payeeId ? (payees.find((p) => p.id === payeeId)?.name ?? '') : ''
@@ -1055,14 +1055,10 @@ export function QuickAddSheet() {
               ? 'Account for this description'
               : 'Account'
         }
-        options={accountOptions}
+        options={accountPickerOptions}
         allowNone={mayDecideLater}
         noneLabel="Decide later — it waits in AI Activity"
-        topSection={
-          recent.length > 0
-            ? { label: 'Recent', options: recent.map((a) => ({ id: a.id, label: a.name })) }
-            : undefined
-        }
+        topSection={recentAccountsSection(recent)}
         value={accountId ?? undefined}
         onChange={(id) => (id ? chooseAccount(id) : decideLater())}
         placeholder="Search accounts…"

@@ -733,7 +733,7 @@
   .txn-editor__input,
   .txn-editor__select,
   .txn-editor .combobox__trigger,
-  .txn-editor .category-combobox__trigger {
+  .txn-editor .picker-field__trigger {
     min-height: 44px;
   }
 

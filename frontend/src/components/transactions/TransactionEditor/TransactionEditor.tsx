@@ -91,7 +91,8 @@ import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
-import { openAccounts, recentAccounts } from '../../../utils/accountLists'
+import { accountOptions, openAccounts, recentAccounts } from '../../../utils/accountLists'
+import { PickerField } from '../../common/PickerField/PickerField'
 import { categoryForLabel } from '../../ai/draftNotes'
 import { buildCategoryLabels } from '../../../utils/categoryLabels'
 
@@ -285,6 +286,7 @@ export function TransactionEditor({
   )
 
   const transferAccounts = transferTargets(accounts, accountId)
+  const transferAccountOptions = accountOptions(transferAccounts)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
   // What the payee box says while this is a transfer: the server's name for
   // the destination. A box that says anything else holds an edit the save
@@ -981,20 +983,15 @@ export function TransactionEditor({
                   <>
                     <div className="txn-editor__field">
                       <label className="txn-editor__label">{destinationLabel}</label>
-                      <select
-                        className="txn-editor__select"
-                        value={transferAccountId}
-                        onChange={(e) => handleTransferAccountChange(e.target.value)}
-                        required={isTransfer}
+                      <PickerField
+                        value={transferAccountId || null}
+                        onChange={(id) => handleTransferAccountChange(id ?? '')}
+                        options={transferAccountOptions}
+                        noneLabel="Select account…"
+                        sheetTitle={destinationLabel}
+                        searchPlaceholder="Search accounts…"
                         aria-label={destinationLabel}
-                      >
-                        <option value="">Select account…</option>
-                        {transferAccounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
 
                     {/* More than one row over there could be this transfer's other
