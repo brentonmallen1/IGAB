@@ -18,7 +18,7 @@ import { ReceiptScanTab } from './ReceiptScanTab'
 
 const receipt = new File(['x'], 'receipt.jpg', { type: 'image/jpeg' })
 
-function renderTab(accountId: string, aiEnabled = true) {
+function renderTab(accountId: string | null, aiEnabled = true) {
   const onQueued = vi.fn()
   const { container } = render(
     <MemoryRouter>
@@ -60,7 +60,7 @@ describe('ReceiptScanTab', () => {
   })
 
   it('scans with no account, and says where it will wait', async () => {
-    const onQueued = renderTab('')
+    const onQueued = renderTab(null)
     expect(scan()).not.toBeDisabled()
     expect(screen.getByText(/waits in AI Activity until you pick one/)).toBeTruthy()
     fireEvent.click(scan())

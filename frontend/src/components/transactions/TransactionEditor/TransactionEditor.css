@@ -412,9 +412,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
+}
+
+/* Why Save refused, beside the button that refused. */
+.txn-editor__footer-error {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+  text-align: right;
 }
 
 .txn-editor__footer-actions {

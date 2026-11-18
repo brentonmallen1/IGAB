@@ -28,7 +28,7 @@ function renderField(props: Partial<Parameters<typeof AccountField>[0]> = {}) {
     <AccountField
       accounts={[CHECKING, CARD, BROKERAGE]}
       recent={[CARD]}
-      value=""
+      value={null}
       onChange={onChange}
       current={null}
       lockReason={null}

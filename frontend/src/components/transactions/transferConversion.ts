@@ -82,7 +82,7 @@ export function mayBecomeTransfer(
 /** The accounts a row in `ownAccountId` may transfer to: every open account
  *  but its own. A closed account is refused server-side
  *  (domain/account_move), and offering it would be offering a refusal. */
-export function transferTargets(accounts: Account[], ownAccountId: string): Account[] {
+export function transferTargets(accounts: Account[], ownAccountId: string | null): Account[] {
   return accounts.filter((a) => a.id !== ownAccountId && !a.is_closed)
 }
 
@@ -113,7 +113,7 @@ export function transferOptionAccountId(optionId: string | null): string | null 
  *  and the bare account name for an account whose payee has not been made
  *  yet (the server makes it on the first link). */
 export function transferPayeeLabel(
-  accountId: string,
+  accountId: string | null,
   accounts: Pick<Account, 'id' | 'name'>[],
   payees: Pick<Payee, 'name' | 'transfer_account_id'>[]
 ): string {

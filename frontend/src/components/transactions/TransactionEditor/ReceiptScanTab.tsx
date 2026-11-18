@@ -18,9 +18,9 @@ type Stage = { kind: 'pick' } | { kind: 'preview'; file: File }
 
 interface Props {
   budgetId: string
-  /** Resolved account (fixed or picked in the editor); '' when unpicked —
+  /** Resolved account (fixed or picked in the editor); null when unpicked —
    *  the receipt then waits in AI Activity until a person chooses one. */
-  accountId: string
+  accountId: string | null
   /** AI is configured. Not whether the model answers right now: the scan is
    *  queued and the worker retries, as on the phone. */
   aiEnabled: boolean
@@ -90,7 +90,7 @@ export function ReceiptScanTab({ budgetId, accountId, aiEnabled, onQueued, onClo
   async function handleScan() {
     if (stage.kind !== 'preview') return
     try {
-      await submitReceipt.mutateAsync({ file: stage.file, accountId: accountId || null })
+      await submitReceipt.mutateAsync({ file: stage.file, accountId })
       toast.success(queuedMessage('receipt', 1, !accountId), { duration: 6000 })
       onQueued()
     } catch (err: unknown) {

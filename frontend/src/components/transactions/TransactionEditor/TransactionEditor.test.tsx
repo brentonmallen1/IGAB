@@ -479,6 +479,37 @@ describe('TransactionEditor transfers', () => {
     expect(screen.getByRole('combobox', { name: 'To account' })).toBeInTheDocument()
   })
 
+  it('refuses a transfer with no destination, and says why beside Save', async () => {
+    // The destination picker was a `required` <select>; the combobox that
+    // replaced it is not, so the save itself refuses — and never sends ''.
+    const plainRow = makeTransaction({
+      ...linkedLeg,
+      id: 't-plain',
+      transfer_id: null,
+      counterpart_account_id: null,
+      payee_id: null,
+    })
+    renderEditor({ transaction: plainRow })
+    fireEvent.click(screen.getByLabelText('Transfer to account'))
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    const save = submitButton('Save')
+    expect(save).toBeEnabled()
+    fireEvent.click(save)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Pick the account this transfer goes to.'
+    )
+    expect(updateMutate).not.toHaveBeenCalled()
+
+    pickOption('Savings', 'To account')
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(submitButton('Save'))
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't-plain', transfer_account_id: 'acc-2' })
+    )
+  })
+
   it('sends the new destination when retargeted', async () => {
     renderEditor({ transaction: linkedLeg })
     pickOption('Vacation Fund', 'To account')

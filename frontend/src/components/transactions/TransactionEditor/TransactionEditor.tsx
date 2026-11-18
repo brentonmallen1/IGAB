@@ -91,8 +91,7 @@ import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
-import { accountOptions, openAccounts, recentAccounts } from '../../../utils/accountLists'
-import { PickerField } from '../../common/PickerField/PickerField'
+import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 import { categoryForLabel } from '../../ai/draftNotes'
 import { buildCategoryLabels } from '../../../utils/categoryLabels'
 
@@ -151,7 +150,9 @@ export function TransactionEditor({
   // offered first instead, which shortens the pick without making it.
   const recentAccountIds = useAppStore((s) => s.recentAccountIds)
   const noteAccountUsed = useAppStore((s) => s.noteAccountUsed)
-  const [pickedAccountId, setPickedAccountId] = useState(transaction?.account_id ?? '')
+  const [pickedAccountId, setPickedAccountId] = useState<string | null>(
+    transaction?.account_id ?? null
+  )
   const choosable = useMemo(() => openAccounts(accounts), [accounts])
   const recent = useMemo(
     () => recentAccounts(choosable, recentAccountIds),
@@ -200,9 +201,14 @@ export function TransactionEditor({
   // leftovers) is still a transfer, and it is the one most in need of this
   // editor. Opening one used to show the toggle off and no destination.
   const [isTransfer, setIsTransfer] = useState(!!transaction?.counterpart_account_id)
-  const [transferAccountId, setTransferAccountId] = useState(
-    transaction?.counterpart_account_id ?? ''
+  const [transferAccountId, setTransferAccountId] = useState<string | null>(
+    transaction?.counterpart_account_id ?? null
   )
+  /** Set by a save refused for want of a transfer destination; the footer
+   *  says so while the destination is still missing. Save stays enabled so
+   *  the refusal can be read rather than guessed at. */
+  const [destinationAsked, setDestinationAsked] = useState(false)
+  const missingDestination = isTransfer && !transferAccountId
   /** Which existing row to adopt as the far leg (the ambiguity answer), or
    *  CREATE_NEW_PARTNER for "none of these". */
   const [partnerChoice, setPartnerChoice] = useState<string | null>(null)
@@ -285,8 +291,10 @@ export function TransactionEditor({
     categoryGroups
   )
 
-  const transferAccounts = transferTargets(accounts, accountId)
-  const transferAccountOptions = accountOptions(transferAccounts)
+  const transferAccounts = useMemo(
+    () => transferTargets(accounts, accountId),
+    [accounts, accountId]
+  )
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
   // What the payee box says while this is a transfer: the server's name for
   // the destination. A box that says anything else holds an edit the save
@@ -367,7 +375,7 @@ export function TransactionEditor({
 
   /** The account control, with the payee box following it — one destination,
    *  two places it is shown, never two answers. */
-  function handleTransferAccountChange(targetId: string) {
+  function handleTransferAccountChange(targetId: string | null) {
     setTransferAccountId(targetId)
     setPartnerChoice(null)
     setPayeeQuery(transferPayeeLabel(targetId, accounts, payees))
@@ -499,6 +507,16 @@ export function TransactionEditor({
       )
       return
     }
+    // A transfer goes somewhere. The destination picker used to be a
+    // `required` <select>; the save refuses here instead, and says why.
+    let transferFields: ReturnType<typeof transferLinkFields> | null = null
+    if (isTransfer) {
+      if (!transferAccountId) {
+        setDestinationAsked(true)
+        return
+      }
+      transferFields = transferLinkFields(transferAccountId, partnerChoice)
+    }
     const amount = typed.dollars
     const sign = amount < 0 ? -1 : 1
 
@@ -593,7 +611,7 @@ export function TransactionEditor({
             // The same fields the register's own conversion sends — which
             // existing row is the far leg included, when more than one could
             // be. Without an answer the server refuses rather than guess.
-            ...transferLinkFields(transferAccountId, partnerChoice),
+            ...transferFields,
             ...(transferIsOffBudget && categoryId ? { category_id: categoryId } : {}),
           }
         : {
@@ -669,7 +687,10 @@ export function TransactionEditor({
     if (!transaction) return
     if (!(await confirmDeleteTransaction(transaction.id))) return
     try {
-      const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
+      const { batchId } = await deleteTxn.mutateAsync({
+        id: transaction.id,
+        accountId: transaction.account_id,
+      })
       onClose()
       notify('Transaction deleted', batchId ? { batch: batchId } : null)
     } catch (err) {
@@ -857,7 +878,7 @@ export function TransactionEditor({
                 </p>
                 <NLEntryForm
                   budgetId={budgetId}
-                  accountId={accountId || null}
+                  accountId={accountId}
                   onQueued={() => {
                     if (!fixedAccountId && accountId) noteAccountUsed(accountId)
                     onClose()
@@ -981,18 +1002,12 @@ export function TransactionEditor({
 
                 {isTransfer ? (
                   <>
-                    <div className="txn-editor__field">
-                      <label className="txn-editor__label">{destinationLabel}</label>
-                      <PickerField
-                        value={transferAccountId || null}
-                        onChange={(id) => handleTransferAccountChange(id ?? '')}
-                        options={transferAccountOptions}
-                        noneLabel="Select account…"
-                        sheetTitle={destinationLabel}
-                        searchPlaceholder="Search accounts…"
-                        aria-label={destinationLabel}
-                      />
-                    </div>
+                    <AccountField
+                      label={destinationLabel}
+                      accounts={transferAccounts}
+                      value={transferAccountId}
+                      onChange={handleTransferAccountChange}
+                    />
 
                     {/* More than one row over there could be this transfer's other
                   half. Guessing would either link the wrong money or write a
@@ -1375,6 +1390,11 @@ export function TransactionEditor({
                 </button>
               ) : (
                 <span />
+              )}
+              {destinationAsked && missingDestination && (
+                <span className="txn-editor__footer-error" role="alert">
+                  Pick the account this transfer goes to.
+                </span>
               )}
               <div className="txn-editor__footer-actions">
                 <button

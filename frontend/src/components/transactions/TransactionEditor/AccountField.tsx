@@ -5,25 +5,32 @@ import { accountOptions, recentAccountsSection } from '../../../utils/accountLis
 import type { Account } from '../../../types'
 
 interface Props {
+  /** The field's label, and the picker's accessible name. */
+  label?: string
   /** Open accounts, as offered. A closed one the row already sits in is added
    *  back below — see the comment on that option. */
   accounts: Account[]
   /** The ones used most recently, pinned above the rest (utils/accountLists).
    *  A shortlist, never a default — nothing here is pre-selected. */
-  recent: Account[]
-  value: string
-  onChange: (accountId: string) => void
+  recent?: Account[]
+  /** Null while nothing is picked; never ''. */
+  value: string | null
+  onChange: (accountId: string | null) => void
   /** The account the row is in right now, for the locked reading and for the
    *  closed-account case. Null while a new row has not picked one. */
-  current: Account | null
+  current?: Account | null
   /** Why the account cannot be changed (accountMove.ts), or null. */
-  lockReason: string | null
+  lockReason?: string | null
   /** What changing it will cost — today, a category that cannot follow. */
-  note: string | null
+  note?: string | null
 }
 
+const NO_RECENT: Account[] = []
+
 /**
- * The editor's Account field: which account this transaction is in.
+ * The editor's Account field: which account this transaction is in. The
+ * transfer's destination ("To account" / "From account") is the same field
+ * under its own label, with no shortlist and no lock.
  *
  * Shown for a new row that has no register to inherit from, and for any
  * existing row that may be moved. The row opened from an account register is
@@ -40,13 +47,14 @@ interface Props {
  * house group headers a native <select> could not.
  */
 export function AccountField({
+  label = 'Account',
   accounts,
-  recent,
+  recent = NO_RECENT,
   value,
   onChange,
-  current,
-  lockReason,
-  note,
+  current = null,
+  lockReason = null,
+  note = null,
 }: Props) {
   const options = useMemo(() => {
     const offered = accountOptions(accounts, recent.length > 0)
@@ -61,25 +69,25 @@ export function AccountField({
 
   return (
     <div className="txn-editor__field">
-      <span className="txn-editor__label">Account</span>
+      <span className="txn-editor__label">{label}</span>
       {lockReason ? (
         <div
           className="txn-editor__input txn-editor__locked"
-          aria-label={`Account: ${current?.name ?? ''}`}
+          aria-label={`${label}: ${current?.name ?? ''}`}
         >
           <Lock size={12} aria-hidden />
           {current?.name ?? '—'}
         </div>
       ) : (
         <PickerField
-          value={value || null}
-          onChange={(id) => onChange(id ?? '')}
+          value={value}
+          onChange={onChange}
           options={options}
           pinned={pinned}
           noneLabel="Select account…"
-          sheetTitle="Account"
+          sheetTitle={label}
           searchPlaceholder="Search accounts…"
-          aria-label="Account"
+          aria-label={label}
         />
       )}
       {(lockReason || note) && <span className="txn-editor__field-note">{lockReason ?? note}</span>}
