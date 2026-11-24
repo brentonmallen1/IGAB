@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent, type Reac
 import { createPortal } from 'react-dom'
 import { ChevronDown, Plus } from 'lucide-react'
 import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
+import { DROPDOWN_MIN_WIDTH } from '../../../utils/anchoredPosition'
 import './Combobox.css'
 
 export interface ComboboxOption {
@@ -30,6 +31,10 @@ interface Props {
   'aria-label'?: string
   'aria-labelledby'?: string
 }
+
+/** As wide as the control, but never too narrow to read a name in — a
+ *  module constant so the hook sees one stable object. */
+const DROPDOWN = { width: 'trigger', minWidth: DROPDOWN_MIN_WIDTH } as const
 
 export function Combobox({
   value,
@@ -65,7 +70,7 @@ export function Combobox({
   const listRef = useRef<HTMLUListElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const dropdownPos = useAnchoredPosition(triggerRef, open, { width: 'trigger' }, dropdownRef)
+  const dropdownPos = useAnchoredPosition(triggerRef, open, DROPDOWN, dropdownRef)
 
   const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
 

@@ -4,7 +4,12 @@
  * before this was one function.
  */
 import { describe, expect, it } from 'vitest'
-import { placeAnchored, samePlacement, type AnchorRect } from './anchoredPosition'
+import {
+  DROPDOWN_MIN_WIDTH,
+  placeAnchored,
+  samePlacement,
+  type AnchorRect,
+} from './anchoredPosition'
 
 const VIEWPORT = { width: 1200, height: 800 }
 const trigger = (over: Partial<AnchorRect> = {}): AnchorRect => ({
@@ -163,6 +168,39 @@ describe('placeAnchored — width', () => {
     })
     expect(narrow.width).toBe(200)
     expect(wide.width).toBe(280)
+  })
+
+  it('opens a readable list from a cell squeezed by a narrow window (Combobox)', () => {
+    // The register's category cell is a 1fr track: at ~900px it is ~90px
+    // wide, and the picker opened that wide — every name an ellipsis.
+    const options = { width: 'trigger', minWidth: DROPDOWN_MIN_WIDTH } as const
+    const squeezed = placeAnchored(
+      trigger({ width: 90, left: 520 }),
+      { width: 900, height: 800 },
+      options
+    )
+    expect(squeezed.width).toBe(DROPDOWN_MIN_WIDTH)
+    expect(squeezed.left).toBe(520)
+    // A roomy cell still gets a list as wide as itself.
+    expect(placeAnchored(trigger({ width: 340 }), VIEWPORT, options).width).toBe(340)
+  })
+
+  it('slides the wider list back inside when the cell sits at the right edge', () => {
+    const options = { width: 'trigger', minWidth: DROPDOWN_MIN_WIDTH } as const
+    const p = placeAnchored(trigger({ width: 90, left: 800 }), { width: 900, height: 800 }, options)
+    expect(p.left + p.width).toBeLessThanOrEqual(900 - 8)
+  })
+
+  it('never opens wider than a phone, whatever the minimum', () => {
+    const p = placeAnchored(
+      trigger({ width: 90, left: 10 }),
+      { width: 240, height: 600 },
+      {
+        width: 'trigger',
+        minWidth: DROPDOWN_MIN_WIDTH,
+      }
+    )
+    expect(p.width).toBe(240 - 16)
   })
 })
 

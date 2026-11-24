@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
+import { DROPDOWN_MIN_WIDTH } from '../../../utils/anchoredPosition'
 import { Check, Plus, Tag } from 'lucide-react'
 import { TagChip, type TagColorSlot } from '../TagChip'
 import './TagPicker.css'
@@ -27,7 +28,7 @@ interface TagPickerProps {
 // stylesheet's copy was free to drift.
 const DROPDOWN = {
   width: 'trigger',
-  minWidth: 200,
+  minWidth: DROPDOWN_MIN_WIDTH,
   maxWidth: 280,
   maxHeight: 300,
 } as const
