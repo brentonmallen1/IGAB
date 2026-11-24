@@ -13,6 +13,7 @@ import { keepsSelection } from '../../utils/keepsSelection'
 import './ReconcileStatusBar.css'
 
 interface Props {
+  budgetId: string | null
   accountId: string
   /** Opens this account's duplicate review, over the bar: settling a pair
    * is part of the reconcile, so the reconcile stays open behind it. */
@@ -31,7 +32,7 @@ const HELD_FOR_REVIEW =
  * Stacks above the selection bar when both are up, so bulk-clearing rows
  * mid-reconcile never hides the number the user is working toward.
  */
-export function ReconcileStatusBar({ accountId, onReviewDuplicates }: Props) {
+export function ReconcileStatusBar({ budgetId, accountId, onReviewDuplicates }: Props) {
   const { formatMoney } = useFormatters()
   const {
     reconcileStatementBalance,
@@ -42,8 +43,8 @@ export function ReconcileStatusBar({ accountId, onReviewDuplicates }: Props) {
   } = useUIStore()
 
   const { data: status } = useReconciliationStatus(accountId, { refetchInterval: 1000 })
-  const createAdjustment = useCreateAdjustment(accountId)
-  const finish = useFinishReconciliation(accountId)
+  const createAdjustment = useCreateAdjustment(budgetId, accountId)
+  const finish = useFinishReconciliation(budgetId, accountId)
 
   const clearedBalance = Number(status?.cleared_balance ?? 0)
   const statementBalance = reconcileStatementBalance ?? 0

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { Transaction } from '../types'
+import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import { ROOT } from './queryKeys'
 
 export interface ReconciliationStatus {
@@ -42,7 +43,7 @@ export function useReconciliationStatus(
   })
 }
 
-export function useCreateAdjustment(accountId: string) {
+export function useCreateAdjustment(budgetId: string | null, accountId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (adjustmentAmount: number) =>
@@ -51,11 +52,7 @@ export function useCreateAdjustment(accountId: string) {
           adjustment_amount: adjustmentAmount,
         })
         .then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
-      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
-      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus, accountId] })
-    },
+    onSuccess: () => void invalidateAfterTransactionChange(qc, { budgetId, accountId }),
   })
 }
 
@@ -64,18 +61,21 @@ interface FinishReconciliationParams {
   adjustment_transaction_id?: string | null
 }
 
-export function useFinishReconciliation(accountId: string) {
+/**
+ * Finishing writes transactions: it locks the cleared rows and approves the
+ * ones still awaiting approval. So it invalidates what any transaction write
+ * does — this hook and the adjustment each kept a three-key list of their
+ * own, which knew nothing of the review counts, and the sidebar badge went
+ * on counting rows the reconcile had just approved.
+ */
+export function useFinishReconciliation(budgetId: string | null, accountId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (params: FinishReconciliationParams) =>
       apiClient
         .post<ReconciliationSnapshot>(`/accounts/${accountId}/reconcile/finish`, params)
         .then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
-      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
-      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus, accountId] })
-    },
+    onSuccess: () => void invalidateAfterTransactionChange(qc, { budgetId, accountId }),
   })
 }
 

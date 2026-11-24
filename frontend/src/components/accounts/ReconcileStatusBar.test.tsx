@@ -51,7 +51,9 @@ vi.mock('../../stores/uiStore', () => ({
 const onReviewDuplicates = vi.fn()
 
 function renderBar() {
-  render(<ReconcileStatusBar accountId="a1" onReviewDuplicates={onReviewDuplicates} />)
+  render(
+    <ReconcileStatusBar budgetId="b1" accountId="a1" onReviewDuplicates={onReviewDuplicates} />
+  )
 }
 
 /** Decimal places in the number as it would be serialized into the request. */
