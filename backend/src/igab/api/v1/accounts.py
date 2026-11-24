@@ -693,6 +693,19 @@ async def delete_account(
         )
 
 
+class ScanDuplicatesRequest(BaseModel):
+    """How much of the account to look through. Both default to the narrow
+    reading: the scan is for rows still in play, and every pair it queues
+    holds a reconciliation back until somebody answers it."""
+
+    #: Only transactions dated on or after this. The client sends the date —
+    #: it knows what "the last 90 days" means where the person is.
+    since: date | None = None
+    #: Pair a reconciled row with one that is not. Two reconciled rows are
+    #: never paired: the statement vouched for both, and neither may go.
+    include_reconciled: bool = False
+
+
 class ScanDuplicatesResponse(BaseModel):
     created: int
 
@@ -704,8 +717,12 @@ async def scan_duplicates(
     matching_service: Annotated[
         TransactionMatchingService, Depends(get_transaction_matching_service)
     ],
+    body: ScanDuplicatesRequest | None = None,
 ) -> ScanDuplicatesResponse:
-    created = await matching_service.scan_for_duplicates(account_id)
+    scope = body or ScanDuplicatesRequest()
+    created = await matching_service.scan_for_duplicates(
+        account_id, since=scope.since, include_reconciled=scope.include_reconciled
+    )
     return ScanDuplicatesResponse(created=created)
 
 

@@ -664,8 +664,7 @@ a {
 /* solid accent dots and badges */
 .sidebar__update-badge,
 .more-sheet__update-badge,
-.accounts-overview__sync-badge,
-.merge-card__badge {
+.accounts-overview__sync-badge {
   box-shadow: var(--glow-accent);
 }
 

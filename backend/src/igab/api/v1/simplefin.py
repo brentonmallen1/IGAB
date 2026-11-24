@@ -12,6 +12,7 @@ from igab.api.v1.schemas.simplefin import (
     LinkSimpleFINRequest,
     RateLimitStatus,
     RefetchRequest,
+    RejectAllMatchesResponse,
     SimpleFINConfigResponse,
     SimpleFINConnectionResponse,
     SimpleFINSetupRequest,
@@ -26,6 +27,7 @@ from igab.api.v1.schemas.simplefin import (
     TransactionMatchResponse,
     UnservedAccount,
 )
+from igab.api.v1.schemas.transaction import AcceptMatchRequest
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
@@ -390,11 +392,14 @@ async def accept_match(
     match_id: MatchAccess,
     current_user: CurrentUser,
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
+    body: AcceptMatchRequest | None = None,
 ) -> None:
     from igab.domain.exceptions import InvariantViolation
 
     try:
-        await matching_svc.accept_match(match_id)
+        await matching_svc.accept_match(
+            match_id, keep=body.keep.to_domain() if body and body.keep else None
+        )
     except InvariantViolation as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
@@ -406,6 +411,21 @@ async def reject_match(
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
 ) -> None:
     await matching_svc.reject_match(match_id)
+
+
+@router.post(
+    "/accounts/{account_id}/pending-matches/reject-all",
+    response_model=RejectAllMatchesResponse,
+)
+async def reject_all_pending_matches(
+    account_id: AccountAccess,
+    current_user: CurrentUser,
+    matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
+) -> RejectAllMatchesResponse:
+    """Keep every open pair on the account separate, as one undoable change —
+    the way out of a review queue that is all false alarms."""
+    rejected, batch_id = await matching_svc.reject_all_pending(account_id)
+    return RejectAllMatchesResponse(rejected=rejected, batch_id=batch_id)
 
 
 # ─── Sync log ─────────────────────────────────────────────────────────────────

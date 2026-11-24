@@ -1,45 +1,93 @@
 /**
- * What the budget bar offers: five status buttons, and a dropdown of saved
- * filters. Both rules live here so the two controls cannot come to disagree
- * about a count or about which one is on.
+ * What the budget bar offers: status buttons for the statuses someone pinned,
+ * and a "More filters" dropdown holding the other statuses and the saved
+ * filters. Every rule about them lives here so the two controls cannot come
+ * to disagree about a count, about which one is on, or about what a status
+ * matches.
  *
- * **Why the statuses are buttons again.** They are five fixed things you reach
- * for by eye; a dropdown makes you open it to find out whether anything is
- * overspent. The reason they were collapsed into it was real, and is not about
- * being buttons: the bar wraps, the grid offsets its sticky column header by
- * this bar's *measured height*, and the old row's footprint moved with the
- * budget's state — it dropped a status whose count hit zero, so the row got
- * narrower as things got better and the register slid up and down the page.
- * Saved filters made it worse by being unbounded.
+ * **Why some statuses are buttons.** They are fixed things you reach for by
+ * eye; a dropdown makes you open it to find out whether anything is
+ * overspent. **Why not all of them.** There are six, and four of them ask
+ * for nothing: a row of six was mostly noise beside the two that matter. So
+ * the ones that earn the space are pinned (Manage Filters; overspent and
+ * underfunded to start) and the rest sit in the menu with their counts. A
+ * status is in exactly one of the two places, never both — two readings of
+ * one number on screen are free to disagree.
  *
- * So the footprint is now static, and that is the property to preserve:
+ * The bar wraps, and the grid offsets its sticky column header by this bar's
+ * *measured height*, so the footprint must not move with the budget's state:
  *
- * - **All five render always.** A zero count is `disabled`, never removed.
- *   This is the rule the old row got wrong.
+ * - **Every pinned status renders always.** A zero count is `disabled`,
+ *   never removed. The old row dropped a status whose count hit zero, so the
+ *   row got narrower as things got better and the grid slid up the page.
  * - **The count sits in a fixed slot**, clamped at `99+`, so a digit appearing
  *   never reflows the row.
- * - **Saved filters stay in the dropdown**, where an unbounded list costs no
+ * - **Everything unbounded is in the dropdown**, where a long list costs no
  *   width at all.
- *
- * The bar's width and height are then the same on an empty budget and a
- * hundred-category one, which is what the grid below it needs.
  *
  * The two controls remain ONE choice: `setActiveFilter` clears
  * `activeQuickFilter` and `setActiveQuickFilter` clears `activeFilterId`, so
  * at most one of them is ever on.
  */
 import type { SelectChipGroup } from '../common/SelectChip/SelectChip'
-import { QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS, type QuickFilter } from '../../stores/uiStore'
+import {
+  ALL_QUICK_FILTERS,
+  QUICK_FILTER_LABELS,
+  QUICK_FILTER_VARIANTS,
+  type QuickFilter,
+} from '../../stores/uiStore'
+import type { CategoryBalance } from '../../types'
 
 export interface SavedFilter {
   id: string
   name: string
 }
 
-//: Statuses are buttons and no longer reach this control, so there is no
-//: `quick` arm here any more — a value shape nothing can emit is a second way
-//: to say the same thing, waiting to disagree with the first.
-export type FilterChoice = { kind: 'all' } | { kind: 'saved'; id: string }
+export type FilterChoice =
+  | { kind: 'all' }
+  | { kind: 'saved'; id: string }
+  /** A status that is not pinned to the bar, chosen from the menu. */
+  | { kind: 'status'; filter: QuickFilter }
+
+/**
+ * Does this category belong under a status? The one answer: the bar's counts
+ * and the grid's rows both ask here. They used to be two switch statements in
+ * two files, so a count could promise rows the grid then did not draw.
+ *
+ * Funding statuses read the served `target_status` — the server's
+ * TargetService, the same function Fill Underfunded asks — never a
+ * recomputation.
+ */
+export function quickFilterMatches(
+  filter: QuickFilter,
+  balance: Pick<CategoryBalance, 'available' | 'target_status'> | undefined
+): boolean {
+  switch (filter) {
+    case 'overspent':
+      return (balance?.available ?? 0) < 0
+    case 'money-available':
+      return (balance?.available ?? 0) > 0
+    case 'underfunded':
+      return balance?.target_status === 'underfunded'
+    case 'pending':
+      return balance?.target_status === 'pending'
+    case 'overfunded':
+      return balance?.target_status === 'overfunded'
+    case 'spent-past-target':
+      return balance?.target_status === 'spent_past_target'
+  }
+}
+
+/** How many categories each status holds — `quickFilterMatches`, counted. */
+export function quickFilterCounts(
+  balances: readonly Pick<CategoryBalance, 'available' | 'target_status'>[]
+): Record<QuickFilter, number> {
+  const counts = {} as Record<QuickFilter, number>
+  for (const filter of ALL_QUICK_FILTERS) {
+    counts[filter] = balances.filter((b) => quickFilterMatches(filter, b)).length
+  }
+  return counts
+}
 
 export interface FilterMenu {
   /** The `<select>` value — `''` when nothing narrows the grid. */
@@ -47,8 +95,9 @@ export interface FilterMenu {
   groups: SelectChipGroup[]
 }
 
-/** One status button. `disabled` rather than absent at zero — see the note at
- *  the top about why the row's footprint must not move. */
+/** One status, as a bar button or a menu line. `disabled` rather than absent
+ *  at zero — see the note at the top about why the row's footprint must not
+ *  move. */
 export interface StatusButton {
   filter: QuickFilter
   label: string
@@ -66,7 +115,8 @@ export interface StatusButton {
 const COUNT_CEILING = 99
 
 /**
- * The five status buttons, always all five, in the user's arranged order.
+ * Every status, always all of them, in the user's arranged order. The caller
+ * splits them between the bar and the menu with `splitStatuses`.
  *
  * A status with nothing in it is disabled rather than dropped — and the active
  * one is never disabled, so a filter that empties its own list still says what
@@ -96,39 +146,75 @@ export function statusButtons({
   })
 }
 
+/** The statuses split between the two controls: `bar` for the pinned ones,
+ *  `menu` for the rest. Each status lands in exactly one. */
+export function splitStatuses(
+  statuses: readonly StatusButton[],
+  pinned: readonly QuickFilter[]
+): { bar: StatusButton[]; menu: StatusButton[] } {
+  return {
+    bar: statuses.filter((s) => pinned.includes(s.filter)),
+    menu: statuses.filter((s) => !pinned.includes(s.filter)),
+  }
+}
+
 export function choiceValue(choice: FilterChoice): string {
-  return choice.kind === 'all' ? '' : `saved:${choice.id}`
+  if (choice.kind === 'all') return ''
+  return choice.kind === 'saved' ? `saved:${choice.id}` : `status:${choice.filter}`
 }
 
 /** Ids are UUIDs, so they never carry the separator; split on the first one
- *  all the same. */
+ *  all the same. A status this build does not know reads as no choice. */
 export function parseChoice(value: string): FilterChoice {
   const at = value.indexOf(':')
-  return at === -1 ? { kind: 'all' } : { kind: 'saved', id: value.slice(at + 1) }
+  if (at === -1) return { kind: 'all' }
+  const rest = value.slice(at + 1)
+  if (value.slice(0, at) === 'status') {
+    const filter = ALL_QUICK_FILTERS.find((f) => f === rest)
+    return filter ? { kind: 'status', filter } : { kind: 'all' }
+  }
+  return { kind: 'saved', id: rest }
 }
 
 interface MenuInput {
   saved: readonly SavedFilter[]
   activeFilterId: string | null
+  /** The statuses that are not buttons on the bar (`splitStatuses().menu`).
+   *  Empty where every status is drawn elsewhere, as on the phone's sheet. */
+  statuses?: readonly StatusButton[]
 }
 
 /**
- * The dropdown: saved filters, and nothing else.
+ * The dropdown: the statuses that are not pinned to the bar, each with its
+ * count, then the saved filters.
  *
- * Statuses left it for the button row. Offering them in both places would put
- * the overspent count on screen twice — two readings of the same number, free
- * to disagree the moment one of them is computed from a different list.
+ * Only the unpinned ones. Offering a status in both places would put its
+ * count on screen twice — two readings of the same number, free to disagree
+ * the moment one of them is computed from a different list.
  */
-export function filterMenu({ saved, activeFilterId }: MenuInput): FilterMenu {
+export function filterMenu({ saved, activeFilterId, statuses = [] }: MenuInput): FilterMenu {
   // A persisted id can point at a filter this budget does not have — another
   // budget's, or one deleted in another tab. The bar self-heals it, but until
   // that runs the chip must not read blank: the grid is not narrowed by a
   // filter that does not exist, so `All categories` is the true answer.
   const activeSaved = saved.find((f) => f.id === activeFilterId)
 
+  const activeStatus = statuses.find((s) => s.active)
+
   return {
-    value: activeSaved ? choiceValue({ kind: 'saved', id: activeSaved.id }) : '',
+    value: activeSaved
+      ? choiceValue({ kind: 'saved', id: activeSaved.id })
+      : activeStatus
+        ? choiceValue({ kind: 'status', filter: activeStatus.filter })
+        : '',
     groups: [
+      {
+        label: 'Status',
+        options: statuses.map((s) => ({
+          value: choiceValue({ kind: 'status', filter: s.filter }),
+          label: `${s.label} (${s.countLabel})`,
+        })),
+      },
       {
         label: 'Saved filters',
         options: saved.map((f) => ({

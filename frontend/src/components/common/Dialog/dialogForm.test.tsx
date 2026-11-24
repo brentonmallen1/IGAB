@@ -65,6 +65,31 @@ vi.mock('../../../api/accounts', () => ({
 vi.mock('../../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
 vi.mock('../../../api/transactions', () => ({
   useCreateTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  // The merge dialog draws the server's preview; any answer will do here.
+  useMergePreview: () => ({
+    data: {
+      date: '2026-08-01',
+      amount: -10,
+      replaced_amount: null,
+      payee_id: null,
+      category_id: null,
+      memo: null,
+      cleared: 'cleared',
+      is_split: false,
+      lines: [],
+      has_bank_record: false,
+      transfer: null,
+      choices: {
+        date: { source: 't1', choosable: false },
+        payee: { source: null, choosable: false },
+        category: { source: null, choosable: false },
+        memo: { source: null, choosable: false },
+      },
+    },
+    isError: false,
+    error: null,
+  }),
+  useTransactionSplits: () => ({ data: undefined }),
 }))
 vi.mock('../../../api/budgetSnapshots', () => ({
   useCloneBudget: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -233,6 +258,7 @@ const SWEEP_C_FOOTERS = {
     primary: 'Merge',
     render: () => (
       <MergePreviewModal
+        budgetId="b1"
         transactions={[txn('t1', '2026-08-01T00:00:00Z'), txn('t2', '2026-08-02T00:00:00Z')]}
         payeeMap={new Map()}
         categoryLabels={new Map()}

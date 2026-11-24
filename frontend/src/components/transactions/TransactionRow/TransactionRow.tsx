@@ -332,6 +332,15 @@ export const TransactionRow = memo(function TransactionRow({
     stopEditing()
   }
 
+  /** A click on an amount cell. A split's total is its lines' sum, so it is
+   *  corrected where the lines are — the split editor — and not in a cell of
+   *  its own: typed here, the server refused the save. */
+  function editAmount(field: 'outflow' | 'inflow') {
+    if (isMobile || isReconciled) return
+    if (txn.is_split) onStartSplit(txn)
+    else startEditing(txn.id, field)
+  }
+
   function commitAmount(raw: string, sign: 1 | -1) {
     const num = parseAmountExpressionInput(raw)
     if (!isNaN(num) && num !== 0) {
@@ -786,10 +795,7 @@ export const TransactionRow = memo(function TransactionRow({
       </div>
 
       {/* Outflow */}
-      <div
-        className="txn-col txn-col--outflow tabular"
-        onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'outflow')}
-      >
+      <div className="txn-col txn-col--outflow tabular" onClick={() => editAmount('outflow')}>
         {isEditing('outflow') ? (
           <InlineInput
             value={outflow > 0 ? toAmountInput(outflow) : ''}
@@ -807,10 +813,7 @@ export const TransactionRow = memo(function TransactionRow({
       </div>
 
       {/* Inflow */}
-      <div
-        className="txn-col txn-col--inflow tabular"
-        onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'inflow')}
-      >
+      <div className="txn-col txn-col--inflow tabular" onClick={() => editAmount('inflow')}>
         {isEditing('inflow') ? (
           <InlineInput
             value={inflow > 0 ? toAmountInput(inflow) : ''}

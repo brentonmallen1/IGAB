@@ -9,7 +9,13 @@ import { SelectChip } from '../../common/SelectChip/SelectChip'
 import type { CategoryBalance } from '../../../types'
 import { reorderBlock } from '../reorderAvailability'
 import './BudgetFilterBar.css'
-import { filterMenu, parseChoice, statusButtons } from '../budgetFilterMenu'
+import {
+  filterMenu,
+  parseChoice,
+  quickFilterCounts,
+  splitStatuses,
+  statusButtons,
+} from '../budgetFilterMenu'
 import { useBudgetMonth } from '../../../api/budgets'
 import { overspentLastMonth } from '../budgetTotals'
 import { useGridNarrowing } from '../gridNarrowing'
@@ -69,6 +75,7 @@ export function BudgetFilterBar({
   const activeFilterId = useUIStore((s) => s.activeFilterId)
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
+  const pinnedQuickFilters = useUIStore((s) => s.pinnedQuickFilters)
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
   const setActiveQuickFilter = useUIStore((s) => s.setActiveQuickFilter)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
@@ -108,16 +115,9 @@ export function BudgetFilterBar({
     }
   }, [filters, activeFilterId, setActiveFilter])
 
-  // Funding status comes from the row, computed by the server's TargetService
-  // — the same function Fill Underfunded asks — so a count always matches what
-  // the rows show and what the button will do.
-  const counts = {
-    overspent: categoryBalances.filter((b) => (b.available ?? 0) < 0).length,
-    underfunded: categoryBalances.filter((b) => b.target_status === 'underfunded').length,
-    pending: categoryBalances.filter((b) => b.target_status === 'pending').length,
-    'money-available': categoryBalances.filter((b) => (b.available ?? 0) > 0).length,
-    overfunded: categoryBalances.filter((b) => b.target_status === 'overfunded').length,
-  }
+  // What each status holds — `quickFilterMatches`, the function the grid
+  // filters its rows with, so a count always matches the rows it promises.
+  const counts = quickFilterCounts(categoryBalances)
 
   function handleMenuSelect(id: string) {
     if (id === 'new') openModal('filter')
@@ -147,13 +147,16 @@ export function BudgetFilterBar({
   // `budgetFilterMenu` says what each one offers — and, at the top of that
   // file, why the button row's footprint has to stay put.
   const statuses = statusButtons({ quickFilterOrder, counts, activeQuickFilter })
-  const menu = filterMenu({ saved: filters ?? [], activeFilterId })
+  // A phone's sheet lists every status itself, so its menu holds none.
+  const split = splitStatuses(statuses, isMobile ? quickFilterOrder : pinnedQuickFilters)
+  const menu = filterMenu({ saved: filters ?? [], activeFilterId, statuses: split.menu })
 
   function handleFilterChange(value: string) {
     const choice = parseChoice(value)
     // Choosing a saved filter clears any active status, in the store — the two
     // controls are one choice, and it is spelled once, there.
     if (choice.kind === 'saved') setActiveFilter(choice.id)
+    else if (choice.kind === 'status') setActiveQuickFilter(choice.filter)
     else {
       setActiveFilter(null)
       setActiveQuickFilter(null)
@@ -230,13 +233,14 @@ export function BudgetFilterBar({
         </>
       )}
 
-      {/* Five fixed things, on screen rather than behind a menu: the point of
-          a status is to be seen without asking. All five always render and the
-          count sits in a fixed slot, so this group's width is the same on an
-          empty budget as on an overspent one — see budgetFilterMenu's header.
-          One line that scrolls, never a second row. */}
+      {/* The pinned statuses, on screen rather than behind a menu: the point
+          of pinning one is to see it without asking. Every pinned one always
+          renders and the count sits in a fixed slot, so this group's width is
+          the same on an empty budget as on an overspent one — see
+          budgetFilterMenu's header. One line that scrolls, never a second
+          row. The rest are in the menu beside it. */}
       <div className="budget-filter-bar__statuses" role="group" aria-label="Filter by status">
-        {statuses.map((status) => (
+        {split.bar.map((status) => (
           <button
             key={status.filter}
             type="button"
@@ -261,11 +265,15 @@ export function BudgetFilterBar({
         value={menu.value}
         onChange={handleFilterChange}
         groups={menu.groups}
-        placeholder="All categories"
+        // Named for what it holds. It read "All categories", which is what
+        // the grid shows when nothing is chosen and says nothing about what
+        // opening it offers.
+        placeholder="More filters"
+        emptyLabel="No filter"
         icon={Funnel}
         active={menu.value !== ''}
-        title="Which categories the grid shows"
-        ariaLabel="Filter categories"
+        title="Other statuses and your saved filters"
+        ariaLabel="More filters"
       />
 
       {blocked && (

@@ -1,4 +1,9 @@
 import { create } from 'zustand'
+import {
+  DEFAULT_DUPLICATE_SCAN_SCOPE,
+  normalizeScanScope,
+  type DuplicateScanScope,
+} from '../components/accounts/duplicateScan'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../components/layout/Sidebar/sidebarWidth'
@@ -45,7 +50,8 @@ export function normalizeBudgetRowMode(saved: unknown): BudgetRowMode {
   return 'expanded'
 }
 
-export type QuickFilter = 'overspent' | 'underfunded' | 'pending' | 'money-available' | 'overfunded'
+export type QuickFilter =
+  'overspent' | 'underfunded' | 'pending' | 'money-available' | 'overfunded' | 'spent-past-target'
 
 export const ALL_QUICK_FILTERS: QuickFilter[] = [
   'overspent',
@@ -53,7 +59,23 @@ export const ALL_QUICK_FILTERS: QuickFilter[] = [
   'pending',
   'money-available',
   'overfunded',
+  'spent-past-target',
 ]
+
+/** The statuses drawn as buttons on the budget bar until someone chooses
+ *  otherwise: the two that ask for something to be done. The rest are in the
+ *  bar's "More filters" menu. Six buttons was a row of mostly-noise; which
+ *  ones earn the space is a choice (Manage Filters), and these are where it
+ *  starts. */
+export const DEFAULT_PINNED_QUICK_FILTERS: QuickFilter[] = ['overspent', 'underfunded']
+
+/** A persisted pin list, with anything this build does not know dropped.
+ *  Nothing stored means the defaults; an empty list is a real choice (no
+ *  buttons at all) and stays empty. */
+export function mergePinnedQuickFilters(saved: readonly string[] | undefined): QuickFilter[] {
+  if (!Array.isArray(saved)) return [...DEFAULT_PINNED_QUICK_FILTERS]
+  return ALL_QUICK_FILTERS.filter((f) => saved.includes(f))
+}
 
 /** A persisted chip order from before a filter existed must still show it:
  *  anything missing is appended, in the canonical order, so existing users
@@ -77,6 +99,7 @@ export const QUICK_FILTER_LABELS: Record<QuickFilter, string> = {
   pending: 'Pending',
   'money-available': 'Money Available',
   overfunded: 'Overfunded',
+  'spent-past-target': 'Spent Past Target',
 }
 
 export const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
@@ -87,6 +110,9 @@ export const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
   pending: 'neutral',
   'money-available': 'positive',
   overfunded: 'positive',
+  // Neutral: the overspend was covered, so nothing is owed. It is a fact
+  // about the month, not a state to act on.
+  'spent-past-target': 'neutral',
 }
 
 /** Every dialog whose open/closed state is global rather than local to the
@@ -193,6 +219,9 @@ interface UIState {
   /** The register draws each split's lines under it. Off by default: most
    *  registers want one row per bank line. A standing choice, per device. */
   showSplitLines: boolean
+  /** The last scope "Find possible duplicates" was run with. */
+  duplicateScanScope: DuplicateScanScope
+  setDuplicateScanScope: (scope: DuplicateScanScope) => void
   /** One account's register draws a Balance column and reads in date order
    *  (registerOrder.ts `registerView`). Off by default, which leaves the
    *  register in its state order exactly as it was. Per device, like split
@@ -250,6 +279,9 @@ interface UIState {
   // Quick filters
   activeQuickFilter: QuickFilter | null
   quickFilterOrder: QuickFilter[]
+  /** Which statuses are buttons on the bar; the rest are in its menu. */
+  pinnedQuickFilters: QuickFilter[]
+  toggleQuickFilterPin: (filter: QuickFilter) => void
   setActiveQuickFilter: (filter: QuickFilter | null) => void
   reorderQuickFilters: (order: QuickFilter[]) => void
 
@@ -325,6 +357,8 @@ export const useUIStore = create<UIState>()(
       activeChatTab: FIRST_CHAT_TAB.key,
       budgetRowMode: 'expanded',
       showSplitLines: false,
+      duplicateScanScope: DEFAULT_DUPLICATE_SCAN_SCOPE,
+      setDuplicateScanScope: (scope) => set({ duplicateScanScope: scope }),
       showRunningBalance: false,
       selectedCategoryIds: new Set(),
       categoryInspectorOpen: true,
@@ -556,6 +590,13 @@ export const useUIStore = create<UIState>()(
       quickFilterOrder: [...ALL_QUICK_FILTERS],
       setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeFilterId: null }),
       reorderQuickFilters: (order) => set({ quickFilterOrder: order }),
+      pinnedQuickFilters: [...DEFAULT_PINNED_QUICK_FILTERS],
+      toggleQuickFilterPin: (filter) =>
+        set((s) => ({
+          pinnedQuickFilters: s.pinnedQuickFilters.includes(filter)
+            ? s.pinnedQuickFilters.filter((f) => f !== filter)
+            : [...s.pinnedQuickFilters, filter],
+        })),
 
       categorySearch: '',
       setCategorySearch: (query) => set({ categorySearch: query }),
@@ -612,10 +653,13 @@ export const useUIStore = create<UIState>()(
         activeFilterId: s.activeFilterId,
         activeViewId: s.activeViewId,
         quickFilterOrder: s.quickFilterOrder,
+        pinnedQuickFilters: s.pinnedQuickFilters,
         // Row density is a standing choice, like a filter.
         budgetRowMode: s.budgetRowMode,
         // So is drawing split lines in the register.
         showSplitLines: s.showSplitLines,
+        // How far back the duplicate scan looks is a standing preference.
+        duplicateScanScope: s.duplicateScanScope,
         showRunningBalance: s.showRunningBalance,
         // A width someone dragged to is a deliberate choice, like a filter.
         sidebarWidth: s.sidebarWidth,
@@ -658,10 +702,12 @@ export const useUIStore = create<UIState>()(
           ...current,
           ...saved,
           quickFilterOrder: mergeQuickFilterOrder(saved.quickFilterOrder),
+          pinnedQuickFilters: mergePinnedQuickFilters(saved.pinnedQuickFilters),
           budgetRowMode: normalizeBudgetRowMode(saved.budgetRowMode),
           // Only a real `true` turns it on: anything else stored there (a
           // hand-edited value, a future shape) reads as the default, off.
           showSplitLines: saved.showSplitLines === true,
+          duplicateScanScope: normalizeScanScope(saved.duplicateScanScope),
           showRunningBalance: saved.showRunningBalance === true,
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
           collapsedGroups: new Set(saved.collapsedGroups ?? []),

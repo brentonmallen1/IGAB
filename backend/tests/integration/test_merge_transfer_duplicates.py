@@ -190,6 +190,21 @@ class TestTwoTransfersForOnePayment:
         )
         await assert_financial_invariants(db_session, budget.id)
 
+    async def test_a_the_preview_is_the_merged_leg(self, db_session):
+        services, _, budget, checking, card = await _budget(db_session)
+        a, _b, c, _d, _, _, _ = await _two_transfers_for_one_payment(
+            db_session, services, budget, checking, card
+        )
+
+        preview = await services.transactions.preview_merge(budget.id, [c.id, a.id])
+        merged = await services.transactions.merge(budget.id, [c.id, a.id])
+        await db_session.refresh(merged)
+
+        assert preview.transfer == "other_side_merged"
+        assert (preview.payee_id, preview.category_id) == (merged.payee_id, merged.category_id)
+        assert preview.payee_name == "Transfer : Sapphire Visa"
+        assert (preview.cleared, preview.date) == (merged.cleared, merged.date)
+
     async def test_e_the_review_queue_accept_succeeds(self, db_session):
         """(e) The path the user hit: the duplicate review's accept, not a
         direct merge."""
@@ -289,6 +304,52 @@ class TestALegMergedIntoAPlainRow:
         assert statement.category_id is None, "an on-budget card payment is not spending"
         assert await _balances(services, checking, card) == before, "one payment, counted once"
         await assert_financial_invariants(db_session, budget.id)
+
+    async def test_b_the_preview_shows_the_leg_it_becomes(self, db_session):
+        """The link is written after the merge and has the last word on the
+        payee and the category. The preview was built before it, so the
+        duplicate review showed the statement row's own payee and its Misc
+        category — and accepting then left a card payment with neither."""
+        services, _, budget, checking, card = await _budget(db_session)
+        group = await create_category_group(db_session, budget, "Irregular")
+        misc = await create_category(db_session, budget, group, "Misc")
+        a, _b = await _typed_payment(services, budget, checking, card)
+        statement = await _bank_row(
+            db_session, budget, checking, "-500.00", "t-chk", cleared="reconciled", category=misc
+        )
+
+        preview = await services.transactions.preview_merge(budget.id, [a.id, statement.id])
+        merged = await services.transactions.merge(budget.id, [a.id, statement.id])
+        await db_session.refresh(merged)
+
+        assert preview.transfer == "taken_over"
+        assert preview.category_id is None and merged.category_id is None
+        assert preview.payee_id == merged.payee_id
+        assert preview.payee_name == (await services.payee_repo.get(merged.payee_id)).name
+        assert preview.payee_name == "Transfer : Sapphire Visa"
+        assert (preview.cleared, preview.amount) == (merged.cleared, merged.amount)
+
+    async def test_b_the_preview_names_a_payee_the_merge_has_yet_to_create(self, db_session):
+        """A preview writes nothing, so a transfer payee that does not exist
+        yet has no id to serve — only the name the merged row will read."""
+        services, _, budget, checking, card = await _budget(db_session)
+        a, _b = await _typed_payment(services, budget, checking, card)
+        statement = await _bank_row(
+            db_session, budget, checking, "-500.00", "t-chk", cleared="reconciled"
+        )
+        # The typed leg's payee is the one the survivor will take; remove it
+        # so the merge has to make it again.
+        payee = await services.payee_repo.get(a.payee_id)
+        await services.transaction_repo.update(a.id, payee_id=None)
+        await services.payee_repo.soft_delete(payee.id)
+
+        preview = await services.transactions.preview_merge(budget.id, [a.id, statement.id])
+        assert (preview.payee_id, preview.payee_name) == (None, "Transfer : Sapphire Visa")
+        assert await services.payee_repo.find_transfer(budget.id, card.name) is None
+
+        merged = await services.transactions.merge(budget.id, [a.id, statement.id])
+        await db_session.refresh(merged)
+        assert (await services.payee_repo.get(merged.payee_id)).name == preview.payee_name
 
     async def test_b_undo_puts_the_plain_row_and_the_link_back(self, db_session):
         services, _, budget, checking, card = await _budget(db_session)

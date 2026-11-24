@@ -55,9 +55,9 @@ two rows being merged are the bank-posting rule's question
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -189,6 +189,39 @@ class MergePlan:
         return partner is not None and self.survivor.transfer_id != partner.id
 
 
+#: What becomes of a transfer in a merge: the survivor keeps the one it has
+#: ("kept"), takes the other row's over ("taken_over"), or the two rows were
+#: both legs and the other account's pair merges too ("other_side_merged").
+TransferOutcome = Literal["kept", "taken_over", "other_side_merged"]
+
+
+def transfer_outcome(plan: MergePlan) -> TransferOutcome | None:
+    """How a merge's result relates to a transfer; None when none is involved."""
+    if plan.partner_merge is not None:
+        return "other_side_merged"
+    if plan.adopted_partner is not None:
+        return "taken_over"
+    if plan.survivor.transfer_id is not None:
+        return "kept"
+    return None
+
+
+#: How far along a row is. A bank hold ("pending") has not posted, so it
+#: stands where an uncleared row does.
+_CLEARED_RANK = {"pending": 0, "uncleared": 0, "cleared": 1, "reconciled": 2}
+
+
+def merged_cleared(survivor: str, deleted: str) -> str:
+    """The cleared status of the merged row: the further along of the two.
+
+    Whichever row survives, a merge never takes a row back a step — two
+    hand-entered rows used to read "uncleared" when the older one was, though
+    the other had been ticked off against the bank. A tie is the survivor's
+    (an uncleared row merged with a hold stays what it was).
+    """
+    return deleted if _CLEARED_RANK[deleted] > _CLEARED_RANK[survivor] else survivor
+
+
 @dataclass(frozen=True)
 class Refused:
     """Why a merge cannot happen, worded for the person who asked for it."""
@@ -272,3 +305,168 @@ def may_offer_merge(
     tests/unit/test_merge_offer.py and frontend mergeEligibility.test.ts.
     """
     return isinstance(plan_merge(a, b, None, partners or {}), MergePlan)
+
+
+# --- What the merged row reads -------------------------------------------
+#
+# Survivorship (above) decides which ROW stays. It does not have to decide
+# which date, payee, category and memo the merged transaction reads: where
+# the two rows disagree, that is the person's to say, and where only one of
+# them has a value, nothing is lost by taking it. This is the one place that
+# is worked out — the merge writes from it and the preview draws from it, so
+# what the dialog shows is what the merge does.
+
+#: Which row a field is kept from. `"both"` is the memo's alone: two
+#: different memos are joined rather than one being dropped.
+KeepSource = uuid.UUID | Literal["both"]
+
+MEMO_JOIN = " — "
+
+
+@dataclass(frozen=True)
+class MergeKeep:
+    """The person's picks: the id of the row each field is kept from. None
+    leaves a field at its default — the survivor's value, or the other row's
+    where the survivor has none."""
+
+    date: uuid.UUID | None = None
+    payee: uuid.UUID | None = None
+    category: uuid.UUID | None = None
+    memo: KeepSource | None = None
+
+
+@dataclass(frozen=True)
+class MergeRow:
+    """The bookkeeping one row brings to a merge — what a person reads on it."""
+
+    id: uuid.UUID
+    date: date
+    payee_id: uuid.UUID | None
+    category_id: uuid.UUID | None
+    memo: str | None
+    is_split: bool
+    is_leg: bool
+    reconciled: bool
+
+    @classmethod
+    def from_transaction(cls, txn: Any) -> "MergeRow":
+        return cls(
+            id=txn.id,
+            date=txn.date,
+            payee_id=txn.payee_id,
+            category_id=txn.category_id,
+            memo=txn.memo or None,
+            is_split=bool(txn.is_split),
+            is_leg=txn.transfer_id is not None,
+            reconciled=txn.cleared == "reconciled",
+        )
+
+
+@dataclass(frozen=True)
+class Kept:
+    """One field of the merged row: its value, the row it comes from (None
+    when neither row has one), and whether the person had a choice."""
+
+    value: Any
+    source: KeepSource | None
+    choosable: bool
+
+
+@dataclass(frozen=True)
+class MergedBookkeeping:
+    date: Kept
+    payee_id: Kept
+    category_id: Kept
+    memo: Kept
+
+
+def keep_violation(keep: MergeKeep, a: uuid.UUID, b: uuid.UUID) -> str | None:
+    """A pick has to name one of the two rows being merged."""
+    for field in ("date", "payee", "category", "memo"):
+        wanted = getattr(keep, field)
+        if wanted is None or wanted in (a, b) or (field == "memo" and wanted == "both"):
+            continue
+        return f"The {field} to keep must come from one of the two transactions"
+    return None
+
+
+def merge_bookkeeping(
+    survivor: MergeRow,
+    deleted: MergeRow,
+    keep: MergeKeep | None = None,
+    *,
+    becomes_leg: bool = False,
+    date_fixed: bool = False,
+) -> MergedBookkeeping:
+    """The date, payee, category and memo of the merged row.
+
+    The default is additive, and is what a merge with no picks has always
+    done: the survivor keeps what it has and takes what it lacks, and two
+    different memos are joined. A field is `choosable` only where the two
+    rows both have a value and the values differ — and the structure allows
+    it:
+
+    - **A transfer leg** (the survivor is one, or `becomes_leg`): its payee
+      is its destination, its category is the transfer rule's, and its date
+      is its partner's. Only the memo is a choice.
+    - **A split** on either side: the categories live on its lines, which
+      always carry over, and the lines share their parent's date — so
+      neither the category nor the date is a choice.
+    - **A reconciled survivor**: the statement vouched for the date.
+    - `date_fixed`: the bank's posting has already decided the date (a
+      pending hold taking its posted date).
+
+    A pick for a field that is not choosable is ignored, not refused: the
+    preview said so, and the pick changes nothing it could have changed.
+    """
+    keep = keep or MergeKeep()
+    rows = {survivor.id: survivor, deleted.id: deleted}
+    leg = survivor.is_leg or becomes_leg
+    split = survivor.is_split or deleted.is_split
+
+    def held(field: str, wanted: KeepSource | None, *, choice: bool) -> Kept:
+        """An ordinary field: the survivor's value, else the other row's —
+        or the picked row's, where both have one and `choice` allows it."""
+        mine, theirs = getattr(survivor, field), getattr(deleted, field)
+        choosable = choice and mine is not None and theirs is not None and mine != theirs
+        picked = rows.get(wanted) if isinstance(wanted, uuid.UUID) else None
+        if choosable and picked is not None:
+            return Kept(getattr(picked, field), picked.id, True)
+        if mine is not None:
+            return Kept(mine, survivor.id, choosable)
+        if theirs is not None:
+            return Kept(theirs, deleted.id, False)
+        return Kept(None, None, False)
+
+    def own(field: str) -> Kept:
+        """What the survivor has, even nothing — no filling, no choice."""
+        value = getattr(survivor, field)
+        return Kept(value, survivor.id if value is not None else None, False)
+
+    when = held("date", keep.date, choice=not (leg or split or survivor.reconciled or date_fixed))
+    # A leg keeps the payee and category it has, even none: the transfer
+    # rules decide those. A row only now becoming a leg still takes what it
+    # lacks — the link judges that next — but is offered no choice.
+    payee = own("payee_id") if survivor.is_leg else held("payee_id", keep.payee, choice=not leg)
+    if split:
+        owner = survivor if survivor.is_split else deleted
+        category = Kept(None, owner.id, False)
+    elif survivor.is_leg:
+        category = own("category_id")
+    else:
+        category = held("category_id", keep.category, choice=not leg)
+
+    mine, theirs = survivor.memo, deleted.memo
+    if mine and theirs and mine != theirs:
+        if keep.memo == survivor.id:
+            memo = Kept(mine, survivor.id, True)
+        elif keep.memo == deleted.id:
+            memo = Kept(theirs, deleted.id, True)
+        else:
+            memo = Kept(f"{mine}{MEMO_JOIN}{theirs}", "both", True)
+    elif theirs and not mine:
+        memo = Kept(theirs, deleted.id, False)
+    else:
+        memo = Kept(mine, survivor.id if mine else None, False)
+
+    return MergedBookkeeping(date=when, payee_id=payee, category_id=category, memo=memo)

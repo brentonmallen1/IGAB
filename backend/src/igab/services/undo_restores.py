@@ -295,6 +295,20 @@ class UndoRestores:
         back under undo through the very record that locked it.
         """
         after = change.after or {}
+        # The finish approved these as it locked them; they go back to
+        # waiting. Asked before the unlock below, and only of rows still
+        # reconciled: one unreconciled by hand since was re-decided by a
+        # person, approval included.
+        approved_ids = [uuid.UUID(t) for t in after.get("_approved_ids") or []]
+        for i in range(0, len(approved_ids), 1000):
+            await self.session.execute(
+                update(Transaction)
+                .where(
+                    Transaction.id.in_(approved_ids[i : i + 1000]),
+                    Transaction.cleared == ClearedStatus.RECONCILED,
+                )
+                .values(approved=False)
+            )
         txn_ids = [uuid.UUID(t) for t in after.get("_transaction_ids") or []]
         for i in range(0, len(txn_ids), 1000):
             await self.session.execute(
@@ -331,7 +345,7 @@ class UndoRestores:
                     Transaction.id.in_(txn_ids[i : i + 1000]),
                     Transaction.cleared == ClearedStatus.CLEARED,
                 )
-                .values(cleared="reconciled")
+                .values(cleared="reconciled", approved=True)
             )
         raw_account = after.get("account_id")
         account = None

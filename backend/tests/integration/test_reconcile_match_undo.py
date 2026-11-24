@@ -97,6 +97,72 @@ class TestReconcileUndo:
         assert len(history) == 1
 
 
+class TestFinishApproves:
+    """Finishing approves what it locks. A bank-fed row left `reconciled` and
+    unapproved read in the register as still wanting attention, so a finished
+    reconciliation looked like one that had skipped those rows."""
+
+    async def test_finish_approves_the_rows_it_locks(self, db_session, api_client):
+        budget, account = await _setup(db_session, api_client)
+        await create_transaction(
+            db_session, budget, account, "-25", date(2026, 8, 20), cleared="cleared", approved=False
+        )
+        # Not cleared, so not the statement's to vouch for: stays as it was.
+        await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-9",
+            date(2026, 8, 21),
+            cleared="uncleared",
+            approved=False,
+        )
+        await db_session.commit()
+
+        r = await api_client.post(
+            f"/api/v1/accounts/{account.id}/reconcile/finish",
+            json={"statement_balance": "-25"},
+        )
+        assert r.status_code == 200, r.text
+        by_date = {t["date"]: t for t in await _rows(api_client, account)}
+        assert (by_date["2026-08-20"]["cleared"], by_date["2026-08-20"]["approved"]) == (
+            "reconciled",
+            True,
+        )
+        assert (by_date["2026-08-21"]["cleared"], by_date["2026-08-21"]["approved"]) == (
+            "uncleared",
+            False,
+        )
+
+    async def test_undo_hands_back_only_the_approvals_it_made(self, db_session, api_client):
+        budget, account = await _setup(db_session, api_client)
+        await create_transaction(
+            db_session, budget, account, "-25", date(2026, 8, 20), cleared="cleared", approved=False
+        )
+        await create_transaction(
+            db_session, budget, account, "-40", date(2026, 8, 22), cleared="cleared", approved=True
+        )
+        await db_session.commit()
+
+        r = await api_client.post(
+            f"/api/v1/accounts/{account.id}/reconcile/finish",
+            json={"statement_balance": "-65"},
+        )
+        assert r.status_code == 200, r.text
+
+        await _undo(api_client, budget)
+        by_date = {t["date"]: t for t in await _rows(api_client, account)}
+        assert all(t["cleared"] == "cleared" for t in by_date.values())
+        # Waiting again; the row a person had already approved stays approved.
+        assert by_date["2026-08-20"]["approved"] is False
+        assert by_date["2026-08-22"]["approved"] is True
+
+        r = await api_client.post(f"/api/v1/{budget.id}/changes/redo")
+        assert r.status_code == 200, r.text
+        rows = await _rows(api_client, account)
+        assert all(t["cleared"] == "reconciled" and t["approved"] for t in rows)
+
+
 class TestMatchDecisionUndo:
     async def _make_pair(self, db_session, budget, account):
         synced = await create_transaction(

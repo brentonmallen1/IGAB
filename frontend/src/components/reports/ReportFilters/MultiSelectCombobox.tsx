@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, X } from 'lucide-react'
 import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
+import { DROPDOWN_MIN_WIDTH } from '../../../utils/anchoredPosition'
 import {
   GroupedMultiSelect,
   type MultiSelectOption,
@@ -45,7 +46,7 @@ export function MultiSelectCombobox({
   const dropdownPos = useAnchoredPosition(
     triggerRef,
     open,
-    { width: 'trigger', minWidth: 220 },
+    { width: 'trigger', minWidth: DROPDOWN_MIN_WIDTH },
     listRef
   )
 

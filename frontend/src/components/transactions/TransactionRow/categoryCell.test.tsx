@@ -53,7 +53,7 @@ function categoryCell(t: Transaction, accountOnBudget = true): string {
   return container.querySelector('.txn-col--category')?.textContent?.trim() ?? ''
 }
 
-function renderRow(t: Transaction, accountOnBudget = true) {
+function renderRow(t: Transaction, accountOnBudget = true, onStartSplit = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -71,7 +71,7 @@ function renderRow(t: Transaction, accountOnBudget = true) {
           isSelected={false}
           orderedIds={[t.id]}
           onSelect={vi.fn()}
-          onStartSplit={vi.fn()}
+          onStartSplit={onStartSplit}
           onDuplicate={vi.fn()}
           onMakeRepeating={vi.fn()}
           onMakeTransfer={vi.fn()}
@@ -166,5 +166,39 @@ describe('the hover on a filed row', () => {
     expect(container.querySelector('.txn-col--category')?.textContent).toBe('—')
     fireEvent.mouseEnter(container.querySelector('.txn-col--category .tooltip-host')!)
     expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+})
+
+describe('the amount cell of a split', () => {
+  // A split's total is its lines' sum: the server refuses to move it alone,
+  // so typing a new one into the cell saved nothing. The cell opens the split
+  // editor instead, where the total is corrected together with the lines.
+  it('opens the split editor rather than an input the server would refuse', () => {
+    const onStartSplit = vi.fn()
+    const t = txn({ is_split: true, amount: -100 })
+    const { container } = renderRow(t, true, onStartSplit)
+
+    fireEvent.click(container.querySelector('.txn-col--outflow')!)
+    expect(onStartSplit).toHaveBeenCalledWith(t)
+    expect(container.querySelector('.txn-col--outflow input')).toBeNull()
+  })
+
+  it('leaves a reconciled split alone — its amount is locked', () => {
+    const onStartSplit = vi.fn()
+    const { container } = renderRow(
+      txn({ is_split: true, amount: -100, cleared: 'reconciled' }),
+      true,
+      onStartSplit
+    )
+    fireEvent.click(container.querySelector('.txn-col--outflow')!)
+    expect(onStartSplit).not.toHaveBeenCalled()
+  })
+
+  it('still edits a plain row in place', () => {
+    const onStartSplit = vi.fn()
+    const { container } = renderRow(txn({ amount: -100 }), true, onStartSplit)
+    fireEvent.click(container.querySelector('.txn-col--outflow')!)
+    expect(onStartSplit).not.toHaveBeenCalled()
+    expect(container.querySelector('.txn-col--outflow input')).not.toBeNull()
   })
 })

@@ -87,10 +87,13 @@ def strategy_new_assigned(
         # 100 assigned and −300 available: it manufactured 50 of overspending
         # and told the user it was returning 50 of surplus.
         #
-        # So the row set here is deliberately NARROWER than the overfunded
-        # quick filter, which asks only whether assigned exceeds the target: a
-        # category over its target with nothing left in it is over-*assigned*,
-        # not over-funded, and there is nothing to pull back. Pinned by
+        # A category over its target with nothing left in it is
+        # over-*assigned*, not over-funded: there is nothing to pull back, and
+        # `TargetService.calculate_status` reads it "spent_past_target" from
+        # this same `returnable`, so the overfunded filter no longer lists a
+        # row this strategy skips. One narrower case remains, on purpose: an
+        # envelope carried in above its stop is overfunded, but none of that
+        # is this month's to return. Pinned by
         # `test_reduce_overfunded_never_pulls_back_spent_money`.
         if returnable is None or returnable <= ZERO:
             return None

@@ -132,14 +132,41 @@ export function remainderTarget(
   return i === -1 ? null : i
 }
 
+/**
+ * May this leg take what is left? There has to be something left — or
+ * something over, which a leg gives back the same way — and the leg has to
+ * end up positive: a line cannot absorb an excess larger than itself.
+ */
+export function mayTakeRemainder(leg: SplitLegInput, remainingCents: number): boolean {
+  if (!Number.isFinite(remainingCents) || remainingCents === 0) return false
+  const had = expressionToCents(leg.amount)
+  return (isNaN(had) ? 0 : had) + remainingCents > 0
+}
+
+/**
+ * The legs with what is left added onto leg `index` — "put the rest here".
+ * The one arithmetic behind every way of placing a remainder: onto a line a
+ * person points at (the inline editor), onto the first blank line
+ * (`fillRemainder`), onto a category (`coverRemainder`). A negative
+ * remainder comes off the leg. Unchanged when the leg may not take it.
+ */
+export function takeRemainder<T extends SplitLegInput>(
+  legs: T[],
+  remainingCents: number,
+  index: number
+): T[] {
+  const target = legs[index]
+  if (!target || !mayTakeRemainder(target, remainingCents)) return legs
+  const had = expressionToCents(target.amount)
+  const amount = centsToInputString((isNaN(had) ? 0 : had) + remainingCents)
+  return legs.map((leg, i) => (i === index ? { ...leg, amount } : leg))
+}
+
 /** The legs with what is left written into `remainderTarget`'s leg, as the
  *  editors hold amounts (magnitude strings). Unchanged when there is none. */
 export function fillRemainder<T extends SplitLegInput>(legs: T[], remainingCents: number): T[] {
   const i = remainderTarget(legs, remainingCents)
-  if (i === null) return legs
-  return legs.map((leg, j) =>
-    j === i ? { ...leg, amount: centsToInputString(remainingCents) } : leg
-  )
+  return i === null ? legs : takeRemainder(legs, remainingCents, i)
 }
 
 /**
@@ -157,19 +184,15 @@ export function coverRemainder<T extends SplitLegInput>(
   newLeg: () => T
 ): T[] {
   if (!Number.isFinite(remainingCents) || remainingCents <= 0) return legs
-  const plus = (leg: T): T => {
-    const had = expressionToCents(leg.amount)
-    return {
-      ...leg,
-      categoryId,
-      amount: centsToInputString((isNaN(had) ? 0 : had) + remainingCents),
-    }
-  }
   const same = legs.findIndex((leg) => leg.categoryId === categoryId)
-  if (same !== -1) return legs.map((leg, i) => (i === same ? plus(leg) : leg))
   const blank = legs.findIndex((leg) => leg.categoryId === null && isBlank(leg.amount))
-  if (blank !== -1) return legs.map((leg, i) => (i === blank ? plus(leg) : leg))
-  return [...legs, plus({ ...newLeg(), amount: '' })]
+  const index = same !== -1 ? same : blank !== -1 ? blank : legs.length
+  const placed = index === legs.length ? [...legs, { ...newLeg(), amount: '' }] : legs
+  return takeRemainder(
+    placed.map((leg, i) => (i === index ? { ...leg, categoryId } : leg)),
+    remainingCents,
+    index
+  )
 }
 
 function isBlank(amount: string): boolean {

@@ -17,7 +17,21 @@ from igab.domain.card_charges import is_interest_or_fee
 from igab.domain.category_guess import guess_category
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
-from igab.domain.merging import MergePlan, MergeSide, Refused, plan_merge
+from igab.domain.merging import (
+    MergedBookkeeping,
+    MergeKeep,
+    MergePlan,
+    MergeRow,
+    MergeSide,
+    Refused,
+    TransferOutcome,
+    keep_violation,
+    may_offer_merge,
+    merge_bookkeeping,
+    merged_cleared,
+    plan_merge,
+    transfer_outcome,
+)
 from igab.domain.projected_interest import adopts_projection
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
@@ -123,6 +137,76 @@ class SplitSpec:
     payee_name: str | None = None
     memo: str | None = None
     id: uuid.UUID | None = None
+
+
+@dataclass
+class _Relink:
+    """The transfer link a merge's survivor ends up with, decided before
+    anything is written: the row it links to, which of the two legs lose
+    their category to the transfer rule, and the account its payee names."""
+
+    partner: Any
+    clear: list[uuid.UUID]
+    names: Account
+
+
+@dataclass
+class _PairWrite:
+    """One pair of rows becoming one, decided and not yet written: the row
+    that stays, the row that goes, what the one that stays is written with,
+    and whether it takes the other's split lines in."""
+
+    survivor: Any
+    deleted: Any
+    updates: dict[str, Any]
+    adopting: bool
+
+
+@dataclass
+class _PreparedMerge:
+    """A merge, decided and not yet written (`_prepare_merge`)."""
+
+    plan: MergePlan
+    rows: dict[uuid.UUID, Any]
+    #: The pair the person asked to merge.
+    pair: _PairWrite
+    bookkeeping: MergedBookkeeping
+    #: The other account's pair, when the two rows were both transfer legs:
+    #: their partners are the same duplicate seen from the other side, and
+    #: are merged in the same change. Named, where it was a four-item tuple
+    #: unpacked by position into the write.
+    far: _PairWrite | None
+    #: The survivor's new transfer link, when the merge rewrites it.
+    relink: _Relink | None
+
+
+@dataclass
+class MergePreview:
+    """The row a merge would leave, and what was a choice — see
+    `TransactionService.preview_merge`."""
+
+    survivor_id: uuid.UUID
+    deleted_id: uuid.UUID
+    date: datetime.date
+    amount: Decimal
+    #: The survivor's amount when the bank's posted amount replaces it.
+    replaced_amount: Decimal | None
+    #: None with a `payee_name` when the merge would create the transfer
+    #: payee: a preview writes nothing, so there is no id to give yet.
+    payee_id: uuid.UUID | None
+    payee_name: str | None
+    category_id: uuid.UUID | None
+    memo: str | None
+    cleared: str
+    is_split: bool
+    #: The split lines the merged row carries; empty when it is not a split.
+    lines: list[Any]
+    has_bank_record: bool
+    import_description: str | None
+    bank_posted_date: datetime.date | None
+    #: What becomes of a transfer (`domain.merging.transfer_outcome`).
+    transfer: TransferOutcome | None
+    bookkeeping: MergedBookkeeping
 
 
 # Fields that may never be set to NULL via PATCH
@@ -496,12 +580,25 @@ class TransactionService:
         return txn
 
     async def replace_splits(
-        self, budget_id: uuid.UUID, parent_id: uuid.UUID, splits: list[SplitSpec]
+        self,
+        budget_id: uuid.UUID,
+        parent_id: uuid.UUID,
+        splits: list[SplitSpec],
+        total: Decimal | None = None,
     ) -> list[Transaction]:
         """Make these the split's lines: update the ones named by id, create
-        the rest, remove the missing. The parent's amount does not move — the
-        lines must still sum to it — so this is bookkeeping, and works on a
-        reconciled parent too (its lines stay reconciled). Returns the lines.
+        the rest, remove the missing. Without `total` the parent's amount
+        does not move — the lines must still sum to it — so this is
+        bookkeeping, and works on a reconciled parent too (its lines stay
+        reconciled). Returns the lines.
+
+        `total` is the split's corrected amount, for a total typed in wrong.
+        It has to arrive WITH the lines: a split's amount is its lines' sum,
+        so the total cannot change in a request of its own (`update` refuses
+        it) without a moment where the two disagree. Here the parent moves
+        and the lines are checked against where it landed, in one batch — one
+        undo puts both back. A reconciled parent's amount is locked like any
+        other reconciled row's.
         """
         parent = await self.transaction_repo.get_or_raise(parent_id)
         if str(parent.budget_id) != str(budget_id):
@@ -509,7 +606,17 @@ class TransactionService:
         if not parent.is_split:
             raise InvariantViolation("Transaction is not split")
         existing = await self.transaction_repo.get_splits(parent.id)
+        new_total = total if total is not None and total != parent.amount else None
+        if new_total is not None:
+            if parent.cleared == "reconciled":
+                raise InvariantViolation(reconciled_edit_message({"amount"}))
+            # Before the parent moves: a refused correction writes nothing.
+            require_split_balances(new_total, [s.amount for s in splits])
         async with self._mutation():
+            if new_total is not None:
+                parent_before = snapshot("transaction", parent)
+                parent = await self.transaction_repo.update(parent.id, amount=new_total)
+                await self._record_txn(parent, "update", before=parent_before)
             if len(splits) == 1:
                 # Down to one line: the split is over, and the row is filed
                 # where that line was. No lines are left to return.
@@ -1553,6 +1660,7 @@ class TransactionService:
         budget_id: uuid.UUID,
         transaction_ids: list[uuid.UUID],
         survivor_id: uuid.UUID | None = None,
+        keep: MergeKeep | None = None,
     ) -> Transaction:
         """Merge two rows that are the same real-world transaction.
 
@@ -1568,6 +1676,11 @@ class TransactionService:
         loser's attachments, its import and bank identity. A merge determines
         which value wins, never which one is lost.
 
+        `keep` is the person's say over that: where the two rows both have a
+        date, payee, category or memo and they differ, which one the merged
+        row reads (`domain.merging.merge_bookkeeping`). Unpicked, the
+        survivor's.
+
         A transfer leg that loses takes its transfer with it. A survivor that
         was not a leg becomes one, linked to the loser's partner through
         `link_legs`. A survivor that was a leg already means the other account
@@ -1579,6 +1692,98 @@ class TransactionService:
         rows. Recorded as one batch, so undo restores every row and link and
         moves exactly the losers' attachments back.
         """
+        prepared = await self._prepare_merge(budget_id, transaction_ids, survivor_id, keep)
+        survivor = prepared.pair.survivor
+
+        async with self._mutation():
+            await self._write_merge(prepared.pair)
+            if prepared.far is not None:
+                await self._write_merge(prepared.far)
+            if prepared.relink is not None:
+                await self._relink_merged_leg(budget_id, survivor, prepared.relink)
+                await self.transaction_repo.refresh(survivor)
+        return survivor
+
+    async def preview_merge(
+        self,
+        budget_id: uuid.UUID,
+        transaction_ids: list[uuid.UUID],
+        survivor_id: uuid.UUID | None = None,
+        keep: MergeKeep | None = None,
+    ) -> MergePreview:
+        """What `merge` would leave behind for these arguments, without
+        writing: the merged row as it would read, the lines it would carry,
+        and which fields were a choice.
+
+        Built from `_prepare_merge`, the same preparation `merge` writes
+        from, so the dialog cannot show one thing and the merge do another —
+        and a merge that would be refused is refused here, in the same
+        words. The two dialogs that show a merge each used to compose its
+        result on the client; one of them showed a split's category as
+        simply gone.
+        """
+        prepared = await self._prepare_merge(budget_id, transaction_ids, survivor_id, keep)
+        pair, plan = prepared.pair, prepared.plan
+        survivor, deleted, updates = pair.survivor, pair.deleted, pair.updates
+
+        def after(field: str) -> Any:
+            return updates[field] if field in updates else getattr(survivor, field)
+
+        is_split = bool(after("is_split"))
+        lines: list[Transaction] = []
+        if is_split:
+            owner = survivor if survivor.is_split else deleted
+            lines = await self.transaction_repo.get_splits(owner.id)
+        amount = after("amount")
+        payee_id, category_id = after("payee_id"), after("category_id")
+        payee_name: str | None = None
+        relink = prepared.relink
+        if relink is not None:
+            # The link is written after the merge and has the last word on
+            # both: the leg's payee names the other account, and a category
+            # the transfer rule forbids goes. A preview built without it
+            # showed the payee and category the merge then replaced.
+            payee_name = PayeeRepository.transfer_payee_name(relink.names.name)
+            existing = await self.payee_repo.find_transfer(budget_id, relink.names.name)
+            payee_id = existing.id if existing is not None else None
+            if survivor.id in relink.clear:
+                category_id = None
+        elif payee_id is not None:
+            payee = await self.payee_repo.get(payee_id)
+            payee_name = payee.name if payee is not None else None
+        return MergePreview(
+            survivor_id=survivor.id,
+            deleted_id=deleted.id,
+            date=after("date"),
+            amount=amount,
+            replaced_amount=survivor.amount if amount != survivor.amount else None,
+            payee_id=payee_id,
+            payee_name=payee_name,
+            category_id=category_id,
+            memo=after("memo"),
+            cleared=after("cleared"),
+            is_split=is_split,
+            lines=lines,
+            has_bank_record=bool(
+                after("sync_id") or after("sync_source") or after("has_sync_source")
+            ),
+            import_description=after("import_description"),
+            bank_posted_date=after("bank_posted_date"),
+            transfer=transfer_outcome(plan),
+            bookkeeping=prepared.bookkeeping,
+        )
+
+    async def _prepare_merge(
+        self,
+        budget_id: uuid.UUID,
+        transaction_ids: list[uuid.UUID],
+        survivor_id: uuid.UUID | None,
+        keep: MergeKeep | None,
+    ) -> _PreparedMerge:
+        """Everything a merge decides, before anything is written: the plan,
+        the rows it touches and what each survivor is written with. Raises
+        the refusal; reads only. `merge` carries it out, `preview_merge`
+        describes it."""
         if len(transaction_ids) != 2:
             raise InvariantViolation("Exactly 2 transactions are required for a merge")
 
@@ -1587,16 +1792,16 @@ class TransactionService:
         for txn in (txn1, txn2):
             if str(txn.budget_id) != str(budget_id):
                 raise InvariantViolation("All transactions must belong to this budget")
+        if keep is not None:
+            violation = keep_violation(keep, txn1.id, txn2.id)
+            if violation is not None:
+                raise InvariantViolation(violation)
 
         rows: dict[uuid.UUID, Transaction] = {txn1.id: txn1, txn2.id: txn2}
-        partners: dict[uuid.UUID, MergeSide] = {}
-        for txn in (txn1, txn2):
-            if txn.transfer_id is None:
-                continue
-            partner = await self.transaction_repo.get(txn.transfer_id)
-            if partner is not None and not partner.is_deleted:
-                rows.setdefault(partner.id, partner)
-                partners[partner.id] = MergeSide.from_transaction(partner)
+        partner_rows = await self._transfer_partners(txn1, txn2)
+        for partner in partner_rows.values():
+            rows.setdefault(partner.id, partner)
+        partners = {pid: MergeSide.from_transaction(p) for pid, p in partner_rows.items()}
 
         side1, side2 = MergeSide.from_transaction(txn1), MergeSide.from_transaction(txn2)
         plan = plan_merge(side1, side2, survivor_id, partners)
@@ -1604,7 +1809,7 @@ class TransactionService:
             raise InvariantViolation(plan.reason)
 
         survivor, deleted = rows[plan.survivor.id], rows[plan.deleted.id]
-        updates, adopting = self._merge_updates(plan, survivor, deleted)
+        updates, adopting, bookkeeping = self._merge_updates(plan, survivor, deleted, keep)
         if plan.adopted_partner is not None:
             # The survivor becomes the leg, so its amount is the transfer's;
             # anything else would leave the pair not summing to zero. A
@@ -1616,32 +1821,69 @@ class TransactionService:
                     f"The transfer is {abs(transfer_amount):.2f}, but this transaction is "
                     f"{abs(survivor.amount):.2f}; only matching amounts can be merged"
                 )
-        far: tuple[Transaction, Transaction, dict[str, Any], bool] | None = None
+        far: _PairWrite | None = None
         if plan.partner_merge is not None:
             far_survivor = rows[plan.partner_merge.survivor.id]
             far_deleted = rows[plan.partner_merge.deleted.id]
-            far = (
-                far_survivor,
-                far_deleted,
-                *self._merge_updates(plan.partner_merge, far_survivor, far_deleted),
+            # The other account's pair is not the one on screen: no picks.
+            far_updates, far_adopting, _ = self._merge_updates(
+                plan.partner_merge, far_survivor, far_deleted, None
             )
+            far = _PairWrite(far_survivor, far_deleted, far_updates, far_adopting)
+        relink: _Relink | None = None
+        new_partner = plan.survivor_partner
+        if plan.relinks and new_partner is not None:
+            relink = await self._plan_relink(
+                survivor,
+                rows[new_partner.id],
+                survivor_category=updates.get("category_id", survivor.category_id),
+            )
+        return _PreparedMerge(
+            plan=plan,
+            rows=rows,
+            pair=_PairWrite(survivor, deleted, updates, adopting),
+            bookkeeping=bookkeeping,
+            far=far,
+            relink=relink,
+        )
 
-        async with self._mutation():
-            await self._write_merge(survivor, deleted, updates, adopting)
-            if far is not None:
-                await self._write_merge(*far)
-            new_partner = plan.survivor_partner
-            if plan.relinks and new_partner is not None:
-                await self._relink_merged_leg(budget_id, survivor, rows[new_partner.id])
-                await self.transaction_repo.refresh(survivor)
-        return survivor
+    async def _transfer_partners(self, *txns: Transaction) -> dict[uuid.UUID, Transaction]:
+        """The live other side of each transfer leg among `txns`, by id —
+        what `plan_merge` needs to say what becomes of a leg's transfer."""
+        found: dict[uuid.UUID, Transaction] = {}
+        for txn in txns:
+            if txn.transfer_id is None:
+                continue
+            partner = await self.transaction_repo.get(txn.transfer_id)
+            if partner is not None and not partner.is_deleted:
+                found[partner.id] = partner
+        return found
+
+    async def may_merge(self, txn1: Transaction, txn2: Transaction) -> bool:
+        """Would `merge` accept this pair, with no survivor asked for?
+
+        The plan itself (`domain.merging.may_offer_merge`), with the partners
+        `merge` would load — so whoever proposes a pair (the duplicate scan)
+        cannot propose one the merge then refuses. Reads only.
+        """
+        partner_rows = await self._transfer_partners(txn1, txn2)
+        return may_offer_merge(
+            MergeSide.from_transaction(txn1),
+            MergeSide.from_transaction(txn2),
+            {pid: MergeSide.from_transaction(p) for pid, p in partner_rows.items()},
+        )
 
     def _merge_updates(
-        self, plan: MergePlan, survivor: Transaction, deleted: Transaction
-    ) -> tuple[dict[str, Any], bool]:
-        """What the survivor of one merged pair is written with, and whether it
-        takes in the loser's split lines. Raises when the amounts cannot be
-        reconciled; writes nothing."""
+        self,
+        plan: MergePlan,
+        survivor: Transaction,
+        deleted: Transaction,
+        keep: MergeKeep | None,
+    ) -> tuple[dict[str, Any], bool, MergedBookkeeping]:
+        """What the survivor of one merged pair is written with, whether it
+        takes in the loser's split lines, and the bookkeeping that was
+        decided (for the preview to say which fields were a choice). Raises
+        when the amounts cannot be reconciled; writes nothing."""
         survivor_side, deleted_side = plan.survivor, plan.deleted
         updates: dict[str, Any] = {}
         if deleted_side.bank_sourced:
@@ -1692,37 +1934,49 @@ class TransactionService:
         ):
             updates["entered_date"] = deleted.date
 
-        # Bookkeeping is additive. A memo present on both sides and different
-        # is kept whole — "survivor — loser" — rather than one being dropped.
-        # Category and payee never land on a transfer leg (its payee is its
-        # destination and a category is allowed on only one kind of leg), and
-        # a split parent's categories live on its lines. A survivor taking a
-        # transfer over is not a leg yet: what it takes here, the link then
-        # judges by the transfer rules (`_relink_merged_leg`).
-        if deleted.memo and not survivor.memo:
-            updates["memo"] = deleted.memo
-        elif deleted.memo and survivor.memo and deleted.memo != survivor.memo:
-            updates["memo"] = f"{survivor.memo} — {deleted.memo}"
+        # Bookkeeping — date, payee, category, memo — is domain.merging's:
+        # additive by default (the survivor keeps what it has and takes what
+        # it lacks; two different memos are kept whole), and the person's
+        # pick where the two rows disagree. Category and payee never land on
+        # a transfer leg, and a split parent's categories live on its lines.
+        # A survivor taking a transfer over is not a leg yet: what it takes
+        # here, the link then judges by the transfer rules
+        # (`_relink_merged_leg`).
+        bookkeeping = merge_bookkeeping(
+            MergeRow.from_transaction(survivor),
+            MergeRow.from_transaction(deleted),
+            keep,
+            becomes_leg=plan.adopted_partner is not None,
+            # The bank's posting already moved the date (a hold posting).
+            date_fixed="date" in updates,
+        )
+        if bookkeeping.memo.value != (survivor.memo or None):
+            updates["memo"] = bookkeeping.memo.value
         if adopting:
             updates["is_split"] = True
             updates["category_id"] = None
-        if survivor.transfer_id is None:
-            if survivor.category_id is None and deleted.category_id and not survivor.is_split:
-                updates["category_id"] = deleted.category_id
-            if survivor.payee_id is None and deleted.payee_id:
-                updates["payee_id"] = deleted.payee_id
+        elif bookkeeping.category_id.value != survivor.category_id:
+            updates["category_id"] = bookkeeping.category_id.value
+        if bookkeeping.payee_id.value != survivor.payee_id:
+            updates["payee_id"] = bookkeeping.payee_id.value
+        if "date" not in updates and bookkeeping.date.value != survivor.date:
+            updates["date"] = bookkeeping.date.value
         if deleted.approved and not survivor.approved:
             updates["approved"] = True
-        return updates, adopting
+        # After the bank-posting rule, which may already have cleared it.
+        cleared = merged_cleared(updates.get("cleared", survivor.cleared), deleted.cleared)
+        if cleared != survivor.cleared:
+            updates["cleared"] = cleared
+        return updates, adopting, bookkeeping
 
-    async def _write_merge(
-        self,
-        survivor: Transaction,
-        deleted: Transaction,
-        updates: dict[str, Any],
-        adopting: bool,
-    ) -> None:
+    async def _write_merge(self, pair: _PairWrite) -> None:
         """Carry out one merged pair; the caller holds the batch."""
+        survivor, deleted, updates, adopting = (
+            pair.survivor,
+            pair.deleted,
+            pair.updates,
+            pair.adopting,
+        )
         survivor_before = snapshot("transaction", survivor)
         deleted_before = snapshot("transaction", deleted)
         # Which attachments the loser is contributing — undo moves exactly
@@ -1764,29 +2018,39 @@ class TransactionService:
                 )
                 await self._record_txn(moved, "update", before=line_before)
 
-    async def _relink_merged_leg(
-        self, budget_id: uuid.UUID, survivor: Transaction, partner: Transaction
-    ) -> None:
-        """Link a merge's survivor to the partner it ends up with.
+    async def _plan_relink(
+        self, survivor: Transaction, partner: Transaction, *, survivor_category: uuid.UUID | None
+    ) -> _Relink:
+        """Decide the link between a merge's survivor and the partner it ends
+        up with. Reads only, so the preview and the merge share the answer.
 
-        Through `link_legs`, the one way two existing rows become a transfer,
-        so the survivor carries the same payee and the same category rule as
-        any other leg. A category the rule forbids on either side goes: the
-        merge said this row is the transfer, and a transfer spends from an
-        envelope only when it leaves the budget.
+        A category the transfer rule forbids on either side goes: the merge
+        said this row is the transfer, and a transfer spends from an envelope
+        only when it leaves the budget. `survivor_category` is the one the
+        merge is about to write — the row itself has not been written yet.
         """
-        accounts = {
-            leg.id: await self.account_repo.get_or_raise(leg.account_id)
-            for leg in (survivor, partner)
-        }
-        clear = [
-            leg.id
-            for leg, other in ((survivor, partner), (partner, survivor))
-            if leg.category_id is not None
-            and not leg_may_carry_category(accounts[leg.id].on_budget, accounts[other.id].on_budget)
-        ]
+        own = await self.account_repo.get_or_raise(survivor.account_id)
+        other = await self.account_repo.get_or_raise(partner.account_id)
+        clear: list[uuid.UUID] = []
+        if survivor_category is not None and not leg_may_carry_category(
+            own.on_budget, other.on_budget
+        ):
+            clear.append(survivor.id)
+        if partner.category_id is not None and not leg_may_carry_category(
+            other.on_budget, own.on_budget
+        ):
+            clear.append(partner.id)
+        return _Relink(partner=partner, clear=clear, names=other)
+
+    async def _relink_merged_leg(
+        self, budget_id: uuid.UUID, survivor: Transaction, relink: _Relink
+    ) -> None:
+        """Carry out `_plan_relink`, through `link_legs` — the one way two
+        existing rows become a transfer, so the survivor carries the same
+        payee as any other leg."""
+        partner = relink.partner
         outflow, inflow = (survivor, partner) if survivor.amount < 0 else (partner, survivor)
-        await self.link_legs(budget_id, outflow, inflow, clear_categories=clear)
+        await self.link_legs(budget_id, outflow, inflow, clear_categories=relink.clear)
 
     async def _partner_on_budget_via_payee(self, payee: Payee | None) -> bool | None:
         """The on-budget flag of the account an UNPAIRED transfer leg names.

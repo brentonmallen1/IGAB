@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { randomUUID } from '../utils/uuid'
 import { canRemoveSplitLine } from '../utils/splits'
+import { toAmountInput } from '../utils/amountExpression'
 
 export type EditableField =
   | 'date'
@@ -29,6 +30,10 @@ interface TransactionEditState {
   splitEditing: {
     transactionId: string
     totalAmount: number
+    /** The total as typed, a magnitude — part of the draft like the lines.
+     *  A saved split's total is corrected here (see SplitTransactionEditor);
+     *  it starts as `totalAmount` and is reset whenever the editor opens. */
+    totalInput: string
     splits: SplitDraft[]
     loaded: boolean
   } | null
@@ -40,6 +45,10 @@ interface TransactionEditState {
   startSplitEditing: (transactionId: string, totalAmount: number, awaitLines?: boolean) => void
   seedSplits: (transactionId: string, splits: SplitDraft[]) => void
   updateSplit: (tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) => void
+  /** Replace the draft's lines whole — what the pure helpers in
+   *  `utils/splits` return. */
+  setSplits: (splits: SplitDraft[]) => void
+  setSplitTotal: (totalInput: string) => void
   addSplit: () => void
   removeSplit: (tempId: string) => void
   stopSplitEditing: () => void
@@ -66,7 +75,13 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
           { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
         ]
     set({
-      splitEditing: { transactionId, totalAmount, splits, loaded: !awaitLines },
+      splitEditing: {
+        transactionId,
+        totalAmount,
+        totalInput: toAmountInput(Math.abs(totalAmount)),
+        splits,
+        loaded: !awaitLines,
+      },
       editingField: null,
     })
   },
@@ -111,6 +126,18 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
         splits: splitEditing.splits.filter((s) => s.tempId !== tempId),
       },
     })
+  },
+
+  setSplits: (splits) => {
+    const { splitEditing } = get()
+    if (!splitEditing) return
+    set({ splitEditing: { ...splitEditing, splits } })
+  },
+
+  setSplitTotal: (totalInput) => {
+    const { splitEditing } = get()
+    if (!splitEditing) return
+    set({ splitEditing: { ...splitEditing, totalInput } })
   },
 
   stopSplitEditing: () => set({ splitEditing: null }),

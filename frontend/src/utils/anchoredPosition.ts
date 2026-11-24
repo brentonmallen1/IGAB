@@ -90,6 +90,19 @@ export interface AnchorOptions {
   prefer?: 'below' | 'above'
 }
 
+/**
+ * The narrowest a list of named things may open, whatever its control's
+ * width — categories, payees, accounts, tags.
+ *
+ * A list sized to its trigger alone inherits the trigger's worst case: the
+ * register's category cell is a `1fr` track, so in a window narrower than a
+ * desktop's but wider than a phone's the picker opened ~90px wide and every
+ * name in it was an ellipsis. Three pickers had three answers (none, 200,
+ * 220); this is the one. The viewport still wins — `resolveWidth` caps the
+ * panel to the screen, and `resolveLeft` slides it back inside.
+ */
+export const DROPDOWN_MIN_WIDTH = 260
+
 const DEFAULTS = {
   gap: 2,
   margin: 8,

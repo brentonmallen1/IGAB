@@ -21,6 +21,7 @@ import {
   drawnGroups,
 } from '../budgetGroups'
 import { canReorderCategories, canReorderGroups } from '../reorderAvailability'
+import { quickFilterMatches } from '../budgetFilterMenu'
 import { parseBudgetSearch, isBudgetSearchActive, matchesBudgetSearch } from '../budgetSearch'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
@@ -117,21 +118,9 @@ export function BudgetTable() {
   function categoryMatchesFilter(catId: string): boolean {
     if (filterCategoryIds) return filterCategoryIds.has(catId)
     if (!activeQuickFilter) return true
-    const balance = balanceMap.get(catId)
-    // The chip's count and the rows it filters read the same served field, so
-    // they cannot disagree — they were computed from two different lists.
-    switch (activeQuickFilter) {
-      case 'overspent':
-        return (balance?.available ?? 0) < 0
-      case 'underfunded':
-        return balance?.target_status === 'underfunded'
-      case 'pending':
-        return balance?.target_status === 'pending'
-      case 'money-available':
-        return (balance?.available ?? 0) > 0
-      case 'overfunded':
-        return balance?.target_status === 'overfunded'
-    }
+    // The bar's count and the rows it filters ask the same function, so
+    // they cannot disagree.
+    return quickFilterMatches(activeQuickFilter, balanceMap.get(catId))
   }
 
   // What the box means — names, group names and `tag:` — lives in

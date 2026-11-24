@@ -1,107 +1,47 @@
 import { useState } from 'react'
-import { useFormatters } from '../../../hooks/useFormatters'
-import type { Transaction } from '../../../types'
+import type { MergeKeep, Transaction } from '../../../types'
 import { Dialog } from '../../common/Dialog/Dialog'
-import { Tooltip } from '../../common/Tooltip/Tooltip'
 import type { NamedCategory } from '../../../utils/categoryLabels'
-import { categoryCellHover, categoryCellLabel, categoryCellText } from '../categoryCell'
-import { lockedSurvivor } from '../mergeEligibility'
+import { MergePair } from '../MergePair/MergePair'
+import { pairLabels } from '../MergePair/mergePicks'
+import { useMergeResult } from '../MergePair/useMergeResult'
 import './MergePreviewModal.css'
 
 interface Props {
+  budgetId: string
   transactions: [Transaction, Transaction]
-  payeeMap: Map<string, string>
+  payeeMap: ReadonlyMap<string, string>
   categoryLabels: ReadonlyMap<string, NamedCategory>
   /** Both rows are on one account (`mayOfferMerge`); is it on budget? The
    *  category reads by the register's rule, which needs to know. */
   accountOnBudget: boolean
-  onConfirm: (survivorId?: string) => void
+  /** Merge, with the picks the preview was showing. */
+  onConfirm: (keep: MergeKeep) => void
   onCancel: () => void
   isPending: boolean
-  /** Why the server refused. The register cannot rule out every refusal on
-   *  its own (which row may survive is the server's decision), and a Merge
-   *  button that does nothing is what swallowing this looked like. */
+  /** Why the server refused the merge itself. The preview catches most
+   *  refusals before the click, but the rows can change under an open
+   *  dialog, and a Merge button that does nothing is what swallowing this
+   *  looked like. */
   error?: string | null
 }
 
-function TxnCard({
-  txn,
-  payeeMap,
-  categoryLabels,
-  accountOnBudget,
-  isSelected,
-  onClick,
-  formatMoney,
-  formatDate,
-}: {
-  txn: Transaction
-  payeeMap: Map<string, string>
-  categoryLabels: ReadonlyMap<string, NamedCategory>
-  accountOnBudget: boolean
-  isSelected: boolean
-  onClick?: () => void
-  formatMoney: (amount: number) => string
-  formatDate: (dateStr: string) => string
-}) {
-  const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
-  // The register row's own label: this card used to read a row needing a
-  // category as "—", the same as a transfer.
-  const category = categoryCellLabel(txn, categoryLabels, accountOnBudget)
-  const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
-  const inflow = txn.amount >= 0 ? txn.amount : 0
-
-  return (
-    <button
-      type="button"
-      className={`merge-card ${isSelected ? 'merge-card--selected' : ''}`}
-      onClick={onClick}
-    >
-      {isSelected && <span className="merge-card__badge">Keep</span>}
-      <div className="merge-card__row">
-        <span className="merge-card__label">Date</span>
-        <span>{formatDate(txn.date)}</span>
-      </div>
-      <div className="merge-card__row">
-        <span className="merge-card__label">Amount</span>
-        <span className={txn.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
-          {outflow > 0 ? `-${formatMoney(outflow)}` : formatMoney(inflow)}
-        </span>
-      </div>
-      <div className="merge-card__row">
-        <span className="merge-card__label">Payee</span>
-        <span className="merge-card__value">{payeeName}</span>
-      </div>
-      <div className="merge-card__row">
-        <span className="merge-card__label">Category</span>
-        <Tooltip content={categoryCellHover(category)} block className="merge-card__value">
-          {categoryCellText(category)}
-        </Tooltip>
-      </div>
-      {txn.memo && (
-        <div className="merge-card__row">
-          <span className="merge-card__label">Memo</span>
-          <span className="merge-card__value merge-card__value--muted">{txn.memo}</span>
-        </div>
-      )}
-      {txn.import_description && (
-        <div className="merge-card__row">
-          <span className="merge-card__label">Bank desc</span>
-          <span className="merge-card__value merge-card__value--muted">
-            {txn.import_description}
-          </span>
-        </div>
-      )}
-      <div className="merge-card__row">
-        <span className="merge-card__label">Status</span>
-        <span className={`merge-card__cleared merge-card__cleared--${txn.cleared}`}>
-          {txn.cleared}
-        </span>
-      </div>
-    </button>
-  )
-}
-
+/**
+ * Merge two selected rows.
+ *
+ * This used to ask one question — which row to keep — and answer none: it
+ * showed the two rows and a badge, and left the reader to work out what the
+ * merged transaction would say. With a split on one side the category read
+ * as simply dropped, under a note about lines having to "add up". It shows
+ * the result now (`MergePair`, the server's own preview) and asks about the
+ * only things that are a choice: the fields the two rows disagree on.
+ *
+ * Which row survives is no longer asked. It is the server's decision
+ * (`choose_survivor`) and it changes nothing a person can see — every value
+ * either carries over or is picked here.
+ */
 export function MergePreviewModal({
+  budgetId,
   transactions,
   payeeMap,
   categoryLabels,
@@ -111,27 +51,16 @@ export function MergePreviewModal({
   isPending,
   error,
 }: Props) {
-  const { formatMoney, formatDate } = useFormatters()
-  const [txn1, txn2] = transactions
-  const locked = lockedSurvivor(txn1, txn2)
-  const defaultSurvivor = locked?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
-  const [survivorId, setSurvivorId] = useState<string>(defaultSurvivor)
-
-  const survivor = survivorId === txn1.id ? txn1 : txn2
-  const deleted = survivorId === txn1.id ? txn2 : txn1
-  // A plain row kept over a split takes the split's lines and becomes it.
-  const takesLines = deleted.is_split && !survivor.is_split
-
-  const willCopyImportId = !survivor.import_id && !!deleted.import_id
-  const willCopyImportDesc = !survivor.import_description && !!deleted.import_description
-  const willCopySyncId = !survivor.sync_id && !!deleted.sync_id
+  const [first, second] = transactions
+  const [keep, setKeep] = useState<MergeKeep>({})
+  const result = useMergeResult(budgetId, [first.id, second.id], keep)
 
   return (
     <Dialog
       title="Merge transactions"
       onClose={onCancel}
       historyKey="merge-preview"
-      className="merge-modal"
+      className="merge-modal merge-pair-dialog"
       footer={
         <div className="dialog-actions">
           {error && <span className="dialog-form__error">{error}</span>}
@@ -147,8 +76,10 @@ export function MergePreviewModal({
             <button
               type="button"
               className="dialog-btn dialog-btn--primary"
-              onClick={() => onConfirm(survivorId)}
-              disabled={isPending}
+              onClick={() => onConfirm(keep)}
+              // Nothing to merge into until the server has said what the
+              // result is, and nothing at all when it has said no.
+              disabled={isPending || !result.ready}
             >
               {isPending ? 'Merging…' : 'Merge'}
             </button>
@@ -156,49 +87,17 @@ export function MergePreviewModal({
         </div>
       }
     >
-      <p className="dialog-form__hint">
-        {locked === null
-          ? 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'
-          : locked.cleared === 'reconciled'
-            ? 'The reconciled transaction will always be kept.'
-            : 'The split will always be kept; the other row merges into it.'}
-      </p>
-
-      <div className="merge-modal__columns">
-        <TxnCard
-          txn={txn1}
-          payeeMap={payeeMap}
-          categoryLabels={categoryLabels}
-          accountOnBudget={accountOnBudget}
-          isSelected={survivorId === txn1.id}
-          onClick={locked ? undefined : () => setSurvivorId(txn1.id)}
-          formatMoney={formatMoney}
-          formatDate={formatDate}
-        />
-        <TxnCard
-          txn={txn2}
-          payeeMap={payeeMap}
-          categoryLabels={categoryLabels}
-          accountOnBudget={accountOnBudget}
-          isSelected={survivorId === txn2.id}
-          onClick={locked ? undefined : () => setSurvivorId(txn2.id)}
-          formatMoney={formatMoney}
-          formatDate={formatDate}
-        />
-      </div>
-
-      {takesLines && (
-        <p className="merge-modal__note">
-          The split's lines move onto the kept transaction, which becomes the split. The lines must
-          add up to its amount.
-        </p>
-      )}
-
-      {(willCopyImportId || willCopyImportDesc || willCopySyncId) && (
-        <p className="merge-modal__note">
-          Bank import data will be copied from the deleted transaction.
-        </p>
-      )}
+      <MergePair
+        rows={transactions}
+        labels={pairLabels(first, second)}
+        preview={result.preview}
+        refusal={result.refusal}
+        keep={keep}
+        onKeepChange={setKeep}
+        payeeMap={payeeMap}
+        categoryLabels={categoryLabels}
+        accountOnBudget={accountOnBudget}
+      />
     </Dialog>
   )
 }

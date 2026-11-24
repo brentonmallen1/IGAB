@@ -21,6 +21,7 @@ from igab.api.v1.schemas.transaction import (
     DeleteTransactionResult,
     DuplicatePayeeEntry,
     DuplicatePayeeGroup,
+    MergePreviewResponse,
     MergeTransactionsRequest,
     NearbyPayeeResponse,
     PayeeCreate,
@@ -599,10 +600,13 @@ async def replace_split_lines(
     budget_id: BudgetAccess,
 ) -> list[TransactionResponse]:
     """Edit a split's lines in place: named lines update, unnamed create,
-    missing remove. The parent — its identity, receipts, amount — is untouched.
-    A single line ends the split: the row is filed there and no lines return."""
+    missing remove. The parent's identity and receipts are untouched, and its
+    amount too unless `amount` corrects it. A single line ends the split: the
+    row is filed there and no lines return."""
     try:
-        lines = await txn_service.replace_splits(budget_id, transaction_id, _split_specs(body))
+        lines = await txn_service.replace_splits(
+            budget_id, transaction_id, _split_specs(body), total=body.amount
+        )
     except (NotFoundError, InvariantViolation) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return [TransactionResponse.model_validate(c) for c in lines]
@@ -731,10 +735,38 @@ async def merge_transactions(
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> TransactionResponse:
     try:
-        txn = await txn_service.merge(budget_id, body.transaction_ids, body.survivor_id)
+        txn = await txn_service.merge(
+            budget_id,
+            body.transaction_ids,
+            body.survivor_id,
+            keep=body.keep.to_domain() if body.keep else None,
+        )
     except (InvariantViolation, NotFoundError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)
+
+
+@router.post("/{budget_id}/transactions/merge/preview", response_model=MergePreviewResponse)
+async def preview_merge_transactions(
+    budget_id: BudgetAccess,
+    body: MergeTransactionsRequest,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+) -> MergePreviewResponse:
+    """What the merge above would leave behind for the same body, without
+    writing. A read, sent as a POST because the arguments are the merge's
+    own. A merge that would be refused answers 400 with the same reason, so
+    a dialog can say why before anyone presses Merge."""
+    try:
+        preview = await txn_service.preview_merge(
+            budget_id,
+            body.transaction_ids,
+            body.survivor_id,
+            keep=body.keep.to_domain() if body.keep else None,
+        )
+    except (InvariantViolation, NotFoundError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return MergePreviewResponse.model_validate(preview)
 
 
 @router.get("/{budget_id}/transactions/pending-review-count", response_model=PendingReviewCount)

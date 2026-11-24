@@ -10,7 +10,13 @@ import {
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { fromCents, toCents } from '../../../utils/money'
-import { canRemoveSplitLine, checkSplit, draftsFromLines } from '../../../utils/splits'
+import {
+  canRemoveSplitLine,
+  checkSplit,
+  draftsFromLines,
+  mayTakeRemainder,
+  takeRemainder,
+} from '../../../utils/splits'
 import { expressionToCents } from '../../../utils/amountExpression'
 import { apiErrorMessage } from '../../../api/client'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -29,8 +35,16 @@ interface Props {
 export function SplitTransactionEditor({ transaction: txn, categories, categoryGroups }: Props) {
   const { formatMoney } = useFormatters()
   const budgetId = useAppStore((s) => s.currentBudgetId!)
-  const { splitEditing, updateSplit, addSplit, removeSplit, stopSplitEditing, seedSplits } =
-    useTransactionEditStore()
+  const {
+    splitEditing,
+    updateSplit,
+    addSplit,
+    removeSplit,
+    stopSplitEditing,
+    seedSplits,
+    setSplits,
+    setSplitTotal,
+  } = useTransactionEditStore()
   const convertToSplit = useConvertToSplit(budgetId)
   const replaceSplits = useReplaceSplits(budgetId)
 
@@ -46,10 +60,21 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
     if (lines && awaitingLines) seedSplits(txn.id, draftsFromLines(lines))
   }, [lines, awaitingLines, txn.id, seedSplits])
 
+  // A saved split's total, as typed. The total used to be a label here and a
+  // locked field everywhere else — a split entered as 100 that should have
+  // been 108 could only be deleted and re-entered. It is corrected here, with
+  // the lines, because the server will not move one without the other.
+  // Reconciled: the statement vouched for the amount, so it stays a label.
+  const canRetotal = txn.is_split && txn.cleared !== 'reconciled'
+
   if (!splitEditing || splitEditing.transactionId !== txn.id) return null
 
-  const { totalAmount, splits, loaded } = splitEditing
-  const check = checkSplit(Math.abs(toCents(totalAmount)), splits)
+  const { totalAmount, totalInput, splits, loaded } = splitEditing
+  const savedTotalCents = Math.abs(toCents(totalAmount))
+  // NaN while the box holds nothing readable: `checkSplit` refuses that as
+  // 'no-total', so an unreadable total can never be saved as zero.
+  const totalCents = canRetotal ? expressionToCents(totalInput) : savedTotalCents
+  const check = checkSplit(totalCents, splits)
   const { remainingCents, isValid } = check
   const remaining = fromCents(remainingCents)
 
@@ -62,7 +87,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
     const sign = totalAmount < 0 ? -1 : 1
     const lines = splits.map((s) => ({
       id: s.serverId,
-      amount: (expressionToCents(s.amount) / 100) * sign,
+      amount: fromCents(expressionToCents(s.amount)) * sign,
       category_id: s.categoryId ?? undefined,
       memo: s.memo || undefined,
     }))
@@ -71,7 +96,14 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
       // and provenance. (A create-new-and-delete replacement used to drop
       // all of those and turned a pending row into a cleared one.)
       if (txn.is_split)
-        await replaceSplits.mutateAsync({ id: txn.id, accountId: txn.account_id, splits: lines })
+        await replaceSplits.mutateAsync({
+          id: txn.id,
+          accountId: txn.account_id,
+          splits: lines,
+          // Only a total that actually moved: an unchanged one is not sent,
+          // so a plain re-filing of lines stays plain bookkeeping.
+          amount: totalCents !== savedTotalCents ? fromCents(totalCents) * sign : undefined,
+        })
       else await convertToSplit.mutateAsync({ id: txn.id, splits: lines })
       stopSplitEditing()
     } catch (err) {
@@ -84,9 +116,22 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   return (
     <div className="split-editor" {...keepsSelection}>
       <div className="split-editor__header">
-        <span className="split-editor__title">
-          Split <strong>{formatMoney(Math.abs(totalAmount))}</strong>
-        </span>
+        {canRetotal ? (
+          <label className="split-editor__title split-editor__total">
+            Split total
+            <AmountInput
+              className="split-editor__amount split-editor__total-input"
+              value={totalInput}
+              onValueChange={setSplitTotal}
+              placeholder="Total"
+              aria-label="Split total"
+            />
+          </label>
+        ) : (
+          <span className="split-editor__title">
+            Split <strong>{formatMoney(Math.abs(totalAmount))}</strong>
+          </span>
+        )}
         <button
           className="split-editor__close"
           onClick={stopSplitEditing}
@@ -128,6 +173,32 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
                 placeholder="0.00"
               />
 
+              {/* Put what is left on this line — or take what is over off it.
+                  The slot is always there, so the row does not jump as the
+                  lines come into balance. */}
+              <span className="split-editor__rest-slot">
+                {mayTakeRemainder(split, remainingCents) && (
+                  <button
+                    type="button"
+                    className="split-editor__rest tabular"
+                    onClick={() => setSplits(takeRemainder(splits, remainingCents, i))}
+                    title={
+                      remainingCents > 0
+                        ? `Put the remaining ${formatMoney(remaining)} on this line`
+                        : `Take the extra ${formatMoney(-remaining)} off this line`
+                    }
+                    aria-label={
+                      remainingCents > 0
+                        ? `Put the remaining ${formatMoney(remaining)} on line ${i + 1}`
+                        : `Take the extra ${formatMoney(-remaining)} off line ${i + 1}`
+                    }
+                  >
+                    {remainingCents > 0 ? '+' : '−'}
+                    {formatMoney(Math.abs(remaining))}
+                  </button>
+                )}
+              </span>
+
               <input
                 className="split-editor__memo"
                 type="text"
@@ -158,7 +229,13 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
         <div
           className={`split-editor__remaining ${remainingCents === 0 ? 'split-editor__remaining--done' : ''}`}
         >
-          {remainingCents === 0 ? 'Fully assigned' : `Remaining: ${formatMoney(remaining)}`}
+          {check.reason === 'no-total'
+            ? 'Enter the total'
+            : remainingCents === 0
+              ? 'Fully assigned'
+              : remainingCents > 0
+                ? `Remaining: ${formatMoney(remaining)}`
+                : `Over by ${formatMoney(-remaining)}`}
         </div>
 
         <div className="split-editor__actions">

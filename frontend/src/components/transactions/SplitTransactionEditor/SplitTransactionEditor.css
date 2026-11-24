@@ -40,7 +40,7 @@
 
 .split-editor__row {
   display: grid;
-  grid-template-columns: 20px 1fr 100px 1fr 28px;
+  grid-template-columns: 20px 1fr 100px 84px 1fr 28px;
   gap: var(--spacing-xs);
   align-items: center;
 }
@@ -169,4 +169,47 @@
 
 .split-editor__loading--error {
   color: var(--color-negative);
+}
+
+/* The total of a saved split, editable in place. */
+.split-editor__total {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.split-editor__total-input {
+  width: 110px;
+  font-weight: 600;
+}
+
+/* "Put the rest here". A fixed slot whether or not the button is in it, so a
+   line does not shift as the split comes into balance. */
+.split-editor__rest-slot {
+  display: flex;
+  min-width: 0;
+}
+
+.split-editor__rest {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-radius: var(--border-radius-sm);
+  transition: background-color var(--transition-fast);
+}
+
+@media (hover: hover) {
+  .split-editor__rest:hover {
+    background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+}
+
+.split-editor__rest:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }

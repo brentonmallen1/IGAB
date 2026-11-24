@@ -2,12 +2,14 @@ import datetime
 import re
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
+from igab.domain.merging import MergeKeep, TransferOutcome
 from igab.domain.money import Money
 from igab.domain.payee_names import dedupe_samples
 
@@ -28,9 +30,12 @@ class ConvertToSplitRequest(ApiModel):
 
 class ReplaceSplitsRequest(ApiModel):
     """The split's lines as they should be: named lines are updated, unnamed
-    ones created, missing ones removed. They must sum to the parent."""
+    ones created, missing ones removed. They must sum to the parent — to
+    `amount` when it is given, which corrects the split's total in the same
+    change (it cannot move on its own; the total is the lines' sum)."""
 
     splits: list[SplitCreate]
+    amount: Money | None = None
 
 
 #: The most parents one split-lines request may name — the register's own page
@@ -297,9 +302,95 @@ class PendingReviewCount(ApiModel):
     total: int = 0
 
 
+class MergeKeepRequest(ApiModel):
+    """Which row each field of the merged transaction is kept from — the id
+    of one of the two being merged. Absent leaves the default: the kept
+    row's value, or the other row's where it has none. `memo` may also be
+    "both", which joins two different memos (the default)."""
+
+    date: uuid.UUID | None = None
+    payee: uuid.UUID | None = None
+    category: uuid.UUID | None = None
+    memo: uuid.UUID | Literal["both"] | None = None
+
+    def to_domain(self) -> MergeKeep:
+        return MergeKeep(date=self.date, payee=self.payee, category=self.category, memo=self.memo)
+
+
 class MergeTransactionsRequest(ApiModel):
     transaction_ids: list[uuid.UUID]
     survivor_id: uuid.UUID | None = None
+    keep: MergeKeepRequest | None = None
+
+
+class AcceptMatchRequest(ApiModel):
+    """The picks made in the duplicate review, for the merge an accept is."""
+
+    keep: MergeKeepRequest | None = None
+
+
+class MergeChoiceResponse(ApiModel):
+    """One field of a merge's result: the row its value comes from (None
+    when neither row has one, "both" for two memos joined), and whether the
+    other row's value could be picked instead."""
+
+    source: uuid.UUID | Literal["both"] | None
+    choosable: bool
+
+    model_config = {"from_attributes": True}
+
+
+class MergeChoicesResponse(ApiModel):
+    """Read off `domain.merging.MergedBookkeeping`, which names the payee and
+    category by their columns."""
+
+    date: MergeChoiceResponse
+    payee: MergeChoiceResponse = Field(validation_alias="payee_id")
+    category: MergeChoiceResponse = Field(validation_alias="category_id")
+    memo: MergeChoiceResponse
+
+    model_config = {"from_attributes": True}
+
+
+class MergePreviewLine(ApiModel):
+    amount: Decimal
+    category_id: uuid.UUID | None
+    memo: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class MergePreviewResponse(ApiModel):
+    """The transaction a merge would leave behind. Served, never composed on
+    the client: `TransactionService.preview_merge` builds it from the same
+    preparation the merge writes from."""
+
+    survivor_id: uuid.UUID
+    deleted_id: uuid.UUID
+    date: datetime.date
+    amount: Decimal
+    #: The kept row's own amount, when the bank's posted amount replaces it.
+    replaced_amount: Decimal | None
+    #: None beside a `payee_name` when the merge would create the payee.
+    payee_id: uuid.UUID | None
+    #: The payee as the merged row will read it. Served because taking a
+    #: transfer over can name a payee that does not exist until the merge.
+    payee_name: str | None
+    category_id: uuid.UUID | None
+    memo: str | None
+    cleared: str
+    is_split: bool
+    #: The split lines the result carries; empty when it is not a split.
+    lines: list[MergePreviewLine]
+    has_bank_record: bool
+    import_description: str | None
+    bank_posted_date: datetime.date | None
+    transfer: TransferOutcome | None
+    choices: MergeChoicesResponse = Field(validation_alias="bookkeeping")
+
+    #: Validated straight from the service's `MergePreview`, so a field
+    #: added there and missed here fails instead of being copied by hand.
+    model_config = {"from_attributes": True}
 
 
 class SimilarTransactionResponse(ApiModel):

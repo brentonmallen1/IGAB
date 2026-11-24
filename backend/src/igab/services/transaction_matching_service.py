@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.matching import DATE_WINDOW_DAYS, date_proximity, payee_similarity
+from igab.domain.merging import MergeKeep
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -167,6 +168,7 @@ class TransactionMatchingService:
         synced_txn: Transaction,
         manual_txn: Transaction,
         confidence: float,
+        keep: MergeKeep | None = None,
     ) -> None:
         """Merge the pair down to one row — TransactionService.merge is the one
         merge; who survives and what the bank row contributes are decided
@@ -175,9 +177,14 @@ class TransactionMatchingService:
             return  # a transaction can never be its own duplicate
         if synced_txn.is_deleted or manual_txn.is_deleted:
             return  # stale match — one side is already gone
-        await self.txn_service.merge(synced_txn.budget_id, [synced_txn.id, manual_txn.id])
+        await self.txn_service.merge(
+            synced_txn.budget_id, [synced_txn.id, manual_txn.id], keep=keep
+        )
 
-    async def accept_match(self, match_id: uuid.UUID) -> None:
+    async def accept_match(self, match_id: uuid.UUID, keep: MergeKeep | None = None) -> None:
+        """Accept the pair as one transaction. `keep` is the review's picks
+        for the fields the two rows disagree on — `TransactionService.merge`'s
+        own argument, passed through."""
         match = await self.match_repo.get(match_id)
         if match is None or match.status == "accepted":
             return
@@ -200,7 +207,7 @@ class TransactionMatchingService:
             if synced is None or manual is None or synced.is_deleted or manual.is_deleted:
                 await self.match_repo.update_status(match_id, "rejected")
             else:
-                await self._accept_link(synced, manual, float(match.confidence_score))
+                await self._accept_link(synced, manual, float(match.confidence_score), keep)
                 await self.match_repo.update_status(match_id, "accepted")
             await self._record_match_decision(match, before, batch_id=batch_id)
 
@@ -235,15 +242,32 @@ class TransactionMatchingService:
             batch_id=batch_id,
         )
 
-    async def scan_for_duplicates(self, account_id: uuid.UUID) -> int:
+    async def scan_for_duplicates(
+        self,
+        account_id: uuid.UUID,
+        *,
+        since: date | None = None,
+        include_reconciled: bool = False,
+    ) -> int:
         """Scan account transactions for potential duplicates.
 
         Candidate pairs come pre-filtered from SQL (same amount, date within
-        the window); Python only scores payee similarity. Returns count of
-        new matches created.
+        the window, and the scope asked for — `since`, `include_reconciled`);
+        Python only scores payee similarity. Returns count of new matches
+        created.
+
+        A pair the merge would refuse is never queued (`may_merge`: two
+        reconciled rows, two bank records with different ids). The scan used
+        to queue them anyway — two real charges of one amount in one week
+        from the same feed — and the review could then only ever answer
+        "keep separate", one pair at a time, on an account that would not
+        reconcile until every one was answered.
         """
         pairs = await self.txn_repo.find_duplicate_candidate_pairs(
-            account_id, date_window_days=SCAN_DATE_WINDOW_DAYS
+            account_id,
+            date_window_days=SCAN_DATE_WINDOW_DAYS,
+            since=since,
+            include_reconciled=include_reconciled,
         )
         created = 0
 
@@ -254,6 +278,8 @@ class TransactionMatchingService:
             score = round(date_score * 0.65 + payee_score * 0.35, 4)
 
             if score < SCAN_REVIEW_THRESHOLD:
+                continue
+            if not await self.txn_service.may_merge(txn_a, txn_b):
                 continue
             if await self.match_repo.exists_for_pair(txn_a.id, txn_b.id):
                 continue
@@ -268,6 +294,24 @@ class TransactionMatchingService:
             created += 1
 
         return created
+
+    async def reject_all_pending(self, account_id: uuid.UUID) -> tuple[int, uuid.UUID | None]:
+        """Answer every open pair on the account "keep separate", as one
+        change: (how many, the batch to undo them by).
+
+        The way out of a review queue that is all false alarms. Each pair is
+        the same decision `reject_match` makes — rejected, remembered, never
+        proposed again — recorded together so one undo reopens the lot.
+        """
+        matches = await self.match_repo.get_pending_for_account(account_id)
+        if not matches:
+            return 0, None
+        with self.changes.batch() as batch_id:
+            for match in matches:
+                before = snapshot("transaction_match", match)
+                await self.match_repo.update_status(match.id, "rejected")
+                await self._record_match_decision(match, before, batch_id=batch_id)
+        return len(matches), batch_id
 
 
 def build_transaction_matching_service(

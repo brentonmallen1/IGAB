@@ -1,5 +1,15 @@
 import { useCallback } from 'react'
-import { GripVertical, Pencil, Trash2, Plus, Lock, ChevronUp, ChevronDown } from 'lucide-react'
+import {
+  GripVertical,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+  Plus,
+  Lock,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react'
 import { useBudgetFilters, useDeleteBudgetFilter } from '../../../api/budgetFilters'
 import {
   useUIStore,
@@ -24,6 +34,8 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
   const openModal = useUIStore((s) => s.openModal)
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
   const reorderQuickFilters = useUIStore((s) => s.reorderQuickFilters)
+  const pinnedQuickFilters = useUIStore((s) => s.pinnedQuickFilters)
+  const toggleQuickFilterPin = useUIStore((s) => s.toggleQuickFilterPin)
   const activeFilterId = useUIStore((s) => s.activeFilterId)
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
 
@@ -59,7 +71,9 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
       <section className="manage-list__section">
         <div className="manage-list__section-header">
           <span>Quick Filters</span>
-          <span className="manage-filters-modal__section-hint">Drag or use arrows to reorder</span>
+          <span className="manage-filters-modal__section-hint">
+            Pinned ones are buttons on the bar; the rest are under More filters
+          </span>
         </div>
         <div className="manage-list__list">
           {quickFilterOrder.map((filter, index) => (
@@ -92,6 +106,20 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                 <Lock size={12} />
               </span>
               <div className="manage-list__row-actions">
+                <button
+                  type="button"
+                  className={`manage-list__icon-btn manage-filters-modal__pin ${pinnedQuickFilters.includes(filter) ? 'active' : ''}`}
+                  onClick={() => toggleQuickFilterPin(filter)}
+                  aria-pressed={pinnedQuickFilters.includes(filter)}
+                  aria-label={`Pin ${QUICK_FILTER_LABELS[filter]} to the bar`}
+                  title={
+                    pinnedQuickFilters.includes(filter)
+                      ? 'On the bar — click to move it under More filters'
+                      : 'Under More filters — click to pin it to the bar'
+                  }
+                >
+                  {pinnedQuickFilters.includes(filter) ? <Pin size={13} /> : <PinOff size={13} />}
+                </button>
                 <button
                   type="button"
                   className="manage-list__icon-btn"

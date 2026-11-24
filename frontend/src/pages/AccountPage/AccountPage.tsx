@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Pencil, ScanSearch, Upload } from 'lucide-react'
+import { Copy, Pencil, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
 import { CsvImportDialog } from '../../components/imports/CsvImportDialog/CsvImportDialog'
@@ -16,6 +16,16 @@ import { CardPaymentModal } from '../../components/accounts/CardPaymentModal'
 import { LiabilityTermsHeader } from '../../components/liabilities/LiabilityTermsHeader'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
+import { FindDuplicatesDialog } from '../../components/accounts/FindDuplicatesDialog'
+import {
+  keepAllSeparateQuestion,
+  scanSince,
+  scopePhrase,
+  type DuplicateScanScope,
+} from '../../components/accounts/duplicateScan'
+import { today } from '../../utils/dates'
+import { useUndoToast } from '../../utils/toastUndo'
+import { confirmAsync } from '../../stores/confirmStore'
 import { useAccounts, useScanDuplicates } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import { usePendingReviewCountForAccount } from '../../api/transactions'
@@ -24,6 +34,7 @@ import {
   usePrimaryConnection,
   useSyncSimpleFIN,
   usePendingMatchesForAccount,
+  useRejectAllMatches,
 } from '../../api/simplefin'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -89,19 +100,50 @@ export function AccountPage() {
   const [toolsOpen, setToolsOpen] = useState(false)
   const [noticesOpen, setNoticesOpen] = useState(false)
   const scanDuplicates = useScanDuplicates()
+  const [showScanDialog, setShowScanDialog] = useState(false)
+  const scanScope = useUIStore((s) => s.duplicateScanScope)
+  const setScanScope = useUIStore((s) => s.setDuplicateScanScope)
   // The scan lived at the bottom of the Edit account dialog, where nobody
   // found it; the page said nothing about duplicates until some were pending.
-  const handleScanDuplicates = async () => {
+  // It asks how far to look first (FindDuplicatesDialog): unasked, it paired
+  // the account's whole history with itself.
+  const handleScanDuplicates = async (scope: DuplicateScanScope) => {
     if (!accountId) return
+    setScanScope(scope)
     try {
-      const { created } = await scanDuplicates.mutateAsync(accountId)
+      const { created } = await scanDuplicates.mutateAsync({
+        accountId,
+        since: scanSince(scope.lookbackDays, today()),
+        includeReconciled: scope.includeReconciled,
+      })
+      setShowScanDialog(false)
       if (created === 0) {
-        toast.success('No new possible duplicates in this account')
+        toast.success(`No new possible duplicates ${scopePhrase(scope)}`)
       } else {
         setShowMatchModal(true)
       }
     } catch {
       toast.error('The duplicate scan failed')
+    }
+  }
+  // The way out of a queue that is all false alarms: every open pair kept
+  // separate in one change, with the Undo on the toast reopening exactly
+  // those. Answering them one at a time was the only way before, and an
+  // unanswered pair holds the account's reconciliation back.
+  const rejectAllMatches = useRejectAllMatches(accountId ?? null)
+  const notifyUndoable = useUndoToast(accountId)
+  const handleKeepAllSeparate = async () => {
+    const question = keepAllSeparateQuestion(pendingMatches.length)
+    if (question && !(await confirmAsync(question))) return
+    try {
+      const { rejected, batch_id } = await rejectAllMatches.mutateAsync()
+      setShowMatchModal(false)
+      notifyUndoable(
+        rejected === 1 ? 'Kept 1 pair separate' : `Kept ${rejected} pairs separate`,
+        batch_id ? { batch: batch_id } : null
+      )
+    } catch {
+      toast.error('Could not keep these separate')
     }
   }
   const [showCsvImport, setShowCsvImport] = useState(false)
@@ -273,7 +315,7 @@ export function AccountPage() {
             onSync={isConnected && firstConnection ? () => void handleSync() : null}
             syncing={sync.isPending}
             onImport={() => setShowCsvImport(true)}
-            onScanDuplicates={() => void handleScanDuplicates()}
+            onScanDuplicates={() => setShowScanDialog(true)}
             scanning={scanDuplicates.isPending}
             onEdit={() => openModal('account', accountId)}
             onReconcile={
@@ -369,12 +411,12 @@ export function AccountPage() {
             </button>
             <button
               className="account-page__action-btn"
-              onClick={() => void handleScanDuplicates()}
+              onClick={() => setShowScanDialog(true)}
               disabled={scanDuplicates.isPending}
               aria-label="Find possible duplicates"
               title="Find possible duplicates"
             >
-              <ScanSearch size={16} />
+              <Copy size={16} />
             </button>
             <button
               className="account-page__reconcile-btn"
@@ -412,6 +454,7 @@ export function AccountPage() {
 
       {showReconcileBar && (
         <ReconcileStatusBar
+          budgetId={budgetId}
           accountId={accountId}
           onReviewDuplicates={() => setShowMatchModal(true)}
         />
@@ -439,12 +482,25 @@ export function AccountPage() {
                 {duplicatesPhrase(pendingMatches.length)} found — may match a manually entered
                 transaction
               </span>
-              <button
-                className="account-page__match-btn account-page__match-btn--review"
-                onClick={() => setShowMatchModal(true)}
-              >
-                Review
-              </button>
+              <span className="account-page__match-actions">
+                {/* Not a way to hide the banner: an open pair holds the
+                    reconciliation back, so the only honest dismissal is an
+                    answer. This gives all of them the same one. */}
+                <button
+                  className="account-page__match-btn account-page__match-btn--reject"
+                  onClick={() => void handleKeepAllSeparate()}
+                  disabled={rejectAllMatches.isPending}
+                  title="None of these are duplicates — keep every pair as two transactions"
+                >
+                  {pendingMatches.length === 1 ? 'Not a duplicate' : 'None are duplicates'}
+                </button>
+                <button
+                  className="account-page__match-btn account-page__match-btn--review"
+                  onClick={() => setShowMatchModal(true)}
+                >
+                  Review
+                </button>
+              </span>
             </div>
           )}
         </div>
@@ -455,6 +511,18 @@ export function AccountPage() {
           matches={pendingMatches}
           budgetId={budgetId}
           onClose={() => setShowMatchModal(false)}
+          onKeepAllSeparate={() => void handleKeepAllSeparate()}
+          keepingAllSeparate={rejectAllMatches.isPending}
+        />
+      )}
+
+      {showScanDialog && (
+        <FindDuplicatesDialog
+          accountName={account.name}
+          initial={scanScope}
+          onScan={(scope) => void handleScanDuplicates(scope)}
+          onClose={() => setShowScanDialog(false)}
+          isPending={scanDuplicates.isPending}
         />
       )}
 

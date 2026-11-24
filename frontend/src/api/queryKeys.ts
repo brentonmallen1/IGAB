@@ -87,6 +87,7 @@ export const ROOT = {
   importSummary: 'importSummary',
   liabilities: 'liabilities',
   liabilityAmortization: 'liabilityAmortization',
+  mergePreview: 'mergePreview',
   nearbyPayees: 'nearbyPayees',
   payeeCategoryGuess: 'payeeCategoryGuess',
   ollamaModels: 'ollama-models',

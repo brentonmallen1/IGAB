@@ -1,22 +1,23 @@
-import { useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, RefreshCw, AlertTriangle } from 'lucide-react'
 import { apiErrorMessage } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
+import { useAccounts } from '../../api/accounts'
 import { usePayees } from '../../api/payees'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useCategoryLabels } from '../../hooks/useCategoryLabels'
-import {
-  categoryDisplay,
-  type CategoryDisplay,
-  type NamedCategory,
-} from '../../utils/categoryLabels'
-import type { Transaction, TransactionMatch } from '../../types'
+import type { MergeKeep, Transaction, TransactionMatch } from '../../types'
 import { useTransaction } from '../../api/transactions'
 import { Dialog } from '../common/Dialog/Dialog'
-import { Tooltip } from '../common/Tooltip/Tooltip'
-import { hasBankRecord } from '../../utils/bankRecord'
+import { MergePair } from '../transactions/MergePair/MergePair'
+import { pairLabels } from '../transactions/MergePair/mergePicks'
+import { useMergeResult } from '../transactions/MergePair/useMergeResult'
 // After Dialog, so its one-class variations are declared after the shared ones.
 import './MatchReviewModal.css'
+
+/** One object for "no picks", so the preview's query key does not change on
+ *  every render. */
+const NO_PICKS: MergeKeep = {}
 
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)
@@ -38,177 +39,6 @@ function ConfidenceBar({ score }: { score: number }) {
   )
 }
 
-/** A Category line, the group on hover. */
-function CategoryLine({ className, category }: { className: string; category: CategoryDisplay }) {
-  return (
-    <div className={className}>
-      <span className="match-modal__txn-key">Category</span>
-      <Tooltip content={category.path} block className="match-modal__txn-value">
-        {category.name}
-      </Tooltip>
-    </div>
-  )
-}
-
-function TxnDetail({
-  txn,
-  label,
-  payeeMap,
-  categoryLabels,
-  formatMoney,
-  formatDate,
-}: {
-  txn: Transaction
-  label: string
-  payeeMap: Map<string, string>
-  categoryLabels: ReadonlyMap<string, NamedCategory>
-  formatMoney: (amount: number) => string
-  formatDate: (dateStr: string) => string
-}) {
-  const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
-  const inflow = txn.amount >= 0 ? txn.amount : 0
-  const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
-  const category = txn.category_id ? categoryDisplay(txn.category_id, categoryLabels) : null
-
-  return (
-    <div className="match-modal__col">
-      <div className="match-modal__col-label">{label}</div>
-      <div className="match-modal__txn-detail">
-        <div className="match-modal__txn-row">
-          <span className="match-modal__txn-key">Date</span>
-          <span>{formatDate(txn.date)}</span>
-        </div>
-        <div className="match-modal__txn-row">
-          <span className="match-modal__txn-key">Amount</span>
-          <span className={txn.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
-            {outflow > 0 ? `-${formatMoney(outflow)}` : formatMoney(inflow)}
-          </span>
-        </div>
-        <div className="match-modal__txn-row">
-          <span className="match-modal__txn-key">Payee</span>
-          <span className="match-modal__txn-value">{payeeName}</span>
-        </div>
-        {category && <CategoryLine className="match-modal__txn-row" category={category} />}
-        <div className="match-modal__txn-row">
-          <span className="match-modal__txn-key">Status</span>
-          <span className={`match-modal__cleared match-modal__cleared--${txn.cleared}`}>
-            {txn.cleared}
-          </span>
-        </div>
-        {txn.import_description && (
-          <div className="match-modal__txn-row">
-            <span className="match-modal__txn-key">Bank desc</span>
-            <span className="match-modal__txn-desc">{txn.import_description}</span>
-          </div>
-        )}
-        {txn.memo && (
-          <div className="match-modal__txn-row">
-            <span className="match-modal__txn-key">Memo</span>
-            <span className="match-modal__txn-desc">{txn.memo}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function MergedPreview({
-  syncedTxn,
-  manualTxn,
-  payeeMap,
-  categoryLabels,
-  formatMoney,
-  formatDate,
-}: {
-  syncedTxn: Transaction
-  manualTxn: Transaction
-  payeeMap: Map<string, string>
-  categoryLabels: ReadonlyMap<string, NamedCategory>
-  formatMoney: (amount: number) => string
-  formatDate: (dateStr: string) => string
-}) {
-  const CLEARED_RANK: Record<string, number> = {
-    reconciled: 3,
-    cleared: 2,
-    uncleared: 1,
-    pending: 0,
-  }
-  const mergedCleared =
-    (CLEARED_RANK[manualTxn.cleared] ?? 0) >= (CLEARED_RANK[syncedTxn.cleared] ?? 0)
-      ? manualTxn.cleared
-      : syncedTxn.cleared
-
-  // Accept logic: the manual transaction keeps its date/payee/category/memo;
-  // the bank's posted date and import data arrive as metadata. The amount is
-  // the one thing the bank overrides — a bank-sourced row's posted amount
-  // replaces the user's on accept (backend domain/bank_posting.py; the
-  // server decides, this only previews it).
-  const bankPostedDate = manualTxn.bank_posted_date ?? syncedTxn.bank_posted_date ?? syncedTxn.date
-  const syncedIsBank = hasBankRecord(syncedTxn)
-  const mergedAmount = syncedIsBank ? syncedTxn.amount : manualTxn.amount
-  const payeeName = manualTxn.payee_id
-    ? (payeeMap.get(manualTxn.payee_id) ?? '—')
-    : syncedTxn.payee_id
-      ? (payeeMap.get(syncedTxn.payee_id) ?? '—')
-      : '—'
-  // The kept category, named even when the labels cannot: this line used to
-  // vanish for a category it could not name, previewing a result with no
-  // category while the accept kept it.
-  const category = manualTxn.category_id
-    ? categoryDisplay(manualTxn.category_id, categoryLabels)
-    : null
-  const outflow = mergedAmount < 0 ? Math.abs(mergedAmount) : 0
-  const inflow = mergedAmount >= 0 ? mergedAmount : 0
-
-  return (
-    <div className="match-modal__merged">
-      <div className="match-modal__merged-header">
-        <ArrowRight size={11} />
-        Result after accepting
-      </div>
-      <div className="match-modal__merged-row">
-        <span className="match-modal__txn-key">Date</span>
-        <span>{formatDate(manualTxn.date)}</span>
-      </div>
-      {bankPostedDate !== manualTxn.date && (
-        <div className="match-modal__merged-row">
-          <span className="match-modal__txn-key">Bank posted</span>
-          <span>{formatDate(bankPostedDate)}</span>
-        </div>
-      )}
-      <div className="match-modal__merged-row">
-        <span className="match-modal__txn-key">Amount</span>
-        <span className={mergedAmount < 0 ? 'txn-outflow' : 'txn-inflow'}>
-          {outflow > 0 ? `-${formatMoney(outflow)}` : formatMoney(inflow)}
-        </span>
-      </div>
-      <div className="match-modal__merged-row">
-        <span className="match-modal__txn-key">Payee</span>
-        <span className="match-modal__txn-value">{payeeName}</span>
-      </div>
-      {category && <CategoryLine className="match-modal__merged-row" category={category} />}
-      <div className="match-modal__merged-row">
-        <span className="match-modal__txn-key">Status</span>
-        <span className={`match-modal__cleared match-modal__cleared--${mergedCleared}`}>
-          {mergedCleared}
-        </span>
-      </div>
-      {manualTxn.memo && (
-        <div className="match-modal__merged-row">
-          <span className="match-modal__txn-key">Memo</span>
-          <span className="match-modal__txn-desc">{manualTxn.memo}</span>
-        </div>
-      )}
-      {syncedTxn.import_description && (
-        <div className="match-modal__merged-row">
-          <span className="match-modal__txn-key">Bank desc</span>
-          <span className="match-modal__txn-desc">{syncedTxn.import_description}</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
 /** Days between the two rows on the bank's posting date where each has one. */
 function postedGapDays(a: Transaction, b: Transaction): number {
   const da = new Date(a.bank_posted_date ?? a.date).getTime()
@@ -216,14 +46,35 @@ function postedGapDays(a: Transaction, b: Transaction): number {
   return Math.round(Math.abs(da - db) / 86_400_000)
 }
 
-function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: string | null }) {
-  const { formatMoney, formatDate } = useFormatters()
+function MatchCard({
+  match,
+  budgetId,
+  keep,
+  onKeepChange,
+  onReady,
+}: {
+  match: TransactionMatch
+  budgetId: string | null
+  keep: MergeKeep
+  onKeepChange: (keep: MergeKeep) => void
+  /** Whether the server has said what accepting would leave, and not no. */
+  onReady: (ready: boolean) => void
+}) {
+  const { formatMoney } = useFormatters()
   const { data: syncedTxn, isLoading: loadingS } = useTransaction(match.synced_transaction_id)
   const { data: manualTxn, isLoading: loadingM } = useTransaction(match.manual_transaction_id)
   const { data: payees = [] } = usePayees(budgetId)
+  const { data: accounts = [] } = useAccounts(budgetId)
 
   const payeeMap = new Map(payees.map((p) => [p.id, p.name]))
   const categoryLabels = useCategoryLabels(budgetId)
+
+  // The result is the server's (`MergePair`): this dialog used to compose
+  // its own — a second implementation of the merge, which drew the entered
+  // row's date and category whichever row the merge actually kept.
+  const pair = syncedTxn && manualTxn ? ([syncedTxn.id, manualTxn.id] as const) : null
+  const result = useMergeResult(budgetId, pair, keep)
+  useEffect(() => onReady(result.ready), [result.ready, onReady])
 
   const loading = loadingS || loadingM
 
@@ -236,45 +87,10 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
           <RefreshCw size={16} className="spin" />
         </div>
       ) : (
-        <>
-          <div className="match-modal__columns">
-            {syncedTxn && (
-              <TxnDetail
-                txn={syncedTxn}
-                label="From bank (synced)"
-                payeeMap={payeeMap}
-                categoryLabels={categoryLabels}
-                formatMoney={formatMoney}
-                formatDate={formatDate}
-              />
-            )}
-            <div className="match-modal__divider" />
-            {manualTxn && (
-              <TxnDetail
-                txn={manualTxn}
-                label="Manually entered"
-                payeeMap={payeeMap}
-                categoryLabels={categoryLabels}
-                formatMoney={formatMoney}
-                formatDate={formatDate}
-              />
-            )}
-          </div>
-
-          {syncedTxn && manualTxn && syncedTxn.amount !== manualTxn.amount && (
-            <div className="match-modal__callout" role="note">
-              <AlertTriangle size={13} aria-hidden />
-              <span>
-                Bank posted <strong>{formatMoney(Math.abs(syncedTxn.amount))}</strong>, your entry
-                says <strong>{formatMoney(Math.abs(manualTxn.amount))}</strong> — accepting updates
-                your entry to the bank's amount and keeps the original in its bank record.
-              </span>
-            </div>
-          )}
-
-          {syncedTxn &&
-            manualTxn &&
-            (manualTxn.cleared === 'reconciled' || syncedTxn.cleared === 'reconciled') && (
+        syncedTxn &&
+        manualTxn && (
+          <>
+            {(manualTxn.cleared === 'reconciled' || syncedTxn.cleared === 'reconciled') && (
               <div className="match-modal__callout" role="note">
                 <AlertTriangle size={13} aria-hidden />
                 <span>
@@ -284,28 +100,43 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
               </div>
             )}
 
-          {syncedTxn && manualTxn && postedGapDays(syncedTxn, manualTxn) >= 2 && (
-            <div className="match-modal__callout" role="note">
-              <AlertTriangle size={13} aria-hidden />
-              <span>
-                These posted <strong>{postedGapDays(syncedTxn, manualTxn)} days apart</strong>. A
-                charge that repeats — the same coffee every week — looks like this; check the dates
-                before accepting.
-              </span>
-            </div>
-          )}
+            {postedGapDays(syncedTxn, manualTxn) >= 2 && (
+              <div className="match-modal__callout" role="note">
+                <AlertTriangle size={13} aria-hidden />
+                <span>
+                  These posted <strong>{postedGapDays(syncedTxn, manualTxn)} days apart</strong>. A
+                  charge that repeats — the same coffee every week — looks like this; check the
+                  dates before accepting.
+                </span>
+              </div>
+            )}
 
-          {syncedTxn && manualTxn && (
-            <MergedPreview
-              syncedTxn={syncedTxn}
-              manualTxn={manualTxn}
+            {syncedTxn.amount !== manualTxn.amount && (
+              <div className="match-modal__callout" role="note">
+                <AlertTriangle size={13} aria-hidden />
+                <span>
+                  The amounts differ: <strong>{formatMoney(Math.abs(syncedTxn.amount))}</strong> and{' '}
+                  <strong>{formatMoney(Math.abs(manualTxn.amount))}</strong>. Check they are the
+                  same purchase before accepting.
+                </span>
+              </div>
+            )}
+
+            <MergePair
+              rows={[syncedTxn, manualTxn]}
+              labels={pairLabels(syncedTxn, manualTxn)}
+              preview={result.preview}
+              refusal={result.refusal}
+              keep={keep}
+              onKeepChange={onKeepChange}
               payeeMap={payeeMap}
               categoryLabels={categoryLabels}
-              formatMoney={formatMoney}
-              formatDate={formatDate}
+              accountOnBudget={
+                accounts.find((acct) => acct.id === manualTxn.account_id)?.on_budget ?? true
+              }
             />
-          )}
-        </>
+          </>
+        )
       )}
     </div>
   )
@@ -316,9 +147,21 @@ interface Props {
   budgetId: string | null
   onClose: () => void
   initialMatchId?: string
+  /** Answer every pair in the queue "keep separate" at once. Offered by a
+   *  caller that owns one account's queue (the account page); the caller
+   *  does the work and closes this. */
+  onKeepAllSeparate?: () => void
+  keepingAllSeparate?: boolean
 }
 
-export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }: Props) {
+export function MatchReviewModal({
+  matches,
+  budgetId,
+  onClose,
+  initialMatchId,
+  onKeepAllSeparate,
+  keepingAllSeparate = false,
+}: Props) {
   const [idx, setIdx] = useState(() => {
     if (!initialMatchId) return 0
     const i = matches.findIndex((m) => m.id === initialMatchId)
@@ -326,9 +169,13 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
   })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  // The picks belong to the pair on screen: moving on starts the next one
+  // from the defaults, whichever way the move happened.
+  const [picks, setPicks] = useState<{ matchId: string; keep: MergeKeep } | null>(null)
+  const [ready, setReady] = useState(false)
   const acceptMatch = useAcceptMatch(budgetId)
   const rejectMatch = useRejectMatch()
-  const deciding = acceptMatch.isPending || rejectMatch.isPending
+  const deciding = acceptMatch.isPending || rejectMatch.isPending || keepingAllSeparate
 
   const pending = matches.filter((m) => !dismissed.has(m.id))
   const current = pending[idx] ?? pending[0]
@@ -345,6 +192,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
   }
 
   if (!current) return null
+  const keep = picks?.matchId === current.id ? picks.keep : NO_PICKS
 
   async function decide(accept: boolean) {
     const id = current.id
@@ -353,7 +201,8 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
     // is the one thing the user needs to read.
     setError(null)
     try {
-      await (accept ? acceptMatch : rejectMatch).mutateAsync(id)
+      if (accept) await acceptMatch.mutateAsync({ matchId: id, keep })
+      else await rejectMatch.mutateAsync(id)
     } catch (err) {
       setError(
         apiErrorMessage(err, accept ? 'These could not be merged' : 'Could not keep these separate')
@@ -374,7 +223,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
       }
       onClose={onClose}
       historyKey="match-review"
-      className="match-modal"
+      className="match-modal merge-pair-dialog"
       // The decision is the footer's, pinned under a card tall enough to
       // scroll; moving through the queue sits at the start, where Delete sits
       // in a settings dialog.
@@ -410,6 +259,19 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
             </>
           )}
           <div className="dialog-actions__end">
+            {/* A queue of false alarms had no way out but this dialog, one
+                pair at a time. */}
+            {onKeepAllSeparate && pending.length > 1 && (
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary"
+                onClick={onKeepAllSeparate}
+                disabled={deciding}
+                title="None of these are duplicates — keep every pair as two transactions"
+              >
+                Keep all {pending.length} separate
+              </button>
+            )}
             <button
               type="button"
               className="dialog-btn dialog-btn--secondary"
@@ -422,7 +284,9 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
               type="button"
               className="dialog-btn dialog-btn--primary"
               onClick={() => void decide(true)}
-              disabled={deciding}
+              // Until the server has said what accepting leaves — or when it
+              // has said these cannot be merged — there is nothing to accept.
+              disabled={deciding || !ready}
             >
               Accept link
             </button>
@@ -430,7 +294,14 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
         </div>
       }
     >
-      <MatchCard key={current.id} match={current} budgetId={budgetId} />
+      <MatchCard
+        key={current.id}
+        match={current}
+        budgetId={budgetId}
+        keep={keep}
+        onKeepChange={(next) => setPicks({ matchId: current.id, keep: next })}
+        onReady={setReady}
+      />
     </Dialog>
   )
 }

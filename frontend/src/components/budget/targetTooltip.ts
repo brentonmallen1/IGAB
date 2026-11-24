@@ -4,12 +4,22 @@
  * a one-line test.
  */
 
+import type { TargetStatus } from '../../types'
+
 export type BadgeStatus = 'funded' | 'underfunded' | 'pending'
 
 export const BADGE_LABELS: Record<BadgeStatus, string> = {
   funded: 'Funded',
   underfunded: 'Underfunded',
   pending: 'Pending',
+}
+
+/** The badge a served target status draws as. Every met target — overfunded
+ *  and spent past target included — is "funded": the badge only tells "needs
+ *  money" from "doesn't", and "pending", which is needs money but not yet.
+ *  The Budget row and the Savings report each wrote this out themselves. */
+export function badgeStatus(status: TargetStatus): BadgeStatus {
+  return status === 'underfunded' || status === 'pending' ? status : 'funded'
 }
 
 /** A short ordinal for the day the target is checked on. */

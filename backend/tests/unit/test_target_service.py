@@ -156,6 +156,37 @@ class TestCalculateStatus:
         assert status(self.svc, t, "525", "525") == "funded"
         assert status(self.svc, t, "525.01", "525.01") == "overfunded"
 
+    def test_extra_that_was_spent_is_spent_past_target_not_overfunded(self):
+        """Target $100, $130 assigned to cover $130 of spending: nothing is
+        left, so nothing is overfunded. The Overfunded filter listed this row
+        beside an Available of $0."""
+        t = make_target("monthly_funding", "100")
+        assert status(self.svc, t, "130", "0", activity="-130") == "spent_past_target"
+
+    def test_spent_past_target_while_overspent_too(self):
+        t = make_target("monthly_funding", "100")
+        assert status(self.svc, t, "130", "-20", activity="-150") == "spent_past_target"
+
+    def test_extra_partly_spent_is_still_overfunded_by_what_is_left(self):
+        """$130 assigned, $110 spent: $20 is still there and Reduce
+        Overfunded would return it, so the row says so."""
+        t = make_target("monthly_funding", "100")
+        assert status(self.svc, t, "130", "20", activity="-110") == "overfunded"
+        assert self.svc.returnable(
+            t, assigned=Decimal("130"), activity=Decimal("-110"), available=Decimal("20"), month=MAY
+        ) == Decimal("20")
+
+    def test_spending_within_the_band_stays_funded(self):
+        t = make_target("monthly_funding", "100")
+        assert status(self.svc, t, "105", "0", activity="-105") == "funded"
+
+    def test_an_envelope_above_its_stop_is_overfunded_whatever_this_month_assigned(self):
+        """A ceiling is judged on the balance: money carried in above the
+        stop is sitting there, so it is overfunded — never spent past target,
+        though none of it is this month's to return."""
+        t = make_target("savings_balance", "1000")
+        assert status(self.svc, t, "0", "1100") == "overfunded"
+
     def test_savings_balance_is_judged_on_the_balance_not_the_assignment(self):
         # $400 assigned and spent again: the balance is short and the pill
         # must say so, whatever was assigned this month.

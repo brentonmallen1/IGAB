@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { SavingsEnvelope, SavingsSaved, SavingsSection, SavingsTarget } from '../../../types'
 import { accountTypeLabel } from '../../../constants/accountTypes'
-import { BADGE_LABELS } from '../../budget/targetTooltip'
+import { BADGE_LABELS, badgeStatus } from '../../budget/targetTooltip'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SET_ASIDE } from '../../../utils/savingsModes'
 
@@ -39,9 +39,9 @@ function Empty({ children }: { children: ReactNode }) {
   return <p className="savings-section__empty">{children}</p>
 }
 
-/** The Budget page's pill, in its words: the page shows overfunded as funded. */
+/** The Budget page's pill, in its words (`badgeStatus`). */
 function statusLabel(target: SavingsTarget): string {
-  return target.status === 'overfunded' ? BADGE_LABELS.funded : BADGE_LABELS[target.status]
+  return BADGE_LABELS[badgeStatus(target.status)]
 }
 
 function TargetCell({ target }: { target: SavingsTarget | null }) {
