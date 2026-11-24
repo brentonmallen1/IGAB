@@ -175,7 +175,8 @@ class ReconciliationService:
         statement_balance: Decimal,
         adjustment_transaction_id: uuid.UUID | None = None,
     ) -> ReconciliationSnapshot:
-        """Mark all cleared transactions as reconciled and save a snapshot.
+        """Mark all cleared transactions as reconciled — approving any that
+        were still waiting for it — and save a snapshot.
 
         The cleared balance is recomputed HERE (not trusted from the UI): any
         transaction that slipped in between the status call and finish would
@@ -208,19 +209,29 @@ class ReconciliationService:
                 Transaction.cleared == "cleared",
                 Transaction.date <= today_utc(),
             )
-            locked_ids = [
-                str(t)
-                for t in (
-                    await self.session.execute(select(Transaction.id).where(*lock_clauses))
-                ).scalars()
-            ]
+            locking = (
+                await self.session.execute(
+                    select(Transaction.id, Transaction.approved).where(*lock_clauses)
+                )
+            ).all()
+            locked_ids = [str(row.id) for row in locking]
+            # Approved by this finish, named so undo hands back exactly these.
+            approved_ids = [str(row.id) for row in locking if not row.approved]
 
             # Mark all cleared → reconciled (includes the fresh adjustment).
             # Future-dated cleared transactions stay merely "cleared": they were
             # excluded from the balance above, so locking them as reconciled
             # would bless amounts the statement never confirmed.
+            #
+            # Locking a row approves it. Agreeing that the statement matches
+            # IS the review a bank-fed row was waiting for, and a row left
+            # `reconciled` and unapproved read in the register as still
+            # wanting attention — the status ladder ranks unapproved above
+            # reconciled — so a finished reconciliation looked unfinished.
+            # A row still missing a category keeps saying so; that is a
+            # different question and the statement does not answer it.
             await self.session.execute(
-                update(Transaction).where(*lock_clauses).values(cleared="reconciled")
+                update(Transaction).where(*lock_clauses).values(cleared="reconciled", approved=True)
             )
 
             # Update account reconciliation metadata
@@ -256,6 +267,7 @@ class ReconciliationService:
                 after={
                     **snapshot("reconciliation", row),
                     "_transaction_ids": locked_ids,
+                    "_approved_ids": approved_ids,
                     "_account_before": stamp_before,
                     "_account_after": {
                         "last_reconciled_at": serialize_value(reconciled_at),
