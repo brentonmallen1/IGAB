@@ -38,7 +38,7 @@ describe('a match decision', () => {
   it('accepting refreshes the reconcile status and the budget it merged in', async () => {
     const spy = vi.spyOn(qc, 'invalidateQueries')
     const { result } = renderHook(() => useAcceptMatch('b1'), { wrapper })
-    result.current.mutate('m1')
+    result.current.mutate({ matchId: 'm1' })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     const roots = invalidatedRoots(spy)

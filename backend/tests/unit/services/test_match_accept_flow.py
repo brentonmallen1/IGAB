@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.merging import MergeKeep
 from igab.services.transaction_matching_service import TransactionMatchingService
 
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -124,7 +125,18 @@ class TestAcceptLinkGuards:
 
         await svc._accept_link(synced, manual, 0.99)
 
-        svc.txn_service.merge.assert_awaited_once_with(BUDGET_ID, [synced.id, manual.id])
+        # No picks: the merge's own defaults, as a sync's auto-accept needs.
+        svc.txn_service.merge.assert_awaited_once_with(BUDGET_ID, [synced.id, manual.id], keep=None)
+
+    async def test_accept_link_hands_the_reviews_picks_to_the_merge(self) -> None:
+        svc = make_service()
+        synced = make_txn(sync_id="t-1", sync_source="simplefin")
+        manual = make_txn()
+        keep = MergeKeep(payee=synced.id)
+
+        await svc._accept_link(synced, manual, 0.99, keep)
+
+        svc.txn_service.merge.assert_awaited_once_with(BUDGET_ID, [synced.id, manual.id], keep=keep)
 
 
 class TestTryMatchWritesTheRowAfterTheOutcome:

@@ -1,4 +1,5 @@
 export * from './simplefin'
+export * from './merge'
 
 export interface User {
   id: string
@@ -277,12 +278,7 @@ export interface BudgetView {
  *  backend/src/igab/domain/enums.py; `TargetService.calculate_status` is
  *  where each is decided. `spent_past_target` is assigned past the target
  *  with the extra already spent — met, with nothing left to return. */
-export type TargetStatus =
-  | 'funded'
-  | 'underfunded'
-  | 'overfunded'
-  | 'spent_past_target'
-  | 'pending'
+export type TargetStatus = 'funded' | 'underfunded' | 'overfunded' | 'spent_past_target' | 'pending'
 
 export interface CategoryBalance {
   category_id: string

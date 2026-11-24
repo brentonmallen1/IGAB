@@ -3,6 +3,7 @@ import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import type {
+  MergeKeep,
   SimpleFINConfig,
   SimpleFINConnection,
   SimpleFINRateLimitStatus,
@@ -551,7 +552,10 @@ export function usePendingMatches(budgetId: string | null) {
 export function useAcceptMatch(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/accept`),
+    // `keep`: the review's picks for the fields the two rows disagree on —
+    // the merge's own argument, since accepting is a merge.
+    mutationFn: ({ matchId, keep }: { matchId: string; keep?: MergeKeep }) =>
+      apiClient.post(`/simplefin/matches/${matchId}/accept`, { keep: keep ?? null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
       // Every account's list: the review dialog passes no accountId, and

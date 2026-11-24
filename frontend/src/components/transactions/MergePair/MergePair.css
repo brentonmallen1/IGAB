@@ -1,0 +1,198 @@
+/* Two transactions becoming one: a card each, and the result under them.
+   Drawn by the register's merge dialog and the duplicate review alike. */
+.merge-pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.merge-pair__hint,
+.merge-pair__working {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.merge-pair__cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.merge-pair__card,
+.merge-pair__result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  background: var(--surface-sunken);
+}
+
+/* The result is the thing being decided: it reads as the outcome, not as a
+   third option beside the two cards. */
+.merge-pair__result {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--surface-raised));
+}
+
+.merge-pair__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.merge-pair__card-title,
+.merge-pair__result-title {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.merge-pair__result-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-accent);
+}
+
+.merge-pair__use-all {
+  padding: 1px 6px;
+  font-size: var(--font-size-2xs);
+  color: var(--color-accent);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-sm);
+}
+
+.merge-pair__use-all:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.merge-pair__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+}
+
+.merge-pair__key {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.merge-pair__value {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.merge-pair__muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.merge-pair__status {
+  text-transform: capitalize;
+}
+
+/* A value that is a choice. Outlined so it reads as pressable at rest; the
+   kept one is filled, so the pair says at a glance which side won. */
+.merge-pair__pick {
+  padding: 1px 6px;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  border: 1px solid var(--input-border, var(--edge-strong));
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.merge-pair__pick--kept {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  font-weight: 600;
+}
+
+.merge-pair__pick:not(.merge-pair__pick--kept) {
+  color: var(--text-muted);
+}
+
+@media (hover: hover) {
+  .merge-pair__pick:not(.merge-pair__pick--kept):hover,
+  .merge-pair__use-all:not(:disabled):hover {
+    border-color: var(--color-accent);
+    color: var(--text-primary);
+  }
+}
+
+.merge-pair__pick:focus-visible,
+.merge-pair__use-all:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* A split's lines, under the Category row they belong to. */
+.merge-pair__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 0 0 var(--spacing-sm);
+  list-style: none;
+  border-left: 2px solid var(--edge);
+}
+
+.merge-pair__line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+}
+
+.merge-pair__line-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-pair__note {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.merge-pair__refusal {
+  margin: 0;
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+  border: 1px solid color-mix(in srgb, var(--color-negative) 40%, transparent);
+  border-radius: var(--border-radius-md);
+}
+
+/* A phone has no room for two columns of values this long. The one phone
+   breakpoint (themes/breakpoints.test.ts). */
+@media (max-width: 768px) {
+  .merge-pair__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .merge-pair__pick,
+  .merge-pair__use-all {
+    min-height: var(--tap-min);
+  }
+}

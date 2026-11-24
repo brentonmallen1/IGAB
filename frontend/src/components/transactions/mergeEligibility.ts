@@ -19,7 +19,8 @@ import type { Transaction } from '../../types'
  *
  * One clause here is deliberately stricter than the server; see
  * `_deliberate_divergence` in the fixture. Offerability is not survivorship:
- * which row survives stays the server's decision (see `lockedSurvivor`).
+ * which row survives is the server's decision alone (`choose_survivor`) and
+ * this side holds no copy of it — the merge dialog draws the served preview.
  */
 export function mayOfferMerge(a: Transaction, b: Transaction): boolean {
   if (a.id === b.id) return false
@@ -44,19 +45,4 @@ export function mayOfferMerge(a: Transaction, b: Transaction): boolean {
   // them, and this is the clause that was missing.
   if (a.sync_id && b.sync_id && a.sync_id !== b.sync_id) return false
   return true
-}
-
-/**
- * The row the server keeps whatever the user picks, or null when the pick is
- * theirs: reconciled first, then a split or transfer leg. The first two rules
- * of `choose_survivor` (backend domain/merging.py) — the preview has to lock
- * its Keep badge before any request, so it holds a copy, pinned by `kept` in
- * `shared/merge_cases.json` on both sides.
- */
-export function lockedSurvivor(a: Transaction, b: Transaction): Transaction | null {
-  const reconciledA = a.cleared === 'reconciled'
-  if (reconciledA !== (b.cleared === 'reconciled')) return reconciledA ? a : b
-  const structuredA = a.is_split || !!a.transfer_id
-  if (structuredA !== (b.is_split || !!b.transfer_id)) return structuredA ? a : b
-  return null
 }

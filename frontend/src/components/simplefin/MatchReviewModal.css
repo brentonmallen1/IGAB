@@ -3,7 +3,7 @@
    so a tall match card was clipped outright with no way to reach the rest.
    0,2,0 so the width beats `.dialog--md`'s 520. */
 .dialog.match-modal {
-  --dialog-w: 580px;
+  --dialog-w: 620px;
 }
 
 .match-modal__card {
@@ -52,116 +52,6 @@
   justify-content: center;
   padding: var(--spacing-lg);
   color: var(--color-text-muted);
-}
-
-.match-modal__columns {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: var(--spacing-md);
-}
-
-.match-modal__col-label {
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
-  margin-bottom: var(--spacing-sm);
-}
-
-.match-modal__divider {
-  width: 1px;
-  background: var(--color-border);
-  align-self: stretch;
-}
-
-.match-modal__txn-detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-}
-
-.match-modal__txn-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-xs);
-}
-
-.match-modal__txn-key {
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-.match-modal__txn-desc {
-  color: var(--color-text-muted);
-  font-style: italic;
-  text-align: right;
-  word-break: break-word;
-}
-
-.match-modal__cleared {
-  font-size: var(--font-size-2xs);
-  text-transform: capitalize;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-weight: 500;
-}
-
-.match-modal__cleared--cleared {
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
-  color: var(--color-success);
-}
-.match-modal__cleared--uncleared {
-  background: color-mix(in srgb, var(--color-text-muted) 12%, transparent);
-  color: var(--color-text-muted);
-}
-.match-modal__cleared--pending {
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  color: var(--color-warning);
-}
-.match-modal__cleared--reconciled {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  color: var(--color-accent);
-}
-
-.match-modal__txn-value {
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
-}
-
-.match-modal__merged {
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
-  border-radius: 6px;
-  padding: var(--spacing-sm) var(--spacing-md);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.match-modal__merged-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-accent);
-  margin-bottom: 4px;
-}
-
-.match-modal__merged-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-xs);
 }
 
 /* Previous and Next are the shared secondary button with only an icon in it. */

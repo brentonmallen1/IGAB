@@ -202,10 +202,10 @@ describe('what the dropdown holds', () => {
   it('offers only the statuses it was handed — the ones not on the bar', () => {
     // Two readings of the overspent count, free to disagree the moment one is
     // computed from a different list. There is one.
-    const { menu: rest } = splitStatuses(
-      buttons({ counts: { ...NO_COUNTS, pending: 3 } }),
-      ['overspent', 'underfunded']
-    )
+    const { menu: rest } = splitStatuses(buttons({ counts: { ...NO_COUNTS, pending: 3 } }), [
+      'overspent',
+      'underfunded',
+    ])
     const m = menu({ saved: saved(2), statuses: rest })
     expect(labels(m, 'Status')).toEqual([
       'Pending (3)',

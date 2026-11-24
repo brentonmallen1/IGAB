@@ -12,6 +12,8 @@ import { apiClient, apiErrorMessage } from './client'
 import type {
   BudgetTransactionsResponse,
   BulkActionResult,
+  MergeKeep,
+  MergePreview,
   SimilarTransaction,
   SplitCreate,
   Transaction,
@@ -694,20 +696,58 @@ export function useBulkApprove(budgetId: string) {
   })
 }
 
+/**
+ * What merging these two would leave behind, for these picks — the server's
+ * own answer (`TransactionService.preview_merge`), built from the same
+ * preparation the merge writes from. A read; it is a POST only because its
+ * arguments are the merge's own body.
+ *
+ * A merge the server would refuse is an error here, carrying the reason, so
+ * the dialog can say why before anyone presses Merge. The last answer stays
+ * on screen while a new pick is worked out, so the result does not blink.
+ */
+export function useMergePreview(
+  budgetId: string | null,
+  transactionIds: readonly [string, string] | null,
+  keep: MergeKeep
+) {
+  return useQuery({
+    queryKey: [ROOT.mergePreview, budgetId, transactionIds, keep],
+    queryFn: async () => {
+      const { data } = await apiClient.post<MergePreview>(
+        `/${budgetId}/transactions/merge/preview`,
+        { transaction_ids: transactionIds, keep }
+      )
+      return data
+    },
+    enabled: !!budgetId && !!transactionIds,
+    placeholderData: keepPreviousData,
+    // A refusal is an answer, not a blip: asking again says the same thing.
+    retry: false,
+    // The rows can change under an open dialog (a sync, another tab).
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
 export function useMergeTransactions(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
       transactionIds,
       survivorId,
+      keep,
     }: {
       transactionIds: string[]
       survivorId?: string
+      /** The picks the preview was showing — the same body it was asked with. */
+      keep?: MergeKeep
     }) =>
       apiClient
         .post<Transaction>(`/${budgetId}/transactions/merge`, {
           transaction_ids: transactionIds,
           survivor_id: survivorId ?? null,
+          keep: keep ?? null,
         })
         .then((r) => r.data),
     onSuccess: (txn, { transactionIds }) => {

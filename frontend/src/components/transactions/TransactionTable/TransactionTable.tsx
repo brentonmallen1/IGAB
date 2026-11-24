@@ -56,9 +56,10 @@ import { today } from '../../../utils/dates'
 import { sumAmounts } from '../../../utils/money'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type {
-  Transaction,
   ClearedStatus,
+  MergeKeep,
   ScheduledTransaction,
+  Transaction,
   TransactionMatch,
 } from '../../../types'
 import { filingCategoryOptions } from '../../../utils/categoryPickers'
@@ -699,14 +700,16 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   const [mergeError, setMergeError] = useState<string | null>(null)
   const handleConfirmMerge = useCallback(
-    async (survivorId?: string) => {
-      // The server refuses merges the register cannot rule out on its own
-      // (a survivor the rules forbid, most of all). Swallowing that left
-      // the modal open with the button doing nothing — the refusal is the
-      // one thing the user needs to read.
+    async (transactionIds: string[], keep: MergeKeep) => {
+      // The preview catches most refusals before the click, but the rows can
+      // change under an open dialog. Swallowing a refusal left the modal
+      // open with the button doing nothing — it is the one thing the user
+      // needs to read.
       setMergeError(null)
       try {
-        await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
+        // The ids in the order the preview was asked with, and its picks:
+        // the same body, so the merge is the one the dialog was showing.
+        await mergeTxns.mutateAsync({ transactionIds, keep })
       } catch (err) {
         setMergeError(apiErrorMessage(err, 'These transactions could not be merged'))
         return
@@ -715,7 +718,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       clearTransactionSelection()
       notify('Transactions merged', 'latest')
     },
-    [mergeTxns, selectedTransactionIds, clearTransactionSelection, notify]
+    [mergeTxns, clearTransactionSelection, notify]
   )
 
   // Bulk categorize files every selected row, so it offers what any filing
@@ -1006,11 +1009,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     >
       {showMergeModal && mergeEligiblePair && (
         <MergePreviewModal
+          budgetId={budgetId}
           transactions={mergeEligiblePair}
           payeeMap={payeeMap}
           categoryLabels={categoryLabels}
           accountOnBudget={onBudgetAccountIds.has(mergeEligiblePair[0].account_id)}
-          onConfirm={handleConfirmMerge}
+          onConfirm={(keep) =>
+            void handleConfirmMerge(
+              mergeEligiblePair.map((t) => t.id),
+              keep
+            )
+          }
           error={mergeError}
           onCancel={() => {
             setMergeError(null)
