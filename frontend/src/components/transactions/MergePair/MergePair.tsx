@@ -191,15 +191,31 @@ const TRANSFER_NOTE: Record<NonNullable<MergePreview['transfer']>, string> = {
 
 function Result({
   preview,
-  payeeMap,
+  survivor,
   categoryLabels,
+  accountOnBudget,
 }: {
   preview: MergePreview
-  payeeMap: ReadonlyMap<string, string>
+  /** The row the result is written onto, as it reads now. */
+  survivor: Transaction | undefined
   categoryLabels: ReadonlyMap<string, NamedCategory>
+  accountOnBudget: boolean
 }) {
   const { formatMoney, formatDate } = useFormatters()
-  const category = preview.category_id ? categoryDisplay(preview.category_id, categoryLabels) : null
+  // Read by the register's rule, like the cards above — the result used to
+  // go its own way and say "—" where a card said "Needs Category". With no
+  // category on the result neither row had one, so whether one is owed is
+  // the kept row's own served answer; a transfer leg owes none.
+  const category = categoryCellLabel(
+    {
+      is_split: preview.is_split,
+      category_id: preview.category_id,
+      needs_category: !preview.transfer && !!survivor?.needs_category,
+      prior_category_name: survivor?.prior_category_name ?? null,
+    },
+    categoryLabels,
+    accountOnBudget
+  )
 
   return (
     <section className="merge-pair__result" aria-label="After merging">
@@ -213,21 +229,17 @@ function Result({
       </div>
       <div className="merge-pair__row">
         <span className="merge-pair__key">Payee</span>
-        <span className="merge-pair__value">
-          {preview.payee_id ? (payeeMap.get(preview.payee_id) ?? '—') : '—'}
-        </span>
+        <span className="merge-pair__value">{preview.payee_name ?? '—'}</span>
       </div>
       <div className="merge-pair__row">
         <span className="merge-pair__key">Category</span>
         <span className="merge-pair__value">
           {preview.is_split ? (
             `Split, ${preview.lines.length} lines`
-          ) : category ? (
-            <Tooltip content={category.path} block>
-              {category.name}
-            </Tooltip>
           ) : (
-            '—'
+            <Tooltip content={categoryCellHover(category)} block>
+              {categoryCellText(category)}
+            </Tooltip>
           )}
         </span>
       </div>
@@ -313,7 +325,12 @@ export function MergePair({
           These can’t be merged: {refusal}
         </p>
       ) : preview ? (
-        <Result preview={preview} payeeMap={payeeMap} categoryLabels={categoryLabels} />
+        <Result
+          preview={preview}
+          survivor={rows.find((row) => row.id === preview.survivor_id)}
+          categoryLabels={categoryLabels}
+          accountOnBudget={accountOnBudget}
+        />
       ) : (
         <p className="merge-pair__working" role="status">
           Working out the result…

@@ -7,10 +7,11 @@ import { usePayees } from '../../api/payees'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useCategoryLabels } from '../../hooks/useCategoryLabels'
 import type { MergeKeep, Transaction, TransactionMatch } from '../../types'
-import { useMergePreview, useTransaction } from '../../api/transactions'
+import { useTransaction } from '../../api/transactions'
 import { Dialog } from '../common/Dialog/Dialog'
 import { MergePair } from '../transactions/MergePair/MergePair'
 import { pairLabels } from '../transactions/MergePair/mergePicks'
+import { useMergeResult } from '../transactions/MergePair/useMergeResult'
 // After Dialog, so its one-class variations are declared after the shared ones.
 import './MatchReviewModal.css'
 
@@ -72,9 +73,8 @@ function MatchCard({
   // its own — a second implementation of the merge, which drew the entered
   // row's date and category whichever row the merge actually kept.
   const pair = syncedTxn && manualTxn ? ([syncedTxn.id, manualTxn.id] as const) : null
-  const preview = useMergePreview(budgetId, pair, keep)
-  const ready = !!preview.data && !preview.isError
-  useEffect(() => onReady(ready), [ready, onReady])
+  const result = useMergeResult(budgetId, pair, keep)
+  useEffect(() => onReady(result.ready), [result.ready, onReady])
 
   const loading = loadingS || loadingM
 
@@ -125,12 +125,8 @@ function MatchCard({
             <MergePair
               rows={[syncedTxn, manualTxn]}
               labels={pairLabels(syncedTxn, manualTxn)}
-              preview={preview.isError ? undefined : preview.data}
-              refusal={
-                preview.isError
-                  ? apiErrorMessage(preview.error, 'the result could not be worked out')
-                  : null
-              }
+              preview={result.preview}
+              refusal={result.refusal}
               keep={keep}
               onKeepChange={onKeepChange}
               payeeMap={payeeMap}
@@ -227,7 +223,7 @@ export function MatchReviewModal({
       }
       onClose={onClose}
       historyKey="match-review"
-      className="match-modal"
+      className="match-modal merge-pair-dialog"
       // The decision is the footer's, pinned under a card tall enough to
       // scroll; moving through the queue sits at the start, where Delete sits
       // in a settings dialog.

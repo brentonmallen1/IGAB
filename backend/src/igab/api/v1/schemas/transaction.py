@@ -9,7 +9,7 @@ from pydantic import Field, field_validator, model_validator
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
-from igab.domain.merging import MergeKeep
+from igab.domain.merging import MergeKeep, TransferOutcome
 from igab.domain.money import Money
 from igab.domain.payee_names import dedupe_samples
 
@@ -366,7 +366,11 @@ class MergePreviewResponse(ApiModel):
     amount: Decimal
     #: The kept row's own amount, when the bank's posted amount replaces it.
     replaced_amount: Decimal | None
+    #: None beside a `payee_name` when the merge would create the payee.
     payee_id: uuid.UUID | None
+    #: The payee as the merged row will read it. Served because taking a
+    #: transfer over can name a payee that does not exist until the merge.
+    payee_name: str | None
     category_id: uuid.UUID | None
     memo: str | None
     cleared: str
@@ -376,8 +380,7 @@ class MergePreviewResponse(ApiModel):
     has_bank_record: bool
     import_description: str | None
     bank_posted_date: datetime.date | None
-    #: "kept" | "taken_over" | "other_side_merged" | None — see MergePreview.
-    transfer: Literal["kept", "taken_over", "other_side_merged"] | None
+    transfer: TransferOutcome | None
     choices: MergeChoicesResponse
 
 

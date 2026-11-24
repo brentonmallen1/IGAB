@@ -777,6 +777,7 @@ async def preview_merge_transactions(
         amount=preview.amount,
         replaced_amount=preview.replaced_amount,
         payee_id=preview.payee_id,
+        payee_name=preview.payee_name,
         category_id=preview.category_id,
         memo=preview.memo,
         cleared=preview.cleared,

@@ -77,6 +77,7 @@ function answer(keep: MergeKeep = {}, over: Partial<MergePreview> = {}): MergePr
     amount: -80,
     replaced_amount: null,
     payee_id: row(from('payee')).payee_id,
+    payee_name: payees.get(row(from('payee')).payee_id ?? '') ?? null,
     category_id: row(from('category')).category_id,
     memo: memo === 'both' ? 'weekly shop — card purchase' : row(memo).memo,
     cleared: 'cleared',
@@ -331,6 +332,38 @@ describe('merging', () => {
     expect(
       screen.getByText('Both transactions are linked to different bank transactions')
     ).toBeInTheDocument()
+  })
+})
+
+describe('the result, for a row taking a transfer over', () => {
+  // The link is written after the merge and decides both. The payee is the
+  // server's name for it — it may not exist yet, so there is no id to look
+  // up — and the category reads as a transfer's, by the register's rule.
+  it('reads the transfer payee the server names, and "Transfer" for the category', () => {
+    api.preview = () =>
+      answer(
+        {},
+        {
+          transfer: 'taken_over',
+          payee_id: null,
+          payee_name: 'Transfer : Sapphire Visa',
+          category_id: null,
+        }
+      )
+    open()
+    expect(within(result()).getByText('Transfer : Sapphire Visa')).toBeInTheDocument()
+    expect(within(result()).getByText('Transfer')).toBeInTheDocument()
+  })
+
+  it('says the merged row still needs a category when the kept row does', () => {
+    api.preview = () => answer({}, { category_id: null })
+    open({
+      transactions: [
+        { ...ENTERED, category_id: null, needs_category: true },
+        { ...BANK, category_id: null, needs_category: false },
+      ],
+    })
+    expect(within(result()).getByText('Needs Category')).toBeInTheDocument()
   })
 })
 

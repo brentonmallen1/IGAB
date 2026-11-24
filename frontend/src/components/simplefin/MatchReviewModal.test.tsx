@@ -47,6 +47,7 @@ const PREVIEW = {
   amount: -24.6,
   replaced_amount: null,
   payee_id: null,
+  payee_name: null,
   category_id: null,
   memo: null,
   cleared: 'cleared',

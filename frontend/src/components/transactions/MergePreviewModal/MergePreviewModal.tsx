@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { apiErrorMessage } from '../../../api/client'
-import { useMergePreview } from '../../../api/transactions'
 import type { MergeKeep, Transaction } from '../../../types'
 import { Dialog } from '../../common/Dialog/Dialog'
 import type { NamedCategory } from '../../../utils/categoryLabels'
 import { MergePair } from '../MergePair/MergePair'
 import { pairLabels } from '../MergePair/mergePicks'
+import { useMergeResult } from '../MergePair/useMergeResult'
 import './MergePreviewModal.css'
 
 interface Props {
@@ -54,17 +53,14 @@ export function MergePreviewModal({
 }: Props) {
   const [first, second] = transactions
   const [keep, setKeep] = useState<MergeKeep>({})
-  const preview = useMergePreview(budgetId, [first.id, second.id], keep)
-  const refusal = preview.isError
-    ? apiErrorMessage(preview.error, 'the result could not be worked out')
-    : null
+  const result = useMergeResult(budgetId, [first.id, second.id], keep)
 
   return (
     <Dialog
       title="Merge transactions"
       onClose={onCancel}
       historyKey="merge-preview"
-      className="merge-modal"
+      className="merge-modal merge-pair-dialog"
       footer={
         <div className="dialog-actions">
           {error && <span className="dialog-form__error">{error}</span>}
@@ -83,7 +79,7 @@ export function MergePreviewModal({
               onClick={() => onConfirm(keep)}
               // Nothing to merge into until the server has said what the
               // result is, and nothing at all when it has said no.
-              disabled={isPending || !preview.data || preview.isError}
+              disabled={isPending || !result.ready}
             >
               {isPending ? 'Merging…' : 'Merge'}
             </button>
@@ -94,8 +90,8 @@ export function MergePreviewModal({
       <MergePair
         rows={transactions}
         labels={pairLabels(first, second)}
-        preview={preview.isError ? undefined : preview.data}
-        refusal={refusal}
+        preview={result.preview}
+        refusal={result.refusal}
         keep={keep}
         onKeepChange={setKeep}
         payeeMap={payeeMap}

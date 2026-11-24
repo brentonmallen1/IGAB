@@ -217,6 +217,72 @@ class TestPreviewIsTheMerge:
         assert not preview.bookkeeping.date.choosable
 
 
+class TestClearedStatus:
+    """The merged row reads the further-along status of the two. With two
+    hand-entered rows the older one survives, and its "uncleared" used to
+    win over a row already ticked off against the bank."""
+
+    async def _two_entered(self, db_session, older, newer):
+        services, budget, checking, cats, payees = await _setup(db_session)
+        rows = []
+        for cleared, day in ((older, DAY), (newer, DAY + timedelta(days=1))):
+            rows.append(
+                await create_transaction(
+                    db_session,
+                    budget,
+                    checking,
+                    "-80.00",
+                    day,
+                    payee=payees["grocer"],
+                    category=cats["groceries"],
+                    cleared=cleared,
+                )
+            )
+        return services, budget, rows
+
+    @pytest.mark.parametrize(
+        ("older", "newer", "expected"),
+        [
+            ("uncleared", "cleared", "cleared"),
+            ("cleared", "uncleared", "cleared"),
+            ("uncleared", "reconciled", "reconciled"),
+            ("cleared", "reconciled", "reconciled"),
+            ("uncleared", "uncleared", "uncleared"),
+            ("cleared", "cleared", "cleared"),
+        ],
+    )
+    async def test_the_further_along_status_wins(self, db_session, older, newer, expected):
+        services, budget, rows = await self._two_entered(db_session, older, newer)
+        preview, merged = await _assert_preview_is_the_merge(
+            services, db_session, budget, [rows[0].id, rows[1].id]
+        )
+        assert (preview.cleared, merged.cleared) == (expected, expected)
+
+    async def test_a_split_clearing_this_way_clears_its_lines(self, db_session):
+        services, budget, checking, cats, payees = await _setup(db_session)
+        split = await create_transaction(
+            db_session, budget, checking, "-80.00", DAY, payee=payees["grocer"], cleared="uncleared"
+        )
+        await services.transactions.convert_to_split(
+            budget.id,
+            split.id,
+            [
+                SplitSpec(amount=Decimal("-50.00"), category_id=cats["groceries"].id),
+                SplitSpec(amount=Decimal("-30.00"), category_id=cats["household"].id),
+            ],
+        )
+        await db_session.refresh(split)
+        plain = await create_transaction(
+            db_session, budget, checking, "-80.00", DAY, payee=payees["grocer"], cleared="cleared"
+        )
+        _, merged = await _assert_preview_is_the_merge(
+            services, db_session, budget, [split.id, plain.id]
+        )
+        assert merged.id == split.id and merged.cleared == "cleared"
+        lines = await services.transaction_repo.get_splits(merged.id)
+        assert {line.cleared for line in lines} == {"cleared"}
+
+
 class TestWhatThePreviewReports:
     async def test_which_fields_were_a_choice_and_where_each_came_from(self, db_session):
         services, budget, checking, cats, payees = await _setup(db_session)

@@ -189,6 +189,39 @@ class MergePlan:
         return partner is not None and self.survivor.transfer_id != partner.id
 
 
+#: What becomes of a transfer in a merge: the survivor keeps the one it has
+#: ("kept"), takes the other row's over ("taken_over"), or the two rows were
+#: both legs and the other account's pair merges too ("other_side_merged").
+TransferOutcome = Literal["kept", "taken_over", "other_side_merged"]
+
+
+def transfer_outcome(plan: MergePlan) -> TransferOutcome | None:
+    """How a merge's result relates to a transfer; None when none is involved."""
+    if plan.partner_merge is not None:
+        return "other_side_merged"
+    if plan.adopted_partner is not None:
+        return "taken_over"
+    if plan.survivor.transfer_id is not None:
+        return "kept"
+    return None
+
+
+#: How far along a row is. A bank hold ("pending") has not posted, so it
+#: stands where an uncleared row does.
+_CLEARED_RANK = {"pending": 0, "uncleared": 0, "cleared": 1, "reconciled": 2}
+
+
+def merged_cleared(survivor: str, deleted: str) -> str:
+    """The cleared status of the merged row: the further along of the two.
+
+    Whichever row survives, a merge never takes a row back a step — two
+    hand-entered rows used to read "uncleared" when the older one was, though
+    the other had been ticked off against the bank. A tie is the survivor's
+    (an uncleared row merged with a hold stays what it was).
+    """
+    return deleted if _CLEARED_RANK[deleted] > _CLEARED_RANK[survivor] else survivor
+
+
 @dataclass(frozen=True)
 class Refused:
     """Why a merge cannot happen, worded for the person who asked for it."""

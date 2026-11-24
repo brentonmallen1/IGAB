@@ -215,6 +215,27 @@ class PayeeRepository(BaseRepository[Payee]):
     def transfer_payee_name(cls, account_name: str) -> str:
         return f"{cls.TRANSFER_PREFIX}{account_name}"
 
+    async def find_transfer(self, budget_id: uuid.UUID, account_name: str) -> Payee | None:
+        """The "Transfer : <account>" payee if it exists. The reading half of
+        `find_or_create_transfer`, for a caller that must write nothing."""
+        name = self.transfer_payee_name(account_name)
+        # Exact match, not find_by_name's case-insensitive one. The unique
+        # constraint is case-sensitive, so "Savings" and "savings" are two
+        # accounts with two distinct payees — a case-insensitive lookup found
+        # the first one's payee for the second account, saw it already bound,
+        # and returned it. Every unlinked leg into "savings" then resolved its
+        # counterpart to the wrong account, which can classify a debt payment
+        # as savings.
+        return (
+            await self.session.execute(
+                select(Payee).where(
+                    Payee.budget_id == budget_id,
+                    Payee.name == name,
+                    Payee.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+
     async def find_or_create_transfer(
         self, budget_id: uuid.UUID, account_id: uuid.UUID, account_name: str
     ) -> Payee:
@@ -228,22 +249,7 @@ class PayeeRepository(BaseRepository[Payee]):
         since `uq_payee_budget_name` allows only one payee per name.
         """
         name = self.transfer_payee_name(account_name)
-        # Exact match, not find_by_name's case-insensitive one. The unique
-        # constraint is case-sensitive, so "Savings" and "savings" are two
-        # accounts with two distinct payees — a case-insensitive lookup found
-        # the first one's payee for the second account, saw it already bound,
-        # and returned it. Every unlinked leg into "savings" then resolved its
-        # counterpart to the wrong account, which can classify a debt payment
-        # as savings.
-        payee = (
-            await self.session.execute(
-                select(Payee).where(
-                    Payee.budget_id == budget_id,
-                    Payee.name == name,
-                    Payee.is_deleted == False,  # noqa: E712
-                )
-            )
-        ).scalar_one_or_none()
+        payee = await self.find_transfer(budget_id, account_name)
 
         if payee is None:
             return await self.create(budget_id=budget_id, name=name, transfer_account_id=account_id)

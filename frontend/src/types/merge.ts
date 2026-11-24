@@ -9,6 +9,8 @@
  * POST /{budget}/transactions/merge/preview.
  */
 
+import type { ClearedStatus } from './index'
+
 /** Which row each field is kept from — a transaction id. Absent leaves the
  *  server's default. `memo` may be `'both'`: two different memos, joined. */
 export interface MergeKeep {
@@ -42,10 +44,15 @@ export interface MergePreview {
   amount: number
   /** The kept row's own amount, when the bank's posted amount replaces it. */
   replaced_amount: number | null
+  /** Null beside a `payee_name` when the merge would create the payee (a
+   *  row taking a transfer over). */
   payee_id: string | null
+  /** The payee as the merged row will read it: the server's, never looked
+   *  up here — the payee may not exist until the merge. */
+  payee_name: string | null
   category_id: string | null
   memo: string | null
-  cleared: string
+  cleared: ClearedStatus
   is_split: boolean
   /** The split lines the result carries; empty when it is not a split. */
   lines: MergePreviewLine[]

@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Collection
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,10 +24,13 @@ from igab.domain.merging import (
     MergeRow,
     MergeSide,
     Refused,
+    TransferOutcome,
     keep_violation,
     may_offer_merge,
     merge_bookkeeping,
+    merged_cleared,
     plan_merge,
+    transfer_outcome,
 )
 from igab.domain.projected_interest import adopts_projection
 from igab.domain.reconciliation import (
@@ -136,7 +139,17 @@ class SplitSpec:
     id: uuid.UUID | None = None
 
 
-# Fields that may never be set to NULL via PATCH
+@dataclass
+class _Relink:
+    """The transfer link a merge's survivor ends up with, decided before
+    anything is written: the row it links to, which of the two legs lose
+    their category to the transfer rule, and the account its payee names."""
+
+    partner: Any
+    clear: list[uuid.UUID]
+    names: Account
+
+
 @dataclass
 class _PreparedMerge:
     """A merge, decided and not yet written (`_prepare_merge`)."""
@@ -150,6 +163,8 @@ class _PreparedMerge:
     bookkeeping: MergedBookkeeping
     #: The other account's pair, when two transfers become one.
     far: tuple[Any, Any, dict[str, Any], bool] | None
+    #: The survivor's new transfer link, when the merge rewrites it.
+    relink: _Relink | None
 
 
 @dataclass
@@ -163,7 +178,10 @@ class MergePreview:
     amount: Decimal
     #: The survivor's amount when the bank's posted amount replaces it.
     replaced_amount: Decimal | None
+    #: None with a `payee_name` when the merge would create the transfer
+    #: payee: a preview writes nothing, so there is no id to give yet.
     payee_id: uuid.UUID | None
+    payee_name: str | None
     category_id: uuid.UUID | None
     memo: str | None
     cleared: str
@@ -173,14 +191,12 @@ class MergePreview:
     has_bank_record: bool
     import_description: str | None
     bank_posted_date: datetime.date | None
-    #: What becomes of a transfer: the survivor keeps the one it has
-    #: ("kept"), takes the other row's over ("taken_over"), or the two rows
-    #: were both legs and the other account's pair merges too
-    #: ("other_side_merged"). None when no transfer is involved.
-    transfer: Literal["kept", "taken_over", "other_side_merged"] | None
+    #: What becomes of a transfer (`domain.merging.transfer_outcome`).
+    transfer: TransferOutcome | None
     bookkeeping: MergedBookkeeping
 
 
+# Fields that may never be set to NULL via PATCH
 _REQUIRED_FIELDS = ("date", "amount", "cleared", "approved", "account_id")
 
 
@@ -1664,15 +1680,14 @@ class TransactionService:
         moves exactly the losers' attachments back.
         """
         prepared = await self._prepare_merge(budget_id, transaction_ids, survivor_id, keep)
-        plan, rows, survivor = prepared.plan, prepared.rows, prepared.survivor
+        survivor = prepared.survivor
 
         async with self._mutation():
             await self._write_merge(survivor, prepared.deleted, prepared.updates, prepared.adopting)
             if prepared.far is not None:
                 await self._write_merge(*prepared.far)
-            new_partner = plan.survivor_partner
-            if plan.relinks and new_partner is not None:
-                await self._relink_merged_leg(budget_id, survivor, rows[new_partner.id])
+            if prepared.relink is not None:
+                await self._relink_merged_leg(budget_id, survivor, prepared.relink)
                 await self.transaction_repo.refresh(survivor)
         return survivor
 
@@ -1707,21 +1722,31 @@ class TransactionService:
             owner = survivor if survivor.is_split else deleted
             lines = await self.transaction_repo.get_splits(owner.id)
         amount = after("amount")
-        transfer: Literal["kept", "taken_over", "other_side_merged"] | None = None
-        if plan.partner_merge is not None:
-            transfer = "other_side_merged"
-        elif plan.adopted_partner is not None:
-            transfer = "taken_over"
-        elif survivor.transfer_id is not None:
-            transfer = "kept"
+        payee_id, category_id = after("payee_id"), after("category_id")
+        payee_name: str | None = None
+        relink = prepared.relink
+        if relink is not None:
+            # The link is written after the merge and has the last word on
+            # both: the leg's payee names the other account, and a category
+            # the transfer rule forbids goes. A preview built without it
+            # showed the payee and category the merge then replaced.
+            payee_name = PayeeRepository.transfer_payee_name(relink.names.name)
+            existing = await self.payee_repo.find_transfer(budget_id, relink.names.name)
+            payee_id = existing.id if existing is not None else None
+            if survivor.id in relink.clear:
+                category_id = None
+        elif payee_id is not None:
+            payee = await self.payee_repo.get(payee_id)
+            payee_name = payee.name if payee is not None else None
         return MergePreview(
             survivor_id=survivor.id,
             deleted_id=deleted.id,
             date=after("date"),
             amount=amount,
             replaced_amount=survivor.amount if amount != survivor.amount else None,
-            payee_id=after("payee_id"),
-            category_id=after("category_id"),
+            payee_id=payee_id,
+            payee_name=payee_name,
+            category_id=category_id,
             memo=after("memo"),
             cleared=after("cleared"),
             is_split=is_split,
@@ -1731,7 +1756,7 @@ class TransactionService:
             ),
             import_description=after("import_description"),
             bank_posted_date=after("bank_posted_date"),
-            transfer=transfer,
+            transfer=transfer_outcome(plan),
             bookkeeping=prepared.bookkeeping,
         )
 
@@ -1792,6 +1817,14 @@ class TransactionService:
                 plan.partner_merge, far_survivor, far_deleted, None
             )
             far = (far_survivor, far_deleted, far_updates, far_adopting)
+        relink: _Relink | None = None
+        new_partner = plan.survivor_partner
+        if plan.relinks and new_partner is not None:
+            relink = await self._plan_relink(
+                survivor,
+                rows[new_partner.id],
+                survivor_category=updates.get("category_id", survivor.category_id),
+            )
         return _PreparedMerge(
             plan=plan,
             rows=rows,
@@ -1801,6 +1834,7 @@ class TransactionService:
             adopting=adopting,
             bookkeeping=bookkeeping,
             far=far,
+            relink=relink,
         )
 
     async def _transfer_partners(self, *txns: Transaction) -> dict[uuid.UUID, Transaction]:
@@ -1919,6 +1953,10 @@ class TransactionService:
             updates["date"] = bookkeeping.date.value
         if deleted.approved and not survivor.approved:
             updates["approved"] = True
+        # After the bank-posting rule, which may already have cleared it.
+        cleared = merged_cleared(updates.get("cleared", survivor.cleared), deleted.cleared)
+        if cleared != survivor.cleared:
+            updates["cleared"] = cleared
         return updates, adopting, bookkeeping
 
     async def _write_merge(
@@ -1970,29 +2008,39 @@ class TransactionService:
                 )
                 await self._record_txn(moved, "update", before=line_before)
 
-    async def _relink_merged_leg(
-        self, budget_id: uuid.UUID, survivor: Transaction, partner: Transaction
-    ) -> None:
-        """Link a merge's survivor to the partner it ends up with.
+    async def _plan_relink(
+        self, survivor: Transaction, partner: Transaction, *, survivor_category: uuid.UUID | None
+    ) -> _Relink:
+        """Decide the link between a merge's survivor and the partner it ends
+        up with. Reads only, so the preview and the merge share the answer.
 
-        Through `link_legs`, the one way two existing rows become a transfer,
-        so the survivor carries the same payee and the same category rule as
-        any other leg. A category the rule forbids on either side goes: the
-        merge said this row is the transfer, and a transfer spends from an
-        envelope only when it leaves the budget.
+        A category the transfer rule forbids on either side goes: the merge
+        said this row is the transfer, and a transfer spends from an envelope
+        only when it leaves the budget. `survivor_category` is the one the
+        merge is about to write — the row itself has not been written yet.
         """
-        accounts = {
-            leg.id: await self.account_repo.get_or_raise(leg.account_id)
-            for leg in (survivor, partner)
-        }
-        clear = [
-            leg.id
-            for leg, other in ((survivor, partner), (partner, survivor))
-            if leg.category_id is not None
-            and not leg_may_carry_category(accounts[leg.id].on_budget, accounts[other.id].on_budget)
-        ]
+        own = await self.account_repo.get_or_raise(survivor.account_id)
+        other = await self.account_repo.get_or_raise(partner.account_id)
+        clear: list[uuid.UUID] = []
+        if survivor_category is not None and not leg_may_carry_category(
+            own.on_budget, other.on_budget
+        ):
+            clear.append(survivor.id)
+        if partner.category_id is not None and not leg_may_carry_category(
+            other.on_budget, own.on_budget
+        ):
+            clear.append(partner.id)
+        return _Relink(partner=partner, clear=clear, names=other)
+
+    async def _relink_merged_leg(
+        self, budget_id: uuid.UUID, survivor: Transaction, relink: _Relink
+    ) -> None:
+        """Carry out `_plan_relink`, through `link_legs` — the one way two
+        existing rows become a transfer, so the survivor carries the same
+        payee as any other leg."""
+        partner = relink.partner
         outflow, inflow = (survivor, partner) if survivor.amount < 0 else (partner, survivor)
-        await self.link_legs(budget_id, outflow, inflow, clear_categories=clear)
+        await self.link_legs(budget_id, outflow, inflow, clear_categories=relink.clear)
 
     async def _partner_on_budget_via_payee(self, payee: Payee | None) -> bool | None:
         """The on-budget flag of the account an UNPAIRED transfer leg names.

@@ -1,3 +1,10 @@
+/* The width of a dialog whose body is a MergePair: two cards side by side
+   need more than `.dialog--md`'s 520 (0,2,0 beats it). Written here once —
+   the two dialogs that draw a pair each used to carry their own copy. */
+.dialog.merge-pair-dialog {
+  --dialog-w: 620px;
+}
+
 /* Two transactions becoming one: a card each, and the result under them.
    Drawn by the register's merge dialog and the duplicate review alike. */
 .merge-pair {

@@ -1,7 +1,4 @@
 /* The overlay, panel, header and footer come from common/Dialog — which also
    brings the scroll region this modal never had: it capped nothing, so a tall
    two-column diff ran off the viewport with the buttons out of reach.
-   0,2,0 so the width beats `.dialog--md`'s 520. The body is MergePair's. */
-.dialog.merge-modal {
-  --dialog-w: 620px;
-}
+   The body and the width are MergePair's (`.merge-pair-dialog`). */

@@ -11,11 +11,14 @@ Invented rows: a grocery run entered by hand and the bank's copy of it.
 import uuid
 from datetime import date
 
+import pytest
+
 from igab.domain.merging import (
     MergeKeep,
     MergeRow,
     keep_violation,
     merge_bookkeeping,
+    merged_cleared,
 )
 
 GROCER, BANK_GROCER = uuid.uuid4(), uuid.uuid4()
@@ -173,3 +176,24 @@ class TestTransferLegs:
         book = merge_bookkeeping(mine, theirs, MergeKeep(payee=theirs.id), becomes_leg=True)
         assert (book.payee_id.value, book.payee_id.choosable) == (GROCER, False)
         assert (book.category_id.value, book.category_id.choosable) == (HOUSEHOLD, False)
+
+
+class TestClearedStatus:
+    @pytest.mark.parametrize(
+        ("survivor", "deleted", "expected"),
+        [
+            ("uncleared", "cleared", "cleared"),
+            ("cleared", "uncleared", "cleared"),
+            ("cleared", "reconciled", "reconciled"),
+            ("reconciled", "cleared", "reconciled"),
+            ("uncleared", "reconciled", "reconciled"),
+            # A hold has not posted: it stands where an uncleared row does,
+            # and a tie is the survivor's.
+            ("uncleared", "pending", "uncleared"),
+            ("pending", "uncleared", "pending"),
+            ("pending", "cleared", "cleared"),
+            ("cleared", "pending", "cleared"),
+        ],
+    )
+    def test_the_further_along_of_the_two(self, survivor, deleted, expected):
+        assert merged_cleared(survivor, deleted) == expected
