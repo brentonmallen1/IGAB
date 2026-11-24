@@ -1,4 +1,9 @@
 import { create } from 'zustand'
+import {
+  DEFAULT_DUPLICATE_SCAN_SCOPE,
+  normalizeScanScope,
+  type DuplicateScanScope,
+} from '../components/accounts/duplicateScan'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../components/layout/Sidebar/sidebarWidth'
@@ -46,12 +51,7 @@ export function normalizeBudgetRowMode(saved: unknown): BudgetRowMode {
 }
 
 export type QuickFilter =
-  | 'overspent'
-  | 'underfunded'
-  | 'pending'
-  | 'money-available'
-  | 'overfunded'
-  | 'spent-past-target'
+  'overspent' | 'underfunded' | 'pending' | 'money-available' | 'overfunded' | 'spent-past-target'
 
 export const ALL_QUICK_FILTERS: QuickFilter[] = [
   'overspent',
@@ -219,6 +219,9 @@ interface UIState {
   /** The register draws each split's lines under it. Off by default: most
    *  registers want one row per bank line. A standing choice, per device. */
   showSplitLines: boolean
+  /** The last scope "Find possible duplicates" was run with. */
+  duplicateScanScope: DuplicateScanScope
+  setDuplicateScanScope: (scope: DuplicateScanScope) => void
   /** One account's register draws a Balance column and reads in date order
    *  (registerOrder.ts `registerView`). Off by default, which leaves the
    *  register in its state order exactly as it was. Per device, like split
@@ -354,6 +357,8 @@ export const useUIStore = create<UIState>()(
       activeChatTab: FIRST_CHAT_TAB.key,
       budgetRowMode: 'expanded',
       showSplitLines: false,
+      duplicateScanScope: DEFAULT_DUPLICATE_SCAN_SCOPE,
+      setDuplicateScanScope: (scope) => set({ duplicateScanScope: scope }),
       showRunningBalance: false,
       selectedCategoryIds: new Set(),
       categoryInspectorOpen: true,
@@ -653,6 +658,8 @@ export const useUIStore = create<UIState>()(
         budgetRowMode: s.budgetRowMode,
         // So is drawing split lines in the register.
         showSplitLines: s.showSplitLines,
+        // How far back the duplicate scan looks is a standing preference.
+        duplicateScanScope: s.duplicateScanScope,
         showRunningBalance: s.showRunningBalance,
         // A width someone dragged to is a deliberate choice, like a filter.
         sidebarWidth: s.sidebarWidth,
@@ -700,6 +707,7 @@ export const useUIStore = create<UIState>()(
           // Only a real `true` turns it on: anything else stored there (a
           // hand-edited value, a future shape) reads as the default, off.
           showSplitLines: saved.showSplitLines === true,
+          duplicateScanScope: normalizeScanScope(saved.duplicateScanScope),
           showRunningBalance: saved.showRunningBalance === true,
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
           collapsedGroups: new Set(saved.collapsedGroups ?? []),

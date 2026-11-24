@@ -81,11 +81,24 @@ export function useDeleteAccount(budgetId: string) {
 export function useScanDuplicates() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (accountId: string) =>
+    // `since` is a local calendar date the caller worked out; absent means
+    // the whole account.
+    mutationFn: ({
+      accountId,
+      since,
+      includeReconciled,
+    }: {
+      accountId: string
+      since?: string
+      includeReconciled: boolean
+    }) =>
       apiClient
-        .post<{ created: number }>(`/accounts/${accountId}/scan-duplicates`)
+        .post<{ created: number }>(`/accounts/${accountId}/scan-duplicates`, {
+          since,
+          include_reconciled: includeReconciled,
+        })
         .then((r) => r.data),
-    onSuccess: (_data, accountId) => {
+    onSuccess: (_data, { accountId }) => {
       qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
       // The budget-wide list (sidebar, other pages) holds the new pairs too.
       qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })

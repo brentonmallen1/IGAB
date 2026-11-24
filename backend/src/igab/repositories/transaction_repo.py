@@ -1927,6 +1927,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         self,
         account_id: uuid.UUID,
         date_window_days: int = 5,
+        *,
+        since: date | None = None,
+        include_reconciled: bool = False,
     ) -> list[tuple[Transaction, str | None, Transaction, str | None]]:
         """Same-amount transaction pairs within a date window, paired in SQL.
 
@@ -1934,6 +1937,13 @@ class TransactionRepository(BaseRepository[Transaction]):
         already match on amount and date proximity; the caller scores payees.
         Returns (txn_a, payee_a_name, txn_b, payee_b_name) with a.id < b.id
         so each pair appears exactly once.
+
+        `since` and `include_reconciled` are the scope the person asked for,
+        not rules about what may merge (those are `domain.merging`'s, asked
+        by the caller). Both rows must be dated on or after `since`. Without
+        `include_reconciled` neither row may be reconciled: the statement
+        already vouched for those, and a scan that paired years of settled
+        history with itself buried the handful of rows worth a look.
         """
         from datetime import timedelta
 
@@ -1974,6 +1984,8 @@ class TransactionRepository(BaseRepository[Transaction]):
                         other.transfer_id.is_(None),
                     ),
                 ),
+                *(() if since is None else (Transaction.date >= since, other.date >= since)),
+                *(() if include_reconciled else (NOT_RECONCILED, on_alias(NOT_RECONCILED, other))),
             )
         )
         return [(row[0], row[1], row[2], row[3]) for row in result.all()]

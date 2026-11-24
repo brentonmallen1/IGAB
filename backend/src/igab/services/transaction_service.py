@@ -17,7 +17,7 @@ from igab.domain.card_charges import is_interest_or_fee
 from igab.domain.category_guess import guess_category
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.field_changes import changed_fields
-from igab.domain.merging import MergePlan, MergeSide, Refused, plan_merge
+from igab.domain.merging import MergePlan, MergeSide, Refused, may_offer_merge, plan_merge
 from igab.domain.projected_interest import adopts_projection
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
@@ -1612,14 +1612,10 @@ class TransactionService:
                 raise InvariantViolation("All transactions must belong to this budget")
 
         rows: dict[uuid.UUID, Transaction] = {txn1.id: txn1, txn2.id: txn2}
-        partners: dict[uuid.UUID, MergeSide] = {}
-        for txn in (txn1, txn2):
-            if txn.transfer_id is None:
-                continue
-            partner = await self.transaction_repo.get(txn.transfer_id)
-            if partner is not None and not partner.is_deleted:
-                rows.setdefault(partner.id, partner)
-                partners[partner.id] = MergeSide.from_transaction(partner)
+        partner_rows = await self._transfer_partners(txn1, txn2)
+        for partner in partner_rows.values():
+            rows.setdefault(partner.id, partner)
+        partners = {pid: MergeSide.from_transaction(p) for pid, p in partner_rows.items()}
 
         side1, side2 = MergeSide.from_transaction(txn1), MergeSide.from_transaction(txn2)
         plan = plan_merge(side1, side2, survivor_id, partners)
@@ -1658,6 +1654,32 @@ class TransactionService:
                 await self._relink_merged_leg(budget_id, survivor, rows[new_partner.id])
                 await self.transaction_repo.refresh(survivor)
         return survivor
+
+    async def _transfer_partners(self, *txns: Transaction) -> dict[uuid.UUID, Transaction]:
+        """The live other side of each transfer leg among `txns`, by id —
+        what `plan_merge` needs to say what becomes of a leg's transfer."""
+        found: dict[uuid.UUID, Transaction] = {}
+        for txn in txns:
+            if txn.transfer_id is None:
+                continue
+            partner = await self.transaction_repo.get(txn.transfer_id)
+            if partner is not None and not partner.is_deleted:
+                found[partner.id] = partner
+        return found
+
+    async def may_merge(self, txn1: Transaction, txn2: Transaction) -> bool:
+        """Would `merge` accept this pair, with no survivor asked for?
+
+        The plan itself (`domain.merging.may_offer_merge`), with the partners
+        `merge` would load — so whoever proposes a pair (the duplicate scan)
+        cannot propose one the merge then refuses. Reads only.
+        """
+        partner_rows = await self._transfer_partners(txn1, txn2)
+        return may_offer_merge(
+            MergeSide.from_transaction(txn1),
+            MergeSide.from_transaction(txn2),
+            {pid: MergeSide.from_transaction(p) for pid, p in partner_rows.items()},
+        )
 
     def _merge_updates(
         self, plan: MergePlan, survivor: Transaction, deleted: Transaction

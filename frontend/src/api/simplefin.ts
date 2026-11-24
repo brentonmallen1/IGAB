@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
@@ -565,18 +565,38 @@ export function useAcceptMatch(budgetId: string | null) {
   })
 }
 
+/** Keep every open pair on an account separate, as one change. Answers with
+ *  the batch, so the toast's Undo reopens exactly those pairs. */
+export function useRejectAllMatches(accountId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient
+        .post<{
+          rejected: number
+          batch_id: string | null
+        }>(`/accounts/${accountId}/pending-matches/reject-all`)
+        .then((r) => r.data),
+    // The same three lists a single "keep separate" refreshes.
+    onSuccess: () => void invalidateAfterMatchRejected(qc),
+  })
+}
+
 export function useRejectMatch() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/reject`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
-      // Every account's list: the review dialog passes no accountId, and
-      // [key, undefined] matches no cached [key, id] — the banner went stale.
-      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
-      // Rejecting moves no money but closes the pair, and an open pair is
-      // what holds a reconciliation back (`in_review_count`).
-      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus] })
-    },
+    onSuccess: () => void invalidateAfterMatchRejected(qc),
   })
+}
+
+/** What a "keep separate" makes stale — one pair or all of them. */
+function invalidateAfterMatchRejected(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+  // Every account's list: the review dialog passes no accountId, and
+  // [key, undefined] matches no cached [key, id] — the banner went stale.
+  qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
+  // Rejecting moves no money but closes the pair, and an open pair is
+  // what holds a reconciliation back (`in_review_count`).
+  qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus] })
 }

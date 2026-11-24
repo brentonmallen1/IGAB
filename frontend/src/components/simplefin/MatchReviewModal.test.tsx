@@ -70,6 +70,38 @@ describe('MatchReviewModal', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('offers to keep the whole queue separate when the caller can do it', async () => {
+    // A queue of false alarms had one way out: this dialog, a pair at a time.
+    const onKeepAll = vi.fn()
+    render(
+      <MatchReviewModal
+        matches={[match('a'), match('b'), match('c')]}
+        budgetId="b1"
+        onClose={vi.fn()}
+        onKeepAllSeparate={onKeepAll}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Keep all 3 separate' }))
+    expect(onKeepAll).toHaveBeenCalledTimes(1)
+    // The caller does it, in one change — not this dialog, pair by pair.
+    expect(api.reject).not.toHaveBeenCalled()
+  })
+
+  it('has no keep-all for a single pair, or a queue it does not own', () => {
+    const { unmount } = render(
+      <MatchReviewModal
+        matches={[match('a')]}
+        budgetId="b1"
+        onClose={vi.fn()}
+        onKeepAllSeparate={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /Keep all/ })).toBeNull()
+    unmount()
+    render(<MatchReviewModal matches={[match('a'), match('b')]} budgetId="b1" onClose={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Keep all/ })).toBeNull()
+  })
+
   it('keeps the last match separate and closes', async () => {
     const onClose = vi.fn()
     render(<MatchReviewModal matches={[match('a')]} budgetId="b1" onClose={onClose} />)

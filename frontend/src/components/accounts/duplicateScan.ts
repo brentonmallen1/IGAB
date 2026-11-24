@@ -1,0 +1,68 @@
+/**
+ * What "Find possible duplicates" looks through.
+ *
+ * The scan used to take no questions: every row in the account against every
+ * other, any age, reconciled or not. On an account with years behind it that
+ * queued dozens of pairs that were two real charges, and each open pair holds
+ * the account's reconciliation back until somebody answers it. So the scan
+ * asks first, and starts from the narrow reading — recent rows that are not
+ * reconciled, which is where a real duplicate lives.
+ *
+ * Pure: the dialog draws these, the store remembers the last answer, and the
+ * page turns it into the request. Which pairs may be proposed at all is the
+ * server's rule (`TransactionService.may_merge`), not restated here.
+ */
+import { toISODate, parseLocalDate } from '../../utils/dates'
+
+export interface DuplicateScanScope {
+  /** How many days back to look, or null for the whole account. */
+  lookbackDays: number | null
+  /** Also pair a reconciled row with one that is not. */
+  includeReconciled: boolean
+}
+
+export const LOOKBACK_CHOICES: { days: number | null; label: string }[] = [
+  { days: 30, label: 'Last 30 days' },
+  { days: 90, label: 'Last 90 days' },
+  { days: 365, label: 'Last year' },
+  { days: null, label: 'All time' },
+]
+
+export const DEFAULT_DUPLICATE_SCAN_SCOPE: DuplicateScanScope = {
+  lookbackDays: 90,
+  includeReconciled: false,
+}
+
+/** A remembered scope, with anything this build does not offer read as the
+ *  default — a hand-edited or older value must not send an unbounded scan. */
+export function normalizeScanScope(saved: unknown): DuplicateScanScope {
+  const s = (saved ?? {}) as Partial<DuplicateScanScope>
+  const known = LOOKBACK_CHOICES.some((c) => c.days === s.lookbackDays)
+  return {
+    lookbackDays: known
+      ? (s.lookbackDays as number | null)
+      : DEFAULT_DUPLICATE_SCAN_SCOPE.lookbackDays,
+    includeReconciled: s.includeReconciled === true,
+  }
+}
+
+/** The first date the scan includes ("YYYY-MM-DD"), or undefined for all
+ *  time. Local calendar days from `today` — never a UTC instant. */
+export function scanSince(lookbackDays: number | null, today: string): string | undefined {
+  if (lookbackDays === null) return undefined
+  const d = parseLocalDate(today)
+  d.setDate(d.getDate() - lookbackDays)
+  return toISODate(d)
+}
+
+/** "in the last 90 days" — for the sentence that says a scan found nothing,
+ *  so "nothing found" never reads as "nothing in the whole account". */
+export function scopePhrase(scope: DuplicateScanScope): string {
+  const where =
+    scope.lookbackDays === null
+      ? 'in this account'
+      : scope.lookbackDays === 365
+        ? 'in the last year'
+        : `in the last ${scope.lookbackDays} days`
+  return scope.includeReconciled ? where : `${where}, reconciled ones aside`
+}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Lock, Pencil, RefreshCw, ScanSearch, Upload, type LucideIcon } from 'lucide-react'
+import { Lock, Pencil, RefreshCw, Copy, Upload, type LucideIcon } from 'lucide-react'
 import type { Account } from '../../types'
 import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BalanceEquation } from './AccountBalances'
@@ -102,7 +102,7 @@ export function AccountToolsSheet({
     {
       id: 'duplicates',
       label: 'Find possible duplicates',
-      icon: ScanSearch,
+      icon: Copy,
       run: onScanDuplicates,
       disabled: scanning,
     },

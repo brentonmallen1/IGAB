@@ -270,6 +270,14 @@ class TransactionMatchResponse(ApiModel):
     model_config = {"from_attributes": True}
 
 
+class RejectAllMatchesResponse(ApiModel):
+    """Every open pair on an account, kept separate in one change."""
+
+    rejected: int
+    #: The change-log batch, so the toast's Undo reopens exactly these.
+    batch_id: uuid.UUID | None = None
+
+
 class SyncRunAccountResponse(ApiModel):
     """What one run did to one account.
 

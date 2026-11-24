@@ -12,6 +12,7 @@ from igab.api.v1.schemas.simplefin import (
     LinkSimpleFINRequest,
     RateLimitStatus,
     RefetchRequest,
+    RejectAllMatchesResponse,
     SimpleFINConfigResponse,
     SimpleFINConnectionResponse,
     SimpleFINSetupRequest,
@@ -406,6 +407,21 @@ async def reject_match(
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
 ) -> None:
     await matching_svc.reject_match(match_id)
+
+
+@router.post(
+    "/accounts/{account_id}/pending-matches/reject-all",
+    response_model=RejectAllMatchesResponse,
+)
+async def reject_all_pending_matches(
+    account_id: AccountAccess,
+    current_user: CurrentUser,
+    matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
+) -> RejectAllMatchesResponse:
+    """Keep every open pair on the account separate, as one undoable change —
+    the way out of a review queue that is all false alarms."""
+    rejected, batch_id = await matching_svc.reject_all_pending(account_id)
+    return RejectAllMatchesResponse(rejected=rejected, batch_id=batch_id)
 
 
 # ─── Sync log ─────────────────────────────────────────────────────────────────

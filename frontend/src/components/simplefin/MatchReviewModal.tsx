@@ -316,9 +316,21 @@ interface Props {
   budgetId: string | null
   onClose: () => void
   initialMatchId?: string
+  /** Answer every pair in the queue "keep separate" at once. Offered by a
+   *  caller that owns one account's queue (the account page); the caller
+   *  does the work and closes this. */
+  onKeepAllSeparate?: () => void
+  keepingAllSeparate?: boolean
 }
 
-export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }: Props) {
+export function MatchReviewModal({
+  matches,
+  budgetId,
+  onClose,
+  initialMatchId,
+  onKeepAllSeparate,
+  keepingAllSeparate = false,
+}: Props) {
   const [idx, setIdx] = useState(() => {
     if (!initialMatchId) return 0
     const i = matches.findIndex((m) => m.id === initialMatchId)
@@ -328,7 +340,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
   const [error, setError] = useState<string | null>(null)
   const acceptMatch = useAcceptMatch(budgetId)
   const rejectMatch = useRejectMatch()
-  const deciding = acceptMatch.isPending || rejectMatch.isPending
+  const deciding = acceptMatch.isPending || rejectMatch.isPending || keepingAllSeparate
 
   const pending = matches.filter((m) => !dismissed.has(m.id))
   const current = pending[idx] ?? pending[0]
@@ -410,6 +422,19 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
             </>
           )}
           <div className="dialog-actions__end">
+            {/* A queue of false alarms had no way out but this dialog, one
+                pair at a time. */}
+            {onKeepAllSeparate && pending.length > 1 && (
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary"
+                onClick={onKeepAllSeparate}
+                disabled={deciding}
+                title="None of these are duplicates — keep every pair as two transactions"
+              >
+                Keep all {pending.length} separate
+              </button>
+            )}
             <button
               type="button"
               className="dialog-btn dialog-btn--secondary"
