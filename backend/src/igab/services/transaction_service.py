@@ -151,18 +151,31 @@ class _Relink:
 
 
 @dataclass
+class _PairWrite:
+    """One pair of rows becoming one, decided and not yet written: the row
+    that stays, the row that goes, what the one that stays is written with,
+    and whether it takes the other's split lines in."""
+
+    survivor: Any
+    deleted: Any
+    updates: dict[str, Any]
+    adopting: bool
+
+
+@dataclass
 class _PreparedMerge:
     """A merge, decided and not yet written (`_prepare_merge`)."""
 
     plan: MergePlan
     rows: dict[uuid.UUID, Any]
-    survivor: Any
-    deleted: Any
-    updates: dict[str, Any]
-    adopting: bool
+    #: The pair the person asked to merge.
+    pair: _PairWrite
     bookkeeping: MergedBookkeeping
-    #: The other account's pair, when two transfers become one.
-    far: tuple[Any, Any, dict[str, Any], bool] | None
+    #: The other account's pair, when the two rows were both transfer legs:
+    #: their partners are the same duplicate seen from the other side, and
+    #: are merged in the same change. Named, where it was a four-item tuple
+    #: unpacked by position into the write.
+    far: _PairWrite | None
     #: The survivor's new transfer link, when the merge rewrites it.
     relink: _Relink | None
 
@@ -1680,12 +1693,12 @@ class TransactionService:
         moves exactly the losers' attachments back.
         """
         prepared = await self._prepare_merge(budget_id, transaction_ids, survivor_id, keep)
-        survivor = prepared.survivor
+        survivor = prepared.pair.survivor
 
         async with self._mutation():
-            await self._write_merge(survivor, prepared.deleted, prepared.updates, prepared.adopting)
+            await self._write_merge(prepared.pair)
             if prepared.far is not None:
-                await self._write_merge(*prepared.far)
+                await self._write_merge(prepared.far)
             if prepared.relink is not None:
                 await self._relink_merged_leg(budget_id, survivor, prepared.relink)
                 await self.transaction_repo.refresh(survivor)
@@ -1710,8 +1723,8 @@ class TransactionService:
         simply gone.
         """
         prepared = await self._prepare_merge(budget_id, transaction_ids, survivor_id, keep)
-        survivor, deleted, updates = prepared.survivor, prepared.deleted, prepared.updates
-        plan = prepared.plan
+        pair, plan = prepared.pair, prepared.plan
+        survivor, deleted, updates = pair.survivor, pair.deleted, pair.updates
 
         def after(field: str) -> Any:
             return updates[field] if field in updates else getattr(survivor, field)
@@ -1808,7 +1821,7 @@ class TransactionService:
                     f"The transfer is {abs(transfer_amount):.2f}, but this transaction is "
                     f"{abs(survivor.amount):.2f}; only matching amounts can be merged"
                 )
-        far: tuple[Transaction, Transaction, dict[str, Any], bool] | None = None
+        far: _PairWrite | None = None
         if plan.partner_merge is not None:
             far_survivor = rows[plan.partner_merge.survivor.id]
             far_deleted = rows[plan.partner_merge.deleted.id]
@@ -1816,7 +1829,7 @@ class TransactionService:
             far_updates, far_adopting, _ = self._merge_updates(
                 plan.partner_merge, far_survivor, far_deleted, None
             )
-            far = (far_survivor, far_deleted, far_updates, far_adopting)
+            far = _PairWrite(far_survivor, far_deleted, far_updates, far_adopting)
         relink: _Relink | None = None
         new_partner = plan.survivor_partner
         if plan.relinks and new_partner is not None:
@@ -1828,10 +1841,7 @@ class TransactionService:
         return _PreparedMerge(
             plan=plan,
             rows=rows,
-            survivor=survivor,
-            deleted=deleted,
-            updates=updates,
-            adopting=adopting,
+            pair=_PairWrite(survivor, deleted, updates, adopting),
             bookkeeping=bookkeeping,
             far=far,
             relink=relink,
@@ -1959,14 +1969,14 @@ class TransactionService:
             updates["cleared"] = cleared
         return updates, adopting, bookkeeping
 
-    async def _write_merge(
-        self,
-        survivor: Transaction,
-        deleted: Transaction,
-        updates: dict[str, Any],
-        adopting: bool,
-    ) -> None:
+    async def _write_merge(self, pair: _PairWrite) -> None:
         """Carry out one merged pair; the caller holds the batch."""
+        survivor, deleted, updates, adopting = (
+            pair.survivor,
+            pair.deleted,
+            pair.updates,
+            pair.adopting,
+        )
         survivor_before = snapshot("transaction", survivor)
         deleted_before = snapshot("transaction", deleted)
         # Which attachments the loser is contributing — undo moves exactly

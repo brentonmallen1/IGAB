@@ -341,10 +341,15 @@ class MergeChoiceResponse(ApiModel):
 
 
 class MergeChoicesResponse(ApiModel):
+    """Read off `domain.merging.MergedBookkeeping`, which names the payee and
+    category by their columns."""
+
     date: MergeChoiceResponse
-    payee: MergeChoiceResponse
-    category: MergeChoiceResponse
+    payee: MergeChoiceResponse = Field(validation_alias="payee_id")
+    category: MergeChoiceResponse = Field(validation_alias="category_id")
     memo: MergeChoiceResponse
+
+    model_config = {"from_attributes": True}
 
 
 class MergePreviewLine(ApiModel):
@@ -381,7 +386,11 @@ class MergePreviewResponse(ApiModel):
     import_description: str | None
     bank_posted_date: datetime.date | None
     transfer: TransferOutcome | None
-    choices: MergeChoicesResponse
+    choices: MergeChoicesResponse = Field(validation_alias="bookkeeping")
+
+    #: Validated straight from the service's `MergePreview`, so a field
+    #: added there and missed here fails instead of being copied by hand.
+    model_config = {"from_attributes": True}
 
 
 class SimilarTransactionResponse(ApiModel):

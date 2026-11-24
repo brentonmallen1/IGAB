@@ -22,11 +22,14 @@ export interface DuplicateScanScope {
   includeReconciled: boolean
 }
 
-export const LOOKBACK_CHOICES: { days: number | null; label: string }[] = [
-  { days: 30, label: 'Last 30 days' },
-  { days: 90, label: 'Last 90 days' },
-  { days: 365, label: 'Last year' },
-  { days: null, label: 'All time' },
+/** `label` is the choice in the dialog; `phrase` is the same span of time
+ *  inside a sentence. Side by side, so a new choice cannot be given one and
+ *  not the other — the phrase used to be worked out again from the number. */
+export const LOOKBACK_CHOICES: { days: number | null; label: string; phrase: string }[] = [
+  { days: 30, label: 'Last 30 days', phrase: 'in the last 30 days' },
+  { days: 90, label: 'Last 90 days', phrase: 'in the last 90 days' },
+  { days: 365, label: 'Last year', phrase: 'in the last year' },
+  { days: null, label: 'All time', phrase: 'in this account' },
 ]
 
 export const DEFAULT_DUPLICATE_SCAN_SCOPE: DuplicateScanScope = {
@@ -59,12 +62,9 @@ export function scanSince(lookbackDays: number | null, today: string): string | 
 /** "in the last 90 days" — for the sentence that says a scan found nothing,
  *  so "nothing found" never reads as "nothing in the whole account". */
 export function scopePhrase(scope: DuplicateScanScope): string {
+  // A scope is always normalised to an offered choice before it is used.
   const where =
-    scope.lookbackDays === null
-      ? 'in this account'
-      : scope.lookbackDays === 365
-        ? 'in the last year'
-        : `in the last ${scope.lookbackDays} days`
+    LOOKBACK_CHOICES.find((c) => c.days === scope.lookbackDays)?.phrase ?? 'in this account'
   return scope.includeReconciled ? where : `${where}, reconciled ones aside`
 }
 

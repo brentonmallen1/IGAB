@@ -61,5 +61,11 @@ describe('the duplicate scan scope', () => {
     )
     expect(scopePhrase({ lookbackDays: 365, includeReconciled: true })).toBe('in the last year')
     expect(scopePhrase({ lookbackDays: null, includeReconciled: true })).toBe('in this account')
+    // Every choice the dialog offers has its own wording.
+    for (const choice of LOOKBACK_CHOICES) {
+      expect(scopePhrase({ lookbackDays: choice.days, includeReconciled: true })).toBe(
+        choice.phrase
+      )
+    }
   })
 })
