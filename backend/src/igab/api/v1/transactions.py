@@ -21,6 +21,10 @@ from igab.api.v1.schemas.transaction import (
     DeleteTransactionResult,
     DuplicatePayeeEntry,
     DuplicatePayeeGroup,
+    MergeChoiceResponse,
+    MergeChoicesResponse,
+    MergePreviewLine,
+    MergePreviewResponse,
     MergeTransactionsRequest,
     NearbyPayeeResponse,
     PayeeCreate,
@@ -734,10 +738,61 @@ async def merge_transactions(
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> TransactionResponse:
     try:
-        txn = await txn_service.merge(budget_id, body.transaction_ids, body.survivor_id)
+        txn = await txn_service.merge(
+            budget_id,
+            body.transaction_ids,
+            body.survivor_id,
+            keep=body.keep.to_domain() if body.keep else None,
+        )
     except (InvariantViolation, NotFoundError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)
+
+
+@router.post("/{budget_id}/transactions/merge/preview", response_model=MergePreviewResponse)
+async def preview_merge_transactions(
+    budget_id: BudgetAccess,
+    body: MergeTransactionsRequest,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+) -> MergePreviewResponse:
+    """What the merge above would leave behind for the same body, without
+    writing. A read, sent as a POST because the arguments are the merge's
+    own. A merge that would be refused answers 400 with the same reason, so
+    a dialog can say why before anyone presses Merge."""
+    try:
+        preview = await txn_service.preview_merge(
+            budget_id,
+            body.transaction_ids,
+            body.survivor_id,
+            keep=body.keep.to_domain() if body.keep else None,
+        )
+    except (InvariantViolation, NotFoundError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    book = preview.bookkeeping
+    return MergePreviewResponse(
+        survivor_id=preview.survivor_id,
+        deleted_id=preview.deleted_id,
+        date=preview.date,
+        amount=preview.amount,
+        replaced_amount=preview.replaced_amount,
+        payee_id=preview.payee_id,
+        category_id=preview.category_id,
+        memo=preview.memo,
+        cleared=preview.cleared,
+        is_split=preview.is_split,
+        lines=[MergePreviewLine.model_validate(line) for line in preview.lines],
+        has_bank_record=preview.has_bank_record,
+        import_description=preview.import_description,
+        bank_posted_date=preview.bank_posted_date,
+        transfer=preview.transfer,
+        choices=MergeChoicesResponse(
+            date=MergeChoiceResponse.model_validate(book.date),
+            payee=MergeChoiceResponse.model_validate(book.payee_id),
+            category=MergeChoiceResponse.model_validate(book.category_id),
+            memo=MergeChoiceResponse.model_validate(book.memo),
+        ),
+    )
 
 
 @router.get("/{budget_id}/transactions/pending-review-count", response_model=PendingReviewCount)

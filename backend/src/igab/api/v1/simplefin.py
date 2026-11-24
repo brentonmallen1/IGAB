@@ -27,6 +27,7 @@ from igab.api.v1.schemas.simplefin import (
     TransactionMatchResponse,
     UnservedAccount,
 )
+from igab.api.v1.schemas.transaction import AcceptMatchRequest
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
@@ -391,11 +392,14 @@ async def accept_match(
     match_id: MatchAccess,
     current_user: CurrentUser,
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
+    body: AcceptMatchRequest | None = None,
 ) -> None:
     from igab.domain.exceptions import InvariantViolation
 
     try:
-        await matching_svc.accept_match(match_id)
+        await matching_svc.accept_match(
+            match_id, keep=body.keep.to_domain() if body and body.keep else None
+        )
     except InvariantViolation as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

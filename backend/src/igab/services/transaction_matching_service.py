@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.matching import DATE_WINDOW_DAYS, date_proximity, payee_similarity
+from igab.domain.merging import MergeKeep
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -167,6 +168,7 @@ class TransactionMatchingService:
         synced_txn: Transaction,
         manual_txn: Transaction,
         confidence: float,
+        keep: MergeKeep | None = None,
     ) -> None:
         """Merge the pair down to one row — TransactionService.merge is the one
         merge; who survives and what the bank row contributes are decided
@@ -175,9 +177,14 @@ class TransactionMatchingService:
             return  # a transaction can never be its own duplicate
         if synced_txn.is_deleted or manual_txn.is_deleted:
             return  # stale match — one side is already gone
-        await self.txn_service.merge(synced_txn.budget_id, [synced_txn.id, manual_txn.id])
+        await self.txn_service.merge(
+            synced_txn.budget_id, [synced_txn.id, manual_txn.id], keep=keep
+        )
 
-    async def accept_match(self, match_id: uuid.UUID) -> None:
+    async def accept_match(self, match_id: uuid.UUID, keep: MergeKeep | None = None) -> None:
+        """Accept the pair as one transaction. `keep` is the review's picks
+        for the fields the two rows disagree on — `TransactionService.merge`'s
+        own argument, passed through."""
         match = await self.match_repo.get(match_id)
         if match is None or match.status == "accepted":
             return
@@ -200,7 +207,7 @@ class TransactionMatchingService:
             if synced is None or manual is None or synced.is_deleted or manual.is_deleted:
                 await self.match_repo.update_status(match_id, "rejected")
             else:
-                await self._accept_link(synced, manual, float(match.confidence_score))
+                await self._accept_link(synced, manual, float(match.confidence_score), keep)
                 await self.match_repo.update_status(match_id, "accepted")
             await self._record_match_decision(match, before, batch_id=batch_id)
 

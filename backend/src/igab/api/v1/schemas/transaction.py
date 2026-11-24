@@ -2,12 +2,14 @@ import datetime
 import re
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
+from igab.domain.merging import MergeKeep
 from igab.domain.money import Money
 from igab.domain.payee_names import dedupe_samples
 
@@ -300,9 +302,83 @@ class PendingReviewCount(ApiModel):
     total: int = 0
 
 
+class MergeKeepRequest(ApiModel):
+    """Which row each field of the merged transaction is kept from — the id
+    of one of the two being merged. Absent leaves the default: the kept
+    row's value, or the other row's where it has none. `memo` may also be
+    "both", which joins two different memos (the default)."""
+
+    date: uuid.UUID | None = None
+    payee: uuid.UUID | None = None
+    category: uuid.UUID | None = None
+    memo: uuid.UUID | Literal["both"] | None = None
+
+    def to_domain(self) -> MergeKeep:
+        return MergeKeep(date=self.date, payee=self.payee, category=self.category, memo=self.memo)
+
+
 class MergeTransactionsRequest(ApiModel):
     transaction_ids: list[uuid.UUID]
     survivor_id: uuid.UUID | None = None
+    keep: MergeKeepRequest | None = None
+
+
+class AcceptMatchRequest(ApiModel):
+    """The picks made in the duplicate review, for the merge an accept is."""
+
+    keep: MergeKeepRequest | None = None
+
+
+class MergeChoiceResponse(ApiModel):
+    """One field of a merge's result: the row its value comes from (None
+    when neither row has one, "both" for two memos joined), and whether the
+    other row's value could be picked instead."""
+
+    source: uuid.UUID | Literal["both"] | None
+    choosable: bool
+
+    model_config = {"from_attributes": True}
+
+
+class MergeChoicesResponse(ApiModel):
+    date: MergeChoiceResponse
+    payee: MergeChoiceResponse
+    category: MergeChoiceResponse
+    memo: MergeChoiceResponse
+
+
+class MergePreviewLine(ApiModel):
+    amount: Decimal
+    category_id: uuid.UUID | None
+    memo: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class MergePreviewResponse(ApiModel):
+    """The transaction a merge would leave behind. Served, never composed on
+    the client: `TransactionService.preview_merge` builds it from the same
+    preparation the merge writes from."""
+
+    survivor_id: uuid.UUID
+    deleted_id: uuid.UUID
+    date: datetime.date
+    amount: Decimal
+    #: The kept row's own amount, when the bank's posted amount replaces it.
+    replaced_amount: Decimal | None
+    payee_id: uuid.UUID | None
+    category_id: uuid.UUID | None
+    memo: str | None
+    cleared: str
+    is_split: bool
+    #: The split lines the result carries; empty when it is not a split.
+    lines: list[MergePreviewLine]
+    has_bank_record: bool
+    import_description: str | None
+    bank_posted_date: datetime.date | None
+    #: "kept" | "taken_over" | "other_side_merged" | None — see MergePreview.
+    transfer: Literal["kept", "taken_over", "other_side_merged"] | None
+    choices: MergeChoicesResponse
 
 
 class SimilarTransactionResponse(ApiModel):
