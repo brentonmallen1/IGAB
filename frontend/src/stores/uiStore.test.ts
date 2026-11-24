@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   ALL_QUICK_FILTERS,
+  DEFAULT_PINNED_QUICK_FILTERS,
+  mergePinnedQuickFilters,
   mergeQuickFilterOrder,
   normalizeBudgetRowMode,
   useUIStore,
@@ -13,7 +15,14 @@ describe('mergeQuickFilterOrder', () => {
     // without this the new chip would never appear for them.
     expect(
       mergeQuickFilterOrder(['overfunded', 'overspent', 'underfunded', 'money-available'])
-    ).toEqual(['overfunded', 'overspent', 'underfunded', 'money-available', 'pending'])
+    ).toEqual([
+      'overfunded',
+      'overspent',
+      'underfunded',
+      'money-available',
+      'pending',
+      'spent-past-target',
+    ])
   })
 
   it('keeps a complete saved order as it is', () => {
@@ -28,8 +37,33 @@ describe('mergeQuickFilterOrder', () => {
       'pending',
       'money-available',
       'overfunded',
+      'spent-past-target',
     ])
     expect(mergeQuickFilterOrder(undefined)).toEqual(ALL_QUICK_FILTERS)
+  })
+})
+
+describe('mergePinnedQuickFilters', () => {
+  it('starts everyone on the two statuses that ask for something', () => {
+    // Nothing stored: every existing user, the first time this build runs.
+    expect(mergePinnedQuickFilters(undefined)).toEqual(DEFAULT_PINNED_QUICK_FILTERS)
+    expect(DEFAULT_PINNED_QUICK_FILTERS).toEqual(['overspent', 'underfunded'])
+  })
+
+  it('keeps an empty list empty — no buttons is a choice', () => {
+    expect(mergePinnedQuickFilters([])).toEqual([])
+  })
+
+  it('drops a status this build does not know', () => {
+    expect(mergePinnedQuickFilters(['pending', 'retired'])).toEqual(['pending'])
+  })
+
+  it('pins and unpins from the store', () => {
+    useUIStore.setState({ pinnedQuickFilters: ['overspent'] })
+    useUIStore.getState().toggleQuickFilterPin('pending')
+    expect(useUIStore.getState().pinnedQuickFilters).toEqual(['overspent', 'pending'])
+    useUIStore.getState().toggleQuickFilterPin('overspent')
+    expect(useUIStore.getState().pinnedQuickFilters).toEqual(['pending'])
   })
 })
 

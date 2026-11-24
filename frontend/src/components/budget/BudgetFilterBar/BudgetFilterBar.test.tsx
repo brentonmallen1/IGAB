@@ -60,7 +60,7 @@ function renderBar(balances: CategoryBalance[] = []) {
   })
 }
 
-const filterSelect = () => screen.getByLabelText('Filter categories') as HTMLSelectElement
+const filterSelect = () => screen.getByLabelText('More filters') as HTMLSelectElement
 
 beforeEach(() => {
   savedFilters = []
@@ -69,6 +69,7 @@ beforeEach(() => {
   useUIStore.setState({
     activeFilterId: null,
     activeQuickFilter: null,
+    pinnedQuickFilters: ['overspent', 'underfunded'],
     activeViewId: null,
     categorySearch: '',
     budgetToolsOpen: false,
@@ -85,8 +86,8 @@ describe('the bar with many saved filters', () => {
     // No button is named after a saved filter — that row is what grew.
     const named = screen.getAllByRole('button').filter((b) => b.textContent?.startsWith('Filter '))
     expect(named).toEqual([])
-    // And every one of them is still reachable: 25 + the All option.
-    expect(filterSelect().querySelectorAll('option')).toHaveLength(26)
+    // And every one of them is still reachable.
+    expect(filterSelect().querySelectorAll('option[value^="saved:"]')).toHaveLength(25)
   })
 
   it('applies the filter chosen from the list', () => {
@@ -107,10 +108,29 @@ describe('the bar with many saved filters', () => {
     expect(useUIStore.getState().activeQuickFilter).toBeNull()
   })
 
-  it('offers no status in the list — those are buttons', () => {
+  it('offers in the list exactly the statuses that are not buttons', () => {
+    // Each status is in one place. In both, its count is on screen twice.
     renderBar(overspent(3))
     const options = [...filterSelect().querySelectorAll('option')].map((o) => o.value)
-    expect(options.some((v) => v.startsWith('quick:'))).toBe(false)
+    expect(options.filter((v) => v.startsWith('status:'))).toEqual([
+      'status:pending',
+      'status:money-available',
+      'status:overfunded',
+      'status:spent-past-target',
+    ])
+  })
+
+  it('applies a status chosen from the list, and says so on the chip', () => {
+    renderBar()
+    fireEvent.change(filterSelect(), { target: { value: 'status:spent-past-target' } })
+    expect(useUIStore.getState().activeQuickFilter).toBe('spent-past-target')
+    expect(filterSelect().value).toBe('status:spent-past-target')
+  })
+
+  it('is named for what it holds, not for what the grid shows at rest', () => {
+    renderBar()
+    expect(screen.getByText('More filters')).toBeInTheDocument()
+    expect(filterSelect().querySelector('option[value=""]')!.textContent).toBe('No filter')
   })
 
   it('clears an active status when a saved filter is chosen', () => {
@@ -130,13 +150,22 @@ const statusBtn = (name: string) =>
   screen.getByRole('button', { name: new RegExp(`^${name}`) }) as HTMLButtonElement
 
 describe('the status buttons', () => {
-  it('draws all five whether or not the budget has anything in them', () => {
+  it('draws every pinned status whether or not the budget has anything in it', () => {
     // The footprint rule, in markup. A row that sheds a button as a count
     // reaches zero is a row that gets narrower as the budget gets healthier.
     renderBar()
-    for (const label of ['Overspent', 'Underfunded', 'Pending', 'Money Available', 'Overfunded']) {
+    for (const label of ['Overspent', 'Underfunded']) {
       expect(statusBtn(label)).toBeTruthy()
     }
+    // The rest are in the menu, not on the bar.
+    expect(screen.queryByRole('button', { name: /^Pending/ })).toBeNull()
+  })
+
+  it('draws whichever statuses are pinned', () => {
+    useUIStore.setState({ pinnedQuickFilters: ['pending'] })
+    renderBar()
+    expect(statusBtn('Pending')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Overspent/ })).toBeNull()
   })
 
   it('disables an empty status instead of dropping it', () => {

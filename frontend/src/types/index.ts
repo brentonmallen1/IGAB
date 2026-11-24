@@ -273,9 +273,16 @@ export interface BudgetView {
   updated_at: string
 }
 
-/** The three answers the budget row's pill can show. Mirrors
- *  `TargetStatus` in backend/src/igab/domain/enums.py. */
-export type TargetStatus = 'funded' | 'underfunded' | 'overfunded' | 'pending'
+/** The server's verdict on a target this month. Mirrors `TargetStatus` in
+ *  backend/src/igab/domain/enums.py; `TargetService.calculate_status` is
+ *  where each is decided. `spent_past_target` is assigned past the target
+ *  with the extra already spent — met, with nothing left to return. */
+export type TargetStatus =
+  | 'funded'
+  | 'underfunded'
+  | 'overfunded'
+  | 'spent_past_target'
+  | 'pending'
 
 export interface CategoryBalance {
   category_id: string

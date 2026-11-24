@@ -22,6 +22,10 @@ interface Props {
   /** The option for the empty value, and what the chip reads when nothing is
    *  chosen. */
   placeholder: string
+  /** What the empty option reads inside the open list, where the placeholder
+   *  names the control rather than the choice ("More filters" → "No
+   *  filter"). Defaults to the placeholder. */
+  emptyLabel?: string
   icon?: LucideIcon
   /** Accent treatment — the chip is carrying a choice, not sitting at rest. */
   active?: boolean
@@ -52,6 +56,7 @@ export function SelectChip({
   onChange,
   groups,
   placeholder,
+  emptyLabel,
   icon: Icon,
   active = false,
   title,
@@ -92,7 +97,7 @@ export function SelectChip({
         title={title}
         aria-label={ariaLabel}
       >
-        <option value="">{placeholder}</option>
+        <option value="">{emptyLabel ?? placeholder}</option>
         {groups.map((group, i) =>
           group.options.length === 0 ? null : group.label ? (
             <optgroup key={group.label} label={group.label}>

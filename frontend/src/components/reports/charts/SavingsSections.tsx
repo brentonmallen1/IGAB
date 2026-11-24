@@ -39,9 +39,12 @@ function Empty({ children }: { children: ReactNode }) {
   return <p className="savings-section__empty">{children}</p>
 }
 
-/** The Budget page's pill, in its words: the page shows overfunded as funded. */
+/** The Budget page's pill, in its words: the page shows every met target —
+ *  overfunded and spent past target included — as funded. */
 function statusLabel(target: SavingsTarget): string {
-  return target.status === 'overfunded' ? BADGE_LABELS.funded : BADGE_LABELS[target.status]
+  return target.status === 'underfunded' || target.status === 'pending'
+    ? BADGE_LABELS[target.status]
+    : BADGE_LABELS.funded
 }
 
 function TargetCell({ target }: { target: SavingsTarget | null }) {

@@ -47,7 +47,7 @@ class TargetType(StrEnum):
 #: "pending" is "underfunded, but its funding day has not come" — the budget's
 #: `funding_day` or the target's own `check_after_day`. Fill Underfunded still
 #: fills a pending target; only the nag is held back.
-TargetStatus = Literal["funded", "underfunded", "overfunded", "pending"]
+TargetStatus = Literal["funded", "underfunded", "overfunded", "spent_past_target", "pending"]
 
 
 class ScheduleFrequency(StrEnum):

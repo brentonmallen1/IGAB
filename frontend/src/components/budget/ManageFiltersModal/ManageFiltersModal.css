@@ -70,3 +70,8 @@
   color: var(--text-muted);
   padding: var(--spacing-xs) 0;
 }
+
+/* A pinned status is a button on the bar; the accent says which ones are. */
+.manage-filters-modal__pin.active {
+  color: var(--color-accent);
+}

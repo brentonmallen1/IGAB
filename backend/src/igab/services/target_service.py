@@ -434,7 +434,8 @@ class TargetService:
         today: date,
         funding_day: int,
     ) -> TargetStatus:
-        """'funded', 'underfunded', 'overfunded' or 'pending'.
+        """'funded', 'underfunded', 'overfunded', 'spent_past_target' or
+        'pending'.
 
         The pill exists to say what Fill Underfunded will do, so "underfunded"
         means exactly that: `calculate_needed` would move money here. Derived
@@ -451,6 +452,14 @@ class TargetService:
         Available is past the stop by more than the band: assigning ahead of
         the rate toward the stop is not overfunding, and holding the stop
         exactly is funded however little this month assigned.
+
+        "overfunded" means money is sitting here beyond what the target
+        asked for. A month-paced target assigned past its duty whose extra
+        has been SPENT is not that: target $100, $130 assigned to cover $130
+        of spending, nothing left. It read "overfunded" with $0 available —
+        on a row Reduce Overfunded would not touch, because there is nothing
+        to return (`returnable`). That is "spent_past_target": the overspend
+        was covered, and the filter of that name is where to find it.
         """
         if self.calculate_needed(target, assigned, available, activity=activity, month=month) > 0:
             effective_day = target.check_after_day or funding_day
@@ -466,7 +475,16 @@ class TargetService:
             )
             measure = assigned
 
-        return "overfunded" if measure > goal * OVERFUNDED_BAND else "funded"
+        if measure <= goal * OVERFUNDED_BAND:
+            return "funded"
+        if ceiling is None and (
+            self.returnable(
+                target, assigned=assigned, activity=activity, available=available, month=month
+            )
+            <= ZERO
+        ):
+            return "spent_past_target"
+        return "overfunded"
 
     def monthly_pace(
         self,
