@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  keepAllSeparateQuestion,
   DEFAULT_DUPLICATE_SCAN_SCOPE,
   LOOKBACK_CHOICES,
   normalizeScanScope,
@@ -42,6 +43,16 @@ describe('the duplicate scan scope', () => {
     expect(normalizeScanScope({ lookbackDays: undefined, includeReconciled: 'yes' })).toEqual(
       DEFAULT_DUPLICATE_SCAN_SCOPE
     )
+  })
+
+  it('asks before keeping several pairs separate at once, and not for one', () => {
+    expect(keepAllSeparateQuestion(0)).toBeNull()
+    expect(keepAllSeparateQuestion(1)).toBeNull()
+    expect(keepAllSeparateQuestion(7)).toMatchObject({
+      title: 'Keep all 7 pairs separate?',
+      confirmLabel: 'Keep 7 separate',
+    })
+    expect(keepAllSeparateQuestion(7)?.message).toMatch(/won’t be suggested as duplicates again/)
   })
 
   it('says where it looked, so nothing found is not read as nothing anywhere', () => {

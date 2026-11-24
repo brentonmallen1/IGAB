@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { SavingsEnvelope, SavingsSaved, SavingsSection, SavingsTarget } from '../../../types'
 import { accountTypeLabel } from '../../../constants/accountTypes'
-import { BADGE_LABELS } from '../../budget/targetTooltip'
+import { BADGE_LABELS, badgeStatus } from '../../budget/targetTooltip'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SET_ASIDE } from '../../../utils/savingsModes'
 
@@ -39,12 +39,9 @@ function Empty({ children }: { children: ReactNode }) {
   return <p className="savings-section__empty">{children}</p>
 }
 
-/** The Budget page's pill, in its words: the page shows every met target —
- *  overfunded and spent past target included — as funded. */
+/** The Budget page's pill, in its words (`badgeStatus`). */
 function statusLabel(target: SavingsTarget): string {
-  return target.status === 'underfunded' || target.status === 'pending'
-    ? BADGE_LABELS[target.status]
-    : BADGE_LABELS.funded
+  return BADGE_LABELS[badgeStatus(target.status)]
 }
 
 function TargetCell({ target }: { target: SavingsTarget | null }) {

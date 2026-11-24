@@ -87,7 +87,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
     const sign = totalAmount < 0 ? -1 : 1
     const lines = splits.map((s) => ({
       id: s.serverId,
-      amount: (expressionToCents(s.amount) / 100) * sign,
+      amount: fromCents(expressionToCents(s.amount)) * sign,
       category_id: s.categoryId ?? undefined,
       memo: s.memo || undefined,
     }))
@@ -102,7 +102,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
           splits: lines,
           // Only a total that actually moved: an unchanged one is not sent,
           // so a plain re-filing of lines stays plain bookkeeping.
-          amount: totalCents !== savedTotalCents ? (totalCents / 100) * sign : undefined,
+          amount: totalCents !== savedTotalCents ? fromCents(totalCents) * sign : undefined,
         })
       else await convertToSplit.mutateAsync({ id: txn.id, splits: lines })
       stopSplitEditing()

@@ -18,12 +18,14 @@ import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySe
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
 import { FindDuplicatesDialog } from '../../components/accounts/FindDuplicatesDialog'
 import {
+  keepAllSeparateQuestion,
   scanSince,
   scopePhrase,
   type DuplicateScanScope,
 } from '../../components/accounts/duplicateScan'
 import { today } from '../../utils/dates'
 import { useUndoToast } from '../../utils/toastUndo'
+import { confirmAsync } from '../../stores/confirmStore'
 import { useAccounts, useScanDuplicates } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import { usePendingReviewCountForAccount } from '../../api/transactions'
@@ -131,6 +133,8 @@ export function AccountPage() {
   const rejectAllMatches = useRejectAllMatches(accountId ?? null)
   const notifyUndoable = useUndoToast(accountId)
   const handleKeepAllSeparate = async () => {
+    const question = keepAllSeparateQuestion(pendingMatches.length)
+    if (question && !(await confirmAsync(question))) return
     try {
       const { rejected, batch_id } = await rejectAllMatches.mutateAsync()
       setShowMatchModal(false)
@@ -450,6 +454,7 @@ export function AccountPage() {
 
       {showReconcileBar && (
         <ReconcileStatusBar
+          budgetId={budgetId}
           accountId={accountId}
           onReviewDuplicates={() => setShowMatchModal(true)}
         />

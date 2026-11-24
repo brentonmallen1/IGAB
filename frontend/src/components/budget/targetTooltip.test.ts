@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { getTargetTooltip, ordinal } from './targetTooltip'
+import { badgeStatus, getTargetTooltip, ordinal } from './targetTooltip'
 
 const money = (n: number) => `$${n.toFixed(2)}`
+
+describe('badgeStatus', () => {
+  // The Budget row and the Savings report each wrote this collapse out.
+  it('draws every met target as funded, and the two that need money as themselves', () => {
+    expect(badgeStatus('funded')).toBe('funded')
+    expect(badgeStatus('overfunded')).toBe('funded')
+    expect(badgeStatus('spent_past_target')).toBe('funded')
+    expect(badgeStatus('underfunded')).toBe('underfunded')
+    expect(badgeStatus('pending')).toBe('pending')
+  })
+})
 
 describe('ordinal', () => {
   it('handles the teens and the ones', () => {

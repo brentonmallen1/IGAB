@@ -12,6 +12,7 @@
  * page turns it into the request. Which pairs may be proposed at all is the
  * server's rule (`TransactionService.may_merge`), not restated here.
  */
+import type { ConfirmRequest } from '../../stores/confirmStore'
 import { toISODate, parseLocalDate } from '../../utils/dates'
 
 export interface DuplicateScanScope {
@@ -65,4 +66,21 @@ export function scopePhrase(scope: DuplicateScanScope): string {
         ? 'in the last year'
         : `in the last ${scope.lookbackDays} days`
   return scope.includeReconciled ? where : `${where}, reconciled ones aside`
+}
+
+/**
+ * What to ask before every open pair is kept separate at once, or null when
+ * there is nothing to ask: one pair is the review's own "Keep separate".
+ * More than one used to go in a single click — most of them never looked
+ * at, and a pair kept separate is never suggested again.
+ */
+export function keepAllSeparateQuestion(count: number): ConfirmRequest | null {
+  if (count <= 1) return null
+  return {
+    title: `Keep all ${count} pairs separate?`,
+    message:
+      'None of them will be merged, and they won’t be suggested as duplicates again. ' +
+      'You can undo this straight afterwards.',
+    confirmLabel: `Keep ${count} separate`,
+  }
 }

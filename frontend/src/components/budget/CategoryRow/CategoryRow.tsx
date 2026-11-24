@@ -11,7 +11,7 @@ import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useLongPress } from '../../../hooks/useLongPress'
 import { TargetBadge } from '../TargetBadge'
-import { getTargetTooltip, ordinal, type BadgeStatus } from '../targetTooltip'
+import { badgeStatus, getTargetTooltip, ordinal, type BadgeStatus } from '../targetTooltip'
 import { TargetEditor } from '../TargetEditor'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
@@ -231,14 +231,11 @@ export const CategoryRow = memo(function CategoryRow({
 
   // The verdict is the server's — the same function Fill Underfunded asks.
   // Expiry stays here: "should we still nag" is presentation, not "how much is
-  // owed". Overfunded renders as funded: the row only distinguishes "needs
-  // money" from "doesn't" — and "pending", which is needs money but not yet.
+  // owed". Which badge a status draws as is `badgeStatus`.
   const targetStatus: BadgeStatus | null =
     !target || isTargetExpired || !balance?.target_status
       ? null
-      : balance.target_status === 'underfunded' || balance.target_status === 'pending'
-        ? balance.target_status
-        : 'funded'
+      : badgeStatus(balance.target_status)
 
   // What Fill Underfunded would move. Was computed two different ways in this
   // file — once per branch of the pill — and neither agreed with the server.
