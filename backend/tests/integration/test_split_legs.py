@@ -289,3 +289,165 @@ async def test_endpoint_round_trip_get_then_put(api_client, db_session):
     kept = next(line for line in body if line["id"] == lines[0]["id"])
     assert kept["category_id"] == str(cat.id) and kept["amount"] == -60.0
     assert any(line["memo"] == "tip" and line["amount"] == -15.0 for line in body)
+
+
+# --- Correcting a split's total -------------------------------------------
+#
+# A split's amount is its lines' sum, so `update` refuses to move it and the
+# lines alone could not: a total typed in wrong was permanent short of
+# deleting the split. The total now travels with the lines.
+
+
+async def test_replace_corrects_the_total_with_the_lines(db_session):
+    """Entered as $100, the receipt says $108: the extra goes on one line."""
+    budget, account, groceries, household, services, parent = await _setup(db_session)
+    food, home = _by_amount(await services.transaction_repo.get_splits(parent.id))
+
+    await services.transactions.replace_splits(
+        budget.id,
+        parent.id,
+        [
+            SplitSpec(id=food.id, amount=Decimal("-68.00"), category_id=groceries.id),
+            SplitSpec(id=home.id, amount=Decimal("-40.00"), category_id=household.id),
+        ],
+        total=Decimal("-108.00"),
+    )
+
+    await db_session.refresh(parent)
+    assert parent.amount == Decimal("-108.00")
+    assert parent.is_split and parent.sync_id == "t-1", "the row kept its identity"
+    lines = await services.transaction_repo.get_splits(parent.id)
+    assert {c.amount for c in lines} == {Decimal("-68.00"), Decimal("-40.00")}
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_a_corrected_total_the_lines_do_not_reach_writes_nothing(db_session):
+    budget, account, groceries, household, services, parent = await _setup(db_session)
+    food, home = _by_amount(await services.transaction_repo.get_splits(parent.id))
+    with pytest.raises(InvariantViolation, match="do not sum"):
+        await services.transactions.replace_splits(
+            budget.id,
+            parent.id,
+            [
+                SplitSpec(id=food.id, amount=Decimal("-60.00"), category_id=groceries.id),
+                SplitSpec(id=home.id, amount=Decimal("-40.00"), category_id=household.id),
+            ],
+            total=Decimal("-108.00"),
+        )
+    await db_session.refresh(parent)
+    assert parent.amount == Decimal("-100.00")
+
+
+async def test_the_same_total_is_not_a_change(db_session):
+    """The editors send the total they show; an unchanged one must not trip
+    the reconciled lock or write an empty update."""
+    budget, account, groceries, household, services, parent = await _setup(
+        db_session, cleared="reconciled"
+    )
+    food, home = _by_amount(await services.transaction_repo.get_splits(parent.id))
+    lines = await services.transactions.replace_splits(
+        budget.id,
+        parent.id,
+        [
+            SplitSpec(id=food.id, amount=Decimal("-70.00"), category_id=groceries.id),
+            SplitSpec(id=home.id, amount=Decimal("-30.00"), category_id=household.id),
+        ],
+        total=Decimal("-100.00"),
+    )
+    assert {c.amount for c in lines} == {Decimal("-70.00"), Decimal("-30.00")}
+
+
+async def test_a_reconciled_splits_total_is_locked(db_session):
+    budget, account, groceries, household, services, parent = await _setup(
+        db_session, cleared="reconciled"
+    )
+    food, home = _by_amount(await services.transaction_repo.get_splits(parent.id))
+    with pytest.raises(InvariantViolation, match="reconciled"):
+        await services.transactions.replace_splits(
+            budget.id,
+            parent.id,
+            [
+                SplitSpec(id=food.id, amount=Decimal("-68.00"), category_id=groceries.id),
+                SplitSpec(id=home.id, amount=Decimal("-40.00"), category_id=household.id),
+            ],
+            total=Decimal("-108.00"),
+        )
+    await db_session.refresh(parent)
+    assert parent.amount == Decimal("-100.00")
+
+
+async def test_undo_of_a_corrected_total_restores_the_amount_and_the_lines(db_session):
+    from sqlalchemy import select
+
+    from igab.db.models import ChangeLog
+
+    budget, account, groceries, household, services, parent = await _setup(db_session)
+    food, home = _by_amount(await services.transaction_repo.get_splits(parent.id))
+    await services.transactions.replace_splits(
+        budget.id,
+        parent.id,
+        [
+            SplitSpec(id=food.id, amount=Decimal("-68.00"), category_id=groceries.id),
+            SplitSpec(id=home.id, amount=Decimal("-40.00"), category_id=household.id),
+        ],
+        total=Decimal("-108.00"),
+    )
+    await db_session.flush()
+    latest = (
+        (
+            await db_session.execute(
+                select(ChangeLog)
+                .where(ChangeLog.entity_id == parent.id)
+                .order_by(ChangeLog.seq.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert latest is not None
+
+    await UndoService(db_session).undo_batch(budget.id, latest.batch_id)
+
+    await db_session.refresh(parent)
+    assert parent.amount == Decimal("-100.00")
+    lines = await services.transaction_repo.get_splits(parent.id)
+    assert {c.amount for c in lines} == {Decimal("-60.00"), Decimal("-40.00")}
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_endpoint_corrects_the_total(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget, "Checking")
+    group = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    household = await create_category(db_session, budget, group, "Household")
+    services = make_services(db_session)
+    txn = await create_transaction(db_session, budget, account, "-100.00", TXN_DATE)
+    await services.transactions.convert_to_split(
+        budget.id,
+        txn.id,
+        [
+            SplitSpec(amount=Decimal("-60.00"), category_id=groceries.id),
+            SplitSpec(amount=Decimal("-40.00"), category_id=household.id),
+        ],
+    )
+    await db_session.commit()
+    params = {"budget_id": str(budget.id)}
+    lines = (await api_client.get(f"/api/v1/transactions/{txn.id}/splits", params=params)).json()
+    food = next(line for line in lines if line["amount"] == -60.0)
+    home = next(line for line in lines if line["amount"] == -40.0)
+
+    r = await api_client.put(
+        f"/api/v1/transactions/{txn.id}/splits",
+        params=params,
+        json={
+            "amount": "-108.00",
+            "splits": [
+                {"id": food["id"], "amount": "-68.00", "category_id": str(groceries.id)},
+                {"id": home["id"], "amount": "-40.00", "category_id": str(household.id)},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    rows = (await api_client.get(f"/api/v1/accounts/{account.id}/transactions")).json()
+    assert rows[0]["amount"] == -108.0

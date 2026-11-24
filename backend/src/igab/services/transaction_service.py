@@ -496,12 +496,25 @@ class TransactionService:
         return txn
 
     async def replace_splits(
-        self, budget_id: uuid.UUID, parent_id: uuid.UUID, splits: list[SplitSpec]
+        self,
+        budget_id: uuid.UUID,
+        parent_id: uuid.UUID,
+        splits: list[SplitSpec],
+        total: Decimal | None = None,
     ) -> list[Transaction]:
         """Make these the split's lines: update the ones named by id, create
-        the rest, remove the missing. The parent's amount does not move — the
-        lines must still sum to it — so this is bookkeeping, and works on a
-        reconciled parent too (its lines stay reconciled). Returns the lines.
+        the rest, remove the missing. Without `total` the parent's amount
+        does not move — the lines must still sum to it — so this is
+        bookkeeping, and works on a reconciled parent too (its lines stay
+        reconciled). Returns the lines.
+
+        `total` is the split's corrected amount, for a total typed in wrong.
+        It has to arrive WITH the lines: a split's amount is its lines' sum,
+        so the total cannot change in a request of its own (`update` refuses
+        it) without a moment where the two disagree. Here the parent moves
+        and the lines are checked against where it landed, in one batch — one
+        undo puts both back. A reconciled parent's amount is locked like any
+        other reconciled row's.
         """
         parent = await self.transaction_repo.get_or_raise(parent_id)
         if str(parent.budget_id) != str(budget_id):
@@ -509,7 +522,17 @@ class TransactionService:
         if not parent.is_split:
             raise InvariantViolation("Transaction is not split")
         existing = await self.transaction_repo.get_splits(parent.id)
+        new_total = total if total is not None and total != parent.amount else None
+        if new_total is not None:
+            if parent.cleared == "reconciled":
+                raise InvariantViolation(reconciled_edit_message({"amount"}))
+            # Before the parent moves: a refused correction writes nothing.
+            require_split_balances(new_total, [s.amount for s in splits])
         async with self._mutation():
+            if new_total is not None:
+                parent_before = snapshot("transaction", parent)
+                parent = await self.transaction_repo.update(parent.id, amount=new_total)
+                await self._record_txn(parent, "update", before=parent_before)
             if len(splits) == 1:
                 # Down to one line: the split is over, and the row is filed
                 # where that line was. No lines are left to return.

@@ -484,19 +484,25 @@ export function useReplaceSplits(budgetId: string) {
   return useMutation({
     // The account comes from the caller: one line ends the split and the
     // server returns no lines to read it from, yet the row moved category.
+    //
+    // `amount` corrects the split's total in the same change. It has to ride
+    // with the lines: the total is their sum, so the server refuses to move
+    // it on its own. Omitted, the total stays where it is.
     mutationFn: ({
       id,
       accountId,
       splits,
+      amount,
     }: {
       id: string
       accountId: string
       splits: SplitCreate[]
+      amount?: number
     }) =>
       apiClient
         .put<Transaction[]>(
           `/transactions/${id}/splits`,
-          { splits },
+          { splits, amount },
           { params: { budget_id: budgetId } }
         )
         .then(() => ({ id, account_id: accountId })),

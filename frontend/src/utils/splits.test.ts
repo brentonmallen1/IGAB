@@ -8,7 +8,14 @@
  * us.
  */
 import { describe, expect, it } from 'vitest'
-import { checkSplit, coverRemainder, fillRemainder, remainderTarget } from './splits'
+import {
+  checkSplit,
+  coverRemainder,
+  fillRemainder,
+  mayTakeRemainder,
+  remainderTarget,
+  takeRemainder,
+} from './splits'
 import { toCents } from './money'
 import cases from '../../../shared/split_cases.json'
 
@@ -194,5 +201,61 @@ describe('covering the remainder', () => {
     const total = 14218 + 3840 + 1200
     const out = coverRemainder(legs, 1200, 'household', newLeg)
     expect(checkSplit(total, out).isValid).toBe(true)
+  })
+})
+
+/**
+ * "Put the rest here": the inline editor's per-line button, and the one
+ * arithmetic under `fillRemainder` and `coverRemainder`.
+ */
+describe('a line taking the remainder', () => {
+  const leg = (amount: string) => ({ amount, categoryId: null })
+
+  it('adds what is left to the figure already on the line', () => {
+    // Total corrected from 100 to 108 with 60 + 40 on the lines.
+    const legs = [leg('60'), leg('40')]
+    expect(takeRemainder(legs, 800, 0).map((l) => l.amount)).toEqual(['68.00', '40'])
+    expect(takeRemainder(legs, 800, 1).map((l) => l.amount)).toEqual(['60', '48.00'])
+  })
+
+  it('takes an excess back off the line', () => {
+    expect(takeRemainder([leg('60'), leg('40')], -1000, 0).map((l) => l.amount)).toEqual([
+      '50.00',
+      '40',
+    ])
+  })
+
+  it('refuses an excess the line cannot absorb and stay positive', () => {
+    const legs = [leg('5'), leg('95')]
+    expect(mayTakeRemainder(legs[0], -500)).toBe(false)
+    expect(mayTakeRemainder(legs[0], -501)).toBe(false)
+    expect(takeRemainder(legs, -500, 0)).toBe(legs)
+    expect(mayTakeRemainder(legs[1], -500)).toBe(true)
+  })
+
+  it('has nothing to take from a balanced split, or an unreadable total', () => {
+    const legs = [leg('60'), leg('40')]
+    expect(mayTakeRemainder(legs[0], 0)).toBe(false)
+    expect(mayTakeRemainder(legs[0], NaN)).toBe(false)
+    expect(takeRemainder(legs, 0, 0)).toBe(legs)
+    expect(takeRemainder(legs, NaN, 0)).toBe(legs)
+  })
+
+  it('reads an empty or unreadable line as zero, never as NaN', () => {
+    expect(takeRemainder([leg(''), leg('abc')], 1234, 0)[0].amount).toBe('12.34')
+    expect(takeRemainder([leg(''), leg('abc')], 1234, 1)[1].amount).toBe('12.34')
+  })
+
+  it('ignores a line that is not there', () => {
+    const legs = [leg('60')]
+    expect(takeRemainder(legs, 4000, 3)).toBe(legs)
+  })
+
+  it('leaves the split balanced', () => {
+    const legs = [
+      { amount: '60', categoryId: 'a' },
+      { amount: '40', categoryId: 'b' },
+    ]
+    expect(checkSplit(10800, takeRemainder(legs, 800, 1)).isValid).toBe(true)
   })
 })

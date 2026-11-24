@@ -28,9 +28,12 @@ class ConvertToSplitRequest(ApiModel):
 
 class ReplaceSplitsRequest(ApiModel):
     """The split's lines as they should be: named lines are updated, unnamed
-    ones created, missing ones removed. They must sum to the parent."""
+    ones created, missing ones removed. They must sum to the parent — to
+    `amount` when it is given, which corrects the split's total in the same
+    change (it cannot move on its own; the total is the lines' sum)."""
 
     splits: list[SplitCreate]
+    amount: Money | None = None
 
 
 #: The most parents one split-lines request may name — the register's own page

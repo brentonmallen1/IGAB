@@ -569,7 +569,8 @@ export function TransactionEditor({
       if (!proceed) return
       if (isEdit && editingExistingSplit) {
         // Lines in place: named lines update, new ones append, missing ones
-        // go. The parent's amount is the lines' sum and is not sent.
+        // go. The total goes with them, below — it is the lines' sum, so
+        // this PATCH cannot carry it (the server refuses it here).
         await updateTxn.mutateAsync({
           id: transaction!.id,
           // The account, like every other field the editor shows. Leaving it
@@ -584,7 +585,14 @@ export function TransactionEditor({
           approved: true,
           payee_id: selectedPayeeId || undefined,
         })
-        await replaceSplits.mutateAsync({ id: transaction!.id, accountId, splits: splitList })
+        await replaceSplits.mutateAsync({
+          id: transaction!.id,
+          accountId,
+          splits: splitList,
+          // A total typed in wrong is corrected here. Reconciled: locked,
+          // like the amount of any reconciled row.
+          amount: isReconciled ? undefined : amount,
+        })
       } else if (isEdit) {
         // Split in place: the row becomes the parent, keeping attachments and
         // AI links (a create+delete replacement would orphan the receipt).
@@ -1231,14 +1239,8 @@ export function TransactionEditor({
                       value={outflow}
                       onValueChange={handleOutflowChange}
                       placeholder="0.00"
-                      disabled={editingExistingSplit || isReconciled}
-                      title={
-                        isReconciled
-                          ? 'Reconciled — the amount is locked'
-                          : editingExistingSplit
-                            ? 'A split’s total is the sum of its lines'
-                            : undefined
-                      }
+                      disabled={isReconciled}
+                      title={isReconciled ? 'Reconciled — the amount is locked' : undefined}
                     />
                   </div>
                   <div className="txn-editor__field txn-editor__field--inflow">
@@ -1248,14 +1250,8 @@ export function TransactionEditor({
                       value={inflow}
                       onValueChange={handleInflowChange}
                       placeholder="0.00"
-                      disabled={editingExistingSplit || isReconciled}
-                      title={
-                        isReconciled
-                          ? 'Reconciled — the amount is locked'
-                          : editingExistingSplit
-                            ? 'A split’s total is the sum of its lines'
-                            : undefined
-                      }
+                      disabled={isReconciled}
+                      title={isReconciled ? 'Reconciled — the amount is locked' : undefined}
                     />
                   </div>
                 </div>

@@ -952,6 +952,56 @@ describe('TransactionEditor account picker', () => {
     )
   })
 
+  /**
+   * A split's total was locked in this dialog ("the sum of its lines") and
+   * refused by the server everywhere else, so a total typed in wrong could
+   * only be fixed by deleting the transaction. It is editable now, and the
+   * save carries it with the lines.
+   */
+  it('lets an existing split’s total be corrected, and sends it with the lines', async () => {
+    splitLines = [
+      { id: 'l1', amount: -40, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
+    ]
+    renderEditor({ transaction: { ...row, is_split: true }, accountId: 'acc-1' })
+    const outflow = document.querySelector('.txn-editor__field--outflow input') as HTMLInputElement
+    expect(outflow.disabled).toBe(false)
+
+    fireEvent.change(outflow, { target: { value: '45.80' } })
+    // 4.00 is now unassigned; the lines have to reach the new total first.
+    expect(submitButton('Save')).toBeDisabled()
+    fireEvent.change(splitAmountInputs()[0], { target: { value: '44.00' } })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(replaceSplitsMutate).toHaveBeenCalled())
+    expect(replaceSplitsMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't10',
+        amount: -45.8,
+        splits: [
+          expect.objectContaining({ id: 'l1', amount: -44 }),
+          expect.objectContaining({ id: 'l2', amount: -1.8 }),
+        ],
+      })
+    )
+    // The PATCH beside it never carries the amount: the server refuses a
+    // split's total there.
+    expect(updateMutate.mock.calls.at(-1)![0]).not.toHaveProperty('amount')
+  })
+
+  it('keeps a reconciled split’s total locked', () => {
+    splitLines = [
+      { id: 'l1', amount: -40, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
+    ]
+    renderEditor({
+      transaction: { ...row, is_split: true, cleared: 'reconciled' },
+      accountId: 'acc-1',
+    })
+    const outflow = document.querySelector('.txn-editor__field--outflow input') as HTMLInputElement
+    expect(outflow.disabled).toBe(true)
+  })
+
   it('sends the new account when a row is split in place', async () => {
     renderEditor({ transaction: row, accountId: 'acc-1' })
     fireEvent.click(screen.getByTitle('Split this transaction'))

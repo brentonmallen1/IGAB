@@ -142,6 +142,108 @@ describe('SplitTransactionEditor', () => {
     expect(screen.queryByText(/Loading lines/)).not.toBeInTheDocument()
   })
 
+  describe('correcting the total', () => {
+    const LINES = [
+      { id: 'l1', amount: -60, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -40, category_id: 'cat-2', memo: null },
+    ]
+    const total = () => screen.getByLabelText('Split total') as HTMLInputElement
+
+    async function open(txn: Transaction = PARENT) {
+      serverLines = LINES
+      useTransactionEditStore.getState().startSplitEditing(txn.id, -100, true)
+      renderEditor(txn)
+      await waitFor(() => expect(amountInputs()).toHaveLength(2))
+    }
+
+    it('lets a saved split’s total be retyped, and says what is then left', async () => {
+      // Entered as 100; the receipt says 108. This was a label, and the
+      // amount was locked everywhere else too.
+      await open()
+      expect(total().value).toBe('100.00')
+
+      fireEvent.change(total(), { target: { value: '108' } })
+      expect(screen.getByText('Remaining: $8.00')).toBeInTheDocument()
+      expect(screen.getByText('Save Split')).toBeDisabled()
+    })
+
+    it('puts what is left on the line that is pointed at', async () => {
+      await open()
+      fireEvent.change(total(), { target: { value: '108' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Put the remaining $8.00 on line 1' }))
+      expect(amountInputs().map((i) => i.value)).toEqual(['68.00', '40.00'])
+      expect(screen.getByText('Fully assigned')).toBeInTheDocument()
+      // Balanced: nothing is left to place, so no line offers to take it.
+      expect(screen.queryByRole('button', { name: /^Put the remaining/ })).toBeNull()
+    })
+
+    it('sends the new total with the lines, signed like the row', async () => {
+      await open()
+      fireEvent.change(total(), { target: { value: '108' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Put the remaining $8.00 on line 2' }))
+
+      fireEvent.click(screen.getByText('Save Split'))
+      await waitFor(() => expect(replaceMutate).toHaveBeenCalledTimes(1))
+      expect(replaceMutate.mock.calls[0][0]).toMatchObject({
+        id: 't1',
+        amount: -108,
+        splits: [
+          { id: 'l1', amount: -60 },
+          { id: 'l2', amount: -48 },
+        ],
+      })
+    })
+
+    it('sends no total when it did not move', async () => {
+      await open()
+      fireEvent.click(screen.getByText('Save Split'))
+      await waitFor(() => expect(replaceMutate).toHaveBeenCalledTimes(1))
+      expect(replaceMutate.mock.calls[0][0].amount).toBeUndefined()
+    })
+
+    it('takes an excess off a line when the total comes down', async () => {
+      await open()
+      fireEvent.change(total(), { target: { value: '90' } })
+      expect(screen.getByText('Over by $10.00')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Take the extra $10.00 off line 1' }))
+      expect(amountInputs().map((i) => i.value)).toEqual(['50.00', '40.00'])
+    })
+
+    it('will not save a total it cannot read', async () => {
+      // Unreadable is not zero: nothing here may book a $0 split.
+      await open()
+      fireEvent.change(total(), { target: { value: '' } })
+      expect(screen.getByText('Enter the total')).toBeInTheDocument()
+      expect(screen.getByText('Save Split')).toBeDisabled()
+    })
+
+    it('keeps a reconciled split’s total a label — the statement vouched for it', async () => {
+      await open({ ...PARENT, cleared: 'reconciled' } as Transaction)
+      expect(screen.queryByLabelText('Split total')).toBeNull()
+    })
+
+    it('starts from the saved total again when reopened', async () => {
+      await open()
+      fireEvent.change(total(), { target: { value: '108' } })
+      act(() => useTransactionEditStore.getState().stopSplitEditing())
+      act(() => useTransactionEditStore.getState().startSplitEditing(PARENT.id, -100, true))
+      await waitFor(() => expect(amountInputs()).toHaveLength(2))
+      expect(total().value).toBe('100.00')
+    })
+  })
+
+  it('offers each line the remainder while a new split is being filled in', () => {
+    serverLines = undefined
+    useTransactionEditStore.getState().startSplitEditing(FLAT.id, -100, false)
+    renderEditor(FLAT)
+
+    fireEvent.change(amountInputs()[0], { target: { value: '60' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Put the remaining $40.00 on line 2' }))
+    expect(amountInputs().map((i) => i.value)).toEqual(['60', '40.00'])
+  })
+
   it('says the lines failed rather than loading forever', () => {
     serverLines = undefined
     linesFailed = true
